@@ -19,7 +19,10 @@ export default defineNuxtConfig({
     databaseUrl: '',
     databaseCa: '',
     anthropicApiKey: '',
-    public: { appName: 'Aidi OS' }
+    jwtSecret: '',
+    resendApiKey: '',
+    emailFrom: 'Aidi OS <no-reply@theaidigroup.com>',
+    public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com' }
   },
   app: {
     head: {
