@@ -1,10 +1,15 @@
 <script setup lang="ts">
 // App shell. Sections appear as each milestone lands; nothing here links to unbuilt pages.
-const sections: { to: string; label: string }[] = [
-  { to: '/', label: 'Overview' },
-  { to: '/deals', label: 'Deals' },
-  { to: '/documents', label: 'Documents' }
+// Sections, each shown only to the roles that can use it (admins see everything).
+const ALL: { to: string; label: string; roles: string[] }[] = [
+  { to: '/', label: 'Overview', roles: [] },
+  { to: '/deals', label: 'Deals', roles: ['gp', 'team'] },
+  { to: '/documents', label: 'Documents', roles: ['gp', 'team', 'family'] },
+  { to: '/team', label: 'Team', roles: ['admin'] }
 ]
+const { data: me } = await useFetch<{ email: string; roles: string[] }>('/api/auth/me')
+const sections = computed(() => ALL.filter((s) => !s.roles.length || me.value?.roles.includes('admin') || s.roles.some((r) => me.value?.roles.includes(r))))
+async function signOut() { await $fetch('/api/auth/logout', { method: 'POST' }); await navigateTo('/login') }
 </script>
 
 <template>
@@ -14,6 +19,7 @@ const sections: { to: string; label: string }[] = [
       <nav class="side-nav">
         <NuxtLink v-for="s in sections" :key="s.to" :to="s.to" exact-active-class="on">{{ s.label }}</NuxtLink>
       </nav>
+      <div v-if="me" class="who"><span>{{ me.email }}</span><button type="button" @click="signOut">Sign out</button></div>
     </aside>
     <main id="main" class="main"><slot /></main>
   </div>
@@ -31,5 +37,8 @@ const sections: { to: string; label: string }[] = [
 .side-nav a { color: rgba(255,255,255,.75); text-decoration: none; padding: 8px 10px; font-size: 13px; }
 .side-nav a:hover, .side-nav a.on { color: #fff; background: rgba(255,255,255,.08); }
 .main { padding: 40px 48px; min-width: 0; }
+.side { display: flex; flex-direction: column; }
+.who { margin-top: auto; padding-top: 24px; font-size: 12px; color: rgba(255,255,255,.6); display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.who button { align-self: flex-start; background: none; border: 1px solid rgba(255,255,255,.3); color: #fff; font: inherit; padding: 4px 10px; cursor: pointer; }
 @media (max-width: 880px) { .shell { grid-template-columns: 1fr; } .side { padding: 16px 20px; } .brand { margin-bottom: 12px; } .side-nav { flex-direction: row; flex-wrap: wrap; } .main { padding: 24px 20px; } }
 </style>

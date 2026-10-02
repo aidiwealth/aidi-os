@@ -11,3 +11,4 @@ a { color: var(--c-blue-deep); }
 .btn.secondary { background: #fff; color: var(--c-navy); }
 .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }

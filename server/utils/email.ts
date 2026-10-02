@@ -93,3 +93,17 @@ export async function sendPitchReceipt(to: string, name: string, company: string
     'We received your pitch')
   await sendEmail({ to, subject: 'We received your pitch — Aidi Ventures', text: 'Thank you, ' + first + '. We have received the pitch for ' + company + '. A partner at Aidi Ventures reads every submission, and we will be in touch if there is a fit.', html })
 }
+
+// Invitation to Aidi OS. Sign-in stays passwordless: they request a code at the sign-in page.
+export async function sendInviteEmail(to: string, name: string, invitedBy: string): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const link = useRuntimeConfig().public.appBaseUrl + '/login'
+  const html = shell(
+    h1('Welcome to Aidi OS, ' + first) +
+    para('You have been given access to Aidi OS, the internal back office of The Aidi Group, by ' + esc(invitedBy) + '.') +
+    para('To sign in, open the link below and enter this email address. We will send you a one-time code; there is no password.') +
+    button('Go to Aidi OS →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">If you were not expecting this, you can ignore this email.</p>`,
+    'You have access to Aidi OS')
+  await sendEmail({ to, subject: 'You have access to Aidi OS', text: 'Welcome to Aidi OS, ' + first + '. You have been given access by ' + invitedBy + '. Sign in at ' + link + ' with this email address; we will send you a one-time code.', html })
+}
