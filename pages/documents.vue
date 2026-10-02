@@ -17,17 +17,42 @@ const busy = ref(false)
 const msg = ref('')
 const ok = ref('')
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
-async function upload() {
-  const f = fileEl.value?.files?.[0]
+const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx,.doc,.pptx'
+const EXT = ACCEPT.split(',')
+const files = ref<File[]>([])
+const over = ref(false)
+const done = ref(0)
+function add(list: FileList | null | undefined) {
   msg.value = ''; ok.value = ''
-  if (!f) { msg.value = 'Choose a file.'; return }
-  if (f.size > 25 * 1024 * 1024) { msg.value = 'Files can be up to 25 MB.'; return }
-  const fd = new FormData()
-  fd.append('file', f); fd.append('title', form.title || f.name.replace(/\.[^.]+$/, '')); fd.append('kind', form.kind)
-  fd.append('sensitivity', form.sensitivity); fd.append('entity_id', form.entity_id)
-  busy.value = true
-  try { await $fetch('/api/documents', { method: 'POST', body: fd }); ok.value = 'Uploaded.'; form.title = ''; if (fileEl.value) fileEl.value.value = ''; await refresh() }
-  catch (e) { msg.value = errText(e) } finally { busy.value = false }
+  const skipped: string[] = []
+  for (const f of Array.from(list ?? [])) {
+    const ext = '.' + (f.name.split('.').pop() ?? '').toLowerCase()
+    if (!EXT.includes(ext)) skipped.push(f.name + ' (type not allowed)')
+    else if (f.size > 25 * 1024 * 1024) skipped.push(f.name + ' (over 25 MB)')
+    else files.value.push(f)
+  }
+  if (skipped.length) msg.value = 'Skipped: ' + skipped.join(', ')
+}
+function onPick(e: Event) { const el = e.target as HTMLInputElement; add(el.files); el.value = '' }
+function onDrop(e: DragEvent) { over.value = false; add(e.dataTransfer?.files) }
+async function upload() {
+  msg.value = ''; ok.value = ''
+  if (!files.value.length) { msg.value = 'Choose or drop at least one file.'; return }
+  busy.value = true; done.value = 0
+  const failed: string[] = []
+  for (const f of [...files.value]) {
+    const fd = new FormData()
+    const title = files.value.length === 1 && form.title ? form.title : f.name.replace(/\.[^.]+$/, '')
+    fd.append('file', f); fd.append('title', title); fd.append('kind', form.kind)
+    fd.append('sensitivity', form.sensitivity); fd.append('entity_id', form.entity_id)
+    try { await $fetch('/api/documents', { method: 'POST', body: fd }); done.value++ }
+    catch (e) { failed.push(f.name + ': ' + errText(e)) }
+  }
+  busy.value = false
+  if (failed.length) msg.value = failed.join(' · ')
+  if (done.value) ok.value = done.value === 1 ? 'Uploaded 1 file.' : 'Uploaded ' + done.value + ' files.'
+  files.value = []; form.title = ''
+  await refresh()
 }
 async function open(id: string) {
   try { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.location.href = r.url }
@@ -44,12 +69,22 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
     <p class="lead">Stored privately. Links last 60 seconds, and every view is logged.</p>
 
     <form class="card up" @submit.prevent="upload">
-      <label class="label">File<input ref="fileEl" type="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx,.doc,.pptx"></label>
-      <label class="label">Title<input v-model="form.title" maxlength="200" placeholder="Defaults to the file name"></label>
+      <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Choose files to upload, or drop them here"
+        @click="fileEl?.click()" @keydown.enter.prevent="fileEl?.click()" @keydown.space.prevent="fileEl?.click()"
+        @dragenter.prevent="over = true" @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="onDrop">
+        <input ref="fileEl" type="file" multiple class="sr-only" tabindex="-1" :accept="ACCEPT" @change="onPick">
+        <p v-if="!files.length" class="drop-main"><b>Drop files here</b> or click to choose</p>
+        <ul v-else class="picked">
+          <li v-for="(f, i) in files" :key="f.name + i">{{ f.name }} <span>{{ size(String(f.size)) }}</span>
+            <button type="button" class="x" :aria-label="'Remove ' + f.name" @click.stop="files.splice(i, 1)">×</button></li>
+        </ul>
+        <p class="drop-hint">PDF, Word, Excel, PowerPoint, CSV, text or images · up to 25 MB each</p>
+      </div>
+      <label class="label">Title<input v-model="form.title" maxlength="200" :disabled="files.length > 1" :placeholder="files.length > 1 ? 'Each file keeps its own name' : 'Defaults to the file name'"></label>
       <label class="label">Type<select v-model="form.kind"><option v-for="k in KINDS" :key="k" :value="k">{{ k[0]!.toUpperCase() + k.slice(1) }}</option></select></label>
       <label class="label">Entity<select v-model="form.entity_id"><option value="">None</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <label class="label">Who can see it<select v-model="form.sensitivity"><option v-for="l in levels" :key="l.v" :value="l.v">{{ l.label }}</option></select></label>
-      <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Uploading…' : 'Upload' }}</button>
+      <button class="btn" type="submit" :disabled="busy || !files.length">{{ busy ? 'Uploading ' + done + ' of ' + files.length + '…' : files.length > 1 ? 'Upload ' + files.length + ' files' : 'Upload' }}</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     </form>
 
@@ -73,6 +108,15 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 .up label { display: flex; flex-direction: column; gap: 6px; }
 .up input, .up select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .up .btn { justify-content: center; }
+.drop { grid-column: 1 / -1; border: 1px dashed var(--c-rule-strong); background: var(--c-paper); padding: 26px; text-align: center; cursor: pointer; transition: background .15s, border-color .15s; }
+.drop:hover, .drop.over { background: #eef4f9; border-color: var(--c-blue); }
+.drop:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+.drop-main { margin: 0; color: var(--c-ink-soft); } .drop-main b { color: var(--c-navy); }
+.drop-hint { margin: 6px 0 0; font-size: 12px; color: var(--c-muted); }
+.picked { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.picked li { background: #fff; border: 1px solid var(--c-rule); padding: 6px 8px 6px 12px; font-size: 13px; }
+.picked span { color: var(--c-muted); margin-left: 6px; }
+.x { background: none; border: 0; font-size: 16px; line-height: 1; margin-left: 6px; cursor: pointer; color: var(--c-muted); }
 .table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
 th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
