@@ -8,12 +8,16 @@ const COLS = [
 ]
 const ROUND: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later' }
 const showPassed = ref(false)
-const col = (s: string) => (data.value ?? []).filter((d) => d.stage === s)
-const passed = computed(() => (data.value ?? []).filter((d) => d.stage === 'passed'))
+const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
+const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding', 'gp'].includes(e.kind)))
+const vehicle = ref('')
+const inView = computed(() => (data.value ?? []).filter((d) => !vehicle.value || d.vehicle_id === vehicle.value))
+const col = (s: string) => inView.value.filter((d) => d.stage === s)
+const passed = computed(() => inView.value.filter((d) => d.stage === 'passed'))
 const days = (s: string) => Math.max(0, Math.floor((Date.now() - new Date(s).getTime()) / 86400000))
 const money = (v: string | null) => (v ? '$' + (Number(v) >= 1e6 ? (Number(v) / 1e6).toFixed(1).replace('.0', '') + 'm' : Math.round(Number(v) / 1e3) + 'k') : '')
 const adding = ref(false)
-const form = reactive({ company: '', one_liner: '', website: '', round: '', raise_usd: '', source: 'referral', stage: 'screening' })
+const form = reactive({ company: '', one_liner: '', website: '', round: '', raise_usd: '', source: 'referral', stage: 'screening', vehicle_entity_id: '' })
 const msg = ref('')
 async function add() {
   msg.value = ''
@@ -29,7 +33,10 @@ async function add() {
     <p class="label">Aidi Ventures</p>
     <div class="head">
       <h1>Pipeline</h1>
-      <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add deal' }}</button>
+      <div class="tools">
+        <select v-model="vehicle" aria-label="Filter by vehicle"><option value="">All vehicles</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select>
+        <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add deal' }}</button>
+      </div>
     </div>
 
     <form v-if="adding" class="card add" @submit.prevent="add">
@@ -39,6 +46,7 @@ async function add() {
       <label class="label">Round<select v-model="form.round"><option value="">—</option><option v-for="(l, k) in ROUND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Raising (USD)<input v-model="form.raise_usd" inputmode="numeric"></label>
       <label class="label">Source<select v-model="form.source"><option value="referral">Referral</option><option value="network">Network</option><option value="outbound">Outbound</option><option value="other">Other</option></select></label>
+      <label class="label">Vehicle<select v-model="form.vehicle_entity_id"><option value="">Aidi Ventures Fund I</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Start at<select v-model="form.stage"><option value="screening">Screening</option><option value="first_call">First call</option><option value="diligence">Diligence</option></select></label>
       <button class="btn" type="submit">Add to pipeline</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
@@ -53,6 +61,7 @@ async function add() {
           <span v-if="d.one_liner" class="one">{{ d.one_liner }}</span>
           <span class="meta">{{ [d.round ? ROUND[d.round] : '', money(d.raise_usd)].filter(Boolean).join(' · ') }}</span>
           <span class="meta">{{ d.owner ?? 'No owner' }} · {{ days(d.stage_since) }}d in stage</span>
+          <span v-if="d.vehicle" class="veh">{{ d.vehicle }}</span>
         </NuxtLink>
         <p v-if="!col(c.v).length" class="none">—</p>
       </div>
@@ -67,6 +76,8 @@ async function add() {
 
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; }
+.tools { display: flex; gap: 10px; align-items: center; }
+.veh { align-self: flex-start; font-size: 10.5px; letter-spacing: .04em; color: var(--c-blue-deep); background: #eef4f9; padding: 1px 6px; margin-top: 2px; }
 .add { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 16px; align-items: end; margin-bottom: 20px; }
 .add label { display: flex; flex-direction: column; gap: 6px; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

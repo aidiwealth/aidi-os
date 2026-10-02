@@ -1,0 +1,33 @@
+// Modules: features an admin can switch off. Each belongs to a group and is limited to roles.
+// When a module is off, its sidebar link disappears and its pages and APIs return "not found".
+import type { H3Event } from 'h3'
+
+export interface ModuleDef { code: string; group: 'vc' | 'fo' | 'admin'; label: string; to: string; roles: string[]; api: string[]; pages: string[]; switchable: boolean }
+export const MODULES: ModuleDef[] = [
+  { code: 'pitches', group: 'vc', label: 'Pitches', to: '/deals', roles: ['gp', 'team'], api: ['/api/deals', '/api/public/pitch'], pages: ['/deals'], switchable: true },
+  { code: 'pipeline', group: 'vc', label: 'Pipeline', to: '/pipeline', roles: ['gp', 'team'], api: ['/api/pipeline'], pages: ['/pipeline'], switchable: true },
+  { code: 'portfolio', group: 'vc', label: 'Portfolio', to: '/portfolio', roles: ['gp', 'team'], api: ['/api/portfolio', '/api/public/report'], pages: ['/portfolio', '/report'], switchable: true },
+  { code: 'analytics', group: 'vc', label: 'Analytics', to: '/analytics', roles: ['gp', 'team', 'family'], api: ['/api/analytics'], pages: ['/analytics'], switchable: true },
+  { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
+  { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents'], pages: ['/documents'], switchable: true },
+  { code: 'team', group: 'admin', label: 'Team', to: '/team', roles: ['admin'], api: ['/api/admin/users'], pages: ['/team'], switchable: false },
+  { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false }
+]
+export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fo: 'Family Office', admin: 'Administration' }
+
+let cache: { at: number; on: Set<string> } | null = null
+export async function enabledModules(): Promise<Set<string>> {
+  if (cache && Date.now() - cache.at < 30_000) return cache.on
+  const r = await db().query<{ code: string; enabled: boolean }>('SELECT code, enabled FROM core.modules')
+  const off = new Set(r.rows.filter((m) => !m.enabled).map((m) => m.code))
+  const on = new Set(MODULES.filter((m) => !m.switchable || !off.has(m.code)).map((m) => m.code))
+  cache = { at: Date.now(), on }
+  return on
+}
+export const clearModuleCache = (): void => { cache = null }
+export const moduleForApi = (path: string): ModuleDef | undefined => MODULES.find((m) => m.api.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/')))
+export const canUse = (m: ModuleDef, roles: string[]): boolean => roles.includes('admin') || m.roles.some((r) => roles.includes(r))
+
+export async function requireModule(event: H3Event, code: string): Promise<void> {
+  if (!(await enabledModules()).has(code)) throw apiError('module_off', 'This module is switched off.', 404)
+}

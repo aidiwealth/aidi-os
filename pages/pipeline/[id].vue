@@ -2,10 +2,12 @@
 const id = useRoute().params.id as string
 interface Ev { id: string; kind: string; body: string | null; meeting_at: string | null; from_stage: string | null; to_stage: string | null; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
 interface Vote { vote: string; note: string | null; voted_at: string; voter: string; mine: boolean }
-interface Deal { id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
+interface Deal { vehicle_entity_id: string | null; vehicle_name: string | null; id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
 const { data, error, refresh } = await useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean }>('/api/pipeline/' + id)
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
+const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
+const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding', 'gp'].includes(e.kind)))
 useHead({ title: () => (data.value?.deal.company ?? 'Deal') + ' — Aidi OS' })
 const STAGES = [
   { v: 'screening', label: 'Screening' }, { v: 'first_call', label: 'First call' }, { v: 'diligence', label: 'Diligence' },
@@ -23,13 +25,13 @@ const move = (stage: string) => {
   if (stage === 'passed') { const r = prompt('Why are we passing? (required)'); if (!r) return; note = r }
   return run(() => $fetch('/api/pipeline/' + id + '/stage', { method: 'POST', body: { stage, note } }))
 }
-const fields = reactive({ owner_id: '', round: '', raise_usd: '', check_usd: '', valuation_usd: '' })
+const fields = reactive({ owner_id: '', round: '', raise_usd: '', check_usd: '', valuation_usd: '', vehicle_entity_id: '' })
 watchEffect(() => {
   const d = data.value?.deal; if (!d) return
-  fields.owner_id = d.owner_id ?? ''; fields.round = d.round ?? ''; fields.raise_usd = d.raise_usd ?? ''; fields.check_usd = d.check_usd ?? ''; fields.valuation_usd = d.valuation_usd ?? ''
+  fields.vehicle_entity_id = d.vehicle_entity_id ?? ''; fields.owner_id = d.owner_id ?? ''; fields.round = d.round ?? ''; fields.raise_usd = d.raise_usd ?? ''; fields.check_usd = d.check_usd ?? ''; fields.valuation_usd = d.valuation_usd ?? ''
 })
 const num = (v: string) => (v.replace(/[^0-9]/g, '') ? Number(v.replace(/[^0-9]/g, '')) : null)
-const save = () => run(() => $fetch('/api/pipeline/' + id, { method: 'PATCH', body: { owner_id: fields.owner_id || null, round: fields.round || null, raise_usd: num(String(fields.raise_usd)), check_usd: num(String(fields.check_usd)), valuation_usd: num(String(fields.valuation_usd)) } }))
+const save = () => run(() => $fetch('/api/pipeline/' + id, { method: 'PATCH', body: { vehicle_entity_id: fields.vehicle_entity_id || undefined, owner_id: fields.owner_id || null, round: fields.round || null, raise_usd: num(String(fields.raise_usd)), check_usd: num(String(fields.check_usd)), valuation_usd: num(String(fields.valuation_usd)) } }))
 
 const ev = reactive({ kind: 'note' as 'note' | 'meeting' | 'document', body: '', meeting_at: '', document_id: '' })
 const addEvent = () => run(async () => {
@@ -49,7 +51,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
 <template>
   <section v-if="data">
     <NuxtLink to="/pipeline" class="back">← Pipeline</NuxtLink>
-    <p class="label">{{ data.deal.round ? ROUND[data.deal.round] : 'Round not set' }} · {{ data.deal.source.replace('_', ' ') }}<template v-if="data.deal.pitch_id"> · <NuxtLink :to="'/deals/' + data.deal.pitch_id">original pitch</NuxtLink></template></p>
+    <p class="label">{{ data.deal.vehicle_name ?? 'No vehicle' }} · {{ data.deal.round ? ROUND[data.deal.round] : 'Round not set' }} · {{ data.deal.source.replace('_', ' ') }}<template v-if="data.deal.pitch_id"> · <NuxtLink :to="'/deals/' + data.deal.pitch_id">original pitch</NuxtLink></template></p>
     <h1>{{ data.deal.company }}</h1>
     <p class="lead">{{ data.deal.one_liner }}</p>
 
@@ -100,6 +102,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
       <div class="col">
         <form class="card facts" @submit.prevent="save">
           <h2>Details</h2>
+          <label class="label">Vehicle<select v-model="fields.vehicle_entity_id"><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
           <label class="label">Owner<select v-model="fields.owner_id"><option value="">No owner</option><option v-for="p in people ?? []" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
           <label class="label">Round<select v-model="fields.round"><option value="">—</option><option v-for="(l, k) in ROUND" :key="k" :value="k">{{ l }}</option></select></label>
           <label class="label">Raising (USD)<input v-model="fields.raise_usd" inputmode="numeric"></label>

@@ -4,7 +4,7 @@ interface Metric { key: string; label: string; unit: string }
 interface Raw { founder: number | null; override: number | null; note: string | null; by: string | null }
 interface Month { period: string; values: Record<string, number | null>; raw: Record<string, Raw> }
 interface Data {
-  company: { id: string; name: string; founder_name: string; founder_email: string; deal_id: string | null }
+  company: { id: string; name: string; founder_name: string; founder_email: string; deal_id: string | null; holder: string | null; relationship: string }
   metrics: Metric[]; months: Month[]
   analysis: { headline: string[]; flags: { level: string; text: string }[]; runwayMonths: number | null }
   updates: { period: string; highlights: string | null; challenges: string | null; asks: string | null }[]
@@ -44,7 +44,7 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
 <template>
   <section v-if="data">
     <NuxtLink to="/portfolio" class="back">← Portfolio</NuxtLink>
-    <p class="label">Portfolio company · {{ data.company.founder_name }} · {{ data.company.founder_email }}<template v-if="data.company.deal_id"> · <NuxtLink :to="'/pipeline/' + data.company.deal_id">deal record</NuxtLink></template></p>
+    <p class="label">{{ data.company.holder ?? 'No holder' }} · {{ data.company.relationship }} · {{ data.company.founder_name }} · {{ data.company.founder_email }}<template v-if="data.company.deal_id"> · <NuxtLink :to="'/pipeline/' + data.company.deal_id">deal record</NuxtLink></template></p>
     <h1>{{ data.company.name }}</h1>
 
     <div class="top">

@@ -10,6 +10,8 @@ const LEVELS = [
   { v: 'restricted', label: 'Restricted: admins only', roles: ['admin'] }
 ]
 const levels = computed(() => LEVELS.filter((l) => l.roles.some((r) => me.value?.roles.includes(r))))
+const entityFilter = ref('')
+const shown = computed(() => (docs.value ?? []).filter((d) => !entityFilter.value || d.entity_name === entityFilter.value))
 const KINDS = ['agreement', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']
 const form = reactive({ title: '', kind: 'other', sensitivity: 'normal', entity_id: '' })
 const fileEl = ref<HTMLInputElement | null>(null)
@@ -90,10 +92,11 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 
     <p v-if="error" class="error" role="alert">Could not load documents.</p>
     <p v-else-if="!docs?.length" class="muted">No documents yet.</p>
-    <table v-else class="table">
+    <label v-if="docs?.length" class="filter"><span class="label">Entity</span><select v-model="entityFilter"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.name">{{ e.name }}</option></select></label>
+    <table v-if="docs?.length" class="table">
       <thead><tr><th>Title</th><th>Entity</th><th>Type</th><th>Access</th><th>Size</th><th>Added</th></tr></thead>
       <tbody>
-        <tr v-for="d in docs" :key="d.id">
+        <tr v-for="d in shown" :key="d.id">
           <td><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></td>
           <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ d.sensitivity }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}</td>
         </tr>
@@ -104,6 +107,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 
 <style scoped>
 .lead { color: var(--c-muted); margin: 8px 0 24px; }
+.filter { display: inline-flex; gap: 10px; align-items: center; margin-bottom: 12px; } .filter select { font: inherit; padding: 6px 8px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .up { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 18px; align-items: end; margin-bottom: 28px; }
 .up label { display: flex; flex-direction: column; gap: 6px; }
 .up input, .up select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

@@ -4,8 +4,9 @@ export default defineEventHandler(async (event) => {
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Deal not found', 404)
   const d = await db().query(
-    `SELECT d.*, d.raise_usd::text, d.check_usd::text, d.valuation_usd::text, p.full_name AS owner_name
-       FROM deals.deals d LEFT JOIN core.users u ON u.id = d.owner_id LEFT JOIN core.people p ON p.id = u.person_id WHERE d.id = $1`, [id.data])
+    `SELECT d.*, d.raise_usd::text, d.check_usd::text, d.valuation_usd::text, p.full_name AS owner_name, ve.name AS vehicle_name
+       FROM deals.deals d LEFT JOIN core.users u ON u.id = d.owner_id LEFT JOIN core.people p ON p.id = u.person_id
+       LEFT JOIN core.entities ve ON ve.id = d.vehicle_entity_id WHERE d.id = $1`, [id.data])
   if (d.rowCount !== 1) throw apiError('not_found', 'Deal not found', 404)
   const levels = visibleLevels(user.roles)
   const events = await db().query(

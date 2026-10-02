@@ -3,6 +3,7 @@ import { z } from 'zod'
 const money = z.coerce.number().int().min(0).max(100_000_000_000).nullable().optional()
 const Body = z.object({
   owner_id: z.string().uuid().nullable().optional(),
+  vehicle_entity_id: z.string().uuid().optional(),
   round: z.enum(['pre_seed', 'seed', 'series_a', 'series_b', 'later']).nullable().optional(),
   raise_usd: money, check_usd: money, valuation_usd: money,
   website: z.string().trim().max(500).nullable().optional(),
