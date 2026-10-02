@@ -14,5 +14,6 @@ export default defineEventHandler(async (event) => {
        FROM deals.decisions d JOIN core.users u ON u.id = d.decided_by WHERE d.pitch_id = $1 ORDER BY d.decided_at DESC`, [id.data])
   const failed = await db().query<{ n: number }>(
     "SELECT count(*)::int AS n FROM core.ai_runs WHERE input_ref = $1 AND NOT valid", ['deals.pitches:' + id.data])
-  return { pitch: p.rows[0], screenings: screenings.rows, decisions: decisions.rows, failedRuns: failed.rows[0]?.n ?? 0 }
+  const deal = await db().query<{ id: string }>('SELECT id FROM deals.deals WHERE pitch_id = $1', [id.data])
+  return { pitch: p.rows[0], screenings: screenings.rows, decisions: decisions.rows, failedRuns: failed.rows[0]?.n ?? 0, dealId: deal.rows[0]?.id ?? null }
 })

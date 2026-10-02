@@ -3,7 +3,8 @@
 // Sections, each shown only to the roles that can use it (admins see everything).
 const ALL: { to: string; label: string; roles: string[] }[] = [
   { to: '/', label: 'Overview', roles: [] },
-  { to: '/deals', label: 'Deals', roles: ['gp', 'team'] },
+  { to: '/deals', label: 'Pitches', roles: ['gp', 'team'] },
+  { to: '/pipeline', label: 'Pipeline', roles: ['gp', 'team'] },
   { to: '/documents', label: 'Documents', roles: ['gp', 'team', 'family'] },
   { to: '/team', label: 'Team', roles: ['admin'] }
 ]

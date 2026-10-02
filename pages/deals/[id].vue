@@ -5,7 +5,7 @@ interface Detail { summary: string[]; strengths: string[]; concerns: string[]; q
 interface ScreeningRow { id: string; created_at: string; score: number; recommendation: string; thesis_fit: number; team_score: number; market_score: number; traction_score: number; detail: Detail; model: string; prompt_version: string; cost_usd: string | null }
 interface DecisionRow { id: string; decision: string; note: string; decided_at: string; decided_by: string }
 interface Pitch { id: string; received_at: string; founder_name: string; email: string; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string; sector: string | null; raising_usd: string | null; one_liner: string; description: string; traction: string | null; team: string | null; female_founder: boolean | null; status: string }
-const { data, error, refresh } = await useFetch<{ pitch: Pitch; screenings: ScreeningRow[]; decisions: DecisionRow[]; failedRuns: number }>('/api/deals/' + id)
+const { data, error, refresh } = await useFetch<{ pitch: Pitch; screenings: ScreeningRow[]; decisions: DecisionRow[]; failedRuns: number; dealId: string | null }>('/api/deals/' + id)
 useHead({ title: () => (data.value?.pitch.company ?? 'Pitch') + ' — Aidi OS' })
 const REC: Record<string, string> = { prioritise: 'Prioritise', review: 'Review', likely_pass: 'Likely pass' }
 const STAGE: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later' }
@@ -33,7 +33,8 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
 
 <template>
   <section v-if="data">
-    <NuxtLink to="/deals" class="back">← Deals</NuxtLink>
+    <NuxtLink to="/deals" class="back">← Pitches</NuxtLink>
+    <NuxtLink v-if="data.dealId" :to="'/pipeline/' + data.dealId" class="inpipe">In the pipeline →</NuxtLink>
     <p class="label">{{ STAGE[data.pitch.stage] }} · {{ data.pitch.sector ?? 'Sector not given' }} · {{ data.pitch.country ?? 'Country not given' }}</p>
     <h1>{{ data.pitch.company }}</h1>
     <p class="lead">{{ data.pitch.one_liner }}</p>
@@ -98,6 +99,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
 
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
+.inpipe { float: right; color: var(--c-blue-deep); text-decoration: none; font-weight: 500; }
 .lead { color: var(--c-muted); margin: 8px 0 24px; max-width: 70ch; }
 .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }

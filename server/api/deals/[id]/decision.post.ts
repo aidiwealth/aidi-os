@@ -13,6 +13,12 @@ export default defineEventHandler(async (event) => {
     const u = await client.query('UPDATE deals.pitches SET status = $2 WHERE id = $1', [id.data, STATUS[body.data.decision]])
     if (u.rowCount !== 1) throw apiError('not_found', 'Pitch not found', 404)
     await client.query('INSERT INTO deals.decisions (pitch_id, decision, note, decided_by) VALUES ($1,$2,$3,$4)', [id.data, body.data.decision, body.data.note, user.userId])
+    if (body.data.decision === 'advance') {
+      await client.query(
+        `INSERT INTO deals.deals (pitch_id, company, one_liner, website, round, raise_usd, source, stage, owner_id, created_by)
+         SELECT id, company, one_liner, website, stage, raising_usd, 'pitch_form', 'first_call', $2, $2 FROM deals.pitches WHERE id = $1
+         ON CONFLICT (pitch_id) DO NOTHING`, [id.data, user.userId])
+    }
     await client.query(
       'INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
       [user.userId, 'deal.decision', 'pitch', id.data, JSON.stringify({ decision: body.data.decision }), getRequestIP(event, { xForwardedFor: true }) ?? null])
