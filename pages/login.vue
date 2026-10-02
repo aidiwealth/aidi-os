@@ -26,7 +26,7 @@ async function verify() {
 
 <template>
   <div class="box">
-    <div class="brand"><span class="w">aidi</span><span class="d" /><span class="a">OS</span></div>
+    <div class="brand"><span class="w" aria-label="Aidi"><AidiWordmark /></span><span class="d" /><span class="a">OS</span></div>
     <form v-if="step === 'email'" @submit.prevent="requestCode">
       <h1>Sign in</h1>
       <p class="hint">We'll email you a sign-in link and a 6-digit code.</p>
@@ -49,7 +49,7 @@ async function verify() {
 <style scoped>
 .box { width: 100%; max-width: 380px; background: #fff; padding: 36px; }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; color: var(--c-navy); }
-.w { font-weight: 600; font-size: 20px; } .d { width: 1px; height: 18px; background: var(--c-rule-strong); } .a { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
+.w { display: flex; width: 62px; height: 25px; } .w :deep(svg) { width: 100%; height: 100%; display: block; } .d { width: 1px; height: 18px; background: var(--c-rule-strong); } .a { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
 h1 { margin-bottom: 8px; }
 .hint { color: var(--c-muted); margin: 0 0 20px; }
 input { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--c-rule-strong); margin: 6px 0 16px; }

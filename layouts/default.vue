@@ -8,7 +8,7 @@ const sections: { to: string; label: string }[] = [
 <template>
   <div class="shell">
     <aside class="side" aria-label="Aidi OS">
-      <div class="brand"><span class="brand-word">aidi</span><span class="brand-div" /><span class="brand-arm">OS</span></div>
+      <div class="brand"><span class="brand-mark" aria-label="Aidi"><AidiWordmark /></span><span class="brand-div" /><span class="brand-arm">OS</span></div>
       <nav class="side-nav">
         <NuxtLink v-for="s in sections" :key="s.to" :to="s.to" exact-active-class="on">{{ s.label }}</NuxtLink>
       </nav>
@@ -21,7 +21,8 @@ const sections: { to: string; label: string }[] = [
 .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
 .side { background: var(--c-navy); color: #fff; padding: 24px 20px; }
 .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
-.brand-word { font-family: var(--font-body); font-weight: 600; font-size: 20px; letter-spacing: -.02em; }
+.brand-mark { display: flex; width: 58px; height: 23px; color: #fff; }
+.brand-mark :deep(svg) { width: 100%; height: 100%; display: block; }
 .brand-div { width: 1px; height: 18px; background: rgba(255,255,255,.3); }
 .brand-arm { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
