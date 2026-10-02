@@ -36,11 +36,11 @@ services:
   - key: NUXT_R2_ACCESS_KEY_ID
     scope: RUN_TIME
     type: SECRET
-    value: EV[1:wxcf5JNYvsZptkNDwKp1U0eIp420yny8:OjU2WGruAsQyg9lDZY8022FqQH9UoM0nKS1cQoyg8DFhvNkh7bx1qjcI+LObiMgZgW1FMqcpUKRuMG/NUrLGRYnfIp+KZCO/oY+f0zhw3pU=]
+    value: EV[1:iyAv4DbyWoOJX7NUrx2u97z4+vDzHCZ3:HIHR31PRauews55X3sujUzrRPP67dSZaSsFe6/0r+G5QTxKF5r0PwoOZdmb5JKTh]
   - key: NUXT_R2_SECRET_ACCESS_KEY
     scope: RUN_TIME
     type: SECRET
-    value: EV[1:Am4POVH+/86+p6yscPNvQzjDzVhE8mlm:c3gUXCIcu75eWe1flkGUkeedsCiAFGuJcNwT/2VYpLYFEHz9/9F3PJiEiQKmWSQ61DQ2W6nI5XfxtHXLl/spGrTiX+vQgz12nED1+BrhRk8=]
+    value: EV[1:bXWJ7xIC6M3BLQGua4Azf1w8s41F/2WT:JyQZ4uOjQNRrDeZukDGp7e/sPKieD2vB3h3bwFpbJwM/1mrEqRh3lXjyWaj4ejyhlIzr7Fc2Xq5Nx4baZkJSmzeiMZbZseUrZU/xF55AhKI=]
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production
