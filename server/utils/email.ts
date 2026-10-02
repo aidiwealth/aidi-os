@@ -64,3 +64,32 @@ export async function sendLoginEmail(to: string, magicLink: string, otp: string)
     'Your Aidi OS code is ' + otp)
   await sendEmail({ to, subject: 'Your Aidi OS sign-in code', text, html })
 }
+
+const LABEL: Record<string, string> = { prioritise: 'Prioritise', review: 'Review', likely_pass: 'Likely pass' }
+
+// To the partners: every new pitch, with the AI screening when it succeeded.
+export async function sendPitchAlert(p: { pitchId: string; company: string; oneLiner: string; score: number | null; recommendation: string | null; summary: string[] }): Promise<void> {
+  const to = useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!to.length) { console.warn('[email] NUXT_PITCH_NOTIFY_TO not set: no pitch alert sent for ' + p.pitchId); return }
+  const link = useRuntimeConfig().public.appBaseUrl + '/deals/' + p.pitchId
+  const head = p.score === null ? 'Screening failed — review by hand' : LABEL[p.recommendation ?? ''] + ' · ' + p.score + '/100'
+  const lines = p.summary.map((s) => para(esc(s))).join('')
+  const html = shell(
+    `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">New pitch · ${esc(head)}</p>` +
+    h1(esc(p.company)) + para(esc(p.oneLiner)) + lines + button('Open in Aidi OS →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">AI screening is advice only. A partner makes every decision.</p>`,
+    'New pitch: ' + p.company)
+  const text = 'New pitch: ' + p.company + '\n' + head + '\n\n' + p.oneLiner + '\n\n' + p.summary.join('\n') + '\n\n' + link
+  for (const addr of to) await sendEmail({ to: addr, subject: 'New pitch: ' + p.company + ' (' + head + ')', text, html })
+}
+
+// To the founder: a short receipt, so a pitch never disappears into silence.
+export async function sendPitchReceipt(to: string, name: string, company: string): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const html = shell(
+    h1('Thank you, ' + first) +
+    para('We have received the pitch for <strong>' + esc(company) + '</strong>. A partner at Aidi Ventures reads every submission, and we will be in touch if there is a fit.') +
+    para('If anything changes, such as a new deck or a funding update, reply to the address on aidiventures.com.'),
+    'We received your pitch')
+  await sendEmail({ to, subject: 'We received your pitch — Aidi Ventures', text: 'Thank you, ' + first + '. We have received the pitch for ' + company + '. A partner at Aidi Ventures reads every submission, and we will be in touch if there is a fit.', html })
+}

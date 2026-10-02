@@ -18,7 +18,18 @@ services:
   envs:
   - key: NUXT_EMAIL_FROM
     scope: RUN_TIME
-    value: "Aidi OS <no-reply@notifications.theaidigroup.com>"
+    value: Aidi OS <no-reply@notifications.theaidigroup.com>
+  - key: NUXT_PITCH_NOTIFY_TO
+    scope: RUN_TIME
+    value: company@aidiventures.com
+  - key: NUXT_ANTHROPIC_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:W1ZUkd4Olj0+Y5o2XSvbPzgH9x24R3yu:gNuKql6dBENqe1v66A/CAXqRUOeSATqfLj2o+RwsH1Xm+Of2Qsd0++kW8uewD+/TMFi/Ahdka3xaAI3ePeuHaO3lhvGU2o4zXv3aCfh/jWyfIvLVFaY5U4GYNaHnEipofAsFcCRWbvfU9pZ81PUgKgs3/6VtcwXi0zw8og==]
+  - key: NUXT_TURNSTILE_SECRET
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:Ij+8i+jY0w1JRsy019Z5rZO8/WixqEYv:nruMY2SvFUGEVwm8VvTfLbRamXqFitmeMEWdd2otjM1nrQKx08zr6T1e/nSZVuuiVpdb]
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production

@@ -20,6 +20,11 @@ export default defineNuxtConfig({
     databaseCa: '',
     anthropicApiKey: '',
     jwtSecret: '',
+    turnstileSecret: '',
+    anthropicBaseUrl: 'https://api.anthropic.com',
+    aiModelPitchScreen: 'claude-haiku-4-5-20251001',
+    pitchNotifyTo: '',
+    pitchAllowedOrigins: 'https://aidiventures.com,https://www.aidiventures.com',
     resendApiKey: '',
     emailFrom: 'Aidi OS <no-reply@notifications.theaidigroup.com>',
     public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com' }
