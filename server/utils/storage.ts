@@ -1,0 +1,27 @@
+// Private object storage on Cloudflare R2 (S3-compatible). Objects are never public: reads use short-lived signed links.
+import { AwsClient } from 'aws4fetch'
+
+let client: AwsClient | null = null
+function r2(): { aws: AwsClient; base: string } {
+  const c = useRuntimeConfig()
+  if (!c.r2AccessKeyId || !c.r2SecretAccessKey || (!c.r2AccountId && !c.r2Endpoint)) throw new Error('R2 storage is not configured (NUXT_R2_*)')
+  client ??= new AwsClient({ accessKeyId: c.r2AccessKeyId, secretAccessKey: c.r2SecretAccessKey, service: 's3', region: 'auto' })
+  const endpoint = (c.r2Endpoint || 'https://' + c.r2AccountId + '.r2.cloudflarestorage.com').replace(/\/$/, '')
+  return { aws: client, base: endpoint + '/' + c.r2Bucket }
+}
+const keyPath = (key: string): string => key.split('/').map(encodeURIComponent).join('/')
+
+export async function putObject(input: { key: string; body: Uint8Array; contentType: string }): Promise<void> {
+  const { aws, base } = r2()
+  const res = await aws.fetch(base + '/' + keyPath(input.key), { method: 'PUT', body: Uint8Array.from(input.body), headers: { 'content-type': input.contentType } })
+  if (!res.ok) throw new Error('R2 upload failed: ' + res.status + ' ' + (await res.text()).slice(0, 300))
+}
+
+export async function signedGetUrl(input: { key: string; filename: string; seconds: number }): Promise<string> {
+  const { aws, base } = r2()
+  const u = new URL(base + '/' + keyPath(input.key))
+  u.searchParams.set('X-Amz-Expires', String(input.seconds))
+  u.searchParams.set('response-content-disposition', 'attachment; filename="' + input.filename.replace(/["\\\r\n]/g, '_') + '"')
+  const signed = await aws.sign(new Request(u.toString(), { method: 'GET' }), { aws: { signQuery: true } })
+  return signed.url
+}

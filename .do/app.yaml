@@ -30,6 +30,17 @@ services:
     scope: RUN_TIME
     type: SECRET
     value: EV[1:Ij+8i+jY0w1JRsy019Z5rZO8/WixqEYv:nruMY2SvFUGEVwm8VvTfLbRamXqFitmeMEWdd2otjM1nrQKx08zr6T1e/nSZVuuiVpdb]
+  - key: NUXT_R2_ACCOUNT_ID
+    scope: RUN_TIME
+    value: be0e852464c33e53ef46da48dd026228
+  - key: NUXT_R2_ACCESS_KEY_ID
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:wxcf5JNYvsZptkNDwKp1U0eIp420yny8:OjU2WGruAsQyg9lDZY8022FqQH9UoM0nKS1cQoyg8DFhvNkh7bx1qjcI+LObiMgZgW1FMqcpUKRuMG/NUrLGRYnfIp+KZCO/oY+f0zhw3pU=]
+  - key: NUXT_R2_SECRET_ACCESS_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:Am4POVH+/86+p6yscPNvQzjDzVhE8mlm:c3gUXCIcu75eWe1flkGUkeedsCiAFGuJcNwT/2VYpLYFEHz9/9F3PJiEiQKmWSQ61DQ2W6nI5XfxtHXLl/spGrTiX+vQgz12nED1+BrhRk8=]
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production

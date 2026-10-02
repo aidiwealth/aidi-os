@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
     if (!cfg.jwtSecret || cfg.jwtSecret.length < 32) missing.push('NUXT_JWT_SECRET')
     if (!cfg.resendApiKey) missing.push('NUXT_RESEND_API_KEY')
     if (!cfg.anthropicApiKey) missing.push('NUXT_ANTHROPIC_API_KEY')
+    if (!cfg.r2AccessKeyId || !cfg.r2SecretAccessKey || !cfg.r2AccountId) missing.push('NUXT_R2_ACCOUNT_ID / NUXT_R2_ACCESS_KEY_ID / NUXT_R2_SECRET_ACCESS_KEY')
   }
   let database: 'ok' | 'error' = 'error'
   let detail: string | null = null

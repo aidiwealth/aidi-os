@@ -2,7 +2,8 @@
 // App shell. Sections appear as each milestone lands; nothing here links to unbuilt pages.
 const sections: { to: string; label: string }[] = [
   { to: '/', label: 'Overview' },
-  { to: '/deals', label: 'Deals' }
+  { to: '/deals', label: 'Deals' },
+  { to: '/documents', label: 'Documents' }
 ]
 </script>
 
