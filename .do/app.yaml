@@ -1,24 +1,51 @@
-# Aidi OS on DigitalOcean App Platform — separate project from the websites and Aidi Wealth.
-# Create: doctl apps create --spec .do/app.yaml   Update: doctl apps update <APP_ID> --spec .do/app.yaml
+domains:
+- domain: app.theaidigroup.com
+  type: PRIMARY
+features:
+- buildpack-stack=ubuntu-22
+ingress:
+  rules:
+  - component:
+      name: web
+    match:
+      path:
+        prefix: /
 name: aidi-os
 region: nyc
-domains:
-  - domain: app.theaidigroup.com
-    type: PRIMARY
 services:
-  - name: web
-    github:
-      repo: aidiwealth/aidi-os
-      branch: main
-      deploy_on_push: true
-    environment_slug: node-js
-    build_command: npm ci && npm run build
-    run_command: node .output/server/index.mjs
-    http_port: 8080
-    instance_size_slug: apps-s-1vcpu-0.5gb
-    instance_count: 1
-    health_check:
-      http_path: /api/ping
-    envs:
-      - { key: NODE_ENV, value: production }
-      - { key: PORT, value: "8080" }
+- build_command: npm ci && npm run build
+  environment_slug: node-js
+  envs:
+  - key: NODE_ENV
+    scope: RUN_AND_BUILD_TIME
+    value: production
+  - key: PORT
+    scope: RUN_AND_BUILD_TIME
+    value: "8080"
+  - key: NUXT_DATABASE_URL
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:SIJ1fj1s/jqUsIAZ7m5XGOujRGyGER8R:MpbPRbrThcVg2/5n+8t16MEsZ2S4/kpirBSMOY2Agr6mQY6ni62KtROQxso2tWn4/cyXt0BaXYp4dFGtofH7LO5x6HMU94pDM0teZYBWx7ilj/s3jx8FnRq09NUMEaMm4Lrja3EBSW9a29JZGDJO/LlIOgYqy6eBilRr5gOPjUJg5sNzQrH8Wx7O6A==]
+  - key: NUXT_DATABASE_CA
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:sDd89YwYSAG2qMzzjfPQHAIkoadv9udQ:kpiF5JBjWJeQMuEVVBf4IUlDqjg8uazc9xxxcosBgLbBUbU6miN0r1ui8QTfvucP0pJlzxTkTSwHyiKLFhIAXZxvGdwU2bCy0umtAvWmWwNZ6ChEHHgN4/RicmTCGq8LZDiKF/HKUtgOsCAcAsCcVb6mmIeT6b+pVVqxueAsbRGr/viPq/nMmQ7EmmV9Fr57778hM6hmh3Paml6ALE0Ei0rzifQHvux5TEZQjSQlYO1lQ7KEhIT7RpU4wikZPYvpralM9tDSAW6EfVSN3DohM0KciPK4YkpZ9CIJO367/c7C84tziflwRZV+JOerFVKKSDcsP3HrSwBzERBnPVVKQwDgltRbHcZmFxNMtFheWp9cSjaWeVPZVEIcaDcms98ePDEuypfxYZ+Yjdi49/IOfEqgvy3e8GlWtVWYdnZ97kjiHqhmPfJ5tp6k8hi8Jx2NZYxuBovI4vopAJRx0QLdB6jZMvJ6IbR4RuHakl2kMEf4GvzhgpSlM8vW2Pl6RnU12KHPjKmiIzj5qa9kbsXYM5qRzzNoXfAPbBUh0eIYBhLnAcZy2rJXTHXQgeYynoBHxBS9jDoBbFeYv66O93dvTcGRDYFDgs/HqG/2yGcj3DUTOx7R/wo69ikO3fPs6YQRzkwcnn5UGTJqTXKMxj361MlUz4jot/NGA3M4kWdLllT+/HdgHZ/QsE73VxfkSx+SGawG5Nyl0XtPSUrZ787p5fUP780XbJbBrlV5+T68zGhyKEhBNaYY3p5BZ6M84LvvJESgv/OhcBrz635HKPL5fuckqcyt8SJ5Bqll/Sigx4s18WuNjxXDs0j4uDXx3tCS7m7/NNG6rhhR1NtaNj9V6g9CZpCzAOUH21o8w9t7uJkfwNPEhqVzLO/UoUIHtUYa9mNQ9pYmMq7RsMp635wCy+oAeevpMpnq1FxvjFAdQ3qeaDAt725tuEpTZ8QK3/n2K3QHKpILql8KONs7C+1RC8STk4rcHfwTWlnJ5+H1uadpzXYpYm2zUNQ9AVmiq7e7NFaN1NxBCyxtyZxAwgLYxjGvplLoUq3BdErAdO8505PRWoVPLihy3I4HqlLcmVT+680icGrMtCa3g++wuqWACQKTi+K3f6XYepu5DMcsgFJpTkTjNNXAITY8nt1nXbPjq1oZTZOX1Eo/i81NtTCGP+AdORfUWL4drUsQ8cnr/OB2qJ5VNxGLjeyFWzWQMp4GhPWjqvPcYq08q8BHHmOgI68ZP7TwzLjzSz3RgETEPPCwpu8q7Wb6imh8nfubbq1JHmtRLsHGWnXYWxjPtsGpNxEBsKv1Oq1mClaVnzJw7y88pdh8VKKK3/lLCdg/5jfOfh0ycBRU4wgJO0wXmAB/Fy9k49Bz2NRlimPY1TZxVC+OsOXHL1p5ELvYhPcocVeGT6k6bfmYsy7qUIQz69POo0bhE+KGTqmAw/xX4/45dosFzApqNyD09EHm8Le3Aj4qC7K9N/VpPOul31NB5fQcMjLOY01XYuCln9FVs+7OxFPNais9B7rwqOeiCRU/WcpEOOummK77sMcHdmM+k9a8YCMreBWdDbMvpcAMDuoGvOiXIC9q1nJL8THqYyaOIh49V8alQ3JuG/jjXCVTX0WzJtroZDX0AYhkmv4XzhZKIB90vObBMx1xJmbRptEwJ9vd8YycZCWMRcAtyBDOBAPO5GWlAwO8VBS1NUu0I5Fjrg3yZ4/6KUJktbytZt+2v2rOW6/0re2l2S7KoAev4NaEtR1ycfx1UY1qYjQrxOtepQNi3c3WWcDGlk7QvqrS6suYbz0NNrDhapS2ov5zgtMty86/bpKw2SbzX3p8zHwRXYP5Dbv6xYWgjaLth9KP5pi7qX7naP8o7BST9J2N3ys3a6rzA38uzdZsNt09uGAJO6Z+EjpdxdqIslh8LTvnFP6Hwg+0xEy7xTTEbPkXFZPlX//UWOhy4TbtsndFUx9A+0yBY4Z4JajCKLcAtpTjlw+yd5BoMouJ14H0zNix5/CSY1W/+qLT7/t5z5u2fnFnJ2s/XSqCJqPeoCCeYpixQNulZLM8lTjLXWFSdgRDeOMgv7MSjKKPK2Oqu+71vyp8r/PLtfNtjMM=]
+  - key: NUXT_JWT_SECRET
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:hJHFqLs2zXxt+FlGiFCrFnDbAb1AI1M4:dFXrUDaM/ueslg5NJzTumOED1j32Vyv6pgzwt7epXpWSOLK3OsQdfrCIwOi0B2NYLz29PnK2fQ40sJxpQtVOqI4+8UnzJ8ou3Cm6QrCXhtE=]
+  - key: NUXT_RESEND_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:DTtnzZ5ZgmzMqclJ7oOLtP1ujQmIaNvs:o/1J7Xqie5oixhW72CuT4cgpcU5YSeQBPRkkwUldCJ57Y0yLykQP9GuYYvJij/QZMsbdrw==]
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: aidiwealth/aidi-os
+  health_check:
+    http_path: /api/ping
+  http_port: 8080
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  name: web
+  run_command: node .output/server/index.mjs
