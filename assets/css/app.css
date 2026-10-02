@@ -1,0 +1,13 @@
+*, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+html, body { margin: 0; }
+body { font-family: var(--font-body); font-size: var(--type-body); line-height: 1.6; color: var(--c-ink-soft); background: var(--c-paper-2); -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--font-heading); font-weight: 400; color: var(--c-navy); margin: 0; }
+h1 { font-size: var(--type-headline); line-height: 1.05; letter-spacing: -0.02em; }
+h2 { font-size: var(--type-title); }
+a { color: var(--c-blue-deep); }
+.label { font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); }
+.card { background: #fff; border: 1px solid var(--c-rule); padding: var(--sp-6); }
+.btn { display: inline-flex; align-items: center; gap: 10px; font: inherit; font-weight: 500; padding: 10px 16px; border: 1px solid var(--c-navy); background: var(--c-navy); color: #fff; cursor: pointer; }
+.btn.secondary { background: #fff; color: var(--c-navy); }
+.btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
