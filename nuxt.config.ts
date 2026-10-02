@@ -21,7 +21,7 @@ export default defineNuxtConfig({
     anthropicApiKey: '',
     jwtSecret: '',
     resendApiKey: '',
-    emailFrom: 'Aidi OS <no-reply@theaidigroup.com>',
+    emailFrom: 'Aidi OS <no-reply@notifications.theaidigroup.com>',
     public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com' }
   },
   app: {

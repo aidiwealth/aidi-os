@@ -16,6 +16,9 @@ services:
 - build_command: npm ci && npm run build
   environment_slug: node-js
   envs:
+  - key: NUXT_EMAIL_FROM
+    scope: RUN_TIME
+    value: "Aidi OS <no-reply@notifications.theaidigroup.com>"
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production
