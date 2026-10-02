@@ -107,3 +107,25 @@ export async function sendInviteEmail(to: string, name: string, invitedBy: strin
     'You have access to Aidi OS')
   await sendEmail({ to, subject: 'You have access to Aidi OS', text: 'Welcome to Aidi OS, ' + first + '. You have been given access by ' + invitedBy + '. Sign in at ' + link + ' with this email address; we will send you a one-time code.', html })
 }
+
+// To a founder: their personal link for the month's update. No login needed.
+export async function sendReportRequest(to: string, founderName: string, company: string, monthLabel: string, link: string, fromName: string): Promise<void> {
+  const first = esc(founderName.split(' ')[0] ?? founderName)
+  const html = shell(
+    h1('Your ' + esc(monthLabel) + ' update') +
+    para('Hi ' + first + ', it is time for the ' + esc(company) + ' monthly update for Aidi Ventures. It takes about five minutes: type your key figures, or upload your spreadsheet and we will fill them in for you.') +
+    para('You can save and come back to finish. The link is personal to you and works for ' + LINK_DAYS + ' days.') +
+    button('Open your update →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Sent by ${esc(fromName)} at Aidi Ventures. Please do not forward this link.</p>`,
+    company + ' — ' + monthLabel + ' update')
+  await sendEmail({ to, subject: company + ': your ' + monthLabel + ' update for Aidi Ventures', text: 'Hi ' + first + ', please complete the ' + company + ' ' + monthLabel + ' update for Aidi Ventures: ' + link + ' (works for ' + LINK_DAYS + ' days; you can save and continue).', html })
+}
+
+// To the partners: a founder has submitted their update.
+export async function sendReportSubmittedAlert(companyId: string, company: string, monthLabel: string): Promise<void> {
+  const to = useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!to.length) return
+  const link = useRuntimeConfig().public.appBaseUrl + '/portfolio/' + companyId
+  const html = shell(h1(esc(company) + ' sent their ' + esc(monthLabel) + ' update') + button('See it in Aidi OS →', link), company + ' update received')
+  for (const addr of to) await sendEmail({ to: addr, subject: company + ': ' + monthLabel + ' update received', text: company + ' submitted their ' + monthLabel + ' update. ' + link, html })
+}

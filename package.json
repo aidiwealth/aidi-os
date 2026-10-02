@@ -17,6 +17,7 @@
     "@fontsource/cormorant-garamond": "^5.1.0",
     "@fontsource/instrument-sans": "^5.1.0",
     "aws4fetch": "^1.0.20",
+    "exceljs": "^4.4.0",
     "jose": "^5.10.0",
     "nuxt": "^3.21.0",
     "pg": "^8.13.0",
