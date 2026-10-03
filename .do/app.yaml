@@ -48,6 +48,9 @@ services:
     scope: RUN_TIME
     type: SECRET
     value: EV[1:sMQmjPvNvJ9KmL+yXjhdpGR5cT1jSVNh:f6vPoX4nZCEI517IEY8cOd3R+TmuwTevsy64bPc4A0ZBez+OCUQ+yDul2o56eZkB1nj5nGLhP1CSw0U/0cTdCtcC++Zl50nJHHf2lcZymfA=]
+  - key: NUXT_EMAIL_FROM_FINVRY
+    scope: RUN_TIME
+    value: Finvry <no-reply@notifications.finvry.com>
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production
