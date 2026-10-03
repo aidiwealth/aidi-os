@@ -166,3 +166,14 @@ export async function sendComplianceDigest(to: string, items: { id: string; titl
   const text = items.map((i) => '- ' + i.title + ' (' + i.entity + '): ' + (i.kind === 'overdue' ? 'OVERDUE since ' : 'due ') + i.next_due).join('\n') + '\n\n' + base + '/compliance'
   await sendEmail({ to, subject: (overdue ? 'Overdue: ' : 'Due soon: ') + items.length + ' compliance item' + (items.length === 1 ? '' : 's'), text, html })
 }
+
+// To a signatory: a resolution needs their approval.
+export async function sendResolutionCirculated(to: string, name: string, resolutionId: string, title: string, entity: string, required: number): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const link = useRuntimeConfig().public.appBaseUrl + '/governance/resolutions/' + resolutionId
+  const html = shell(
+    `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(entity)}</p>` +
+    h1(esc(title)) + para('Hi ' + first + ', this has been circulated for your approval as a signatory of ' + esc(entity) + '. It needs ' + required + ' approval' + (required === 1 ? '' : 's') + '.') +
+    button('Review and respond →', link), 'For your approval: ' + title)
+  await sendEmail({ to, subject: 'For your approval: ' + title + ' (' + entity + ')', text: 'Hi ' + first + ', "' + title + '" for ' + entity + ' needs your approval: ' + link, html })
+}
