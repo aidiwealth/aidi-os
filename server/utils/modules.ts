@@ -22,16 +22,27 @@ export const MODULES: ModuleDef[] = [
 ]
 export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fo: 'Family Office', cs: 'Client Services', admin: 'Administration' }
 
-let cache: { at: number; on: Set<string> } | null = null
-export async function enabledModules(): Promise<Set<string>> {
-  if (cache && Date.now() - cache.at < 30_000) return cache.on
-  const r = await db().query<{ code: string; enabled: boolean }>('SELECT code, enabled FROM core.modules')
-  const off = new Set(r.rows.filter((m) => !m.enabled).map((m) => m.code))
-  const on = new Set(MODULES.filter((m) => !m.switchable || !off.has(m.code)).map((m) => m.code))
-  cache = { at: Date.now(), on }
-  return on
+// Per workspace: modules in its plan, minus any an admin switched off. Cached for 30 seconds.
+const cache = new Map<string, { at: number; on: Set<string>; plan: Set<string> }>()
+async function load(): Promise<{ on: Set<string>; plan: Set<string> }> {
+  const org = currentOrgId(), key = org ?? '-'
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < 30_000) return hit
+  let plan = new Set<string>(), off = new Set<string>()
+  if (org) {
+    const p = await db().query<{ modules: string[] }>('SELECT p.modules FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = core.current_org()')
+    plan = new Set(p.rows[0]?.modules ?? [])
+    const r = await db().query<{ code: string; enabled: boolean }>('SELECT code, enabled FROM core.modules')
+    off = new Set(r.rows.filter((m) => !m.enabled).map((m) => m.code))
+  }
+  const on = new Set(MODULES.filter((m) => !m.switchable || (plan.has(m.code) && !off.has(m.code))).map((m) => m.code))
+  const v = { at: Date.now(), on, plan }
+  cache.set(key, v)
+  return v
 }
-export const clearModuleCache = (): void => { cache = null }
+export async function enabledModules(): Promise<Set<string>> { return (await load()).on }
+export async function planModules(): Promise<Set<string>> { return (await load()).plan }
+export const clearModuleCache = (): void => { cache.clear() }
 export const moduleForApi = (path: string): ModuleDef | undefined => MODULES.find((m) => m.api.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/')))
 export const canUse = (m: ModuleDef, roles: string[]): boolean => roles.includes('admin') || m.roles.some((r) => roles.includes(r))
 

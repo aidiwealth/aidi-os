@@ -7,7 +7,7 @@ export const isSigningRole = (role: string): boolean => (SIGNING_ROLES as readon
 export async function signatories(entityId: string): Promise<{ party_id: string; name: string; email: string; user_id: string | null }[]> {
   const r = await db().query<{ party_id: string; name: string; email: string; user_id: string | null }>(
     `SELECT DISTINCT ON (p.email) p.id AS party_id, p.name, p.email, u.id AS user_id
-       FROM governance.parties p LEFT JOIN core.users u ON u.email = p.email AND u.status = 'active'
+       FROM governance.parties p LEFT JOIN core.users u ON u.email = p.email AND u.status = 'active' AND EXISTS (SELECT 1 FROM core.memberships mm WHERE mm.user_id = u.id AND mm.status = 'active')
       WHERE p.entity_id = $1 AND p.email IS NOT NULL AND p.role = ANY($2::text[]) AND (p.end_date IS NULL OR p.end_date >= current_date)
       ORDER BY p.email, p.created_at`, [entityId, [...SIGNING_ROLES]])
   return r.rows

@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Add the entity, bank, account name and currency. For the number, enter only the last 4 digits.')
   const d = b.data
   const vals = [d.entity_id, d.bank_name, d.account_name, d.last4 ?? null, d.currency, d.kind, d.active]
+  if (d.id && !(await db().query('SELECT 1 FROM banking.accounts WHERE id = $1', [d.id])).rowCount) throw apiError('not_found', 'Account not found', 404)
   const row = d.id
     ? await one<{ id: string }>('UPDATE banking.accounts SET entity_id=$2, bank_name=$3, account_name=$4, last4=$5, currency=$6, kind=$7, active=$8 WHERE id=$1 RETURNING id', [d.id, ...vals])
     : await one<{ id: string }>('INSERT INTO banking.accounts (entity_id, bank_name, account_name, last4, currency, kind, active, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [...vals, user.userId])

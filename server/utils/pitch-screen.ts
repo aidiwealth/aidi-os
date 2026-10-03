@@ -1,26 +1,24 @@
-// AI screening of a founder pitch against the Aidi Ventures Fund I thesis. The model advises; partners decide.
+// AI screening of a founder pitch against the workspace's investment thesis. The model advises; partners decide.
 import { z } from 'zod'
 
-export const PITCH_PROMPT_VERSION = 'pitch-screen-v1'
+export const PITCH_PROMPT_VERSION = 'pitch-screen-v2'
 
-const THESIS = `You screen founder pitches for Aidi Ventures, the venture arm of The Aidi Group.
-
-Fund I thesis:
-- Backs exceptional African and diaspora technical talent building AI, infrastructure and financial services for the world.
-- Open to founders of any background. It is not a gender-only or Africa-only fund.
-- Prefers companies building for global customers; signals such as Y Combinator, Stanford or similar programmes are a plus, never a requirement.
-- Stages: pre-seed to Series A.
-- Investing in companies that operate only in Africa is done through debt, not equity: flag these as "Africa debt sleeve" rather than marking them down.
-
-Fairness rules (mandatory):
+// Fairness and scoring rules shared by every workspace; the investment thesis comes from the workspace's settings.
+const RULES = `Fairness rules (mandatory):
 - Never treat race, ethnicity, nationality or gender as a negative factor.
-- A disclosed female founder is a positive signal only.
 - Judge only what the pitch says. Do not invent facts. If information is missing, say so in concerns and questions.
 
 Scoring:
 - thesis_fit, team, market, traction: 1 (weak) to 5 (strong).
 - score: 0-100 overall.
 - recommendation: "prioritise" (strong fit, a partner should look soon), "review" (worth a look), or "likely_pass" (weak fit). This is advice for partners; you never decline anyone.`
+
+async function screeningPrompt(): Promise<string> {
+  const org = await currentOrg()
+  const who = org?.settings.investor_name || org?.name || 'an investment firm'
+  const thesis = org?.settings.thesis?.trim() || 'No thesis has been set for this firm. Judge the general quality of the opportunity, and say in concerns that thesis fit could not be assessed.'
+  return 'You screen founder pitches for ' + who + '.\n\nInvestment thesis:\n' + thesis + '\n\n' + RULES
+}
 
 export const ScreeningSchema = z.object({
   score: z.number().int().min(0).max(100),
@@ -84,8 +82,8 @@ export async function screenPitch(pitchId: string): Promise<{ screeningId: strin
   const model = useRuntimeConfig().aiModelPitchScreen
   const { runId, output } = await runAiTool<Screening>({
     task: 'pitch_screen', model, promptVersion: PITCH_PROMPT_VERSION, inputRef: 'deals.pitches:' + p.id,
-    system: THESIS, user, toolName: 'record_screening',
-    toolDescription: 'Record the screening of this pitch against the Aidi Ventures Fund I thesis.',
+    system: await screeningPrompt(), user, toolName: 'record_screening',
+    toolDescription: 'Record the screening of this pitch against the investment thesis.',
     jsonSchema: SCREENING_JSON_SCHEMA, schema: ScreeningSchema, maxTokens: 1500
   })
   const s = await one<{ id: string }>(

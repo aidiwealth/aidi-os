@@ -69,7 +69,7 @@ const LABEL: Record<string, string> = { prioritise: 'Prioritise', review: 'Revie
 
 // To the partners: every new pitch, with the AI screening when it succeeded.
 export async function sendPitchAlert(p: { pitchId: string; company: string; oneLiner: string; score: number | null; recommendation: string | null; summary: string[] }): Promise<void> {
-  const to = useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  const to = (await orgNotifyEmails())
   if (!to.length) { console.warn('[email] NUXT_PITCH_NOTIFY_TO not set: no pitch alert sent for ' + p.pitchId); return }
   const link = useRuntimeConfig().public.appBaseUrl + '/deals/' + p.pitchId
   const head = p.score === null ? 'Screening failed — review by hand' : LABEL[p.recommendation ?? ''] + ' · ' + p.score + '/100'
@@ -123,7 +123,7 @@ export async function sendReportRequest(to: string, founderName: string, company
 
 // To the partners: a founder has submitted their update.
 export async function sendReportSubmittedAlert(companyId: string, company: string, monthLabel: string): Promise<void> {
-  const to = useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  const to = (await orgNotifyEmails())
   if (!to.length) return
   const link = useRuntimeConfig().public.appBaseUrl + '/portfolio/' + companyId
   const html = shell(h1(esc(company) + ' sent their ' + esc(monthLabel) + ' update') + button('See it in Aidi OS →', link), company + ' update received')
@@ -144,7 +144,7 @@ export async function sendJobUpdate(to: string, contactName: string, jobTitle: s
 
 // To the team: a client replied or uploaded something.
 export async function sendJobClientActivity(ownerEmail: string | null, jobId: string, client: string, jobTitle: string, what: string, body: string): Promise<void> {
-  const to = ownerEmail ? [ownerEmail] : useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  const to = ownerEmail ? [ownerEmail] : (await orgNotifyEmails())
   if (!to.length) return
   const link = useRuntimeConfig().public.appBaseUrl + '/services/' + jobId
   const html = shell(h1(esc(client) + ' ' + esc(what)) + para(esc(jobTitle)) + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') + button('Open the job →', link), client + ' ' + what)

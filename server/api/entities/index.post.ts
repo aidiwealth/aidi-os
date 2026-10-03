@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Add a name, type and status.')
   const d = b.data
   if (d.id && d.parent_id === d.id) throw apiError('invalid', 'An entity cannot be its own parent.')
+  if (d.id && !(await db().query('SELECT 1 FROM core.entities WHERE id = $1', [d.id])).rowCount) throw apiError('not_found', 'Entity not found', 404)
   const row = d.id
     ? await one<{ id: string }>('UPDATE core.entities SET name=$2, legal_name=$3, kind=$4, jurisdiction=$5, status=$6, parent_id=$7 WHERE id=$1 RETURNING id',
         [d.id, d.name, d.legal_name || null, d.kind, d.jurisdiction || null, d.status, d.parent_id ?? null])

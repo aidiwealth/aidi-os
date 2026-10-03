@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
   const d = b.data
   if (isSigningRole(d.role) && !d.email) throw apiError('email', 'Signatories (trustees, protectors, directors, members, signatories) need an email so they can approve in Aidi OS.')
   const vals = [d.entity_id, d.name, d.email?.toLowerCase() ?? null, d.role, d.share_pct ?? null, d.notes || null, d.start_date ?? null, d.end_date ?? null]
+  if (d.id && !(await db().query('SELECT 1 FROM governance.parties WHERE id = $1', [d.id])).rowCount) throw apiError('not_found', 'Person not found', 404)
   const row = d.id
     ? await one<{ id: string }>('UPDATE governance.parties SET entity_id=$2, name=$3, email=$4, role=$5, share_pct=$6, notes=$7, start_date=$8, end_date=$9 WHERE id=$1 RETURNING id', [d.id, ...vals])
     : await one<{ id: string }>('INSERT INTO governance.parties (entity_id, name, email, role, share_pct, notes, start_date, end_date, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [...vals, user.userId])

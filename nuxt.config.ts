@@ -4,6 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   ssr: true,
   experimental: { appManifest: false },
+  nitro: { experimental: { asyncContext: true } },
   typescript: { strict: true, typeCheck: false },
   css: [
     '@fontsource/cormorant-garamond/400.css',
@@ -21,6 +22,7 @@ export default defineNuxtConfig({
     anthropicApiKey: '',
     jwtSecret: '',
     cronSecret: '',
+    defaultOrgSlug: 'the-aidi-group', // public pitch form without ?org= goes here
     r2AccountId: '',
     r2AccessKeyId: '',
     r2SecretAccessKey: '',

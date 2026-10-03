@@ -18,13 +18,15 @@ export async function issueClientLink(jobId: string): Promise<string> {
 
 export async function jobFromToken(token: string | undefined): Promise<{ id: string; title: string; service: string; status: string; due_date: string | null; client: string; contact_name: string; email: string; owner_email: string | null }> {
   if (!token || !/^[A-Za-z0-9_-]{30,80}$/.test(token)) throw apiError('invalid_link', 'This link is not valid.', 404)
-  const r = await db().query<{ id: string; title: string; service: string; status: string; due_date: string | null; client: string; contact_name: string; email: string; owner_email: string | null; client_token_expires: string }>(
+  const r = await asPlatform(() => db().query<{ id: string; title: string; service: string; status: string; due_date: string | null; client: string; contact_name: string; email: string; owner_email: string | null; client_token_expires: string; organization_id: string }>(
     `SELECT j.id, j.title, j.service, j.status, to_char(j.due_date, 'YYYY-MM-DD') AS due_date, c.name AS client, c.contact_name, c.email,
-            u.email AS owner_email, j.client_token_expires
+            u.email AS owner_email, j.client_token_expires, j.organization_id
        FROM services.jobs j JOIN services.clients c ON c.id = j.client_id LEFT JOIN core.users u ON u.id = j.owner_id
-      WHERE j.client_token_hash = $1`, [sha256(token)])
+      WHERE j.client_token_hash = $1`, [sha256(token)]))
   const row = r.rows[0]
   if (!row) throw apiError('invalid_link', 'This link is not valid.', 404)
+  setOrgContext(row.organization_id)
+  if (!(await enabledModules()).has('services')) throw apiError('module_off', 'This link is not valid.', 404)
   if (new Date(row.client_token_expires).getTime() < Date.now()) throw apiError('expired', 'This link has expired. Ask your contact at The Aidi Group for a new one.', 410)
   return row
 }

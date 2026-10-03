@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     if (body.data.decision === 'advance') {
       await client.query(
         `INSERT INTO deals.deals (pitch_id, company, one_liner, website, round, raise_usd, source, stage, owner_id, created_by, vehicle_entity_id)
-         SELECT id, company, one_liner, website, stage, raising_usd, 'pitch_form', 'first_call', $2, $2, (SELECT id FROM core.entities WHERE name = 'Aidi Ventures Fund I') FROM deals.pitches WHERE id = $1
+         SELECT id, company, one_liner, website, stage, raising_usd, 'pitch_form', 'first_call', $2, $2, core.default_vehicle() FROM deals.pitches WHERE id = $1
          ON CONFLICT (pitch_id) DO NOTHING`, [id.data, user.userId])
     }
     await client.query(

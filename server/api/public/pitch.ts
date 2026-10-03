@@ -26,6 +26,12 @@ export default defineEventHandler(async (event) => {
   const origins = useRuntimeConfig().pitchAllowedOrigins.split(',').map((s) => s.trim()).filter(Boolean)
   if (handleCors(event, { origin: origins, methods: ['POST', 'OPTIONS'], allowHeaders: ['content-type'] })) return
   if (event.method !== 'POST') throw apiError('method_not_allowed', 'Use POST', 405)
+  // Which workspace the pitch is for: ?org=<workspace link name>, else the default workspace
+  const slug = String(getQuery(event).org ?? '') || useRuntimeConfig().defaultOrgSlug
+  const org = await asPlatform(() => db().query<{ id: string }>('SELECT id FROM core.organizations WHERE slug = $1 AND status = ANY($2::text[])', [slug, LIVE_ORG_STATUSES]))
+  if (!org.rows[0]) throw apiError('not_found', 'This pitch form is not available.', 404)
+  setOrgContext(org.rows[0].id)
+  await requireModule(event, 'pitches')
   const ip = clientIp(event)
   rateLimit('pitch_ip', ip, 5, 60 * 60 * 1000)
   const parsed = Body.safeParse(await readBody(event))

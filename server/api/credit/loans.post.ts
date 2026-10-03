@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     await client.query('BEGIN')
     const l = await client.query<{ id: string }>(
       `INSERT INTO credit.loans (borrower_id, lender_entity_id, reference, principal, currency, annual_rate, tenor_months, repayment_type, frequency, disbursed_on, first_payment_on, security, notes, created_by)
-       VALUES ($1, coalesce($2::uuid, (SELECT id FROM core.entities WHERE name = 'Aidi Ventures Fund I')), $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+       VALUES ($1, coalesce($2::uuid, core.default_vehicle()), $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
       [d.borrower_id, d.lender_entity_id ?? null, d.reference || null, d.principal, d.currency, d.annual_rate, d.tenor_months, d.repayment_type, d.frequency, d.disbursed_on, d.first_payment_on, d.security || null, d.notes || null, user.userId])
     loanId = l.rows[0]!.id
     for (const r of schedule) await client.query('INSERT INTO credit.schedule (loan_id, seq, due_date, principal_due, interest_due) VALUES ($1,$2,$3,$4,$5)', [loanId, r.seq, r.due_date, r.principal_due, r.interest_due])
