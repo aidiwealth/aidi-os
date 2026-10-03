@@ -1,10 +1,9 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
-interface Job { id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; provider_entity_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
+interface Job { id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
-const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[] }>('/api/services/' + id)
+const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[] }>('/api/services/' + id)
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: docs } = await useFetch<{ id: string; title: string; sensitivity: string }[]>('/api/documents')
 useHead({ title: () => (data.value?.job.title ?? 'Job') })
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
@@ -31,9 +30,9 @@ const addEvent = () => run(async () => {
 })
 const link = ref('')
 const sendLink = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/' + id + '/link', { method: 'POST' }); link.value = r.link; ok.value = r.emailed ? 'Link emailed to ' + data.value?.job.email + '.' : 'Link created; copy it below.' })
-const fields = reactive({ owner_id: '', provider_entity_id: '', priority: 'normal', due_date: '', fee_usd: '' })
-watchEffect(() => { const j = data.value?.job; if (!j) return; fields.owner_id = j.owner_id ?? ''; fields.provider_entity_id = j.provider_entity_id ?? ''; fields.priority = j.priority; fields.due_date = j.due_date ?? ''; fields.fee_usd = j.fee_usd ?? '' })
-const save = () => run(() => $fetch('/api/services/' + id, { method: 'PATCH', body: { owner_id: fields.owner_id || null, provider_entity_id: fields.provider_entity_id || null, priority: fields.priority, due_date: fields.due_date || null, fee_usd: fields.fee_usd ? Number(String(fields.fee_usd).replace(/[^0-9.]/g, '')) : null } }))
+const fields = reactive({ owner_id: '', company_id: '', priority: 'normal', due_date: '', fee_usd: '' })
+watchEffect(() => { const j = data.value?.job; if (!j) return; fields.owner_id = j.owner_id ?? ''; fields.company_id = j.company_id ?? ''; fields.priority = j.priority; fields.due_date = j.due_date ?? ''; fields.fee_usd = j.fee_usd ?? '' })
+const save = () => run(() => $fetch('/api/services/' + id, { method: 'PATCH', body: { owner_id: fields.owner_id || null, company_id: fields.company_id || null, priority: fields.priority, due_date: fields.due_date || null, fee_usd: fields.fee_usd ? Number(String(fields.fee_usd).replace(/[^0-9.]/g, '')) : null } }))
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + docId + '/download'); window.location.href = r.url } catch (e) { msg.value = errText(e) } }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const KIND: Record<string, string> = { note: 'Internal note', message: 'Message to client', status: 'Status', document: 'Document', client_message: 'Client replied', client_document: 'Client uploaded' }
@@ -85,7 +84,7 @@ const KIND: Record<string, string> = { note: 'Internal note', message: 'Message 
         <form class="card facts" @submit.prevent="save">
           <h2>Details</h2>
           <label class="label">Owner<select v-model="fields.owner_id"><option value="">No owner</option><option v-for="p in people ?? []" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
-          <label class="label">Delivered by<select v-model="fields.provider_entity_id"><option value="">—</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+          <label class="label">Company<select v-model="fields.company_id"><option value="">—</option><option v-for="c in data.companies" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label class="label">Priority<select v-model="fields.priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
           <label class="label">Due<input v-model="fields.due_date" type="date"></label>
           <label class="label">Fee (USD)<input v-model="fields.fee_usd" inputmode="decimal"></label>

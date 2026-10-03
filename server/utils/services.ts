@@ -1,9 +1,9 @@
 // Client Services shared rules.
 export const SERVICES: Record<string, string> = {
   company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing',
-  registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other'
+  registered_agent: 'Registered agent', virtual_office: 'Virtual office or mailbox', state_filing: 'State filing', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other'
 }
-export const SERVICE_KEYS = ['company_formation', 'annual_compliance', 'tax_filing', 'registered_agent', 'legal_review', 'trust_setup', 'banking_setup', 'other'] as const
+export const SERVICE_KEYS = ['company_formation', 'annual_compliance', 'tax_filing', 'registered_agent', 'virtual_office', 'state_filing', 'legal_review', 'trust_setup', 'banking_setup', 'other'] as const
 export const JOB_STATUSES = ['new', 'in_progress', 'waiting_client', 'completed', 'cancelled'] as const
 export const STATUS_LABEL: Record<string, string> = { new: 'New', in_progress: 'In progress', waiting_client: 'Waiting on you', completed: 'Completed', cancelled: 'Cancelled' }
 export const CLIENT_LINK_DAYS = 90

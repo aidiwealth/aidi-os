@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const Body = z.object({
   owner_id: z.string().uuid().nullable().optional(),
-  provider_entity_id: z.string().uuid().nullable().optional(),
+  company_id: z.string().uuid().nullable().optional(),
   priority: z.enum(['low', 'normal', 'high']).optional(),
   due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   fee_usd: z.number().min(0).max(1e9).nullable().optional(),

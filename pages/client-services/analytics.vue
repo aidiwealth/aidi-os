@@ -2,7 +2,6 @@
 useHead({ title: 'Client Services analytics' })
 const entity = ref('')
 const range = ref<'90d' | '12m' | 'all'>('12m')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { data } = await useFetch<any>('/api/cs-analytics', { query: { entity, range }, watch: [entity, range] })
 const usd = (v: number | null | undefined) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v)))
@@ -21,7 +20,6 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
     <div class="head">
       <h1>Analytics</h1>
       <div class="filters">
-        <select v-model="entity" aria-label="Delivered by"><option value="">All delivering entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
         <select v-model="range" aria-label="Period"><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       </div>
     </div>

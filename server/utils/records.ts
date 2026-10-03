@@ -28,7 +28,13 @@ export const RECORDS: Record<string, RecordType> = {
   loan: { table: 'credit.loans', module: 'credit', roles: VC, name: "coalesce(reference, 'loan')", children: [
     'DELETE FROM credit.covenant_checks WHERE covenant_id IN (SELECT id FROM credit.covenants WHERE loan_id = $1)', 'DELETE FROM credit.covenants WHERE loan_id = $1',
     'DELETE FROM credit.repayments WHERE loan_id = $1', 'DELETE FROM credit.schedule WHERE loan_id = $1'] },
-  client: { table: 'services.clients', module: 'services', roles: ['admin'], name: 'name', blockers: [['SELECT count(*) FROM services.jobs WHERE client_id = $1', 'client job']] },
+  client: { table: 'services.clients', module: 'services', roles: ['admin'], name: 'name', blockers: [['SELECT count(*) FROM services.jobs WHERE client_id = $1', 'client job'], ['SELECT count(*) FROM services.invoices WHERE client_id = $1', 'invoice']],
+    children: ['DELETE FROM services.people WHERE client_id = $1', 'DELETE FROM services.companies WHERE client_id = $1'] },
+  cs_company: { table: 'services.companies', module: 'services', roles: ['admin'], name: 'name', blockers: [['SELECT count(*) FROM services.invoices WHERE company_id = $1', 'invoice']] },
+  cs_person: { table: 'services.people', module: 'services', roles: ['admin'], name: 'name' },
+  cs_invoice: { table: 'services.invoices', module: 'services', roles: ['admin'], name: "'invoice ' || number", children: ['DELETE FROM services.invoice_payments WHERE invoice_id = $1'],
+    guard: { sql: "SELECT 1 FROM services.invoices WHERE id = $1 AND status IN ('sent','paid')", message: 'Sent and paid invoices are kept as a record. Void it instead.' } },
+  catalog: { table: 'services.catalog', module: 'services', roles: ['admin'], name: 'name' },
   job: { table: 'services.jobs', module: 'services', roles: ['admin'], name: 'title', children: ['DELETE FROM services.job_events WHERE job_id = $1'] },
   company: { table: 'portfolio.companies', module: 'portfolio', roles: VC, name: 'name', children: [
     'DELETE FROM portfolio.metric_values WHERE company_id = $1', 'DELETE FROM portfolio.updates WHERE company_id = $1', 'DELETE FROM portfolio.requests WHERE company_id = $1'] },

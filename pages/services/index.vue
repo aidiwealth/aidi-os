@@ -3,7 +3,6 @@ import type { JobRow } from '~/server/api/services/index.get'
 useHead({ title: 'Jobs' })
 const { data, error } = await useFetch<JobRow[]>('/api/services')
 const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients')
-const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
 const STATUS: Record<string, string> = { new: 'New', in_progress: 'In progress', waiting_client: 'Waiting on client', completed: 'Completed', cancelled: 'Cancelled' }
 const filter = ref<'open' | 'overdue' | 'all'>('open')
@@ -18,7 +17,7 @@ async function add() {
     client_id: form.client_id || undefined,
     client: form.client_id ? undefined : { name: form.name, contact_name: form.contact_name, email: form.email, phone: form.phone || undefined, country: form.country || undefined },
     service: form.service, title: form.title, description: form.description || undefined, priority: form.priority,
-    due_date: form.due_date || undefined, fee_usd: form.fee_usd ? Number(form.fee_usd.replace(/[^0-9.]/g, '')) : undefined, provider_entity_id: form.provider_entity_id || undefined
+    due_date: form.due_date || undefined, fee_usd: form.fee_usd ? Number(form.fee_usd.replace(/[^0-9.]/g, '')) : undefined
   }
   try { const r = await $fetch<{ id: string }>('/api/services', { method: 'POST', body }); await navigateTo('/services/' + r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the job.' }
@@ -28,9 +27,10 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 
 <template>
   <section>
+    <CsNav />
     <p class="label">Client Services</p>
     <div class="head">
-      <h1>Jobs</h1>
+      <h1>Client Services</h1>
       <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'New job' }}</button>
     </div>
 
@@ -49,7 +49,6 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
       <label class="label">Priority<select v-model="form.priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
       <label class="label">Due<input v-model="form.due_date" type="date"></label>
       <label class="label">Fee (USD)<input v-model="form.fee_usd" inputmode="decimal"></label>
-      <label class="label">Delivered by<select v-model="form.provider_entity_id"><option value="">—</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <button class="btn" type="submit">Create job</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
     </form>

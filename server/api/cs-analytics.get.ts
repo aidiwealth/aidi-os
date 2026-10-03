@@ -7,8 +7,8 @@ export default defineEventHandler(async (event) => {
   if (!q.success) throw apiError('invalid', 'Bad filter.')
   const { entity, range } = q.data
   const since = rangeSql(range), bucket = bucketFor(range)
-  const ef = entity ? 'AND j.provider_entity_id = $1' : ''
-  const args = entity ? [entity] : []
+  const ef = ''
+  const args: string[] = []; void entity
   const k = await one<{ open: number; overdue: number; waiting: number; created: number; completed: number; avg_days: string | null; fees: string | null; pipeline_fees: string | null; clients: number }>(
     `SELECT count(*) FILTER (WHERE j.status NOT IN ('completed','cancelled'))::int AS open,
             count(*) FILTER (WHERE j.status NOT IN ('completed','cancelled') AND j.due_date < current_date)::int AS overdue,

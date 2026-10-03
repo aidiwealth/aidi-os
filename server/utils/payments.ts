@@ -168,3 +168,26 @@ export function paystackSignatureOk(raw: string, header: string): boolean {
   const want = createHmac('sha512', key).update(raw).digest('hex')
   return header.length === want.length && timingSafeEqual(Buffer.from(header), Buffer.from(want))
 }
+
+// ── Client Services invoices: Aidi's own workspace collects through the same accounts (Stripe for USD, Paystack for NGN).
+export function csProviders(currency: string, brand: string | undefined): Provider[] {
+  if (brand !== 'aidi') return []
+  if (currency === 'USD' && stripeOn()) return ['stripe']
+  if (currency === 'NGN' && paystackOn()) return ['paystack']
+  return []
+}
+export async function providerCheckout(provider: Provider, o: { amount: number | string; currency: string; email: string; name: string; reference: string; returnUrl: string }): Promise<string> {
+  if (provider === 'stripe') {
+    const s = await stripe<{ url: string }>('checkout/sessions', {
+      mode: 'payment', success_url: o.returnUrl + '?paid=1', cancel_url: o.returnUrl, customer_email: o.email, client_reference_id: o.reference,
+      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': o.currency.toLowerCase(), 'line_items[0][price_data][unit_amount]': String(minor(o.amount)),
+      'line_items[0][price_data][product_data][name]': o.name, 'payment_intent_data[metadata][reference]': o.reference, 'metadata[reference]': o.reference
+    }, o.reference)
+    return s.url
+  }
+  const d = await paystack<{ authorization_url: string }>('transaction/initialize', { email: o.email, amount: minor(o.amount), currency: o.currency, reference: o.reference, callback_url: o.returnUrl + '?ref=' + o.reference })
+  return d.authorization_url
+}
+export async function paystackStatus(reference: string): Promise<string> {
+  return (await paystack<{ status: string }>('transaction/verify/' + encodeURIComponent(reference))).status
+}

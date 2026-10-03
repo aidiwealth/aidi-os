@@ -253,3 +253,24 @@ export async function sendIntroEmails(i: { pro: string; proEmail: string; firm: 
     `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">Professionals in the directory are independent. {{PRODUCT}} does not provide legal, regulatory, tax or fund administration services.</p>`, 'Introduction sent')
   await sendEmail({ to: i.whoEmail, subject: 'Your introduction to ' + i.pro + ' was sent', text: 'We sent your note to ' + i.pro + '. They will reply to you directly.\n\n' + i.message, html: copy })
 }
+
+// Client Services invoice: amount due, line items, pay online and bank transfer details.
+export async function sendClientInvoiceEmail(inv: { number: string; currency: string; amount: string; due_date: string; lines: { description: string; quantity: number; amount: number }[]; bill_to: { name: string; email: string }; issuer: { issuer: string; note_top?: string; bank?: Record<string, string> } }, link: string, online: boolean): Promise<void> {
+  const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(Number(v))
+  const day = new Date(inv.due_date + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  const rows = inv.lines.map((l) => `<tr><td style="padding:8px 0;border-bottom:1px solid ${BRAND.rule};font-size:14px;">${esc(l.description)}${l.quantity !== 1 ? ' × ' + l.quantity : ''}</td><td style="padding:8px 0;border-bottom:1px solid ${BRAND.rule};text-align:right;font-size:14px;">${money(l.amount)}</td></tr>`).join('')
+  const bank = Object.entries(inv.issuer.bank ?? {}).filter(([, v]) => v)
+  const html = shell(`<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">Invoice ${esc(inv.number)} · ${esc(inv.issuer.issuer)}</p>` +
+    h1(money(inv.amount) + ' ' + inv.currency + ' due ' + day) + (inv.issuer.note_top ? para(esc(inv.issuer.note_top)) : '') +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 6px;">${rows}<tr><td style="padding:10px 0;font-weight:600;">Amount due</td><td style="padding:10px 0;text-align:right;font-weight:600;">${money(inv.amount)} ${inv.currency}</td></tr></table>` +
+    button(online ? 'View and pay online →' : 'View invoice →', link) +
+    (bank.length ? `<p style="font-size:13px;color:${BRAND.inkSoft};line-height:1.7;margin:0 0 6px;"><strong>Or pay by bank transfer</strong><br>${bank.map(([k, v]) => esc(k) + ': ' + esc(v)).join('<br>')}<br>Reference: ${esc(inv.number)}</p>` : ''),
+    'Invoice ' + inv.number + ': ' + money(inv.amount))
+  const text = 'Invoice ' + inv.number + ' from ' + inv.issuer.issuer + '\n' + money(inv.amount) + ' ' + inv.currency + ' due ' + day + '\n\n' + inv.lines.map((l) => '- ' + l.description + ': ' + money(l.amount)).join('\n') + '\n\nView' + (online ? ' and pay' : '') + ': ' + link + (bank.length ? '\n\nBank transfer:\n' + bank.map(([k, v]) => k + ': ' + v).join('\n') + '\nReference: ' + inv.number : '')
+  await sendEmail({ to: inv.bill_to.email, subject: 'Invoice ' + inv.number + ' from ' + inv.issuer.issuer + ': ' + money(inv.amount) + ' due ' + day, text, html })
+}
+export async function sendClientReceiptEmail(inv: { number: string; currency: string; amount: string; bill_to: { name: string; email: string }; issuer: { issuer: string } }): Promise<void> {
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(Number(inv.amount))
+  const html = shell(h1('Payment received') + para('Thank you. ' + esc(inv.issuer.issuer) + ' has received ' + money + ' for invoice ' + esc(inv.number) + '.'), 'Payment received for ' + inv.number)
+  await sendEmail({ to: inv.bill_to.email, subject: 'Payment received: invoice ' + inv.number, text: 'Thank you. We have received ' + money + ' for invoice ' + inv.number + '.', html })
+}
