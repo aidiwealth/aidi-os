@@ -1,4 +1,7 @@
 domains:
+- domain: app.finvry.com
+  type: ALIAS
+  zone: finvry.com
 - domain: app.theaidigroup.com
   type: PRIMARY
 features:
