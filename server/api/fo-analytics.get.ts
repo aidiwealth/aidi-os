@@ -42,6 +42,42 @@ export default defineEventHandler(async (event) => {
   const act = await db().query<{ b: string; v: number }>(
     `SELECT to_char(date_trunc('${bucket}', at), 'YYYY-MM-DD') AS b, count(*)::int AS v FROM core.audit_log
       WHERE at >= ${since} AND actor_user_id IS NOT NULL ${entity ? 'AND entity_id = $1' : ''} GROUP BY 1 ORDER BY 1`, entity ? [entity] : [])
+  // Group cash: only for people who can use Bank & cash, and only when it is switched on. Balances come from tied-out statements.
+  let cash: unknown = null
+  const bankMod = MODULES.find((m) => m.code === 'banking')
+  if (bankMod && (await enabledModules()).has('banking') && canUse(bankMod, user.roles)) {
+    const af = entity ? 'AND a.entity_id = $1' : ''
+    const aArgs = entity ? [entity] : []
+    const latest = await db().query<{ id: string; entity: string; bank: string; account: string; currency: string; balance: string | null; as_of: string | null; stale: boolean }>(
+      `SELECT a.id, e.name AS entity, a.bank_name AS bank, a.account_name AS account, a.currency, s.closing_balance::text AS balance,
+              to_char(s.period_end, 'YYYY-MM-DD') AS as_of, (s.period_end IS NULL OR s.period_end < current_date - 45) AS stale
+         FROM banking.accounts a JOIN core.entities e ON e.id = a.entity_id
+         LEFT JOIN LATERAL (SELECT closing_balance, period_end FROM banking.statements WHERE account_id = a.id ORDER BY period_end DESC LIMIT 1) s ON true
+        WHERE a.active ${af} ORDER BY e.name, a.bank_name`, aArgs)
+    const byCurrency: Record<string, number> = {}
+    const byEntity: Record<string, Record<string, number>> = {}
+    for (const r of latest.rows) {
+      if (r.balance === null) continue
+      byCurrency[r.currency] = (byCurrency[r.currency] ?? 0) + Number(r.balance)
+      byEntity[r.entity] = byEntity[r.entity] ?? {}
+      byEntity[r.entity]![r.currency] = (byEntity[r.entity]![r.currency] ?? 0) + Number(r.balance)
+    }
+    // Month-end cash per currency for the last 12 months: each account's latest closing balance on or before each month end
+    const trend = await db().query<{ m: string; currency: string; v: string }>(
+      `WITH months AS (SELECT (date_trunc('month', current_date) - (g || ' months')::interval + interval '1 month - 1 day')::date AS m FROM generate_series(0, 11) g)
+       SELECT to_char(mo.m, 'YYYY-MM-DD') AS m, a.currency, sum(s.closing_balance)::text AS v
+         FROM months mo CROSS JOIN banking.accounts a
+         JOIN LATERAL (SELECT closing_balance FROM banking.statements WHERE account_id = a.id AND period_end <= mo.m ORDER BY period_end DESC LIMIT 1) s ON true
+        WHERE a.active ${af} GROUP BY 1, 2 ORDER BY 1`, aArgs)
+    const series: Record<string, { period: string; value: number }[]> = {}
+    for (const r of trend.rows) (series[r.currency] ??= []).push({ period: r.m, value: Number(r.v) })
+    cash = {
+      byCurrency, series,
+      byEntity: Object.entries(byEntity).map(([name, t]) => ({ name, totals: t })),
+      stale: latest.rows.filter((r) => r.stale).map((r) => ({ id: r.id, entity: r.entity, label: r.bank + ' · ' + r.account, as_of: r.as_of })),
+      accounts: latest.rows.length
+    }
+  }
   const n = (v: string | null) => (v === null ? 0 : Number(v))
   return {
     range, bucket,
@@ -54,6 +90,7 @@ export default defineEventHandler(async (event) => {
       revenueSeries: revSeries.rows.map((r) => ({ period: r.b, value: Number(r.v) }))
     },
     heldByEntity: held.rows,
-    activity: fillSeries(act.rows, seriesKeys(range, bucket, act.rows[0]?.b))
+    activity: fillSeries(act.rows, seriesKeys(range, bucket, act.rows[0]?.b)),
+    cash
   }
 })

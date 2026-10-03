@@ -13,6 +13,9 @@ const kinds = computed(() => Object.entries((data.value?.entities?.byKind ?? {})
 const maxOf = (rows: { c: number }[] | undefined) => Math.max(1, ...((rows ?? []).map((r) => r.c)))
 const kindMax = computed(() => Math.max(1, ...kinds.value.map(([, c]) => c)))
 const RANGE = { '90d': 'last 90 days', '12m': 'last 12 months', all: 'all time' }
+const money = (v: number, c: string) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: c, notation: Math.abs(v) >= 1e6 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(v) >= 1e6 ? 1 : 0 }).format(v)
+const cashCurrencies = computed(() => Object.keys((data.value?.cash?.byCurrency ?? {}) as Record<string, number>).sort((a, b) => (a === 'USD' ? -1 : b === 'USD' ? 1 : a.localeCompare(b))))
+const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'never')
 </script>
 
 <template>
@@ -26,6 +29,24 @@ const RANGE = { '90d': 'last 90 days', '12m': 'last 12 months', all: 'all time' 
       </div>
     </div>
     <template v-if="data">
+      <template v-if="data.cash">
+        <h2 class="sec">Group cash</h2>
+        <div v-if="cashCurrencies.length" class="kpis">
+          <div v-for="c in cashCurrencies" :key="c" class="kpi"><span class="label">Cash · {{ c }}</span><b>{{ money(data.cash.byCurrency[c], c) }}</b><span class="sub">latest tied-out statements</span></div>
+        </div>
+        <p v-else class="muted">No bank statements yet. Add accounts and import statements on Bank &amp; cash.</p>
+        <div v-if="cashCurrencies.length" class="charts">
+          <TrendChart v-for="c in cashCurrencies.slice(0, 3)" :key="c" :title="'Cash · ' + c" sub="Month-end, last 12 months" :points="pts(data.cash.series[c], true)" :foot="'Across ' + data.cash.accounts + ' accounts'" />
+        </div>
+        <div v-if="cashCurrencies.length" class="three">
+          <div class="card cashent"><h3>Cash by entity</h3>
+            <div v-for="e in data.cash.byEntity" :key="e.name" class="ce"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(Number(v), c)).join(' · ') }}</b></div></div>
+          <div class="card"><h3>Statements out of date</h3>
+            <ul v-if="data.cash.stale.length" class="stale"><li v-for="s in data.cash.stale" :key="s.id"><NuxtLink :to="'/banking/' + s.id">{{ s.label }}</NuxtLink><span>{{ s.entity }} · last statement {{ day(s.as_of) }}</span></li></ul>
+            <p v-else class="muted">Every account has a statement from the last 45 days.</p></div>
+        </div>
+        <h2 class="sec">Entities, documents and group companies</h2>
+      </template>
       <div class="kpis">
         <div class="kpi"><span class="label">Active entities</span><b>{{ data.entities.byStatus.active ?? 0 }}</b><span class="sub">{{ data.entities.byStatus.forming ?? 0 }} forming · {{ (data.entities.byStatus.dormant ?? 0) + (data.entities.byStatus.closed ?? 0) }} dormant or closed</span></div>
         <div class="kpi"><span class="label">Group companies</span><b>{{ data.groupCompanies.count }}</b><span class="sub">{{ data.groupCompanies.subsidiaries }} subsidiaries · {{ data.groupCompanies.affiliates }} affiliates</span></div>
@@ -78,5 +99,8 @@ h3 { font-family: var(--font-heading); font-weight: 400; font-size: 20px; color:
 .table { width: 100%; border-collapse: collapse; } th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 10px 12px; border-bottom: 1px solid var(--c-rule); } .cap { text-transform: capitalize; } .red { color: var(--c-danger); font-weight: 500; }
 .muted { color: var(--c-muted); }
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts, .three { grid-template-columns: 1fr; } }
+.sec { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; font-family: var(--font-body); color: var(--c-muted); font-weight: 500; margin: 8px 0 12px; }
+.cashent { grid-column: span 2; } .ce { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .ce b { font-weight: 500; color: var(--c-navy); text-align: right; }
+.stale { list-style: none; padding: 0; margin: 0; } .stale li { padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .stale span { display: block; font-size: 12px; color: var(--c-warn); }
+@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts, .three { grid-template-columns: 1fr; } .cashent { grid-column: auto; } }
 </style>
