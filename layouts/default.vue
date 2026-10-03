@@ -19,7 +19,7 @@ const groups = computed(() => {
   }
   return out
 })
-const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', exact: true }, { to: '/platform/customers', label: 'Customers', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', exact: false }]
+const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', exact: false }, { to: '/platform/customers', label: 'Customers', exact: false }, { to: '/platform/billing', label: 'Billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', exact: false }, { to: '/platform/settings', label: 'Settings', exact: false }]
 const PLAN: Record<string, string> = { starter: 'Starter', growth: 'Growth', family_office: 'Family Office', enterprise: 'Enterprise', internal: 'Internal' }
 const open = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }

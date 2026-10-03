@@ -36,7 +36,7 @@ const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace cr
           <label class="label">Status<select v-model="f.status"><option value="trial">Trial</option><option value="active">Active</option><option value="past_due">Past due</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></label>
           <label v-if="f.status === 'trial'" class="label">Trial ends<input v-model="f.trial_ends_at" type="date"></label>
           <button class="btn" type="submit" :disabled="busy">Save</button>
-          <p class="hint">List price {{ data.org.price ? '$' + Number(data.org.price).toLocaleString() + ' / month' : 'not set' }}. Billing through Stripe and invoices arrives next.</p>
+          <p class="hint">List price {{ data.org.price ? '$' + Number(data.org.price).toLocaleString() + ' / month' : 'not set' }}. <NuxtLink :to="'/platform/billing?org=' + data.org.id">Subscription and invoices →</NuxtLink></p>
         </form>
         <div class="card">
           <h2>Platform actions</h2>
