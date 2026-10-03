@@ -11,6 +11,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
   { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents'], pages: ['/documents'], switchable: true },
   { code: 'compliance', group: 'fo', label: 'Compliance', to: '/compliance', roles: ['gp', 'team', 'family'], api: ['/api/compliance', '/api/public/cron/compliance'], pages: ['/compliance'], switchable: true },
+  { code: 'banking', group: 'fo', label: 'Bank & cash', to: '/banking', roles: ['gp', 'family'], api: ['/api/banking'], pages: ['/banking'], switchable: true },
   { code: 'fo_analytics', group: 'fo', label: 'Analytics', to: '/family-office/analytics', roles: ['gp', 'team', 'family'], api: ['/api/fo-analytics'], pages: ['/family-office'], switchable: true },
   { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },
   { code: 'cs_analytics', group: 'cs', label: 'Analytics', to: '/client-services/analytics', roles: ['team', 'gp'], api: ['/api/cs-analytics'], pages: ['/client-services'], switchable: true },

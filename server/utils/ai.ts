@@ -14,6 +14,7 @@ export interface AiToolCall<T> {
   inputRef: string
   system: string
   user: string
+  userContent?: unknown[] // optional rich content (for example a PDF document block); replaces `user` when given
   toolName: string
   toolDescription: string
   jsonSchema: Record<string, unknown>
@@ -55,7 +56,7 @@ export async function runAiTool<T>(call: AiToolCall<T>): Promise<{ runId: string
         system: [{ type: 'text', text: call.system, cache_control: { type: 'ephemeral' } }],
         tools: [{ name: call.toolName, description: call.toolDescription, input_schema: call.jsonSchema }],
         tool_choice: { type: 'tool', name: call.toolName },
-        messages: [{ role: 'user', content: call.user }]
+        messages: [{ role: 'user', content: call.userContent ?? call.user }]
       })
       })
     } catch (err) {
