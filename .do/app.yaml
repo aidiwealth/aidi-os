@@ -51,6 +51,18 @@ services:
   - key: NUXT_EMAIL_FROM_FINVRY
     scope: RUN_TIME
     value: Finvry <no-reply@notifications.finvry.com>
+  - key: NUXT_STRIPE_SECRET_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:0UKKAG1eDJ3eHQOdNO4AxdGMEnWkaaL9:kMWFzhy4FIN6GWNhc1JYDeZXT4dGhTukhIjdKmizC8q1fW12829PDNBgdjsNG24aIlHbxr7aZLamy5UWRjoHcov5ko5kGOXBGd/qGCe9gqkN8BeUSBe/gj2VsHVqBWGOqDA5V2yAdWC9/+Z3N3R3UIVCAb3gceiYSSua]
+  - key: NUXT_STRIPE_WEBHOOK_SECRET
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:hiad39Z7vdYs1Zd5vWbAxYNuak4UTQL4:18TCEbAcLTb4PX1MGMMf6umUDn6jK/oBE2I1ivs3PuNCe7oPwn8O9r8rLGO8Ha/Axdghfltd]
+  - key: NUXT_PAYSTACK_SECRET_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:VeEULk0xrax/XNbCupj6lZPa7otrsqfM:dbJriII+7SSQxwX8e52J81Miqf2fJ/+Z70kN7VQ2txhc2mD95AJDY26yHnQnG/yQQ8FocQ6R/E0Dcp+m0WyPMQ==]
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production
