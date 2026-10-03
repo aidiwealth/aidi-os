@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const Body = z.object({
   issuer_name: z.string().trim().min(1).max(200), issuer_address: z.string().trim().max(500), issuer_email: z.string().trim().max(254),
-  invoice_prefix: z.string().trim().regex(/^[A-Z0-9]{2,8}$/), payment_terms_days: z.coerce.number().int().min(0).max(120), payment_instructions: z.string().trim().max(3000)
+  invoice_prefix: z.string().trim().regex(/^[A-Z0-9]{2,8}$/), payment_terms_days: z.coerce.number().int().min(0).max(120), payment_instructions: z.string().trim().max(3000), ngn_per_usd: z.coerce.number().min(1).max(100000).default(1600)
 })
 export default defineEventHandler(async (event) => {
   const staff = await requirePlatform(event, true)

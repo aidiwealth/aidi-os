@@ -5,7 +5,7 @@ export const STAGE_PROB: Record<string, number> = { lead: 0.1, qualified: 0.25, 
 export const LEAD_SOURCES = ['website', 'referral', 'event', 'outbound', 'inbound', 'partner', 'other'] as const
 
 // Monthly value of a subscription (annual plans count as one twelfth a month).
-export const MONTHLY_SQL = "(CASE WHEN s.billing = 'annual' THEN s.amount_usd / 12 ELSE s.amount_usd END)"
+export const MONTHLY_SQL = "((CASE WHEN s.billing = 'annual' THEN s.amount_usd / 12 ELSE s.amount_usd END) / (CASE WHEN s.currency = 'NGN' THEN (SELECT coalesce(nullif(value->>'ngn_per_usd', '')::numeric, 1600) FROM platform.settings WHERE key = 'billing') ELSE 1 END))"
 
 // The next renewal date on or after today for a subscription that started on `start`.
 export function nextRenewal(start: string, billing: string, today = new Date().toISOString().slice(0, 10)): string {
@@ -21,8 +21,8 @@ export function nextRenewal(start: string, billing: string, today = new Date().t
   return today
 }
 
-export interface BillingSettings { issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string }
+export interface BillingSettings { issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string; ngn_per_usd: number }
 export async function billingSettings(): Promise<BillingSettings> {
   const r = await asPlatform(() => db().query<{ value: Partial<BillingSettings> }>("SELECT value FROM platform.settings WHERE key = 'billing'"))
-  return { issuer_name: 'Finvry', issuer_address: '', issuer_email: '', invoice_prefix: 'FIN', payment_terms_days: 14, payment_instructions: '', ...(r.rows[0]?.value ?? {}) }
+  return { issuer_name: 'Finvry', issuer_address: '', issuer_email: '', invoice_prefix: 'FIN', payment_terms_days: 14, payment_instructions: '', ngn_per_usd: 1600, ...(r.rows[0]?.value ?? {}) }
 }

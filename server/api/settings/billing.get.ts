@@ -9,6 +9,8 @@ export default defineEventHandler(async (event) => {
       `SELECT id, number, to_char(issue_date, 'YYYY-MM-DD') AS issue_date, to_char(due_date, 'YYYY-MM-DD') AS due_date, amount::text, currency, status, (status = 'sent' AND due_date < current_date) AS overdue
          FROM platform.invoices WHERE organization_id = $1 AND status <> 'draft' ORDER BY issue_date DESC LIMIT 50`, [s.orgId])
     const cur = sub.rows[0]
-    return { subscription: cur ? { ...cur, renews: nextRenewal(cur.start_date, cur.billing) } : null, invoices: inv.rows }
+    const card = (await db().query<{ provider: string; brand: string | null; last4: string | null }>('SELECT provider, brand, last4 FROM platform.payment_methods WHERE organization_id = $1 AND is_default LIMIT 1', [s.orgId])).rows[0] ?? null
+    const rows = await Promise.all((inv.rows as { id: string; status: string; currency: string }[]).map(async (i) => ({ ...i, payUrl: i.status === 'sent' && providersFor(i.currency).length ? await payUrl(i.id, s.orgId!) : null })))
+    return { subscription: cur ? { ...cur, renews: nextRenewal(cur.start_date, cur.billing) } : null, invoices: rows, card }
   })
 })

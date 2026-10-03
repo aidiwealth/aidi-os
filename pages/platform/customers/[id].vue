@@ -2,7 +2,7 @@
 const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
 interface D { org: { id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
-  usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[] }
+  usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
 useHead({ title: () => 'Finvry · ' + (data.value?.org.name ?? 'Customer') })
@@ -56,6 +56,8 @@ const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace cr
           <h2>Admins</h2>
           <ul class="log"><li v-for="a in data.admins" :key="a.email"><b>{{ a.name }}</b><span>{{ a.email }} · last sign-in {{ when(a.last_login_at) }}</span></li></ul>
           <p class="hint">Contact details for account management. The customer's own data is not visible here.</p>
+          <template v-if="data.cards.length"><h2 class="mt2">Saved cards</h2>
+            <ul class="log"><li v-for="(c, i) in data.cards" :key="i"><b>{{ c.brand ?? 'Card' }} •••• {{ c.last4 ?? '????' }}<template v-if="c.is_default"> · default</template></b><span>{{ c.provider === 'stripe' ? 'Stripe' : 'Paystack' }}<template v-if="c.exp_month"> · expires {{ c.exp_month }}/{{ c.exp_year }}</template></span></li></ul></template>
         </div>
       </div>
     </div>
@@ -72,6 +74,6 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .u i { grid-column: 1 / -1; height: 6px; background: var(--c-paper); display: block; } .u s { display: block; height: 100%; background: var(--c-blue); text-decoration: none; }
 .meta { font-size: 12.5px; color: var(--c-muted); margin: 6px 0 0; }
 .log { list-style: none; padding: 0; margin: 0; } .log li { padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .log b { display: block; font-weight: 500; color: var(--c-navy); font-size: 14px; } .log span { font-size: 12px; color: var(--c-muted); }
-.hint { font-size: 12px; color: var(--c-muted); margin: 8px 0 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
+.hint { font-size: 12px; color: var(--c-muted); margin: 8px 0 0; } .mt2 { margin-top: 18px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 </style>

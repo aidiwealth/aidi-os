@@ -2,8 +2,8 @@
 export default defineEventHandler(async (event) => {
   await requirePlatform(event)
   return await asPlatform(async () => {
-    const subs = await db().query<{ id: string; organization_id: string; customer: string; plan: string; plan_code: string; billing: string; method: string; amount_usd: string; monthly: string; status: string; start_date: string; ended_at: string | null; end_reason: string | null }>(
-      `SELECT s.id, s.organization_id, o.name AS customer, p.name AS plan, s.plan_code, s.billing, s.method, s.amount_usd::text, ${MONTHLY_SQL}::numeric(12,2)::text AS monthly,
+    const subs = await db().query<{ id: string; organization_id: string; customer: string; plan: string; plan_code: string; billing: string; method: string; currency: string; amount_usd: string; monthly: string; status: string; start_date: string; ended_at: string | null; end_reason: string | null }>(
+      `SELECT s.id, s.organization_id, o.name AS customer, p.name AS plan, s.plan_code, s.billing, s.method, s.currency, s.amount_usd::text, ${MONTHLY_SQL}::numeric(12,2)::text AS monthly,
               s.status, to_char(s.start_date, 'YYYY-MM-DD') AS start_date, to_char(s.ended_at, 'YYYY-MM-DD') AS ended_at, s.end_reason
          FROM platform.subscriptions s JOIN core.organizations o ON o.id = s.organization_id JOIN core.plans p ON p.code = s.plan_code
         ORDER BY (s.status = 'ended'), o.name, s.start_date DESC`)
@@ -13,10 +13,11 @@ export default defineEventHandler(async (event) => {
          FROM platform.invoices i JOIN core.organizations o ON o.id = i.organization_id ORDER BY i.issue_date DESC, i.number DESC LIMIT 500`)
     const live = subs.rows.filter((s) => s.status !== 'ended')
     const mrr = live.reduce((t, s) => t + Number(s.monthly), 0)
-    const outstanding = inv.rows.filter((i) => i.status === 'sent')
+    const outstanding = inv.rows.filter((i) => i.status === 'sent' && i.currency === 'USD')
     return {
       subscriptions: subs.rows.map((s) => ({ ...s, renews: s.status === 'ended' ? null : nextRenewal(s.start_date, s.billing) })),
       invoices: inv.rows,
+      cards: (await db().query('SELECT organization_id, provider, brand, last4 FROM platform.payment_methods WHERE is_default')).rows, providers: { stripe: stripeOn(), paystack: paystackOn() },
       kpis: { mrr, arr: mrr * 12, live: live.length, outstanding: outstanding.reduce((t, i) => t + Number(i.amount), 0), overdue: outstanding.filter((i) => i.overdue).reduce((t, i) => t + Number(i.amount), 0), overdueCount: outstanding.filter((i) => i.overdue).length }
     }
   })

@@ -6,7 +6,8 @@ const Body = z.object({
   issue_date: date, due_date: date, period_start: date.optional().or(z.literal('').transform(() => undefined)), period_end: date.optional().or(z.literal('').transform(() => undefined)),
   lines: z.array(z.object({ description: z.string().trim().min(1).max(300), quantity: z.coerce.number().min(0).max(1e6), unit_amount: z.coerce.number().min(0).max(1e8) })).min(1).max(30),
   bill_to: z.object({ name: z.string().trim().min(1).max(200), email: z.string().trim().email().max(254), address: z.string().trim().max(500).optional() }),
-  send: z.boolean().default(false)
+  send: z.boolean().default(false),
+  currency: z.enum(['USD', 'NGN']).default('USD')
 })
 export default defineEventHandler(async (event) => {
   const staff = await requirePlatform(event, true)
@@ -20,9 +21,9 @@ export default defineEventHandler(async (event) => {
   const inv = await asPlatform(async () => {
     if (!(await db().query('SELECT 1 FROM core.organizations WHERE id = $1', [d.organization_id])).rowCount) throw apiError('not_found', 'Customer not found', 404)
     const r = await db().query<{ id: string; number: string }>(
-      `INSERT INTO platform.invoices (number, organization_id, subscription_id, issue_date, due_date, period_start, period_end, lines, amount, bill_to, created_by)
-       VALUES ($1 || '-' || to_char($4::date, 'YYYY') || '-' || lpad(nextval('platform.invoice_number_seq')::text, 4, '0'), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, number`,
-      [s.invoice_prefix || 'FIN', d.organization_id, d.subscription_id ?? null, d.issue_date, d.due_date, d.period_start ?? null, d.period_end ?? null, JSON.stringify(lines), amount, JSON.stringify({ ...d.bill_to, email: d.bill_to.email.toLowerCase() }), staff.userId])
+      `INSERT INTO platform.invoices (number, organization_id, subscription_id, issue_date, due_date, period_start, period_end, lines, amount, bill_to, created_by, currency)
+       VALUES ($1 || '-' || to_char($4::date, 'YYYY') || '-' || lpad(nextval('platform.invoice_number_seq')::text, 4, '0'), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, number`,
+      [s.invoice_prefix || 'FIN', d.organization_id, d.subscription_id ?? null, d.issue_date, d.due_date, d.period_start ?? null, d.period_end ?? null, JSON.stringify(lines), amount, JSON.stringify({ ...d.bill_to, email: d.bill_to.email.toLowerCase() }), staff.userId, d.currency])
     return r.rows[0]!
   })
   await platformAudit(event, staff.userId, 'invoice_create', d.organization_id, { number: inv.number, amount })

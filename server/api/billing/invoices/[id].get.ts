@@ -10,5 +10,5 @@ export default defineEventHandler(async (event) => {
   const ownAdmin = s.orgId === inv.organization_id && s.roles.includes('admin')
   if (!staff && !ownAdmin) throw apiError('not_found', 'Invoice not found', 404)
   if (!staff && inv.status === 'draft') throw apiError('not_found', 'Invoice not found', 404)
-  return { invoice: inv, issuer: await billingSettings() }
+  return { invoice: inv, issuer: await billingSettings(), payUrl: inv.status === 'sent' && providersFor(inv.currency).length ? await payUrl(inv.id, inv.organization_id) : null }
 })

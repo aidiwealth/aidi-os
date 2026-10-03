@@ -19,7 +19,7 @@ export async function sendInvoice(event: H3Event, staffUserId: string, id: strin
   const s = await billingSettings()
   setOrgContext(inv.organization_id)
   let ok = false
-  try { await sendInvoiceEmail(inv, s); ok = true } catch (err) { console.error('[billing] invoice email failed for ' + inv.number, err) }
+  try { await sendInvoiceEmail(inv, s, { payUrl: providersFor(inv.currency).length && inv.status !== 'paid' ? await payUrl(inv.id, inv.organization_id) : undefined }); ok = true } catch (err) { console.error('[billing] invoice email failed for ' + inv.number, err) }
   setOrgContext(null)
   if (ok) {
     await asPlatform(() => db().query("UPDATE platform.invoices SET status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END, sent_at = now() WHERE id = $1", [id]))

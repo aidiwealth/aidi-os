@@ -36,6 +36,7 @@ export default defineNuxtConfig({
     resendApiKey: '',
     emailFrom: 'Aidi OS <no-reply@notifications.theaidigroup.com>',
     emailFromFinvry: '', // Finvry sender once notifications.finvry.com is verified
+    stripeSecretKey: '', stripeWebhookSecret: '', paystackSecretKey: '',
     public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com', finvryBaseUrl: 'https://app.finvry.com', forceBrand: '' }
   },
   app: {

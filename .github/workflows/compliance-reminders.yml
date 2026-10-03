@@ -16,3 +16,7 @@ jobs:
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/credit \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+      - name: Billing (renewals, card charges, overdue reminders)
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/billing \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

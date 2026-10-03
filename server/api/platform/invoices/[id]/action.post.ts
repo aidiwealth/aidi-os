@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   if (a === 'mark_paid' && inv.status === 'void') throw apiError('state', 'This invoice is void.')
   if (a === 'void' && inv.status === 'paid') throw apiError('state', 'A paid invoice cannot be voided.')
   await asPlatform(() => db().query(
-    a === 'mark_paid' ? "UPDATE platform.invoices SET status = 'paid', paid_at = coalesce($2::date, current_date), paid_note = $3 WHERE id = $1" : "UPDATE platform.invoices SET status = 'void', paid_note = coalesce($3, paid_note) WHERE id = $1 AND $2::date IS NULL",
+    a === 'mark_paid' ? "UPDATE platform.invoices SET status = 'paid', paid_at = coalesce($2::date, current_date), paid_note = $3, paid_via = 'manual' WHERE id = $1" : "UPDATE platform.invoices SET status = 'void', paid_note = coalesce($3, paid_note) WHERE id = $1 AND $2::date IS NULL",
     [id.data, a === 'mark_paid' ? (b.data.paid_on ?? null) : null, b.data.note ?? null]))
   await platformAudit(event, staff.userId, 'invoice_' + a, inv.organization_id, { number: inv.number })
   return { ok: true }

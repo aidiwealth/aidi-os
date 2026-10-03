@@ -4,7 +4,7 @@ interface S { org: { name: string; slug: string; kind: string; status: string; p
   plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string }
 const { data, refresh } = await useFetch<S>('/api/settings')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const { data: billing } = await useFetch<{ subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; status: string; overdue: boolean }[] }>('/api/settings/billing')
+const { data: billing } = await useFetch<{ subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')
 const usd = (v: string | number) => '$' + Number(v).toLocaleString()
 const f = reactive({ name: '', public_name: '', investor_name: '', thesis: '', notify: '', default_vehicle_id: '' })
 watchEffect(() => { const d = data.value; if (!d) return; Object.assign(f, { name: d.org.name, public_name: d.settings.public_name, investor_name: d.settings.investor_name, thesis: d.settings.thesis, notify: d.settings.notify_emails.join(', '), default_vehicle_id: d.settings.default_vehicle_id }) })
@@ -50,7 +50,8 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
           <h2>Billing</h2>
           <p v-if="billing?.subscription" class="plan"><b>{{ billing.subscription.plan }}</b> · {{ usd(billing.subscription.amount_usd) }} / {{ billing.subscription.billing === 'annual' ? 'year' : 'month' }} · renews {{ billing.subscription.renews }}</p>
           <p v-else class="muted small">No subscription on file{{ data.org.status === 'trial' ? ' yet: you are on a trial' : '' }}.</p>
-          <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ usd(i.amount) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b></span></li></ul>
+          <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b><a v-if="i.payUrl" :href="i.payUrl" class="payl">Pay</a></span></li></ul>
+          <p v-if="billing?.card" class="muted small">Card on file: {{ billing.card.brand ?? 'card' }} •••• {{ billing.card.last4 }}. Renewals are charged to it automatically.</p>
         </div>
         <div class="card">
           <h2>Public pitch form</h2>
@@ -75,7 +76,7 @@ textarea { resize: vertical; } .hint { font-size: 12px; color: var(--c-muted); l
 .u i { grid-column: 1 / -1; height: 6px; background: var(--c-paper); display: block; } .u s { display: block; height: 100%; background: var(--c-blue); text-decoration: none; }
 .link { display: flex; gap: 8px; align-items: center; margin: 10px 0; } .link code { flex: 1; font-size: 12px; background: var(--c-paper); padding: 8px; overflow-x: auto; white-space: nowrap; }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
-.invs { list-style: none; padding: 0; margin: 8px 0 0; } .invs li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .invs b { font-weight: 500; } .red { color: var(--c-danger); }
+.invs { list-style: none; padding: 0; margin: 8px 0 0; } .invs li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .invs b { font-weight: 500; } .red { color: var(--c-danger); } .payl { margin-left: 10px; font-weight: 500; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 </style>

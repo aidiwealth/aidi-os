@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
     const log = await db().query(
       `SELECT a.action, a.at, a.detail, pp.full_name AS by_name FROM core.audit_log a LEFT JOIN core.users u ON u.id = a.actor_user_id LEFT JOIN core.people pp ON pp.id = u.person_id
         WHERE a.organization_id = $1 AND a.action LIKE 'platform.%' ORDER BY a.at DESC LIMIT 20`, [id.data])
-    return { org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows }
+    const cards = await db().query("SELECT provider, brand, last4, exp_month, exp_year, is_default FROM platform.payment_methods WHERE organization_id = $1 ORDER BY is_default DESC, created_at DESC", [id.data])
+    return { org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
   })
 })

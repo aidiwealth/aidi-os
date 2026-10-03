@@ -189,17 +189,30 @@ export async function sendCreditDigest(to: string, items: { line: string; link: 
 
 // An invoice to a customer's billing contact: line items, total, due date and how to pay.
 export async function sendInvoiceEmail(inv: { number: string; customer: string; issue_date: string; due_date: string; currency: string; lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: string; bill_to: { name: string; email: string } },
-  s: { issuer_name: string; issuer_address: string; issuer_email: string; payment_instructions: string }): Promise<void> {
+  s: { issuer_name: string; issuer_address: string; issuer_email: string; payment_instructions: string }, opts: { payUrl?: string; reminder?: boolean; failedCharge?: boolean } = {}): Promise<void> {
   const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(Number(v))
   const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   const rows = inv.lines.map((l) => `<tr><td style="padding:8px 0;border-bottom:1px solid ${BRAND.rule};font-size:14px;">${esc(l.description)}${l.quantity !== 1 ? ' × ' + l.quantity : ''}</td><td style="padding:8px 0;border-bottom:1px solid ${BRAND.rule};text-align:right;font-size:14px;">${money(l.amount)}</td></tr>`).join('')
   const html = shell(
     `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">Invoice ${esc(inv.number)}</p>` +
-    h1(money(inv.amount) + ' due ' + day(inv.due_date)) + para('Hi ' + esc(inv.bill_to.name.split(' ')[0] ?? inv.bill_to.name) + ', here is your invoice from ' + esc(s.issuer_name) + ' for ' + esc(inv.customer) + '.') +
+    h1(money(inv.amount) + ' due ' + day(inv.due_date)) + para('Hi ' + esc(inv.bill_to.name.split(' ')[0] ?? inv.bill_to.name) + ', ' +
+      (opts.failedCharge ? 'we could not charge your saved card for this invoice from ' + esc(s.issuer_name) + ' for ' + esc(inv.customer) + '. Please pay it below to keep your workspace active.'
+        : opts.reminder ? 'a reminder that this invoice from ' + esc(s.issuer_name) + ' for ' + esc(inv.customer) + ' is now overdue.'
+        : 'here is your invoice from ' + esc(s.issuer_name) + ' for ' + esc(inv.customer) + '.')) +
+    (opts.payUrl ? button('Pay ' + money(inv.amount) + ' online →', opts.payUrl) : '') +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 6px;">${rows}<tr><td style="padding:10px 0;font-weight:600;">Total</td><td style="padding:10px 0;text-align:right;font-weight:600;">${money(inv.amount)}</td></tr></table>` +
     divider() + `<p style="font-size:13px;color:${BRAND.inkSoft};line-height:1.6;margin:0 0 12px;white-space:pre-wrap;"><strong>How to pay</strong><br>${esc(s.payment_instructions)}</p>` +
     `<p style="font-size:12.5px;color:${BRAND.inkMute};line-height:1.5;margin:0;">Issued ${day(inv.issue_date)} by ${esc(s.issuer_name)}${s.issuer_address ? ', ' + esc(s.issuer_address) : ''}. Admins can also view and print it in {{PRODUCT}} under Settings, Billing.${s.issuer_email ? ' Questions: ' + esc(s.issuer_email) : ''}</p>`,
     'Invoice ' + inv.number + ': ' + money(inv.amount))
   const text = 'Invoice ' + inv.number + ' from ' + s.issuer_name + ' for ' + inv.customer + '\n\n' + inv.lines.map((l) => '- ' + l.description + ': ' + money(l.amount)).join('\n') + '\nTotal: ' + money(inv.amount) + '\nDue: ' + day(inv.due_date) + '\n\nHow to pay:\n' + s.payment_instructions
-  await sendEmail({ to: inv.bill_to.email, subject: 'Invoice ' + inv.number + ' from ' + s.issuer_name + ': ' + money(inv.amount), text, html })
+  const subject = (opts.failedCharge ? 'Payment failed: ' : opts.reminder ? 'Reminder: ' : '') + 'Invoice ' + inv.number + ' from ' + s.issuer_name + ': ' + money(inv.amount)
+  await sendEmail({ to: inv.bill_to.email, subject, text: text + (opts.payUrl ? '\n\nPay online: ' + opts.payUrl : ''), html })
+}
+
+// Receipt after an online payment.
+export async function sendPaymentReceiptEmail(inv: { number: string; customer: string; currency: string; amount: string; bill_to: { name: string; email: string } }, issuer: string): Promise<void> {
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(Number(inv.amount))
+  const html = shell(h1('Payment received') + para('Thank you, ' + esc(inv.bill_to.name.split(' ')[0] ?? inv.bill_to.name) + '. We have received ' + money + ' for invoice ' + esc(inv.number) + ' (' + esc(inv.customer) + ').') +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Admins can view the paid invoice in {{PRODUCT}} under Settings, Billing. Issued by ${esc(issuer)}.</p>`, 'Payment received for ' + inv.number)
+  await sendEmail({ to: inv.bill_to.email, subject: 'Payment received: invoice ' + inv.number, text: 'We have received ' + money + ' for invoice ' + inv.number + '. Thank you.', html })
 }
