@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Add at least the company name.')
   const d = b.data
+  await assertFund(d.vehicle_entity_id)
   const row = await one<{ id: string }>(
     `INSERT INTO deals.deals (company, one_liner, website, round, raise_usd, source, stage, owner_id, created_by, vehicle_entity_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8, coalesce($9::uuid, core.default_vehicle())) RETURNING id`,

@@ -7,7 +7,7 @@ const { data, error, refresh } = await useFetch<{ deal: Deal; events: Ev[]; vote
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding', 'gp'].includes(e.kind)))
+const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv'].includes(e.kind)))
 useHead({ title: () => (data.value?.deal.company ?? 'Deal') })
 const STAGES = [
   { v: 'screening', label: 'Screening' }, { v: 'first_call', label: 'First call' }, { v: 'diligence', label: 'Diligence' },

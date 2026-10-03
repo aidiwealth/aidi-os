@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Check the values and try again.')
+  await assertFund(b.data.vehicle_entity_id)
   const fields = Object.entries(b.data).filter(([, v]) => v !== undefined)
   if (!fields.length) return { ok: true }
   const sets = fields.map(([k], i) => k + ' = $' + (i + 2)).join(', ')

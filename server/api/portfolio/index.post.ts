@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Add the company, founder name and a valid founder email.')
+  await assertFund(b.data.holding_entity_id)
   const row = await one<{ id: string }>(
     `INSERT INTO portfolio.companies (deal_id, name, founder_name, founder_email, created_by, relationship, holding_entity_id)
      VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::uuid, (SELECT vehicle_entity_id FROM deals.deals WHERE id = $1), core.default_vehicle())) RETURNING id`,

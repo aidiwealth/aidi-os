@@ -2,7 +2,8 @@
 useHead({ title: 'Analytics' })
 const entity = ref('')
 const range = ref<'90d' | '12m' | 'all'>('12m')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
+const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
+const funds = computed(() => (entities.value ?? []).filter((e) => e.kind === 'fund' || e.kind === 'spv'))
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { data, pending } = await useFetch<any>('/api/analytics', { query: { entity, range }, watch: [entity, range] })
 const usd = (v: number | null | undefined) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v)))
@@ -20,7 +21,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
     <div class="head">
       <h1>Analytics</h1>
       <div class="filters">
-        <select v-model="entity" aria-label="Entity"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+        <select v-model="entity" aria-label="Fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select>
         <select v-model="range" aria-label="Period"><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       </div>
     </div>

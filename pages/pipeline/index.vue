@@ -9,7 +9,7 @@ const COLS = [
 const ROUND: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later' }
 const showPassed = ref(false)
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding', 'gp'].includes(e.kind)))
+const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv'].includes(e.kind)))
 const vehicle = ref('')
 const inView = computed(() => (data.value ?? []).filter((d) => !vehicle.value || d.vehicle_id === vehicle.value))
 const col = (s: string) => inView.value.filter((d) => d.stage === s)
@@ -34,7 +34,7 @@ async function add() {
     <div class="head">
       <h1>Pipeline</h1>
       <div class="tools">
-        <select v-model="vehicle" aria-label="Filter by vehicle"><option value="">All vehicles</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select>
+        <select v-model="vehicle" aria-label="Filter by vehicle"><option value="">All funds</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select>
         <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add deal' }}</button>
       </div>
     </div>
