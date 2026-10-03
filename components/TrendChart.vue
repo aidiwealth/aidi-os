@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Smooth line with a soft gradient fill, drawn in plain SVG (the Telroi dashboard style, in Aidi colours).
-const props = withDefaults(defineProps<{ title: string; sub?: string; points: { label: string; value: number }[]; unit?: 'usd' | 'count' | 'pct'; foot?: string }>(), { sub: '', unit: 'count', foot: '' })
+const props = withDefaults(defineProps<{ title: string; sub?: string; points: { label: string; value: number }[]; unit?: 'usd' | 'count' | 'pct'; foot?: string; symbol?: string }>(), { sub: '', unit: 'count', foot: '', symbol: '$' })
 const W = 560, H = 150, PADY = 16
 const uid = 'tc' + Math.random().toString(36).slice(2, 8)
 const max = computed(() => Math.max(1, ...props.points.map((p) => p.value)))
@@ -23,7 +23,7 @@ function smooth(p: { x: number; y: number }[]): string {
 const line = computed(() => smooth(pts.value))
 const area = computed(() => (pts.value.length ? line.value + ' L' + W + ' ' + H + ' L0 ' + H + ' Z' : ''))
 const last = computed(() => pts.value[pts.value.length - 1] ?? { x: 0, y: 0 })
-const fmt = (n: number) => props.unit === 'usd' ? '$' + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : Math.round(n)) : props.unit === 'pct' ? n.toFixed(0) + '%' : String(Math.round(n))
+const fmt = (n: number) => props.unit === 'usd' ? props.symbol + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : Math.round(n)) : props.unit === 'pct' ? n.toFixed(0) + '%' : String(Math.round(n))
 const lastVal = computed(() => props.points[props.points.length - 1]?.value ?? 0)
 const hasData = computed(() => props.points.some((p) => p.value > 0))
 </script>
