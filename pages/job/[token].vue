@@ -1,10 +1,10 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'public', brand: 'Group', foot: 'The Aidi Group · Your details and documents are shared only with the team handling your request.' })
+definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface Ev { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; document_title: string | null; has_document: boolean }
-interface Data { title: string; service: string; status: string; statusLabel: string; dueDate: string | null; client: string; contactName: string; events: Ev[] }
-const { data, error, refresh } = await useFetch<Data>('/api/public/job/' + token)
-useHead({ title: () => (data.value?.title ?? 'Your request') + ' — The Aidi Group', meta: [{ name: 'robots', content: 'noindex' }] })
+interface Data { title: string; service: string; status: string; statusLabel: string; dueDate: string | null; client: string; contactName: string; events: Ev[]; workspace: { name: string; firm: string; brand: string } }
+const { data, error, refresh } = await useFetch<Data>('/api/public/job/' + token, { key: 'pub-job-' + token })
+useHead({ titleTemplate: '%s', title: () => (data.value?.title ?? 'Your request') + (data.value ? ' — ' + data.value.workspace.name : ''), meta: [{ name: 'robots', content: 'noindex' }] })
 const LABEL: Record<string, string> = { new: 'Received', in_progress: 'In progress', waiting_client: 'Waiting on you', completed: 'Completed', cancelled: 'Cancelled' }
 const STEPS = ['new', 'in_progress', 'completed']
 const reply = ref('')
@@ -14,7 +14,7 @@ const over = ref(false)
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Please try again.' }
 async function send() {
   state.busy = true; state.msg = ''; state.ok = ''
-  try { await $fetch('/api/public/job/' + token + '/message', { method: 'POST', body: { body: reply.value } }); reply.value = ''; state.ok = 'Sent. Your Aidi contact has been notified.'; await refresh() }
+  try { await $fetch('/api/public/job/' + token + '/message', { method: 'POST', body: { body: reply.value } }); reply.value = ''; state.ok = 'Sent. Your contact has been notified.'; await refresh() }
   catch (e) { state.msg = errText(e) } finally { state.busy = false }
 }
 async function upload(f: File | undefined) {
@@ -25,14 +25,14 @@ async function upload(f: File | undefined) {
   catch (e) { state.msg = errText(e) } finally { state.busy = false; if (fileEl.value) fileEl.value.value = '' }
 }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const WHAT: Record<string, string> = { status: 'Status update', message: 'Message from your Aidi team', document: 'Document shared with you', client_message: 'You wrote', client_document: 'You uploaded' }
+const WHAT: Record<string, string> = { status: 'Status update', message: 'Message from the team', document: 'Document shared with you', client_message: 'You wrote', client_document: 'You uploaded' }
 </script>
 
 <template>
   <div class="wrap">
     <div v-if="error" class="card center">
       <h1>{{ error.statusCode === 410 ? 'This link has expired' : 'This link is not valid' }}</h1>
-      <p>{{ error.statusCode === 410 ? 'Ask your contact at The Aidi Group for a new one.' : 'Check you opened the full link from the email.' }}</p>
+      <p>{{ error.statusCode === 410 ? 'Ask your contact for a new one.' : 'Check you opened the full link from the email.' }}</p>
     </div>
     <template v-else-if="data">
       <p class="label">{{ data.service }} · {{ data.client }}</p>
@@ -46,7 +46,7 @@ const WHAT: Record<string, string> = { status: 'Status update', message: 'Messag
       <div class="card">
         <h2>Reply or send documents</h2>
         <form class="reply" @submit.prevent="send">
-          <textarea v-model="reply" rows="3" maxlength="5000" placeholder="Write to your Aidi team" required />
+          <textarea v-model="reply" rows="3" maxlength="5000" placeholder="Write a message to the team" required />
           <button class="btn" type="submit" :disabled="state.busy">Send</button>
         </form>
         <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Upload a document"

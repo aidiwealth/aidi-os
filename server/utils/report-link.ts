@@ -20,6 +20,6 @@ export async function requestFromToken(event: H3Event): Promise<ReportRequest> {
   if (!row) throw apiError('invalid_link', 'This link is not valid.', 404)
   setOrgContext(row.organization_id)
   await requireModule(event, 'portfolio')
-  if (new Date(row.expires_at).getTime() < Date.now()) throw apiError('expired', 'This link has expired. Ask the Aidi Ventures team for a new one.', 410)
+  if (new Date(row.expires_at).getTime() < Date.now()) throw apiError('expired', 'This link has expired. Ask the team that sent it for a new one.', 410)
   return row
 }

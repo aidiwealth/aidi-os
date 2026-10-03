@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
   if (visible) {
     try {
       const link = await issueClientLink(id.data)
-      const headline = d.kind === 'status' ? 'Status: ' + STATUS_LABEL[d.status!] : d.kind === 'document' ? 'A document has been shared with you' : 'A message from your Aidi team'
+      const headline = d.kind === 'status' ? 'Status: ' + STATUS_LABEL[d.status!] : d.kind === 'document' ? 'A document has been shared with you' : 'A message from {{ORG}}'
       await sendJobUpdate(job.email, job.contact_name, job.title, headline, d.body ?? '', link)
       emailed = true
     } catch (err) { console.error('[services] client email failed for ' + id.data, err) }

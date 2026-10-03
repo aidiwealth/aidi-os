@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const s = org.settings
   return {
     org: { name: org.name, slug: org.slug, kind: org.kind, status: org.status, plan: org.plan_code },
-    settings: { investor_name: s.investor_name ?? '', thesis: s.thesis ?? '', notify_emails: s.notify_emails ?? [], default_vehicle_id: s.default_vehicle_id ?? '' },
+    settings: { public_name: s.public_name ?? '', investor_name: s.investor_name ?? '', thesis: s.thesis ?? '', notify_emails: s.notify_emails ?? [], default_vehicle_id: s.default_vehicle_id ?? '' },
     plan: { name: u.plan_name, seat_limit: u.seat_limit, storage_gb: u.storage_gb, ai_runs_month: u.ai_runs_month },
     usage: { members: u.members, storage_bytes: Number(u.storage), ai_runs: u.ai },
     pitchUrl: (await appUrl()) + '/api/public/pitch?org=' + org.slug

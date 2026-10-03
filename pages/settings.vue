@@ -1,16 +1,16 @@
 <script setup lang="ts">
 useHead({ title: 'Settings' })
-interface S { org: { name: string; slug: string; kind: string; status: string; plan: string }; settings: { investor_name: string; thesis: string; notify_emails: string[]; default_vehicle_id: string }
+interface S { org: { name: string; slug: string; kind: string; status: string; plan: string }; settings: { public_name: string; investor_name: string; thesis: string; notify_emails: string[]; default_vehicle_id: string }
   plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string }
 const { data, refresh } = await useFetch<S>('/api/settings')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const f = reactive({ name: '', investor_name: '', thesis: '', notify: '', default_vehicle_id: '' })
-watchEffect(() => { const d = data.value; if (!d) return; Object.assign(f, { name: d.org.name, investor_name: d.settings.investor_name, thesis: d.settings.thesis, notify: d.settings.notify_emails.join(', '), default_vehicle_id: d.settings.default_vehicle_id }) })
+const f = reactive({ name: '', public_name: '', investor_name: '', thesis: '', notify: '', default_vehicle_id: '' })
+watchEffect(() => { const d = data.value; if (!d) return; Object.assign(f, { name: d.org.name, public_name: d.settings.public_name, investor_name: d.settings.investor_name, thesis: d.settings.thesis, notify: d.settings.notify_emails.join(', '), default_vehicle_id: d.settings.default_vehicle_id }) })
 const busy = ref(false); const msg = ref(''); const ok = ref('')
 async function save() {
   busy.value = true; msg.value = ''; ok.value = ''
   try {
-    await $fetch('/api/settings', { method: 'POST', body: { name: f.name, investor_name: f.investor_name, thesis: f.thesis, notify_emails: f.notify.split(/[\s,;]+/).filter(Boolean), default_vehicle_id: f.default_vehicle_id } })
+    await $fetch('/api/settings', { method: 'POST', body: { name: f.name, public_name: f.public_name, investor_name: f.investor_name, thesis: f.thesis, notify_emails: f.notify.split(/[\s,;]+/).filter(Boolean), default_vehicle_id: f.default_vehicle_id } })
     ok.value = 'Saved.'; await refresh(); await refreshNuxtData('me')
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
@@ -28,6 +28,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
       <form class="card frm" @submit.prevent="save">
         <h2>Workspace</h2>
         <label class="label">Name<input v-model="f.name" required maxlength="200"></label>
+        <label class="label">Name founders see<input v-model="f.public_name" maxlength="120" :placeholder="f.name"><span class="hint">Used on pitch receipts and monthly report requests, for example your fund's name.</span></label>
         <label class="label">Default vehicle for new deals and companies<select v-model="f.default_vehicle_id"><option value="">First fund</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label class="label">Who receives pitch, report and reminder emails<input v-model="f.notify" placeholder="partners@yourfirm.com, ops@yourfirm.com"><span class="hint">Separate addresses with commas. Leave empty to notify your admins.</span></label>
         <h2 class="mt">Pitch screening</h2>

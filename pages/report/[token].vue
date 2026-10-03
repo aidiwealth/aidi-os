@@ -2,9 +2,9 @@
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface Metric { key: string; label: string; unit: string; hint: string }
-interface Data { company: string; founderName: string; period: string; periodLabel: string; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string> }
-const { data, error } = await useFetch<Data>('/api/public/report/' + token)
-useHead({ title: () => (data.value ? data.value.company + ' · ' + data.value.periodLabel + ' update' : 'Monthly update') + ' — Aidi Ventures', meta: [{ name: 'robots', content: 'noindex' }] })
+interface Data { company: string; founderName: string; period: string; periodLabel: string; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string>; workspace: { name: string; firm: string; brand: string } }
+const { data, error } = await useFetch<Data>('/api/public/report/' + token, { key: 'pub-report-' + token })
+useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · ' + data.value.periodLabel + ' update — ' + data.value.workspace.firm : 'Monthly update'), meta: [{ name: 'robots', content: 'noindex' }] })
 const vals = reactive<Record<string, string>>({})
 const upd = reactive({ highlights: '', challenges: '', asks: '' })
 const state = reactive({ busy: false, msg: '', ok: '', aiNote: '', submitted: false })
@@ -59,7 +59,7 @@ async function upload(f: File | undefined) {
   <div class="wrap">
     <div v-if="error" class="card center">
       <h1>{{ error.statusCode === 410 ? 'This link has expired' : 'This link is not valid' }}</h1>
-      <p>{{ error.statusCode === 410 ? 'Ask the Aidi Ventures team to send you a new one.' : 'Check you opened the full link from the email, or ask the Aidi Ventures team for a new one.' }}</p>
+      <p>{{ error.statusCode === 410 ? 'Ask the team that sent it for a new one.' : 'Check you opened the full link from the email, or ask the team that sent it for a new one.' }}</p>
     </div>
 
     <template v-else-if="data">
@@ -68,7 +68,7 @@ async function upload(f: File | undefined) {
 
       <div v-if="state.submitted" class="card done" role="status">
         <h2>Thank you, {{ data.founderName.split(' ')[0] }}.</h2>
-        <p>Your {{ data.periodLabel }} update has been received by the Aidi Ventures team. You can still change it below until the link expires on {{ new Date(data.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) }}.</p>
+        <p>Your {{ data.periodLabel }} update has been received by the {{ data.workspace.firm }} team. You can still change it below until the link expires on {{ new Date(data.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) }}.</p>
       </div>
       <p v-else class="lead">Hi {{ data.founderName.split(' ')[0] }}, this takes about five minutes. Type your figures, or upload your spreadsheet and we'll fill them in for you. You can save and come back to finish with the same link.</p>
 

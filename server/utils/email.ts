@@ -3,7 +3,9 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const { resendApiKey } = useRuntimeConfig()
   // Brand: the workspace's (or, before sign-in, the address's) name, logo, links and sender
   const b = brands()[await resolveBrand()]
-  const fill = (s: string): string => s.replaceAll('{{APP_URL}}', b.url).replaceAll('{{PRODUCT}}', b.name).replaceAll('{{BRAND_LOGO}}', b.logoHtml)
+  const org = currentOrgId() ? await currentOrg() : null
+  const firm = org?.settings.public_name || org?.name || b.name, orgName = org?.name || b.name
+  const fill = (s: string): string => s.replaceAll('{{FIRM}}', firm).replaceAll('{{ORG}}', orgName).replaceAll('{{APP_URL}}', b.url).replaceAll('{{PRODUCT}}', b.name).replaceAll('{{BRAND_LOGO}}', b.logoHtml)
     .replaceAll('{{BRAND_FOOTER}}', b.footerHtml).replaceAll('{{BRAND_SMALLPRINT}}', b.smallprint)
   input = { to: input.to, subject: fill(input.subject), text: fill(input.text), html: fill(input.html) }
   if (!resendApiKey) {
@@ -87,10 +89,10 @@ export async function sendPitchReceipt(to: string, name: string, company: string
   const first = esc(name.split(' ')[0] ?? name)
   const html = shell(
     h1('Thank you, ' + first) +
-    para('We have received the pitch for <strong>' + esc(company) + '</strong>. A partner at Aidi Ventures reads every submission, and we will be in touch if there is a fit.') +
-    para('If anything changes, such as a new deck or a funding update, reply to the address on aidiventures.com.'),
+    para('We have received the pitch for <strong>' + esc(company) + '</strong>. A partner at {{FIRM}} reads every submission, and we will be in touch if there is a fit.') +
+    para('If anything changes, such as a new deck or a funding update, let {{FIRM}} know through the website where you pitched.'),
     'We received your pitch')
-  await sendEmail({ to, subject: 'We received your pitch — Aidi Ventures', text: 'Thank you, ' + first + '. We have received the pitch for ' + company + '. A partner at Aidi Ventures reads every submission, and we will be in touch if there is a fit.', html })
+  await sendEmail({ to, subject: 'We received your pitch — {{FIRM}}', text: 'Thank you, ' + first + '. We have received the pitch for ' + company + '. A partner at {{FIRM}} reads every submission, and we will be in touch if there is a fit.', html })
 }
 
 // Invitation to {{PRODUCT}}. Sign-in stays passwordless: they request a code at the sign-in page.
@@ -112,12 +114,12 @@ export async function sendReportRequest(to: string, founderName: string, company
   const first = esc(founderName.split(' ')[0] ?? founderName)
   const html = shell(
     h1('Your ' + esc(monthLabel) + ' update') +
-    para('Hi ' + first + ', it is time for the ' + esc(company) + ' monthly update for Aidi Ventures. It takes about five minutes: type your key figures, or upload your spreadsheet and we will fill them in for you.') +
+    para('Hi ' + first + ', it is time for the ' + esc(company) + ' monthly update for {{FIRM}}. It takes about five minutes: type your key figures, or upload your spreadsheet and we will fill them in for you.') +
     para('You can save and come back to finish. The link is personal to you and works for ' + LINK_DAYS + ' days.') +
     button('Open your update →', link) + divider() +
-    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Sent by ${esc(fromName)} at Aidi Ventures. Please do not forward this link.</p>`,
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Sent by ${esc(fromName)} at {{FIRM}}. Please do not forward this link.</p>`,
     company + ' — ' + monthLabel + ' update')
-  await sendEmail({ to, subject: company + ': your ' + monthLabel + ' update for Aidi Ventures', text: 'Hi ' + first + ', please complete the ' + company + ' ' + monthLabel + ' update for Aidi Ventures: ' + link + ' (works for ' + LINK_DAYS + ' days; you can save and continue).', html })
+  await sendEmail({ to, subject: company + ': your ' + monthLabel + ' update for {{FIRM}}', text: 'Hi ' + first + ', please complete the ' + company + ' ' + monthLabel + ' update for {{FIRM}}: ' + link + ' (works for ' + LINK_DAYS + ' days; you can save and continue).', html })
 }
 
 // To the partners: a founder has submitted their update.

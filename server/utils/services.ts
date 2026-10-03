@@ -27,6 +27,6 @@ export async function jobFromToken(token: string | undefined): Promise<{ id: str
   if (!row) throw apiError('invalid_link', 'This link is not valid.', 404)
   setOrgContext(row.organization_id)
   if (!(await enabledModules()).has('services')) throw apiError('module_off', 'This link is not valid.', 404)
-  if (new Date(row.client_token_expires).getTime() < Date.now()) throw apiError('expired', 'This link has expired. Ask your contact at The Aidi Group for a new one.', 410)
+  if (new Date(row.client_token_expires).getTime() < Date.now()) throw apiError('expired', 'This link has expired. Ask your contact for a new one.', 410)
   return row
 }

@@ -14,6 +14,6 @@ export default defineEventHandler(async (event) => {
   }
   return {
     company: r.company, founderName: r.founder_name, period: r.period.slice(0, 7), periodLabel: periodLabel(r.period),
-    status: r.status, submittedAt: r.submitted_at, expiresAt: r.expires_at, metrics: METRICS, values, update
+    status: r.status, submittedAt: r.submitted_at, expiresAt: r.expires_at, metrics: METRICS, values, update, workspace: await publicWorkspace()
   }
 })
