@@ -16,7 +16,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
 
 <template>
   <section>
-    <p class="label">Insights</p>
+    <p class="label">Venture Capital</p>
     <div class="head">
       <h1>Analytics</h1>
       <div class="filters">
@@ -62,20 +62,6 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
       </div>
     </template>
 
-    <template v-if="data?.office">
-      <h2 class="sec">Family Office</h2>
-      <div class="kpis">
-        <div class="kpi"><span class="label">Active entities</span><b>{{ data.office.entities.active ?? 0 }}</b><span class="sub">{{ data.office.entities.forming ?? 0 }} forming</span></div>
-      </div>
-      <div class="two">
-        <TrendChart title="Activity" :sub="data.bucket === 'week' ? 'Actions per week' : 'Actions per month'" :points="pts(data.office.activitySeries)" foot="Sign-ins, uploads, decisions and changes" />
-        <div class="card">
-          <h3>Documents by entity</h3>
-          <div v-for="d in data.office.documentsByEntity" :key="d.name" class="bar"><span>{{ d.name }}</span><i :style="{ width: (d.c / docMax) * 100 + '%' }" /><b>{{ d.c }}</b></div>
-          <p v-if="!data.office.documentsByEntity.length" class="muted">No documents yet.</p>
-        </div>
-      </div>
-    </template>
   </section>
 </template>
 

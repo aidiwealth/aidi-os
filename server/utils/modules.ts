@@ -10,7 +10,9 @@ export const MODULES: ModuleDef[] = [
   { code: 'analytics', group: 'vc', label: 'Analytics', to: '/analytics', roles: ['gp', 'team', 'family'], api: ['/api/analytics'], pages: ['/analytics'], switchable: true },
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
   { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents'], pages: ['/documents'], switchable: true },
+  { code: 'fo_analytics', group: 'fo', label: 'Analytics', to: '/family-office/analytics', roles: ['gp', 'team', 'family'], api: ['/api/fo-analytics'], pages: ['/family-office'], switchable: true },
   { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },
+  { code: 'cs_analytics', group: 'cs', label: 'Analytics', to: '/client-services/analytics', roles: ['team', 'gp'], api: ['/api/cs-analytics'], pages: ['/client-services'], switchable: true },
   { code: 'team', group: 'admin', label: 'Team', to: '/team', roles: ['admin'], api: ['/api/admin/users'], pages: ['/team'], switchable: false },
   { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false }
 ]

@@ -100,19 +100,5 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (on.has('entities') || on.has('documents')) {
-    const levels = visibleLevels(user.roles)
-    const ents = await db().query<{ status: string; c: number }>('SELECT status, count(*)::int AS c FROM core.entities GROUP BY status')
-    const docs = await db().query<{ name: string; c: number }>(
-      `SELECT coalesce(e.name, 'Not tagged') AS name, count(*)::int AS c FROM core.documents d LEFT JOIN core.entities e ON e.id = d.entity_id
-        WHERE d.sensitivity = ANY($1::text[]) ${entity ? 'AND d.entity_id = $2' : ''} GROUP BY 1 ORDER BY 2 DESC LIMIT 8`, entity ? [levels, entity] : [levels])
-    const act = await db().query<{ b: string; c: number }>(
-      `SELECT to_char(date_trunc('${bucket}', at), 'YYYY-MM-DD') AS b, count(*)::int AS c FROM core.audit_log
-        WHERE at >= ${since} AND actor_user_id IS NOT NULL ${entity ? 'AND entity_id = $1' : ''} GROUP BY 1 ORDER BY 1`, entity ? [entity] : [])
-    out.office = {
-      entities: Object.fromEntries(ents.rows.map((r) => [r.status, r.c])),
-      documentsByEntity: docs.rows, activitySeries: fill(act.rows.map((r) => ({ period: r.b, value: r.c })), bucketKeys(range, bucket, act.rows[0]?.b))
-    }
-  }
   return out
 })
