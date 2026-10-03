@@ -20,6 +20,7 @@ export default defineNuxtConfig({
     databaseCa: '',
     anthropicApiKey: '',
     jwtSecret: '',
+    cronSecret: '',
     r2AccountId: '',
     r2AccessKeyId: '',
     r2SecretAccessKey: '',

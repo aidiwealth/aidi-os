@@ -1,0 +1,14 @@
+# Daily compliance reminders: calls Aidi OS at 07:00 UTC. Needs the repository secret CRON_SECRET (same value as NUXT_CRON_SECRET).
+name: Compliance reminders
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send reminders
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/compliance \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

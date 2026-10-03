@@ -41,6 +41,10 @@ services:
     scope: RUN_TIME
     type: SECRET
     value: EV[1:bXWJ7xIC6M3BLQGua4Azf1w8s41F/2WT:JyQZ4uOjQNRrDeZukDGp7e/sPKieD2vB3h3bwFpbJwM/1mrEqRh3lXjyWaj4ejyhlIzr7Fc2Xq5Nx4baZkJSmzeiMZbZseUrZU/xF55AhKI=]
+  - key: NUXT_CRON_SECRET
+    scope: RUN_TIME
+    type: SECRET
+    value: EV[1:sMQmjPvNvJ9KmL+yXjhdpGR5cT1jSVNh:f6vPoX4nZCEI517IEY8cOd3R+TmuwTevsy64bPc4A0ZBez+OCUQ+yDul2o56eZkB1nj5nGLhP1CSw0U/0cTdCtcC++Zl50nJHHf2lcZymfA=]
   - key: NODE_ENV
     scope: RUN_AND_BUILD_TIME
     value: production

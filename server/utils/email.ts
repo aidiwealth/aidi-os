@@ -150,3 +150,19 @@ export async function sendJobClientActivity(ownerEmail: string | null, jobId: st
   const html = shell(h1(esc(client) + ' ' + esc(what)) + para(esc(jobTitle)) + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') + button('Open the job →', link), client + ' ' + what)
   for (const addr of to) await sendEmail({ to: addr, subject: client + ' ' + what + ' — ' + jobTitle, text: client + ' ' + what + '\n\n' + body + '\n\n' + link, html })
 }
+
+// Compliance reminders: one email per person listing what is due soon or overdue.
+export async function sendComplianceDigest(to: string, items: { id: string; title: string; entity: string; next_due: string; days_left: number; kind: string }[]): Promise<void> {
+  const base = useRuntimeConfig().public.appBaseUrl
+  const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const rows = items.sort((a, b) => a.next_due.localeCompare(b.next_due)).map((i) =>
+    `<tr><td style="padding:10px 0;border-bottom:1px solid ${BRAND.rule};"><a href="${base}/compliance/${i.id}" style="color:${BRAND.navy};font-weight:500;text-decoration:none;">${esc(i.title)}</a>` +
+    `<div style="font-size:12.5px;color:${BRAND.inkMute};">${esc(i.entity)}</div></td>` +
+    `<td style="padding:10px 0;border-bottom:1px solid ${BRAND.rule};text-align:right;white-space:nowrap;font-size:13px;color:${i.kind === 'overdue' ? '#b42318' : BRAND.inkSoft};">` +
+    (i.kind === 'overdue' ? 'Overdue since ' + day(i.next_due) : 'Due ' + day(i.next_due) + (i.days_left === 0 ? ' (today)' : ' (' + i.days_left + ' days)')) + '</td></tr>').join('')
+  const overdue = items.filter((i) => i.kind === 'overdue').length
+  const html = shell(h1(overdue ? overdue + ' overdue, ' + (items.length - overdue) + ' due soon' : items.length + ' compliance item' + (items.length === 1 ? '' : 's') + ' due soon') +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;">${rows}</table>` + button('Open the compliance calendar →', base + '/compliance'), 'Compliance reminders')
+  const text = items.map((i) => '- ' + i.title + ' (' + i.entity + '): ' + (i.kind === 'overdue' ? 'OVERDUE since ' : 'due ') + i.next_due).join('\n') + '\n\n' + base + '/compliance'
+  await sendEmail({ to, subject: (overdue ? 'Overdue: ' : 'Due soon: ') + items.length + ' compliance item' + (items.length === 1 ? '' : 's'), text, html })
+}
