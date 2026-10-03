@@ -68,7 +68,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
 .kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); line-height: 1.1; }
 .sub { font-size: 12px; color: var(--c-muted); }
 .charts, .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 12px; }
+h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 130px 1fr 28px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
 .bar i { display: block; height: 10px; background: var(--c-blue); min-width: 2px; } .bar b { text-align: right; font-weight: 500; }
 .list { list-style: none; padding: 0; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); }

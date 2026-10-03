@@ -92,7 +92,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 .kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); line-height: 1.1; }
 .sub { font-size: 12px; color: var(--c-muted); }
 .charts, .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 12px; }
+h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 120px 1fr 28px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
 .bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar i { display: block; height: 10px; background: var(--c-blue); min-width: 2px; } .bar b { text-align: right; font-weight: 500; }

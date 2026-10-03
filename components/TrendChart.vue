@@ -48,7 +48,7 @@ const hasData = computed(() => props.points.some((p) => p.value > 0))
 <style scoped>
 .tc { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .tc-head { display: flex; justify-content: space-between; align-items: baseline; padding: 18px 22px 0; }
-.tc-title { font-size: 14px; font-weight: 600; color: var(--c-ink); }
+.tc-title { font-family: var(--font-heading); font-size: 19px; font-weight: 500; color: var(--c-navy); }
 .tc-sub { font-size: 12.5px; color: var(--c-muted); }
 .tc-body { padding: 16px 8px 4px; min-height: 150px; }
 .tc-body svg { width: 100%; height: 150px; display: block; }

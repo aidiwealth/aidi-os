@@ -99,7 +99,7 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 .kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 16px; }
-h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 10px; } .mt { margin-top: 16px; }
+h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 10px; } .mt { margin-top: 16px; }
 .ex { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .ex b { font-weight: 500; }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
 th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }

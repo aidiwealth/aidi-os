@@ -104,11 +104,11 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sidebar { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; padding: 18px 12px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; transition: width .18s ease; }
 .collapsed .sidebar { width: 68px; }
 .sb-brand { display: flex; align-items: center; height: 32px; padding: 0 10px; margin-bottom: 18px; text-decoration: none; color: var(--c-navy); }
-.sb-mono { width: 32px; height: 32px; border-radius: 9px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; margin-left: -4px; }
-.mode { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: rgba(15,17,21,.06); border-radius: 10px; padding: 3px; margin: 0 4px 16px; }
+.sb-mono { width: 32px; height: 32px; border-radius: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; margin-left: -4px; }
+.mode { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: rgba(15,17,21,.06); border-radius: 0; padding: 3px; margin: 0 4px 16px; }
 .mode button { position: relative; z-index: 1; background: none; border: 0; font: inherit; font-size: 13px; font-weight: 500; color: var(--c-muted); padding: 6px 0; cursor: pointer; transition: color .15s; }
 .mode button.on { color: var(--c-ink); }
-.mode .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(15,17,21,.08), 0 0 0 1px rgba(15,17,21,.04); transition: transform .2s ease; }
+.mode .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: #fff; border-radius: 0; box-shadow: 0 1px 2px rgba(15,17,21,.08), 0 0 0 1px rgba(15,17,21,.04); transition: transform .2s ease; }
 .mode .thumb.right { transform: translateX(100%); }
 .sb-nav { display: flex; flex-direction: column; gap: 1px; flex: 1; }
 .sb-group { margin: 16px 0 4px; padding: 0 12px; font-size: 11.5px; font-weight: 500; color: var(--c-muted); white-space: nowrap; overflow: hidden; }
@@ -127,16 +127,16 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-collapse { align-self: flex-end; margin-top: 4px; width: 30px; height: 30px; border-radius: var(--radius-sm); border: 0; background: none; color: var(--c-muted); cursor: pointer; display: grid; place-items: center; }
 .sb-collapse:hover { background: rgba(15,17,21,.05); color: var(--c-ink); } .sb-collapse svg { width: 16px; height: 16px; }
 .collapsed .sb-collapse { align-self: center; }
-.av { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--c-blue-deep); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
-.av.sm { width: 24px; height: 24px; font-size: 10px; border-radius: 7px; } .av.me { width: 24px; height: 24px; border-radius: 50%; background: var(--c-navy); font-size: 11px; }
-.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--c-paper); border-left: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); border-top-left-radius: 16px; margin-top: 10px; min-height: calc(100vh - 10px); }
-.topbar { height: var(--topbar-h); flex: none; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: saturate(1.4) blur(8px); z-index: 10; border-top-left-radius: 16px; }
+.av { flex: none; width: 28px; height: 28px; border-radius: 0; display: grid; place-items: center; background: var(--c-blue-deep); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.av.sm { width: 24px; height: 24px; font-size: 10px; border-radius: 0; } .av.me { width: 24px; height: 24px; border-radius: 0; background: var(--c-navy); font-size: 11px; }
+.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--c-paper); border-left: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); border-top-left-radius: 0; margin-top: 10px; min-height: calc(100vh - 10px); }
+.topbar { height: var(--topbar-h); flex: none; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: saturate(1.4) blur(8px); z-index: 10; border-top-left-radius: 0; }
 .tb-menu { display: none; width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--c-rule); background: #fff; color: var(--c-ink); cursor: pointer; place-items: center; } .tb-menu svg { width: 18px; height: 18px; }
 .crumbs { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--c-muted); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; }
 .crumbs .cur { color: var(--c-ink); font-weight: 500; } .sep { color: var(--c-rule-strong); }
-.env { font-size: 11.5px; font-weight: 500; color: var(--c-signal); background: var(--c-signal-soft); padding: 3px 9px; border-radius: 999px; }
+.env { font-size: 11.5px; font-weight: 500; color: var(--c-signal); background: var(--c-signal-soft); padding: 3px 9px; border-radius: 0; }
 .ws { position: relative; }
-.ws-btn { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px 0 5px; border: 1px solid var(--c-rule); border-radius: 10px; background: #fff; font: inherit; color: var(--c-ink); cursor: default; }
+.ws-btn { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px 0 5px; border: 1px solid var(--c-rule); border-radius: 0; background: #fff; font: inherit; color: var(--c-ink); cursor: default; }
 .ws-btn.multi { cursor: pointer; } .ws-btn.multi:hover { background: var(--c-paper-3); }
 .ws-t { display: flex; flex-direction: column; line-height: 1.15; text-align: left; } .ws-t b { font-size: 13px; font-weight: 500; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ws-t em { font-style: normal; font-size: 11px; color: var(--c-muted); }
 .chev { width: 14px; height: 14px; color: var(--c-muted); transition: transform .15s; } .chev.up { transform: rotate(180deg); }

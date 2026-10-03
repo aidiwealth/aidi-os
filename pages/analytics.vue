@@ -75,7 +75,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
 .sub { font-size: 12px; color: var(--c-muted); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 12px; }
+h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 130px 1fr 32px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
 .bar i { display: block; height: 10px; background: var(--c-blue); min-width: 2px; } .bar b { text-align: right; font-weight: 500; }
 .risk { list-style: none; padding: 0; margin: 0; } .risk li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--c-rule); }

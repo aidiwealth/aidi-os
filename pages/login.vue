@@ -48,7 +48,7 @@ async function verify() {
 </template>
 
 <style scoped>
-.box { width: 100%; max-width: 400px; background: #fff; padding: 36px; border: 1px solid var(--c-rule); border-radius: 16px; box-shadow: var(--shadow-pop); }
+.box { width: 100%; max-width: 400px; background: #fff; padding: 36px; border: 1px solid var(--c-rule); border-radius: 0; box-shadow: var(--shadow-pop); }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; color: var(--c-navy); }
 .w { display: flex; width: 62px; height: 25px; } .w :deep(svg) { width: 100%; height: 100%; display: block; } .d { width: 1px; height: 18px; background: var(--c-rule-strong); } .a { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
 h1 { margin-bottom: 8px; }
