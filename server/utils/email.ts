@@ -177,3 +177,11 @@ export async function sendResolutionCirculated(to: string, name: string, resolut
     button('Review and respond →', link), 'For your approval: ' + title)
   await sendEmail({ to, subject: 'For your approval: ' + title + ' (' + entity + ')', text: 'Hi ' + first + ', "' + title + '" for ' + entity + ' needs your approval: ' + link, html })
 }
+
+// Credit reminders to the partners: instalments due soon, loans in arrears, covenants due.
+export async function sendCreditDigest(to: string, items: { line: string; link: string }[]): Promise<void> {
+  const base = useRuntimeConfig().public.appBaseUrl
+  const html = shell(h1(items.length + ' credit item' + (items.length === 1 ? '' : 's') + ' to look at') +
+    items.map((i) => para('<a href="' + i.link + '" style="color:' + BRAND.navy + ';">' + esc(i.line) + '</a>')).join('') + button('Open Credit →', base + '/credit'), 'Credit reminders')
+  await sendEmail({ to, subject: 'Credit: ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' due or late', text: items.map((i) => '- ' + i.line).join('\n') + '\n\n' + base + '/credit', html })
+}
