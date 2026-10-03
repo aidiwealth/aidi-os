@@ -4,7 +4,7 @@ interface Acct { id: string; entity: string; bank_name: string; account_name: st
 interface St { id: string; period_start: string; period_end: string; opening: string; closing: string; credits: string; debits: string; txn_count: number; continuity_ok: boolean | null; source: string; by_name: string | null; document_id: string | null }
 interface Tx { date: string; description: string; amount: string; balance: string | null }
 const { data, error, refresh } = await useFetch<{ account: Acct; statements: St[]; transactions: Tx[] }>('/api/banking/accounts/' + id)
-useHead({ title: () => (data.value ? data.value.account.bank_name + ' ' + data.value.account.account_name : 'Account') + ' — Aidi OS' })
+useHead({ title: () => (data.value ? data.value.account.bank_name + ' ' + data.value.account.account_name : 'Account') })
 const cur = computed(() => data.value?.account.currency ?? 'USD')
 const money = (v: number | string | null) => v === null ? '—' : new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur.value, maximumFractionDigits: 2 }).format(Number(v))
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })

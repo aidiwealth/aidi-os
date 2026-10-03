@@ -1,15 +1,16 @@
 <script setup lang="ts">
-useHead({ title: 'Overview — Aidi OS' })
+useHead({ title: 'Overview' })
+const { data: me } = await useFetch<{ org: { name: string } | null }>('/api/auth/me', { key: 'me' })
 </script>
 
 <template>
   <section>
-    <p class="label">The Aidi Group</p>
-    <h1>Aidi OS</h1>
-    <p class="lead">Internal back office for the family office, Aidi Ventures, founders, investors and clients.</p>
+    <p class="label">{{ me?.org?.name ?? 'Workspace' }}</p>
+    <h1>Overview</h1>
+    <p class="lead">Your workspace at a glance. Use the menu to open each area.</p>
   </section>
 </template>
 
 <style scoped>
-.lead { margin-top: 12px; color: var(--c-muted); max-width: 60ch; }
+.lead { color: var(--c-muted); margin: 8px 0 0; }
 </style>

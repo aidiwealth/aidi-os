@@ -17,6 +17,12 @@ export default defineEventHandler(async (event) => {
     const member = await db().query('SELECT 1 FROM core.memberships WHERE user_id = $1', [existing.rows[0].id])
     if (member.rowCount) throw apiError('exists', 'That person already has access to this workspace. Change their roles in the list instead.', 409)
   }
+  const lim = await db().query<{ seat_limit: number | null; n: number }>(
+    `SELECT p.seat_limit, (SELECT count(*)::int FROM core.memberships WHERE status = 'active') AS n
+       FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = core.current_org()`)
+  const seats = lim.rows[0]
+  if (seats && seats.seat_limit !== null && seats.n >= seats.seat_limit)
+    throw apiError('seat_limit', 'Your plan includes ' + seats.seat_limit + ' seats and all are in use. Disable someone or upgrade your plan.', 403)
   const client = await db().connect()
   let userId: string
   try {

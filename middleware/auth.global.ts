@@ -1,12 +1,16 @@
-// Pages: anyone not signed in goes to /login; a page in a module that is off (or not for this role) goes to Overview.
+// Pages: anyone not signed in goes to /login; a page in a module that is off (or not for this role) goes to Overview;
+// the Finvry console is only for Aidi platform staff on the Aidi OS address.
 export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path === '/login' || to.path.startsWith('/report/') || to.path.startsWith('/job/')) return
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
+  let me: { platform: boolean; org: { id: string } | null }
   try {
-    await $fetch('/api/auth/me', { headers })
+    me = await $fetch('/api/auth/me', { headers })
   } catch {
     return navigateTo('/login')
   }
+  if (to.path === '/platform' || to.path.startsWith('/platform/')) return me.platform && useBrand().key === 'aidi' ? undefined : navigateTo('/')
+  if (!me.org) return me.platform && useBrand().key === 'aidi' ? navigateTo('/platform') : undefined
   if (to.path === '/') return
   try {
     const mods = await $fetch<{ pages: string[]; usable: boolean }[]>('/api/modules', { headers })

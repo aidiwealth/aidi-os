@@ -6,7 +6,7 @@ interface ScreeningRow { id: string; created_at: string; score: number; recommen
 interface DecisionRow { id: string; decision: string; note: string; decided_at: string; decided_by: string }
 interface Pitch { id: string; received_at: string; founder_name: string; email: string; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string; sector: string | null; raising_usd: string | null; one_liner: string; description: string; traction: string | null; team: string | null; female_founder: boolean | null; status: string }
 const { data, error, refresh } = await useFetch<{ pitch: Pitch; screenings: ScreeningRow[]; decisions: DecisionRow[]; failedRuns: number; dealId: string | null }>('/api/deals/' + id)
-useHead({ title: () => (data.value?.pitch.company ?? 'Pitch') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.pitch.company ?? 'Pitch') })
 const REC: Record<string, string> = { prioritise: 'Prioritise', review: 'Review', likely_pass: 'Likely pass' }
 const STAGE: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later' }
 const latest = computed(() => data.value?.screenings[0])

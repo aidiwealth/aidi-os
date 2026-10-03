@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Trusts & governance — Aidi OS' })
+useHead({ title: 'Trusts & governance' })
 interface Ent { id: string; name: string; kind: string; status: string; parties: number; resolutions: number; open: number }
 interface Await { id: string; title: string; kind: string; entity: string; circulated_at: string }
 const { data, error } = await useFetch<{ entities: Ent[]; awaiting: Await[] }>('/api/governance')

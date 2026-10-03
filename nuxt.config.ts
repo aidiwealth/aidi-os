@@ -35,7 +35,8 @@ export default defineNuxtConfig({
     pitchAllowedOrigins: 'https://aidiventures.com,https://www.aidiventures.com',
     resendApiKey: '',
     emailFrom: 'Aidi OS <no-reply@notifications.theaidigroup.com>',
-    public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com' }
+    emailFromFinvry: '', // Finvry sender once notifications.finvry.com is verified
+    public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com', finvryBaseUrl: 'https://app.finvry.com', forceBrand: '' }
   },
   app: {
     head: {

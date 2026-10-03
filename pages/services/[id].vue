@@ -6,7 +6,7 @@ const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[] }>('/ap
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: docs } = await useFetch<{ id: string; title: string; sensitivity: string }[]>('/api/documents')
-useHead({ title: () => (data.value?.job.title ?? 'Job') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.job.title ?? 'Job') })
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
 const STATUSES = [['new', 'New'], ['in_progress', 'In progress'], ['waiting_client', 'Waiting on client'], ['completed', 'Completed'], ['cancelled', 'Cancelled']] as const
 const label = (s: string | null) => STATUSES.find(([k]) => k === s)?.[1] ?? s ?? ''

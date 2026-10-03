@@ -8,7 +8,7 @@ const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pi
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'gp', 'team'].includes(r)))
-useHead({ title: () => (data.value?.obligation.title ?? 'Obligation') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.obligation.title ?? 'Obligation') })
 const CAT: Record<string, string> = { tax: 'Tax', annual_return: 'Annual return', franchise_tax: 'Franchise tax', registered_agent: 'Registered agent', licence: 'Licence', regulatory: 'Regulatory filing', insurance: 'Insurance', banking: 'Banking / KYC', other: 'Other' }
 const REC: Record<string, string> = { none: 'One-off', monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annual' }
 const busy = ref(false)

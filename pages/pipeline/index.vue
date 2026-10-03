@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PipelineCard } from '~/server/api/pipeline/index.get'
-useHead({ title: 'Pipeline — Aidi OS' })
+useHead({ title: 'Pipeline' })
 const { data, error, refresh } = await useFetch<PipelineCard[]>('/api/pipeline')
 const COLS = [
   { v: 'screening', label: 'Screening' }, { v: 'first_call', label: 'First call' }, { v: 'diligence', label: 'Diligence' },
@@ -30,7 +30,7 @@ async function add() {
 
 <template>
   <section>
-    <p class="label">Aidi Ventures</p>
+    <p class="label">Venture Capital</p>
     <div class="head">
       <h1>Pipeline</h1>
       <div class="tools">
@@ -46,7 +46,7 @@ async function add() {
       <label class="label">Round<select v-model="form.round"><option value="">—</option><option v-for="(l, k) in ROUND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Raising (USD)<input v-model="form.raise_usd" inputmode="numeric"></label>
       <label class="label">Source<select v-model="form.source"><option value="referral">Referral</option><option value="network">Network</option><option value="outbound">Outbound</option><option value="other">Other</option></select></label>
-      <label class="label">Vehicle<select v-model="form.vehicle_entity_id"><option value="">Aidi Ventures Fund I</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
+      <label class="label">Vehicle<select v-model="form.vehicle_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Start at<select v-model="form.stage"><option value="screening">Screening</option><option value="first_call">First call</option><option value="diligence">Diligence</option></select></label>
       <button class="btn" type="submit">Add to pipeline</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>

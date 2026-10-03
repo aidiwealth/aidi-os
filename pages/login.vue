@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'plain' })
-useHead({ title: 'Sign in — Aidi OS' })
+const brand = useBrand()
+useHead({ title: 'Sign in' })
 const route = useRoute()
 const email = ref('')
 const code = ref('')
@@ -26,7 +27,7 @@ async function verify() {
 
 <template>
   <div class="box">
-    <div class="brand"><span class="w" aria-label="Aidi"><AidiWordmark /></span><span class="d" /><span class="a">OS</span></div>
+    <div class="brand"><BrandMark /></div>
     <form v-if="step === 'email'" @submit.prevent="requestCode">
       <h1>Sign in</h1>
       <p class="hint">We'll email you a sign-in link and a 6-digit code.</p>
@@ -36,7 +37,7 @@ async function verify() {
     </form>
     <form v-else @submit.prevent="verify">
       <h1>Check your email</h1>
-      <p class="hint">If {{ email }} has access to Aidi OS, a code is on its way. It expires in 10 minutes.</p>
+      <p class="hint">If {{ email }} has access to {{ brand.name }}, a code is on its way. It expires in 10 minutes.</p>
       <label for="code" class="label">6-digit code</label>
       <input id="code" v-model="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
       <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Checking…' : 'Sign in' }}</button>

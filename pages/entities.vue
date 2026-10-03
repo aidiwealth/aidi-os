@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Entities — Aidi OS' })
+useHead({ title: 'Entities' })
 interface Ent { id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string; parent_id: string | null; parent_name: string | null; deals: number; companies: number; documents: number }
 const { data, refresh } = await useFetch<Ent[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')

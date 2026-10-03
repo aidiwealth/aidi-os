@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Analytics — Aidi OS' })
+useHead({ title: 'Analytics' })
 const entity = ref('')
 const range = ref<'90d' | '12m' | 'all'>('12m')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')

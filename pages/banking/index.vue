@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Bank & cash — Aidi OS' })
+useHead({ title: 'Bank & cash' })
 interface Acct { id: string; entity_id: string; entity: string; bank_name: string; account_name: string; last4: string | null; currency: string; kind: string; active: boolean; balance: string | null; as_of: string | null; statements: number; continuous: boolean | null }
 const { data, error, refresh } = await useFetch<Acct[]>('/api/banking/accounts')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')

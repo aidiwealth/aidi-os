@@ -19,7 +19,7 @@ export async function startLogin(email: string, ip: string): Promise<void> {
   await db().query(
     "INSERT INTO core.login_codes (email, token_hash, otp_hash, expires_at, created_ip) VALUES ($1,$2,$3, now() + make_interval(secs => $4), $5)",
     [email, sha256(token), sha256(otp), TOKEN_TTL_SECONDS, ip === 'unknown' ? null : ip])
-  const link = useRuntimeConfig().public.appBaseUrl + '/api/auth/magic?token=' + encodeURIComponent(token)
+  const link = '{{APP_URL}}' + '/api/auth/magic?token=' + encodeURIComponent(token)
   await sendLoginEmail(email, link, otp)
 }
 

@@ -8,7 +8,7 @@ const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pi
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
 const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding', 'gp'].includes(e.kind)))
-useHead({ title: () => (data.value?.deal.company ?? 'Deal') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.deal.company ?? 'Deal') })
 const STAGES = [
   { v: 'screening', label: 'Screening' }, { v: 'first_call', label: 'First call' }, { v: 'diligence', label: 'Diligence' },
   { v: 'ic', label: 'IC' }, { v: 'invested', label: 'Invested' }, { v: 'passed', label: 'Passed' }

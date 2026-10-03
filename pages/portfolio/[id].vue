@@ -11,7 +11,7 @@ interface Data {
   requests: { period: string; status: string; sent_at: string; opened_at: string | null; submitted_at: string | null; expires_at: string; file_document_id: string | null }[]
 }
 const { data, error, refresh } = await useFetch<Data>('/api/portfolio/' + id)
-useHead({ title: () => (data.value?.company.name ?? 'Company') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.company.name ?? 'Company') })
 const lastMonth = (() => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) })()
 const req = reactive({ period: lastMonth, link: '', msg: '', busy: false })
 async function sendRequest() {

@@ -6,7 +6,7 @@ const { data, error, refresh } = await useFetch<{ entity: { id: string; name: st
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
 const canManageParties = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'family'].includes(r)))
-useHead({ title: () => (data.value?.entity.name ?? 'Entity') + ' — governance — Aidi OS' })
+useHead({ title: () => (data.value?.entity.name ?? 'Entity') + ' — governance' })
 const ROLE: Record<string, string> = { settlor: 'Settlor', trustee: 'Trustee', successor_trustee: 'Successor trustee', protector: 'Protector', beneficiary: 'Beneficiary', director: 'Director', officer: 'Officer', member: 'Member', shareholder: 'Shareholder', signatory: 'Signatory' }
 const SIGN = ['trustee', 'protector', 'director', 'signatory', 'member']
 const RK: Record<string, string> = { resolution: 'Resolution', minutes: 'Minutes', distribution: 'Distribution', consent: 'Written consent' }
@@ -47,7 +47,7 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
 
     <div class="card">
       <div class="row"><h2>Register</h2><button v-if="canManageParties" class="btn sm" type="button" @click="editParty()">Add person</button></div>
-      <p class="muted small">{{ data.signers.length }} current signator{{ data.signers.length === 1 ? 'y' : 'ies' }}<template v-if="data.signers.length"> ({{ data.signers.filter((s) => s.user_id).length }} with an Aidi OS account)</template>. Signatories approve by signing in with the email recorded here.</p>
+      <p class="muted small">{{ data.signers.length }} current signator{{ data.signers.length === 1 ? 'y' : 'ies' }}<template v-if="data.signers.length"> ({{ data.signers.filter((s) => s.user_id).length }} with an account)</template>. Signatories approve by signing in with the email recorded here.</p>
       <form v-if="partyOpen" class="frm" @submit.prevent="saveParty">
         <label class="label">Name<input v-model="pf.name" required maxlength="200"></label>
         <label class="label">Role<select v-model="pf.role"><option v-for="(l, k) in ROLE" :key="k" :value="k">{{ l }}</option></select></label>
@@ -61,7 +61,7 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
       <table v-if="data.parties.length" class="table">
         <thead><tr><th>Name</th><th>Role</th><th>Interest</th><th>Since</th><th /></tr></thead>
         <tbody><tr v-for="p in data.parties" :key="p.id" :class="{ off: !p.active }">
-          <td><b>{{ p.name }}</b><span class="sub">{{ p.email ?? 'no email' }}<template v-if="SIGN.includes(p.role) && p.email && !p.has_account"> · no Aidi OS account yet</template></span></td>
+          <td><b>{{ p.name }}</b><span class="sub">{{ p.email ?? 'no email' }}<template v-if="SIGN.includes(p.role) && p.email && !p.has_account"> · no account yet</template></span></td>
           <td>{{ ROLE[p.role] }}<span v-if="SIGN.includes(p.role)" class="tag">signs</span></td>
           <td>{{ p.share_pct ? Number(p.share_pct) + '%' : '—' }}</td>
           <td class="muted">{{ day(p.start_date) || '—' }}<span v-if="!p.active" class="sub">until {{ day(p.end_date) }}</span></td>

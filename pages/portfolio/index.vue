@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PortfolioRow } from '~/server/api/portfolio/index.get'
-useHead({ title: 'Portfolio — Aidi OS' })
+useHead({ title: 'Portfolio' })
 const { data, error, refresh } = await useFetch<PortfolioRow[]>('/api/portfolio')
 const { data: candidates, refresh: refreshC } = await useFetch<{ id: string; company: string; founder_name: string | null; email: string | null }[]>('/api/portfolio/candidates')
 const adding = ref(false)
@@ -24,14 +24,14 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 
 <template>
   <section>
-    <p class="label">Aidi Ventures</p>
+    <p class="label">Venture Capital</p>
     <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by holding entity"><option value="">All holders</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select><button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add company' }}</button></div></div>
     <form v-if="adding" class="card add" @submit.prevent="add">
       <label v-if="candidates?.length" class="label">From an Invested deal<select v-model="form.deal_id"><option value="">— Add by hand —</option><option v-for="c in candidates" :key="c.id" :value="c.id">{{ c.company }}</option></select></label>
       <label class="label">Company<input v-model="form.name" required maxlength="200"></label>
       <label class="label">Founder name<input v-model="form.founder_name" required maxlength="200"></label>
       <label class="label">Founder email<input v-model="form.founder_email" type="email" required maxlength="254"></label>
-      <label class="label">Held by<select v-model="form.holding_entity_id"><option value="">{{ form.deal_id ? 'The deal\'s vehicle' : 'Aidi Ventures Fund I' }}</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+      <label class="label">Held by<select v-model="form.holding_entity_id"><option value="">{{ form.deal_id ? 'The deal\'s vehicle' : 'Default vehicle' }}</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <label class="label">Relationship<select v-model="form.relationship"><option value="investment">Investment (fund holds equity)</option><option value="subsidiary">Subsidiary (group owns)</option><option value="affiliate">Affiliate (strategic stake)</option><option value="managed">Managed</option></select></label>
       <button class="btn" type="submit">Add</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>

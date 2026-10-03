@@ -13,7 +13,7 @@ export async function issueClientLink(jobId: string): Promise<string> {
   const token = randomToken()
   await db().query("UPDATE services.jobs SET client_token_hash = $2, client_token_expires = now() + make_interval(days => $3) WHERE id = $1",
     [jobId, sha256(token), CLIENT_LINK_DAYS])
-  return useRuntimeConfig().public.appBaseUrl + '/job/' + token
+  return (await appUrl()) + '/job/' + token
 }
 
 export async function jobFromToken(token: string | undefined): Promise<{ id: string; title: string; service: string; status: string; due_date: string | null; client: string; contact_name: string; email: string; owner_email: string | null }> {

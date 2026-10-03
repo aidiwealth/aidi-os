@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DealRow } from '~/server/api/deals/index.get'
-useHead({ title: 'Deals — Aidi OS' })
+useHead({ title: 'Deals' })
 const { data, error } = await useFetch<DealRow[]>('/api/deals')
 const filter = ref<'open' | 'all'>('open')
 const rows = computed(() => (data.value ?? []).filter((r) => filter.value === 'all' || ['new', 'screened', 'on_hold', 'advancing'].includes(r.status)))
@@ -12,7 +12,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 
 <template>
   <section>
-    <p class="label">Aidi Ventures</p>
+    <p class="label">Venture Capital</p>
     <div class="head">
       <h1>Deals</h1>
       <div class="tabs" role="tablist">
@@ -21,7 +21,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       </div>
     </div>
     <p v-if="error" class="error" role="alert">Could not load deals: {{ error.message }}</p>
-    <p v-else-if="!rows.length" class="empty">No pitches yet. They arrive here from the form on aidiventures.com.</p>
+    <p v-else-if="!rows.length" class="empty">No pitches yet. They arrive here from your public pitch form (see Settings).</p>
     <table v-else class="table">
       <thead><tr><th>Received</th><th>Company</th><th>Stage</th><th>AI screening</th><th>Status</th></tr></thead>
       <tbody>

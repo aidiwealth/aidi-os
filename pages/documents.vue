@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DocumentRow } from '~/server/api/documents/index.get'
-useHead({ title: 'Documents — Aidi OS' })
+useHead({ title: 'Documents' })
 const { data: docs, error, refresh } = await useFetch<DocumentRow[]>('/api/documents')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')

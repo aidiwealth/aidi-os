@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TeamUser } from '~/server/api/admin/users/index.get'
-useHead({ title: 'Team — Aidi OS' })
+useHead({ title: 'Team' })
 const { data: users, error, refresh } = await useFetch<TeamUser[]>('/api/admin/users')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: me } = await useFetch<{ email: string }>('/api/auth/me')
@@ -37,7 +37,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
   <section>
     <p class="label">Administration</p>
     <h1>Team</h1>
-    <p class="lead">Who can sign in to Aidi OS, and what they can see. Changes take effect immediately and are logged.</p>
+    <p class="lead">Who can sign in to this workspace, and what they can see. Changes take effect immediately and are logged.</p>
 
     <form class="card invite" @submit.prevent="invite">
       <h2>Invite someone</h2>

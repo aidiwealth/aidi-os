@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ObligationRow } from '~/server/api/compliance/index.get'
-useHead({ title: 'Compliance — Aidi OS' })
+useHead({ title: 'Compliance' })
 const { data, error, refresh } = await useFetch<ObligationRow[]>('/api/compliance')
 const { data: entities } = await useFetch<{ id: string; name: string; jurisdiction: string | null }[]>('/api/entities')
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
@@ -82,7 +82,7 @@ const when = (n: number) => (n < 0 ? Math.abs(n) + ' day' + (n === -1 ? '' : 's'
     </form>
 
     <p v-if="error" class="error" role="alert">Could not load the calendar.</p>
-    <p v-else-if="!groups.length" class="muted">Nothing here yet. Add the first obligation, for example Delaware franchise tax for Aidi Ventures LLC.</p>
+    <p v-else-if="!groups.length" class="muted">Nothing here yet. Add the first obligation, for example Delaware franchise tax for your holding company.</p>
     <div v-for="g in groups" :key="g.key" class="grp" :data-g="g.key">
       <h2>{{ g.label }} <span>{{ g.items.length }}</span></h2>
       <table class="table">

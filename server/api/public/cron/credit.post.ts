@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
     const today = new Date().toISOString().slice(0, 10)
     const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
     const items: { key: string; line: string; link: string }[] = []
-    const base = useRuntimeConfig().public.appBaseUrl
+    const base = await appUrl()
     const loans = await db().query<{ id: string; borrower: string; principal: string; currency: string }>(
       "SELECT l.id, b.name AS borrower, l.principal::text, l.currency FROM credit.loans l JOIN credit.borrowers b ON b.id = l.borrower_id WHERE l.status = 'active'")
     const fmt = (v: number, c: string) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: c }).format(v)

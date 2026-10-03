@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { JobRow } from '~/server/api/services/index.get'
-useHead({ title: 'Jobs — Aidi OS' })
+useHead({ title: 'Jobs' })
 const { data, error } = await useFetch<JobRow[]>('/api/services')
 const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')

@@ -2,7 +2,7 @@
 const id = useRoute().params.id as string
 interface Res { id: string; entity_id: string; entity: string; kind: string; title: string; body: string; status: string; required_approvals: number; meeting_date: string | null; amount: string | null; currency: string | null; beneficiary: string | null; created_by_name: string | null; created_at: string; circulated_at: string | null; decided_at: string | null }
 const { data, error, refresh } = await useFetch<{ resolution: Res; approvals: { decision: string; note: string | null; decided_at: string; name: string; role: string }[]; signers: { name: string; email: string; user_id: string | null }[]; canSign: boolean; canManage: boolean; document: { id: string; title: string } | null }>('/api/governance/resolutions/' + id)
-useHead({ title: () => (data.value?.resolution.title ?? 'Resolution') + ' — Aidi OS' })
+useHead({ title: () => (data.value?.resolution.title ?? 'Resolution') })
 const RK: Record<string, string> = { resolution: 'Resolution', minutes: 'Minutes', distribution: 'Distribution', consent: 'Written consent' }
 const ST: Record<string, string> = { draft: 'Draft', circulating: 'Awaiting approval', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn' }
 const note = ref('')
@@ -54,7 +54,7 @@ const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.d
             <button v-if="data.resolution.status === 'draft'" class="btn" type="button" :disabled="busy" @click="act('circulate')">Circulate for approval</button>
             <button class="btn secondary" type="button" :disabled="busy" @click="act('withdraw')">Withdraw</button>
           </div>
-          <p class="muted small">Circulating emails each signatory who has an Aidi OS account.</p>
+          <p class="muted small">Circulating emails each signatory who has an account.</p>
         </div>
         <div class="card">
           <h2>Signatories</h2>

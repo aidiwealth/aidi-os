@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Credit — Aidi OS' })
+useHead({ title: 'Credit' })
 interface Loan { id: string; reference: string | null; borrower: string; sector: string | null; country: string | null; lender: string | null; principal: string; currency: string; annual_rate: string; status: string; disbursed_on: string; outstanding: number; arrears: number; dpd: number; bucket: string; next: { due_date: string; amount: number } | null }
 interface Tot { outstanding: number; arrears: number; par30: number; interest12m: number; loans: number }
 interface Exp { name: string; totals: Record<string, number> }
@@ -46,7 +46,7 @@ void refresh
 
     <form v-if="adding === 'loan'" class="card frm" @submit.prevent="addLoan">
       <label class="label">Borrower<select v-model="lf.borrower_id" required><option value="" disabled>Choose</option><option v-for="b in borrowers ?? []" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
-      <label class="label">Lender<select v-model="lf.lender_entity_id"><option value="">Aidi Ventures Fund I</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
+      <label class="label">Lender<select v-model="lf.lender_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Reference<input v-model="lf.reference" maxlength="60" placeholder="optional"></label>
       <label class="label">Principal<input v-model="lf.principal" required inputmode="decimal"></label>
       <label class="label">Currency<select v-model="lf.currency"><option v-for="c in ['USD', 'NGN', 'GHS', 'KES', 'ZAR', 'GBP', 'EUR']" :key="c" :value="c">{{ c }}</option></select></label>

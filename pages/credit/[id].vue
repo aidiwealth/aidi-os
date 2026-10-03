@@ -9,7 +9,7 @@ const { data, error, refresh } = await useFetch<{ loan: Record<string, string>; 
 const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-useHead({ title: () => (data.value?.loan.borrower ?? 'Loan') + ' — Credit — Aidi OS' })
+useHead({ title: () => (data.value?.loan.borrower ?? 'Loan') + ' — Credit' })
 const cur = computed(() => data.value?.loan.currency ?? 'USD')
 const money = (v: number | string) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur.value }).format(Number(v))
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })

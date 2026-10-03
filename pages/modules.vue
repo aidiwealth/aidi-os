@@ -1,6 +1,6 @@
 <script setup lang="ts">
-useHead({ title: 'Modules — Aidi OS' })
-interface Mod { code: string; group: string; groupLabel: string; label: string; switchable: boolean; enabled: boolean; roles?: string[] }
+useHead({ title: 'Modules' })
+interface Mod { code: string; group: string; groupLabel: string; label: string; switchable: boolean; inPlan: boolean; enabled: boolean; roles?: string[] }
 const { data, refresh } = await useFetch<Mod[]>('/api/modules')
 const groups = computed(() => {
   const g: Record<string, { label: string; items: Mod[] }> = {}
@@ -21,13 +21,14 @@ async function toggle(m: Mod) {
   <section>
     <p class="label">Administration</p>
     <h1>Modules</h1>
-    <p class="lead">Switch whole areas of Aidi OS on or off. Switching off hides a module from everyone and blocks its pages, links and forms; no data is deleted. Who can use a module is set by role.</p>
+    <p class="lead">Switch whole areas of this workspace on or off. Switching off hides a module from everyone and blocks its pages, links and forms; no data is deleted. Who can use a module is set by role.</p>
     <p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div v-for="g in groups" :key="g.label" class="card grp">
       <h2>{{ g.label }}</h2>
       <div v-for="m in g.items" :key="m.code" class="row">
         <div><b>{{ m.label }}</b><span class="sub">For: {{ (m.roles ?? []).map((r) => ROLE[r] ?? r).join(', ') }}{{ (m.roles ?? []).includes('admin') ? '' : ' (and admins)' }}</span></div>
-        <button v-if="m.switchable" type="button" class="switch" role="switch" :aria-checked="m.enabled" :aria-label="m.label" @click="toggle(m)"><span /></button>
+        <span v-if="m.switchable && !m.inPlan" class="sub">Not in your plan</span>
+        <button v-else-if="m.switchable" type="button" class="switch" role="switch" :aria-checked="m.enabled" :aria-label="m.label" @click="toggle(m)"><span /></button>
         <span v-else class="sub">Always on</span>
       </div>
     </div>

@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   await db().query(
     "INSERT INTO portfolio.requests (company_id, period, token_hash, expires_at, sent_by) VALUES ($1,$2,$3, now() + make_interval(days => $4), $5)",
     [id.data, period, sha256(token), LINK_DAYS, user.userId])
-  const link = useRuntimeConfig().public.appBaseUrl + '/report/' + token
+  const link = (await appUrl()) + '/report/' + token
   let emailed = false
   if (b.data.send_email) {
     const me = await db().query<{ full_name: string }>('SELECT p.full_name FROM core.users u JOIN core.people p ON p.id = u.person_id WHERE u.id = $1', [user.userId])

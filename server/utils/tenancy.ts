@@ -1,7 +1,7 @@
 // Workspace helpers.
 export const LIVE_ORG_STATUSES = ['trial', 'active', 'past_due']
 
-export interface OrgSettings { default_vehicle_id?: string; notify_emails?: string[]; investor_name?: string; thesis?: string; [k: string]: unknown }
+export interface OrgSettings { brand?: string; default_vehicle_id?: string; notify_emails?: string[]; investor_name?: string; thesis?: string; [k: string]: unknown }
 
 export async function currentOrg(): Promise<{ id: string; name: string; slug: string; kind: string; status: string; plan_code: string; settings: OrgSettings } | null> {
   const r = await db().query('SELECT id, name, slug, kind, status, plan_code, settings FROM core.organizations WHERE id = core.current_org()')

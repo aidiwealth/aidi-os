@@ -18,7 +18,8 @@ export const MODULES: ModuleDef[] = [
   { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },
   { code: 'cs_analytics', group: 'cs', label: 'Analytics', to: '/client-services/analytics', roles: ['team', 'gp'], api: ['/api/cs-analytics'], pages: ['/client-services'], switchable: true },
   { code: 'team', group: 'admin', label: 'Team', to: '/team', roles: ['admin'], api: ['/api/admin/users'], pages: ['/team'], switchable: false },
-  { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false }
+  { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false },
+  { code: 'settings', group: 'admin', label: 'Settings', to: '/settings', roles: ['admin'], api: ['/api/settings'], pages: ['/settings'], switchable: false }
 ]
 export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fo: 'Family Office', cs: 'Client Services', admin: 'Administration' }
 
