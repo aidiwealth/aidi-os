@@ -34,7 +34,7 @@ const RS: Record<string, string> = { paid: 'Paid', partial: 'Part paid', overdue
   <section v-if="data">
     <NuxtLink to="/credit" class="back">← Credit</NuxtLink>
     <p class="label">{{ data.loan.lender ?? '—' }}<template v-if="data.loan.reference"> · {{ data.loan.reference }}</template> · {{ data.loan.status.replace('_', ' ') }}</p>
-    <h1>{{ data.loan.borrower }}</h1>
+    <div class="dh"><h1>{{ data.loan.borrower }}</h1><DeleteButton type="loan" :id="id" :name="'the loan to ' + data.loan.borrower" to="/credit" /></div>
     <p class="terms">{{ money(data.loan.principal) }} at {{ Number(data.loan.annual_rate) }}% · {{ data.loan.tenor_months }} months · {{ RT[data.loan.repayment_type] }}, {{ data.loan.frequency }} · disbursed {{ day(data.loan.disbursed_on) }}<template v-if="data.loan.security"> · security: {{ data.loan.security }}</template></p>
     <p v-if="msg" class="error" role="alert">{{ msg }}</p><p v-if="ok" class="ok" role="status">{{ ok }}</p>
 

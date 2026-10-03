@@ -20,7 +20,7 @@ const groups = computed(() => {
   }
   return out
 })
-const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
+const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/professionals', label: 'Fund services', icon: 'professionals', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
 const PLAN: Record<string, string> = { starter: 'Starter', growth: 'Growth', family_office: 'Family Office', enterprise: 'Enterprise', internal: 'Internal' }
 const collapsed = useState('sb-collapsed', () => false)
 const mobileOpen = ref(false)

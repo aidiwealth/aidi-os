@@ -43,7 +43,7 @@ const KIND: Record<string, string> = { note: 'Internal note', message: 'Message 
   <section v-if="data">
     <NuxtLink to="/services" class="back">← Jobs</NuxtLink>
     <p class="label">{{ SERVICES[data.job.service] }} · {{ data.job.client }}</p>
-    <h1>{{ data.job.title }}</h1>
+    <div class="dh"><h1>{{ data.job.title }}</h1><DeleteButton type="job" :id="id" :name="data.job.title" to="/services" /></div>
     <p v-if="data.job.description" class="lead">{{ data.job.description }}</p>
 
     <div class="stages" role="group" aria-label="Status">

@@ -37,7 +37,7 @@ const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email',
   <section v-if="data">
     <NuxtLink to="/platform/pipeline" class="back">← Pipeline</NuxtLink>
     <p class="label">{{ KIND[data.lead.kind] }}<template v-if="data.lead.country"> · {{ data.lead.country }}</template> · {{ data.lead.source }}</p>
-    <h1>{{ data.lead.company }}</h1>
+    <div class="dh"><h1>{{ data.lead.company }}</h1><DeleteButton type="lead" :id="id" :name="data.lead.company" :url="'/api/platform/leads/' + id" to="/platform/pipeline" /></div>
     <div class="stages" role="group" aria-label="Stage">
       <button v-for="[k, l] in STAGES" :key="k" type="button" :class="{ on: data.lead.stage === k, won: k === 'won', lost: k === 'lost' }" :disabled="busy || data.lead.stage === k" @click="setStage(k)">{{ l }}</button>
     </div>

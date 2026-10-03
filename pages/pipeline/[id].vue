@@ -52,7 +52,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
   <section v-if="data">
     <NuxtLink to="/pipeline" class="back">← Pipeline</NuxtLink>
     <p class="label">{{ data.deal.vehicle_name ?? 'No vehicle' }} · {{ data.deal.round ? ROUND[data.deal.round] : 'Round not set' }} · {{ data.deal.source.replace('_', ' ') }}<template v-if="data.deal.pitch_id"> · <NuxtLink :to="'/deals/' + data.deal.pitch_id">original pitch</NuxtLink></template></p>
-    <h1>{{ data.deal.company }}</h1>
+    <div class="dh"><h1>{{ data.deal.company }}</h1><DeleteButton type="deal" :id="id" :name="data.deal.company" to="/pipeline" /></div>
     <p class="lead">{{ data.deal.one_liner }}</p>
 
     <div class="stages" role="group" aria-label="Stage">

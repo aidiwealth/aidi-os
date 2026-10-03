@@ -17,6 +17,12 @@ export async function putObject(input: { key: string; body: Uint8Array; contentT
   if (!res.ok) throw new Error('R2 upload failed: ' + res.status + ' ' + (await res.text()).slice(0, 300))
 }
 
+export async function deleteObject(key: string): Promise<void> {
+  const { aws, base } = r2()
+  const res = await aws.fetch(base + '/' + keyPath(key), { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw new Error('R2 delete failed: ' + res.status)
+}
+
 export async function signedGetUrl(input: { key: string; filename: string; seconds: number }): Promise<string> {
   const { aws, base } = r2()
   const u = new URL(base + '/' + keyPath(input.key))

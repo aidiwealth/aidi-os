@@ -27,7 +27,7 @@ const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.d
   <section v-if="data">
     <NuxtLink :to="'/governance/' + data.resolution.entity_id" class="back">← {{ data.resolution.entity }}</NuxtLink>
     <p class="label">{{ RK[data.resolution.kind] }} · {{ data.resolution.entity }}</p>
-    <h1>{{ data.resolution.title }}</h1>
+    <div class="dh"><h1>{{ data.resolution.title }}</h1><DeleteButton type="resolution" :id="id" :name="data.resolution.title" to="/governance" /></div>
     <div class="status card" :data-s="data.resolution.status">
       <b>{{ ST[data.resolution.status] }}</b>
       <span>{{ approvals }} of {{ data.resolution.required_approvals }} approvals needed · {{ data.signers.length }} signatories</span>

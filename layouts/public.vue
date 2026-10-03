@@ -4,14 +4,14 @@ interface WS { name: string; firm: string; brand: 'aidi' | 'finvry' }
 const route = useRoute()
 const brand = useBrand()
 const token = String(route.params.token ?? '')
-const kind = route.path.startsWith('/job/') ? 'job' : route.path.startsWith('/report/') ? 'report' : route.path.startsWith('/pay/') ? 'pay' : ''
+const kind = route.path.startsWith('/job/') ? 'job' : route.path.startsWith('/report/') ? 'report' : route.path.startsWith('/pay/') ? 'pay' : route.path.startsWith('/lp/') ? 'lp' : ''
 const { data } = await useFetch<{ workspace?: WS }>('/api/public/' + (kind || 'none') + '/' + token, { key: 'pub-' + kind + '-' + token, immediate: !!kind })
 const ws = computed(() => data.value?.workspace ?? null)
 const aidiLook = computed(() => (ws.value ? ws.value.brand === 'aidi' : brand.key === 'aidi'))
-const title = computed(() => (ws.value ? (kind === 'report' ? ws.value.firm : ws.value.name) : ''))
+const title = computed(() => (ws.value ? (kind === 'report' || kind === 'lp' ? ws.value.firm : ws.value.name) : ''))
 const foot = computed(() => {
   if (!ws.value) return kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : 'Your figures are shared only with the team that requested them.'
-  const t = kind === 'pay' ? 'Payments are processed securely by Stripe or Paystack; card details never reach us.' : kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : 'Your figures are shared only with the ' + ws.value.firm + ' team.'
+  const t = kind === 'lp' ? 'This information is confidential to you as an investor.' : kind === 'pay' ? 'Payments are processed securely by Stripe or Paystack; card details never reach us.' : kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : 'Your figures are shared only with the ' + ws.value.firm + ' team.'
   return title.value + ' · ' + t + (ws.value.brand === 'finvry' ? ' · Powered by Finvry' : '')
 })
 </script>
@@ -19,7 +19,7 @@ const foot = computed(() => {
 <template>
   <div class="pub">
     <header class="pub-top">
-      <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ kind === 'report' ? 'Ventures' : 'Group' }}</span></template>
+      <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ kind === 'report' || kind === 'lp' ? 'Ventures' : 'Group' }}</span></template>
       <span v-else-if="title" class="pub-name">{{ title }}</span>
       <BrandMark v-else />
     </header>

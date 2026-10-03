@@ -40,7 +40,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
   <section v-if="data">
     <NuxtLink to="/compliance" class="back">← Compliance</NuxtLink>
     <p class="label">{{ data.obligation.entity }} · {{ CAT[data.obligation.category] }} · {{ REC[data.obligation.recurrence] }}<template v-if="data.obligation.jurisdiction"> · {{ data.obligation.jurisdiction }}</template></p>
-    <h1>{{ data.obligation.title }}</h1>
+    <div class="dh"><h1>{{ data.obligation.title }}</h1><DeleteButton type="obligation" :id="id" :name="data.obligation.title" to="/compliance" /></div>
     <div class="due card" :data-s="!data.obligation.active ? 'done' : data.obligation.days_left < 0 ? 'late' : data.obligation.days_left <= 7 ? 'soon' : 'ok'">
       <template v-if="data.obligation.active">
         <span class="label">Next due</span><b>{{ day(data.obligation.next_due) }}</b>

@@ -55,7 +55,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
   <section v-if="data">
     <NuxtLink to="/banking" class="back">← Bank &amp; cash</NuxtLink>
     <p class="label">{{ data.account.entity }} · {{ data.account.currency }}<template v-if="data.account.last4"> · ••{{ data.account.last4 }}</template></p>
-    <h1>{{ data.account.bank_name }} · {{ data.account.account_name }}</h1>
+    <div class="dh"><h1>{{ data.account.bank_name }} · {{ data.account.account_name }}</h1><DeleteButton type="bank_account" :id="id" :name="data.account.bank_name + ' · ' + data.account.account_name" to="/banking" /></div>
 
     <div class="top">
       <div class="card bal"><span class="label">Balance</span><b>{{ data.statements[0] ? money(data.statements[0].closing) : '—' }}</b><span class="sub">{{ data.statements[0] ? 'per statement ending ' + day(data.statements[0].period_end) : 'Import a statement to see the balance' }}</span></div>

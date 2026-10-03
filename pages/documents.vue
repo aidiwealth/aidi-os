@@ -2,6 +2,8 @@
 import type { DocumentRow } from '~/server/api/documents/index.get'
 useHead({ title: 'Documents' })
 const { data: docs, error, refresh } = await useFetch<DocumentRow[]>('/api/documents')
+const { data: meD } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const canDelete = computed(() => !!meD.value?.roles.includes('admin'))
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
 const LEVELS = [
@@ -98,7 +100,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       <tbody>
         <tr v-for="d in shown" :key="d.id">
           <td><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></td>
-          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ d.sensitivity }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}</td>
+          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ d.sensitivity }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
         </tr>
       </tbody>
     </table>

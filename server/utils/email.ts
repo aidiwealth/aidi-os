@@ -216,3 +216,40 @@ export async function sendPaymentReceiptEmail(inv: { number: string; customer: s
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Admins can view the paid invoice in {{PRODUCT}} under Settings, Billing. Issued by ${esc(issuer)}.</p>`, 'Payment received for ' + inv.number)
   await sendEmail({ to: inv.bill_to.email, subject: 'Payment received: invoice ' + inv.number, text: 'We have received ' + money + ' for invoice ' + inv.number + '. Thank you.', html })
 }
+
+// Capital call or distribution notice to an LP.
+export async function sendFundNoticeEmail(n: { to: string; lp: string; fund: string; kind: 'call' | 'distribution'; number: number; amount: number; currency: string; due: string; purpose: string | null; admin: string | null; adminUrl: string | null; portal: string }): Promise<void> {
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: n.currency }).format(n.amount)
+  const day = new Date(n.due + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const call = n.kind === 'call'
+  const title = (call ? 'Capital call ' : 'Distribution ') + n.number + ': ' + n.fund
+  const html = shell(
+    `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(n.fund)}</p>` +
+    h1(call ? money + ' due ' + day : money + ' to be paid on ' + day) +
+    para('Dear ' + esc(n.lp) + ', ' + (call ? 'this is capital call ' + n.number + ' for your commitment to ' + esc(n.fund) + '.' : 'we are making distribution ' + n.number + ' from ' + esc(n.fund) + '. Your share is shown above.')) +
+    (n.purpose ? para(esc(n.purpose)) : '') +
+    (n.admin ? `<p style="font-size:13px;color:${BRAND.inkSoft};line-height:1.6;margin:0 0 14px;">${call ? 'Your official notice and payment details come from' : 'The payment is made by'} <strong>${esc(n.admin)}</strong>${n.adminUrl ? ` (<a href="${esc(n.adminUrl)}" style="color:${BRAND.blue};">open ${esc(n.admin)}</a>)` : ''}.</p>` : '') +
+    button('View your investor portal →', n.portal) +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">Sent by {{FIRM}}. Your portal shows your commitment, calls, distributions and fund performance.</p>`, title)
+  await sendEmail({ to: n.to, subject: title, text: title + '\n\nAmount: ' + money + '\nDate: ' + day + (n.purpose ? '\n\n' + n.purpose : '') + (n.admin ? '\n\nOfficial notices, payments and statements: ' + n.admin + (n.adminUrl ? ' (' + n.adminUrl + ')' : '') : '') + '\n\nYour investor portal: ' + n.portal, html })
+}
+
+// Investor portal link for an LP.
+export async function sendLpPortalEmail(to: string, name: string, link: string): Promise<void> {
+  const html = shell(h1('Your investor portal') + para('Dear ' + esc(name) + ', here is your private link to see your commitments, capital calls, distributions and fund performance with {{FIRM}}.') +
+    button('Open your investor portal →', link) + `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">The link is personal to you and expires in 180 days.</p>`, 'Your investor portal')
+  await sendEmail({ to, subject: 'Your investor portal with {{FIRM}}', text: 'Your investor portal: ' + link, html })
+}
+
+// Introduction from a Finvry or Aidi OS user to a listed fund professional, with a copy to the user.
+export async function sendIntroEmails(i: { pro: string; proEmail: string; firm: string | null; who: string; whoEmail: string; org: string; message: string }): Promise<void> {
+  const html = shell(h1('Introduction request') + para('Hello ' + esc(i.pro) + ', ' + esc(i.who) + ' of ' + esc(i.org) + ' found you in the {{PRODUCT}} fund services directory and would like to talk.') +
+    `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;color:${BRAND.ink};white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(i.message)}</div>` +
+    para('Reply to ' + esc(i.who) + ' directly at <a href="mailto:' + esc(i.whoEmail) + '" style="color:' + BRAND.blue + ';">' + esc(i.whoEmail) + '</a>.') +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">{{PRODUCT}} only makes the introduction; any engagement is between you and ${esc(i.org)}.</p>`, 'Introduction request from ' + i.who)
+  await sendEmail({ to: i.proEmail, subject: 'Introduction request from ' + i.who + ' (' + i.org + ')', text: i.who + ' of ' + i.org + ' (' + i.whoEmail + ') would like to talk:\n\n' + i.message, html })
+  const copy = shell(h1('Your introduction was sent') + para('We have sent your note to ' + esc(i.pro) + (i.firm ? ' at ' + esc(i.firm) : '') + ', with your email address so they can reply to you directly.') +
+    `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;color:${BRAND.ink};white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(i.message)}</div>` +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">Professionals in the directory are independent. {{PRODUCT}} does not provide legal, regulatory, tax or fund administration services.</p>`, 'Introduction sent')
+  await sendEmail({ to: i.whoEmail, subject: 'Your introduction to ' + i.pro + ' was sent', text: 'We sent your note to ' + i.pro + '. They will reply to you directly.\n\n' + i.message, html: copy })
+}

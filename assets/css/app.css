@@ -23,6 +23,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--c
 .table tr:last-child td { border-bottom: 0; }
 .table tbody tr { transition: background .1s; } .table tbody tr:hover { background: var(--c-paper-3); }
 .num, td, .kpi b, .u b { font-variant-numeric: tabular-nums; }
+.dh { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover { text-decoration: none; }
 #main section > p.label:first-child { display: none; }

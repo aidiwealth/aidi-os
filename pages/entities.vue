@@ -42,7 +42,7 @@ async function save() {
           <td><b>{{ e.name }}</b><span class="sub">{{ [e.jurisdiction, e.parent_name ? 'owned by ' + e.parent_name : ''].filter(Boolean).join(' · ') }}</span></td>
           <td>{{ KIND[e.kind] ?? e.kind }}</td><td><span class="st" :data-s="e.status">{{ e.status }}</span></td>
           <td>{{ e.deals || '—' }}</td><td>{{ e.companies || '—' }}</td><td>{{ e.documents || '—' }}</td>
-          <td v-if="isAdmin"><button type="button" class="link" @click="edit(e)">Edit</button></td>
+          <td v-if="isAdmin"><button type="button" class="link" @click="edit(e)">Edit</button><DeleteButton type="entity" :id="e.id" :name="e.name" link @deleted="refresh()" /></td>
         </tr>
       </tbody>
     </table>
