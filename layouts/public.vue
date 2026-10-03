@@ -1,8 +1,14 @@
+<script setup lang="ts">
+const route = useRoute()
+const arm = computed(() => (route.meta.brand as string | undefined) ?? 'Ventures')
+const foot = computed(() => (route.meta.foot as string | undefined) ?? 'Aidi Ventures · Part of The Aidi Group · Your figures are shared only with the Aidi Ventures team.')
+</script>
+
 <template>
   <div class="pub">
-    <header class="pub-top"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">Ventures</span></header>
+    <header class="pub-top"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ arm }}</span></header>
     <main class="pub-main"><slot /></main>
-    <footer class="pub-foot">Aidi Ventures · Part of The Aidi Group · Your figures are shared only with the Aidi Ventures team.</footer>
+    <footer class="pub-foot">{{ foot }}</footer>
   </div>
 </template>
 

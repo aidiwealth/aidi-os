@@ -129,3 +129,24 @@ export async function sendReportSubmittedAlert(companyId: string, company: strin
   const html = shell(h1(esc(company) + ' sent their ' + esc(monthLabel) + ' update') + button('See it in Aidi OS →', link), company + ' update received')
   for (const addr of to) await sendEmail({ to: addr, subject: company + ': ' + monthLabel + ' update received', text: company + ' submitted their ' + monthLabel + ' update. ' + link, html })
 }
+
+// To a client: an update on their job, with their personal link.
+export async function sendJobUpdate(to: string, contactName: string, jobTitle: string, headline: string, body: string, link: string): Promise<void> {
+  const first = esc(contactName.split(' ')[0] ?? contactName)
+  const html = shell(
+    `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(jobTitle)}</p>` +
+    h1(esc(headline)) + para('Hi ' + first + ',') + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') +
+    button('Open your request →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">This link is personal to you. You can reply and upload documents there.</p>`,
+    headline)
+  await sendEmail({ to, subject: jobTitle + ': ' + headline, text: 'Hi ' + first + ',\n\n' + headline + (body ? '\n\n' + body : '') + '\n\nOpen your request: ' + link, html })
+}
+
+// To the team: a client replied or uploaded something.
+export async function sendJobClientActivity(ownerEmail: string | null, jobId: string, client: string, jobTitle: string, what: string, body: string): Promise<void> {
+  const to = ownerEmail ? [ownerEmail] : useRuntimeConfig().pitchNotifyTo.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!to.length) return
+  const link = useRuntimeConfig().public.appBaseUrl + '/services/' + jobId
+  const html = shell(h1(esc(client) + ' ' + esc(what)) + para(esc(jobTitle)) + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') + button('Open the job →', link), client + ' ' + what)
+  for (const addr of to) await sendEmail({ to: addr, subject: client + ' ' + what + ' — ' + jobTitle, text: client + ' ' + what + '\n\n' + body + '\n\n' + link, html })
+}

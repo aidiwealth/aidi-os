@@ -2,7 +2,7 @@
 // When a module is off, its sidebar link disappears and its pages and APIs return "not found".
 import type { H3Event } from 'h3'
 
-export interface ModuleDef { code: string; group: 'vc' | 'fo' | 'admin'; label: string; to: string; roles: string[]; api: string[]; pages: string[]; switchable: boolean }
+export interface ModuleDef { code: string; group: 'vc' | 'fo' | 'cs' | 'admin'; label: string; to: string; roles: string[]; api: string[]; pages: string[]; switchable: boolean }
 export const MODULES: ModuleDef[] = [
   { code: 'pitches', group: 'vc', label: 'Pitches', to: '/deals', roles: ['gp', 'team'], api: ['/api/deals', '/api/public/pitch'], pages: ['/deals'], switchable: true },
   { code: 'pipeline', group: 'vc', label: 'Pipeline', to: '/pipeline', roles: ['gp', 'team'], api: ['/api/pipeline'], pages: ['/pipeline'], switchable: true },
@@ -10,10 +10,11 @@ export const MODULES: ModuleDef[] = [
   { code: 'analytics', group: 'vc', label: 'Analytics', to: '/analytics', roles: ['gp', 'team', 'family'], api: ['/api/analytics'], pages: ['/analytics'], switchable: true },
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
   { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents'], pages: ['/documents'], switchable: true },
+  { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },
   { code: 'team', group: 'admin', label: 'Team', to: '/team', roles: ['admin'], api: ['/api/admin/users'], pages: ['/team'], switchable: false },
   { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false }
 ]
-export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fo: 'Family Office', admin: 'Administration' }
+export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fo: 'Family Office', cs: 'Client Services', admin: 'Administration' }
 
 let cache: { at: number; on: Set<string> } | null = null
 export async function enabledModules(): Promise<Set<string>> {
