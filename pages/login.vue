@@ -48,12 +48,12 @@ async function verify() {
 </template>
 
 <style scoped>
-.box { width: 100%; max-width: 380px; background: #fff; padding: 36px; }
+.box { width: 100%; max-width: 400px; background: #fff; padding: 36px; border: 1px solid var(--c-rule); border-radius: 16px; box-shadow: var(--shadow-pop); }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; color: var(--c-navy); }
-.w { display: flex; width: 62px; height: 25px; } .w :deep(svg) { width: 100%; height: 100%; display: block; } .d { width: 1px; height: 18px; background: var(--c-rule-strong); } .a { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
+.w { display: flex; width: 62px; height: 25px; } .w :deep(svg) { width: 100%; height: 100%; display: block; } .d { width: 1px; height: 18px; background: var(--c-rule-strong); } .a { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
 h1 { margin-bottom: 8px; }
 .hint { color: var(--c-muted); margin: 0 0 20px; }
-input { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--c-rule-strong); margin: 6px 0 16px; }
+input { width: 100%; font: inherit; padding: 9px 12px; border: 1px solid var(--c-rule-strong); margin: 6px 0 16px; }
 .btn { width: 100%; justify-content: center; }
 .link { background: none; border: 0; color: var(--c-blue-deep); margin-top: 14px; cursor: pointer; font: inherit; padding: 0; }
 .error { color: var(--c-danger); margin-top: 16px; }

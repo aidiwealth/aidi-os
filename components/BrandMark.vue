@@ -16,7 +16,7 @@ const brand = useBrand()
 .bm.light { color: #fff; }
 .aw { display: flex; width: 58px; height: 23px; } .aw :deep(svg) { width: 100%; height: 100%; display: block; }
 .div { width: 1px; height: 18px; background: currentColor; opacity: .3; }
-.arm { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
-.fv { font-family: var(--font-heading); font-weight: 500; font-size: 1.75rem; letter-spacing: -0.01em; line-height: 1; }
+.arm { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
+.fv { font-family: var(--font-serif); font-weight: 500; font-size: 1.75rem; letter-spacing: -0.01em; line-height: 1; }
 .fv i { font-style: normal; color: #5fa8d3; }
 </style>

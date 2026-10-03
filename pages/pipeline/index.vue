@@ -82,9 +82,9 @@ async function add() {
 .add label { display: flex; flex-direction: column; gap: 6px; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .board { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 12px; overflow-x: auto; }
-.col { background: #fff; border: 1px solid var(--c-rule); padding: 12px; min-height: 240px; display: flex; flex-direction: column; gap: 8px; }
-.col h2 { font-family: var(--font-body); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; margin: 0 0 4px; display: flex; justify-content: space-between; }
-.cardlet { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); background: var(--c-paper); text-decoration: none; color: var(--c-ink-soft); }
+.col { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 12px; min-height: 240px; display: flex; flex-direction: column; gap: 8px; }
+.col h2 { font-family: var(--font-body); font-size: 11px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 4px; display: flex; justify-content: space-between; }
+.cardlet { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); border-radius: var(--radius); background: var(--c-paper); text-decoration: none; color: var(--c-ink-soft); }
 .cardlet:hover { border-color: var(--c-blue); }
 .cardlet b { color: var(--c-navy); font-weight: 500; }
 .one { font-size: 12.5px; color: var(--c-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

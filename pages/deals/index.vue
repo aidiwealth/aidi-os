@@ -41,8 +41,8 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 .head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 4px 0 24px; }
 .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-left: 16px; cursor: pointer; color: var(--c-muted); }
 .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; }
 .one { display: block; color: var(--c-muted); font-size: 13px; margin-top: 2px; }

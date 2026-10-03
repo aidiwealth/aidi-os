@@ -68,14 +68,14 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 10px; } .filters select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.sec { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; font-family: var(--font-body); color: var(--c-muted); font-weight: 500; margin: 8px 0 12px; }
+.sec { font-size: 13px; letter-spacing: 0; font-family: var(--font-body); color: var(--c-muted); font-weight: 500; margin: 8px 0 12px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); line-height: 1.1; }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); line-height: 1.1; }
 .sub { font-size: 12px; color: var(--c-muted); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-h3 { font-family: var(--font-heading); font-weight: 400; font-size: 20px; color: var(--c-navy); margin: 0 0 12px; }
+h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 130px 1fr 32px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
 .bar i { display: block; height: 10px; background: var(--c-blue); min-width: 2px; } .bar b { text-align: right; font-weight: 500; }
 .risk { list-style: none; padding: 0; margin: 0; } .risk li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--c-rule); }

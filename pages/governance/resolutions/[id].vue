@@ -77,11 +77,11 @@ const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.d
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
 h1 { margin-bottom: 16px; } h2 { margin-bottom: 10px; }
 .status { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; border-left: 4px solid var(--c-rule-strong); }
-.status b { font-family: var(--font-heading); font-weight: 500; font-size: 26px; color: var(--c-navy); }
+.status b { font-weight: 500; letter-spacing: -0.02em; font-size: 26px; color: var(--c-navy); }
 .status[data-s="circulating"] { border-left-color: var(--c-blue); } .status[data-s="approved"] { border-left-color: var(--c-ok); } .status[data-s="approved"] b { color: var(--c-ok); }
 .status[data-s="rejected"] { border-left-color: var(--c-danger); } .status[data-s="rejected"] b { color: var(--c-danger); }
 .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; align-items: start; } .col { display: flex; flex-direction: column; gap: 16px; }
-.body { white-space: pre-wrap; font-family: var(--font-heading); font-size: 18px; line-height: 1.6; color: var(--c-ink); }
+.body { white-space: pre-wrap; font-size: 15px; line-height: 1.65; color: var(--c-ink); }
 .dist { font-size: 15px; } .att { margin-top: 18px; font-size: 14px; }
 textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); width: 100%; resize: vertical; margin-bottom: 10px; }
 .row { display: flex; gap: 10px; }

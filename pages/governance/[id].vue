@@ -102,14 +102,14 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
 
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
-.label { text-transform: uppercase; } h1 { margin-bottom: 16px; } h2 { margin: 0; }
+.label { } h1 { margin-bottom: 16px; } h2 { margin: 0; }
 .card { margin-bottom: 16px; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
-.frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin: 12px 0 18px; padding: 16px; background: var(--c-paper); border: 1px solid var(--c-rule); }
+.frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin: 12px 0 18px; padding: 16px; background: var(--c-paper); border: 1px solid var(--c-rule); border-radius: var(--radius); }
 .frm label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; } .wide2 { grid-column: span 2; }
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; margin-top: 8px; }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 11px 12px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } tr.off td { opacity: .5; }
 b { color: var(--c-navy); font-weight: 500; } .co { color: var(--c-navy); font-weight: 500; text-decoration: none; }
 .sub { display: block; font-size: 12px; color: var(--c-muted); }

@@ -96,13 +96,13 @@ void refresh
 .hint { grid-column: 1 / -1; font-size: 12px; color: var(--c-muted); margin: 0; } .actions { grid-column: 1 / -1; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 28px; color: var(--c-navy); }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 16px; }
-h3 { font-family: var(--font-heading); font-weight: 400; font-size: 20px; color: var(--c-navy); margin: 0 0 10px; } .mt { margin-top: 16px; }
+h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 10px; } .mt { margin-top: 16px; }
 .ex { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .ex b { font-weight: 500; }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .num { text-align: right; } .num b { font-weight: 500; color: var(--c-navy); }
 tr[data-b="1-30"] td:first-child { box-shadow: inset 3px 0 0 var(--c-warn); } tr[data-b="31-90"] td:first-child, tr[data-b="90+"] td:first-child { box-shadow: inset 3px 0 0 var(--c-danger); }
 tr[data-b="closed"] td { opacity: .55; }

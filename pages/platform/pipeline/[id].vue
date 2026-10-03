@@ -92,7 +92,7 @@ const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email',
 
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
-.label { text-transform: uppercase; } h1 { margin-bottom: 12px; } h2 { margin-bottom: 10px; }
+.label { } h1 { margin-bottom: 12px; } h2 { margin-bottom: 10px; }
 .stages { display: flex; flex-wrap: wrap; border: 1px solid var(--c-rule-strong); width: fit-content; background: #fff; margin-bottom: 12px; }
 .stages button { font: inherit; font-size: 13px; padding: 8px 14px; background: #fff; border: 0; border-right: 1px solid var(--c-rule); cursor: pointer; color: var(--c-ink-soft); }
 .stages button:last-child { border-right: 0; } .stages button.on { background: var(--c-navy); color: #fff; } .stages button.on.won { background: var(--c-ok); } .stages button.on.lost { background: var(--c-muted); }

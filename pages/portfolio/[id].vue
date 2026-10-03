@@ -137,12 +137,12 @@ input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: 
 .linkbox { font-size: 12px; }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .scroll { overflow-x: auto; }
-.table { width: 100%; border-collapse: collapse; }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .1em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; }
 td { padding: 6px 12px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; }
 .cell { background: none; border: 1px solid transparent; font: inherit; padding: 4px 6px; cursor: pointer; color: var(--c-ink-soft); }
 .cell:hover { border-color: var(--c-rule-strong); } .cell.over { color: var(--c-blue); font-weight: 600; }
-.edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; padding: 12px; background: var(--c-paper); border: 1px solid var(--c-rule); }
+.edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; padding: 12px; background: var(--c-paper); border: 1px solid var(--c-rule); border-radius: var(--radius); }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
 .upd { padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .upd p { margin: 4px 0; }

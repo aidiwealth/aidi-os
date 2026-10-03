@@ -55,8 +55,8 @@ async function save() {
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin-bottom: 20px; } .frm label { display: flex; flex-direction: column; gap: 6px; }
 .actions { display: flex; gap: 10px; align-items: end; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 b { color: var(--c-navy); font-weight: 500; } .sub { display: block; font-size: 12px; color: var(--c-muted); }
 .st { font-size: 12px; text-transform: capitalize; } .st[data-s="forming"] { color: var(--c-warn); } .st[data-s="active"] { color: var(--c-ok); } .st[data-s="closed"], .st[data-s="dormant"] { color: var(--c-muted); }

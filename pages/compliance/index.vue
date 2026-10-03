@@ -108,9 +108,9 @@ const when = (n: number) => (n < 0 ? Math.abs(n) + ' day' + (n === -1 ? '' : 's'
 .add label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; }
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; }
-.grp { margin-bottom: 20px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }
+.grp { margin-bottom: 20px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }
 .grp[data-g="overdue"] h2 { color: var(--c-danger); }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
 .grp[data-g="overdue"] .table { border-left: 3px solid var(--c-danger); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 .date { width: 170px; } .date b { display: block; font-weight: 500; color: var(--c-navy); } .date span { font-size: 12px; color: var(--c-muted); }

@@ -118,7 +118,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
 h1 { margin-bottom: 18px; } h2 { margin-bottom: 12px; }
 .top { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px; }
-.bal { display: flex; flex-direction: column; gap: 6px; justify-content: center; } .bal b { font-family: var(--font-heading); font-weight: 500; font-size: 34px; color: var(--c-navy); }
+.bal { display: flex; flex-direction: column; gap: 6px; justify-content: center; } .bal b { font-weight: 500; letter-spacing: -0.02em; font-size: 34px; color: var(--c-navy); }
 .card { margin-bottom: 16px; }
 .drop { border: 1px dashed var(--c-rule-strong); background: var(--c-paper); padding: 20px; text-align: center; cursor: pointer; } .drop p { margin: 0; font-size: 13px; color: var(--c-muted); } .drop b { color: var(--c-navy); }
 .drop:hover, .drop.over { background: #eef4f9; border-color: var(--c-blue); } .drop:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
@@ -128,8 +128,8 @@ input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: 
 .tie { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-left: 4px solid var(--c-danger); background: #fdf1f0; font-size: 14px; }
 .tie[data-ok="true"] { border-left-color: var(--c-ok); background: #f2faf5; } .tie span:last-child { font-weight: 500; }
 .scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
-.table { width: 100%; border-collapse: collapse; } .table.sm td, .table.sm th { padding: 7px 10px; font-size: 13px; }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: #fff; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; } .table.sm td, .table.sm th { padding: 7px 10px; font-size: 13px; }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: #fff; }
 td { padding: 10px 12px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .num { text-align: right; white-space: nowrap; } .neg { color: var(--c-danger); }
 .sub { display: block; font-size: 12px; color: var(--c-muted); } .okmark { color: var(--c-ok); font-size: 12px; margin-right: 8px; } .amber { color: var(--c-warn); }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .search { max-width: 280px; }

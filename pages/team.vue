@@ -92,13 +92,13 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 .grid label { display: flex; flex-direction: column; gap: 6px; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); margin-top: 16px; }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); margin-top: 16px; }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 tr.off td { opacity: .55; }
 b { color: var(--c-navy); font-weight: 500; }
 .sub { display: block; color: var(--c-muted); font-size: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--c-paper-2); border: 1px solid var(--c-rule); padding: 3px 4px 3px 10px; margin: 0 6px 6px 0; font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--c-paper-2); border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 3px 4px 3px 10px; margin: 0 6px 6px 0; font-size: 13px; }
 .chip button { background: none; border: 0; cursor: pointer; color: var(--c-muted); font-size: 15px; line-height: 1; padding: 0 4px; }
 .add { display: inline-flex; gap: 6px; align-items: center; }
 .add select { padding: 4px 6px; font-size: 13px; }

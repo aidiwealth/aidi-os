@@ -108,16 +108,16 @@ const RS: Record<string, string> = { paid: 'Paid', partial: 'Part paid', overdue
 
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
-.label { text-transform: uppercase; } h1 { margin-bottom: 4px; } h2 { margin-bottom: 12px; } .terms { color: var(--c-muted); margin: 0 0 16px; }
+.label { } h1 { margin-bottom: 4px; } h2 { margin-bottom: 12px; } .terms { color: var(--c-muted); margin: 0 0 16px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 26px; color: var(--c-navy); }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 26px; color: var(--c-navy); }
 .kpi[data-b="1-30"] b { color: var(--c-warn); } .kpi[data-b="31-90"] b, .kpi[data-b="90+"] b { color: var(--c-danger); }
 .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; } .col { display: flex; flex-direction: column; gap: 16px; }
 .card { margin-bottom: 0; } section > .card { margin-bottom: 16px; }
 .scroll { max-height: 460px; overflow: auto; }
-.table { width: 100%; border-collapse: collapse; } .table.sm td, .table.sm th { padding: 7px 10px; font-size: 13px; }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: #fff; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; } .table.sm td, .table.sm th { padding: 7px 10px; font-size: 13px; }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: #fff; }
 td { border-bottom: 1px solid var(--c-rule); } .num { text-align: right; white-space: nowrap; }
 tr[data-s="paid"] td { color: var(--c-muted); } tr[data-s="overdue"] td, tr[data-s="partial"] .rs { color: var(--c-danger); } .rs { font-size: 12px; font-weight: 500; }
 .frm { display: flex; flex-direction: column; gap: 10px; } .frm label { display: flex; flex-direction: column; gap: 6px; } .frm .btn { align-self: flex-start; }

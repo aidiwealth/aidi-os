@@ -99,10 +99,10 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
 h1 { margin-bottom: 16px; } h2 { margin-bottom: 12px; }
 .due { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; border-left: 4px solid var(--c-blue); }
-.due b { font-family: var(--font-heading); font-weight: 500; font-size: 28px; color: var(--c-navy); } .due span:last-child { font-size: 13px; color: var(--c-muted); }
+.due b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); } .due span:last-child { font-size: 13px; color: var(--c-muted); }
 .due[data-s="late"] { border-left-color: var(--c-danger); } .due[data-s="late"] b { color: var(--c-danger); }
 .due[data-s="soon"] { border-left-color: var(--c-warn); } .due[data-s="done"] { border-left-color: var(--c-ok); }
-.notes { white-space: pre-wrap; color: var(--c-ink-soft); background: #fff; border: 1px solid var(--c-rule); padding: 12px 16px; }
+.notes { white-space: pre-wrap; color: var(--c-ink-soft); background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 12px 16px; }
 .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; } .col { display: flex; flex-direction: column; gap: 20px; }
 .frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 6px; } .frm .btn { align-self: flex-start; }
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

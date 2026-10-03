@@ -67,7 +67,7 @@ input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: 
 .plan { display: flex; flex-direction: column; } .plan.off { opacity: .6; }
 .ph { display: flex; gap: 8px; align-items: center; } .ph h2 { margin: 0; }
 .tag { font-size: 10.5px; color: var(--c-muted); border: 1px solid var(--c-rule-strong); padding: 1px 6px; }
-.price { margin: 10px 0 4px; } .price b { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); } .price span { color: var(--c-muted); font-size: 13px; margin-left: 4px; }
+.price { margin: 10px 0 4px; } .price b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); } .price span { color: var(--c-muted); font-size: 13px; margin-left: 4px; }
 .lims { list-style: none; padding: 0; margin: 10px 0; font-size: 13px; } .lims li { padding: 3px 0; }
 .mods-l { font-size: 12px; color: var(--c-muted); line-height: 1.6; flex: 1; }
 .pf { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--c-rule); padding-top: 10px; font-size: 13px; }

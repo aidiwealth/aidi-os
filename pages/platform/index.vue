@@ -43,11 +43,11 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; } .tools { display: flex; gap: 10px; } .tools .btn { text-decoration: none; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); } .sub { font-size: 12px; color: var(--c-muted); }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); } .sub { font-size: 12px; color: var(--c-muted); }
 .pos { color: var(--c-ok) !important; } .neg { color: var(--c-danger) !important; }
 .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 16px; } .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-h3 { font-family: var(--font-heading); font-weight: 400; font-size: 20px; color: var(--c-navy); margin: 0 0 12px; }
+h3 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 110px 1fr 28px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
 .bar i { display: block; height: 10px; background: var(--c-blue); min-width: 2px; } .bar b { text-align: right; font-weight: 500; }
 .warn { margin: 14px 0 0; font-size: 13px; } .warn a { color: var(--c-danger); }

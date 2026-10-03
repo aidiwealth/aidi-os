@@ -33,8 +33,8 @@ const foot = computed(() => {
 .pub-top { display: flex; align-items: center; gap: 12px; padding: 22px 32px; border-bottom: 1px solid var(--c-rule); color: var(--c-navy); }
 .pub-mark { display: flex; width: 58px; height: 23px; } .pub-mark :deep(svg) { width: 100%; height: 100%; display: block; }
 .pub-div { width: 1px; height: 18px; background: var(--c-rule-strong); }
-.pub-arm { font-family: var(--font-heading); font-style: italic; font-size: 1.2rem; }
-.pub-name { font-family: var(--font-heading); font-weight: 500; font-size: 1.5rem; letter-spacing: -0.01em; }
+.pub-arm { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
+.pub-name { font-family: var(--font-serif); font-weight: 500; font-size: 1.5rem; letter-spacing: -0.01em; }
 .pub-main { flex: 1; padding: 48px 24px; }
 .pub-foot { padding: 20px 32px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
 </style>

@@ -78,7 +78,7 @@ const WHAT: Record<string, string> = { status: 'Status update', message: 'Messag
 .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 h1 { margin: 0 0 4px; } h2 { margin-bottom: 12px; }
 .center { text-align: center; } .center p { color: var(--c-muted); }
-.status { display: flex; flex-direction: column; gap: 4px; } .status b { font-family: var(--font-heading); font-weight: 500; font-size: 28px; color: var(--c-navy); }
+.status { display: flex; flex-direction: column; gap: 4px; } .status b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
 .status[data-s="waiting_client"] b { color: var(--c-warn); } .status[data-s="completed"] b { color: var(--c-ok); }
 .due { font-size: 13px; color: var(--c-muted); }
 .steps { list-style: none; display: flex; gap: 0; padding: 0; margin: 14px 0 0; }

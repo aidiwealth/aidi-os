@@ -30,15 +30,15 @@ const doPrint = () => window.print()
 
 <style scoped>
 .page { background: #f5f5f3; min-height: 100vh; padding: 32px 16px; font-family: var(--font-body); color: var(--c-ink); }
-.inv { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); padding: 48px; }
+.inv { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 48px; }
 .bar { display: flex; justify-content: flex-end; gap: 10px; margin: -24px -24px 16px 0; } .bar a.btn { text-decoration: none; }
 header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid var(--c-navy); padding-bottom: 20px; margin-bottom: 24px; }
 h1 { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); margin: 0 0 6px; } h2 { font-family: var(--font-heading); font-weight: 500; font-size: 24px; margin: 4px 0; color: var(--c-navy); }
 .meta { text-align: right; } .meta p { margin: 2px 0; font-size: 14px; }
-.tag { display: inline-block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-blue-deep); } .tag[data-s="paid"] { color: var(--c-ok); } .tag[data-s="overdue"] { color: var(--c-danger); } .tag[data-s="void"] { color: var(--c-muted); }
-.lbl { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); margin: 0 0 6px; }
+.tag { display: inline-block; font-size: 11px; letter-spacing: 0; color: var(--c-blue-deep); } .tag[data-s="paid"] { color: var(--c-ok); } .tag[data-s="overdue"] { color: var(--c-danger); } .tag[data-s="void"] { color: var(--c-muted); }
+.lbl { font-size: 11px; letter-spacing: 0; color: var(--c-muted); margin: 0 0 6px; }
 .bill p, .pay p { margin: 2px 0; font-size: 14px; } .bill { margin-bottom: 24px; }
-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; } th { text-align: left; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 10px 0; border-bottom: 1px solid var(--c-rule); }
+table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; margin-bottom: 24px; } th { text-align: left; font-size: 11px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 10px 0; border-bottom: 1px solid var(--c-rule); }
 td { padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .n { text-align: right; } tfoot td { font-weight: 600; font-size: 16px; border-bottom: 0; color: var(--c-navy); }
 .paid { color: var(--c-ok); font-weight: 500; } .pre { white-space: pre-wrap; } .muted { color: var(--c-muted); font-size: 13px; } .err { text-align: center; color: var(--c-muted); }
 @media print { .page { background: #fff; padding: 0; } .inv { border: 0; padding: 0; } .noprint { display: none; } }

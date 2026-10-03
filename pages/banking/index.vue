@@ -79,10 +79,10 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; grid-column: 1 / -1; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 28px; color: var(--c-navy); }
-.grp { margin-bottom: 18px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
+.grp { margin-bottom: 18px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .num { text-align: right; } .num b { font-weight: 500; color: var(--c-navy); }
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; } .sub { display: block; font-size: 12px; color: var(--c-muted); }
 .amber { color: var(--c-warn) !important; } .muted { color: var(--c-muted); } .error { color: var(--c-danger); }

@@ -103,18 +103,18 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
 .lead { color: var(--c-muted); margin: 8px 0 24px; max-width: 70ch; }
 .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-h2 { margin-bottom: 12px; } h3 { font-family: var(--font-body); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--c-muted); margin: 18px 0 6px; font-weight: 500; }
+h2 { margin-bottom: 12px; } h3 { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--c-muted); margin: 18px 0 6px; font-weight: 500; }
 .facts { display: grid; grid-template-columns: 90px 1fr; gap: 6px 12px; margin: 0; }
 .facts dt { color: var(--c-muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
 .pre { white-space: pre-wrap; margin: 0; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
 .advice { color: var(--c-muted); font-size: 12px; margin: 0 0 12px; }
-.big { font-family: var(--font-heading); font-size: 32px; color: var(--c-navy); margin: 0 0 10px; } .big span { font-size: 18px; color: var(--c-muted); }
+.big { font-size: 30px; font-weight: 500; letter-spacing: -0.02em; color: var(--c-navy); margin: 0 0 10px; } .big span { font-size: 18px; color: var(--c-muted); }
 .big[data-rec="prioritise"] { color: var(--c-ok); }
 .bars { list-style: none; padding: 0; margin: 0 0 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; } .bars b { font-weight: 600; }
 .summary { padding-left: 18px; } .summary li { margin-bottom: 4px; }
-.flags span { display: inline-block; font-size: 11px; background: var(--c-paper-2); border: 1px solid var(--c-rule); padding: 2px 8px; margin: 0 6px 6px 0; }
+.flags span { display: inline-block; font-size: 11px; background: var(--c-paper-2); border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 2px 8px; margin: 0 6px 6px 0; }
 ul { padding-left: 18px; margin: 0; }
 .meta { color: var(--c-muted); font-size: 12px; margin-top: 16px; }
 .choices { display: flex; gap: 18px; margin-bottom: 12px; }

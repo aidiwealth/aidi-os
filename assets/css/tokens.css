@@ -1,12 +1,17 @@
-/* The Aidi Group design tokens — same values as theaidigroup.com. No gold, no cream. */
+/* Aidi OS / Finvry design tokens: Aidi blues on a soft neutral shell, white panels, hairline rules, rounded cards. */
 :root {
-  --c-navy: #0c1a2e; --c-navy-2: #1a4b72; --c-blue-deep: #1c547d; --c-blue: #2675b0; --c-cyan: #2da7c3;
-  --c-green: #34a873; --c-white: #ffffff; --c-paper: #fafafa; --c-paper-2: #f5f5f3;
-  --c-ink: #111111; --c-ink-soft: #1f1f1f; --c-muted: #6b6b6b; --c-rule: rgba(17,17,17,.08); --c-rule-strong: rgba(17,17,17,.2);
+  --c-navy: #0c1a2e; --c-navy-2: #1a4b72; --c-blue-deep: #1c547d; --c-blue: #2675b0; --c-cyan: #2da7c3; --c-sky: #5fa8d3;
+  --c-green: #34a873; --c-white: #ffffff; --c-paper: #ffffff; --c-paper-2: #f4f4f1; --c-paper-3: #fafaf8;
+  --c-ink: #0f1115; --c-ink-soft: #3d4148; --c-muted: #6e737b; --c-rule: rgba(15,17,21,.08); --c-rule-strong: rgba(15,17,21,.16);
+  --c-signal: #1c547d; --c-signal-soft: rgba(28,84,125,.08);
   --c-danger: #b42318; --c-warn: #b54708; --c-ok: #1f7a4d;
-  --font-heading: "Cormorant Garamond", Georgia, serif;
+  --font-heading: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --type-headline: clamp(26px, 3.2vw, 42px); --type-title: clamp(18px, 1.8vw, 22px); --type-body: 14px; --type-label: 10px;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --type-headline: 26px; --type-title: 16px; --type-body: 14px; --type-label: 12.5px;
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
-  --r: 0;
+  --radius: 12px; --radius-sm: 8px; --radius-xs: 6px; --r: 12px;
+  --shadow-pop: 0 12px 32px rgba(15,17,21,.12), 0 2px 6px rgba(15,17,21,.06);
+  --sidebar-w: 248px; --topbar-h: 56px;
 }
+*, *::before, *::after { box-sizing: border-box; }

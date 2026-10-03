@@ -29,9 +29,9 @@ const mon = (p: string) => new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB'
 </template>
 
 <style scoped>
-.mc { margin: 0; background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; }
+.mc { margin: 0; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 14px 16px; }
 figcaption { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-figcaption b { font-family: var(--font-heading); font-size: 22px; font-weight: 500; color: var(--c-navy); }
+figcaption b { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--c-navy); }
 .none { font-size: 12px; color: var(--c-muted); }
 svg { width: 100%; height: auto; display: block; }
 .ax { display: flex; justify-content: space-between; font-size: 11px; color: var(--c-muted); margin-top: 2px; }

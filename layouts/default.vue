@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// App shell. Workspace mode: the modules this person can use in the current workspace, with a workspace switcher.
-// Aidi staff on the Aidi OS address also get Finvry mode: the platform console for Finvry customers.
+// App shell (Telroi style): a light, collapsible sidebar on the soft shell background, and a white panel with a curved
+// corner holding the topbar (breadcrumb, workspace switcher) and the page. Aidi staff on the Aidi OS address can switch
+// between Aidi (their workspace) and Finvry (the platform console).
 interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean }
 interface Org { id: string; name: string; plan_code: string; kind: string }
 interface Me { email: string; roles: string[]; platform: boolean; org: Org | null; orgs: Org[] }
@@ -19,105 +20,141 @@ const groups = computed(() => {
   }
   return out
 })
-const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', exact: false }, { to: '/platform/customers', label: 'Customers', exact: false }, { to: '/platform/billing', label: 'Billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', exact: false }, { to: '/platform/settings', label: 'Settings', exact: false }]
+const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
 const PLAN: Record<string, string> = { starter: 'Starter', growth: 'Growth', family_office: 'Family Office', enterprise: 'Enterprise', internal: 'Internal' }
-const open = ref(false)
+const collapsed = useState('sb-collapsed', () => false)
+const mobileOpen = ref(false)
+const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
 const isOn = (to: string, exact = false) => (exact ? route.path === to : route.path === to || route.path.startsWith(to + '/'))
+const crumbs = computed(() => {
+  if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
+  if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', 'Overview']
+  for (const g of groups.value) { const m = g.items.find((x) => isOn(x.to)); if (m) return [g.label, m.label] }
+  return [me.value?.org?.name ?? 'Workspace']
+})
 async function switchOrg(id: string) {
-  open.value = false
+  wsOpen.value = false
   if (id === me.value?.org?.id) return
   await $fetch('/api/auth/org', { method: 'POST', body: { organization_id: id } })
   window.location.href = '/'
 }
 const setMode = (m: 'workspace' | 'platform') => navigateTo(m === 'platform' ? '/platform' : '/')
 async function signOut() { await $fetch('/api/auth/logout', { method: 'POST' }); await navigateTo('/login') }
-watch(() => route.path, () => { open.value = false })
+function toggleSidebar() { if (import.meta.client && window.innerWidth <= 880) mobileOpen.value = !mobileOpen.value; else collapsed.value = !collapsed.value }
+watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = false })
 </script>
 
 <template>
-  <div class="shell" :class="{ pf: platformMode }">
-    <aside class="side" :aria-label="brand.name">
-      <NuxtLink to="/" class="brand"><BrandMark light /></NuxtLink>
+  <div class="shell" :class="{ collapsed, 'mobile-open': mobileOpen }">
+    <div class="overlay" @click="mobileOpen = false" />
+    <aside class="sidebar" :aria-label="brand.name">
+      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><span v-else class="sb-mono">{{ brand.key === 'finvry' ? 'F' : 'A' }}</span></NuxtLink>
 
-      <div v-if="canPlatform" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
-        <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')"><span class="dot a" />Aidi</button>
-        <button type="button" role="tab" :aria-selected="platformMode" :class="{ on: platformMode }" @click="setMode('platform')"><span class="dot f" />Finvry</button>
+      <div v-if="canPlatform && !collapsed" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
+        <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')">Aidi</button>
+        <button type="button" role="tab" :aria-selected="platformMode" :class="{ on: platformMode }" @click="setMode('platform')">Finvry</button>
         <span class="thumb" :class="{ right: platformMode }" />
       </div>
 
-      <template v-if="!platformMode">
-        <div v-if="me?.org" class="ws">
-          <button type="button" class="ws-btn" :class="{ multi: me.orgs.length > 1 }" :aria-expanded="open" @click="me.orgs.length > 1 && (open = !open)">
-            <span class="av">{{ initials(me.org.name) }}</span>
-            <span class="ws-t"><b>{{ me.org.name }}</b><em>{{ PLAN[me.org.plan_code] ?? me.org.plan_code }}</em></span>
-            <svg v-if="me.orgs.length > 1" class="chev" :class="{ up: open }" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
-          </button>
-          <ul v-if="open" class="ws-menu" role="menu">
-            <li v-for="o in me.orgs" :key="o.id"><button type="button" role="menuitem" :class="{ cur: o.id === me.org.id }" @click="switchOrg(o.id)"><span class="av sm">{{ initials(o.name) }}</span>{{ o.name }}</button></li>
-          </ul>
-        </div>
-        <nav class="side-nav">
-          <NuxtLink to="/" :class="{ on: isOn('/', true) }">Overview</NuxtLink>
+      <nav class="sb-nav">
+        <template v-if="!platformMode">
+          <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" title="Overview"><AppIcon name="home" class="sb-icon" /><span class="sb-label">Overview</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
-            <p class="grp">{{ g.label }}</p>
-            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" :class="{ on: isOn(m.to) }">{{ m.label }}</NuxtLink>
+            <p class="sb-group">{{ g.label }}</p>
+            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to) }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span></NuxtLink>
           </template>
-        </nav>
-      </template>
+        </template>
+        <template v-else>
+          <p class="sb-group">Finvry platform</p>
+          <NuxtLink v-for="n in PLATFORM_NAV" :key="n.to" :to="n.to" class="sb-link" :class="{ on: isOn(n.to, n.exact) }" :title="n.label"><AppIcon :name="n.icon" class="sb-icon" /><span class="sb-label">{{ n.label }}</span></NuxtLink>
+          <p v-if="!collapsed" class="sb-note">Commercial data only. Customer data is never shown here.</p>
+        </template>
+      </nav>
 
-      <template v-else>
-        <div class="pf-head"><b>Finvry platform</b><span>Customers, plans and subscriptions. Customer data is never shown here.</span></div>
-        <nav class="side-nav">
-          <NuxtLink v-for="n in PLATFORM_NAV" :key="n.to" :to="n.to" :class="{ on: isOn(n.to, n.exact) }">{{ n.label }}</NuxtLink>
-        </nav>
-      </template>
-
-      <div v-if="me" class="who">
-        <span class="av sm me">{{ me.email.slice(0, 1).toUpperCase() }}</span>
-        <span class="em">{{ me.email }}</span>
-        <button type="button" title="Sign out" aria-label="Sign out" @click="signOut"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6" fill="none" stroke="currentColor" stroke-width="1.4" /></svg></button>
+      <div class="sb-foot">
+        <div v-if="me" class="sb-user" :title="me.email"><span class="av me">{{ me.email.slice(0, 1).toUpperCase() }}</span><span class="sb-label em">{{ me.email }}</span></div>
+        <button type="button" class="sb-link" title="Sign out" @click="signOut"><AppIcon name="logout" class="sb-icon" /><span class="sb-label">Sign out</span></button>
+        <button type="button" class="sb-collapse" :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="collapsed = !collapsed"><AppIcon :name="collapsed ? 'right' : 'left'" /></button>
       </div>
     </aside>
-    <main id="main" class="main"><slot /></main>
+
+    <div class="panel">
+      <header class="topbar">
+        <button type="button" class="tb-menu" aria-label="Menu" @click="toggleSidebar"><AppIcon name="menu" /></button>
+        <nav class="crumbs" aria-label="Breadcrumb"><template v-for="(c, i) in crumbs" :key="i"><span v-if="i" class="sep">/</span><span :class="{ cur: i === crumbs.length - 1 }">{{ c }}</span></template></nav>
+        <span v-if="platformMode" class="env">Finvry console</span>
+        <div v-if="me?.org && !platformMode" class="ws">
+          <button type="button" class="ws-btn" :class="{ multi: me.orgs.length > 1 }" :aria-expanded="wsOpen" @click="me.orgs.length > 1 && (wsOpen = !wsOpen)">
+            <span class="av">{{ initials(me.org.name) }}</span><span class="ws-t"><b>{{ me.org.name }}</b><em>{{ PLAN[me.org.plan_code] ?? me.org.plan_code }}</em></span>
+            <AppIcon v-if="me.orgs.length > 1" name="chevron" class="chev" :class="{ up: wsOpen }" />
+          </button>
+          <ul v-if="wsOpen" class="ws-menu" role="menu">
+            <li v-for="o in me.orgs" :key="o.id"><button type="button" role="menuitem" :class="{ cur: o.id === me.org.id }" @click="switchOrg(o.id)"><span class="av sm">{{ initials(o.name) }}</span><span>{{ o.name }}<em>{{ PLAN[o.plan_code] ?? o.plan_code }}</em></span></button></li>
+          </ul>
+        </div>
+      </header>
+      <main id="main" class="content"><div class="inner"><slot /></div></main>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
-.side { background: var(--c-navy); color: #fff; padding: 22px 16px 16px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.pf .side { background: #0a1424; }
-.brand { padding: 2px 8px 0; margin-bottom: 22px; text-decoration: none; display: block; }
-.mode { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: rgba(255,255,255,.07); padding: 3px; margin: 0 4px 18px; border: 1px solid rgba(255,255,255,.08); }
-.mode button { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px; background: none; border: 0; color: rgba(255,255,255,.6); font: inherit; font-size: 12.5px; font-weight: 500; padding: 7px 0; cursor: pointer; transition: color .15s; }
-.mode button.on { color: var(--c-navy); }
-.mode .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: #fff; transition: transform .2s ease; }
+.shell { display: flex; min-height: 100vh; background: var(--c-paper-2); }
+.sidebar { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; padding: 18px 12px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; transition: width .18s ease; }
+.collapsed .sidebar { width: 68px; }
+.sb-brand { display: flex; align-items: center; height: 32px; padding: 0 10px; margin-bottom: 18px; text-decoration: none; color: var(--c-navy); }
+.sb-mono { width: 32px; height: 32px; border-radius: 9px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; margin-left: -4px; }
+.mode { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: rgba(15,17,21,.06); border-radius: 10px; padding: 3px; margin: 0 4px 16px; }
+.mode button { position: relative; z-index: 1; background: none; border: 0; font: inherit; font-size: 13px; font-weight: 500; color: var(--c-muted); padding: 6px 0; cursor: pointer; transition: color .15s; }
+.mode button.on { color: var(--c-ink); }
+.mode .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(15,17,21,.08), 0 0 0 1px rgba(15,17,21,.04); transition: transform .2s ease; }
 .mode .thumb.right { transform: translateX(100%); }
-.dot { width: 6px; height: 6px; border-radius: 50%; } .dot.a { background: #8fb8d8; } .dot.f { background: #5fa8d3; }
-.mode button:focus-visible { outline: 2px solid #5fa8d3; outline-offset: -2px; }
-.ws { position: relative; margin: 0 4px 14px; }
-.ws-btn { width: 100%; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #fff; padding: 9px 10px; font: inherit; text-align: left; cursor: default; }
-.ws-btn.multi { cursor: pointer; } .ws-btn.multi:hover { background: rgba(255,255,255,.09); }
-.av { flex: none; width: 28px; height: 28px; display: grid; place-items: center; background: #1c547d; color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
-.av.sm { width: 22px; height: 22px; font-size: 10px; }
-.ws-t { display: flex; flex-direction: column; min-width: 0; flex: 1; } .ws-t b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ws-t em { font-style: normal; font-size: 11px; color: rgba(255,255,255,.5); }
-.chev { width: 12px; height: 12px; color: rgba(255,255,255,.6); transition: transform .15s; } .chev.up { transform: rotate(180deg); }
-.ws-menu { position: absolute; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--c-rule); box-shadow: 0 8px 24px rgba(12,26,46,.18); z-index: 20; }
-.ws-menu button { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 8px; font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; text-align: left; }
-.ws-menu button:hover { background: var(--c-paper); } .ws-menu button.cur { font-weight: 600; color: var(--c-navy); }
-.pf-head { margin: 0 8px 16px; padding: 12px; border-left: 2px solid #5fa8d3; background: rgba(95,168,211,.08); }
-.pf-head b { display: block; font-weight: 500; font-size: 13px; } .pf-head span { display: block; font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,.55); margin-top: 3px; }
-.side-nav { display: flex; flex-direction: column; gap: 1px; }
-.side-nav a { color: rgba(255,255,255,.72); text-decoration: none; padding: 8px 12px; font-size: 13px; border-left: 2px solid transparent; transition: background .12s, color .12s; }
-.side-nav a:hover { color: #fff; background: rgba(255,255,255,.05); }
-.side-nav a.on { color: #fff; background: rgba(255,255,255,.08); border-left-color: #5fa8d3; }
-.grp { margin: 18px 0 4px; padding: 0 12px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.4); }
-.who { margin-top: auto; padding: 14px 8px 0; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,.65); }
-.who .me { background: rgba(255,255,255,.12); }
-.em { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.who button { background: none; border: 1px solid rgba(255,255,255,.18); color: #fff; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; padding: 0; }
-.who button svg { width: 15px; height: 15px; } .who button:hover { background: rgba(255,255,255,.08); }
-.main { padding: 40px 48px; min-width: 0; }
-@media (max-width: 880px) { .shell { grid-template-columns: 1fr; } .side { position: static; height: auto; } .side-nav { flex-direction: row; flex-wrap: wrap; } .grp { display: none; } .main { padding: 24px 20px; } }
+.sb-nav { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.sb-group { margin: 16px 0 4px; padding: 0 12px; font-size: 11.5px; font-weight: 500; color: var(--c-muted); white-space: nowrap; overflow: hidden; }
+.collapsed .sb-group { height: 1px; margin: 12px 10px; padding: 0; background: var(--c-rule); color: transparent; }
+.sb-link { display: flex; align-items: center; gap: 11px; width: 100%; padding: 7px 12px; border-radius: var(--radius-sm); color: var(--c-ink-soft); font: inherit; font-size: 13.5px; font-weight: 500; text-decoration: none; background: none; border: 0; cursor: pointer; text-align: left; transition: background .12s, color .12s; }
+.sb-link:hover { background: rgba(15,17,21,.05); color: var(--c-ink); }
+.sb-link.on { background: var(--c-signal-soft); color: var(--c-signal); }
+.sb-icon { width: 18px; height: 18px; flex: none; }
+.sb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collapsed .sb-label, .collapsed .sb-note { display: none; } .collapsed .sb-link { justify-content: center; padding: 9px 0; }
+.sb-note { margin: 12px; font-size: 11.5px; line-height: 1.45; color: var(--c-muted); }
+.sb-foot { border-top: 1px solid var(--c-rule); padding-top: 10px; margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.sb-user { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12.5px; color: var(--c-muted); min-width: 0; }
+.collapsed .sb-user { justify-content: center; padding: 6px 0; }
+.em { flex: 1; min-width: 0; }
+.sb-collapse { align-self: flex-end; margin-top: 4px; width: 30px; height: 30px; border-radius: var(--radius-sm); border: 0; background: none; color: var(--c-muted); cursor: pointer; display: grid; place-items: center; }
+.sb-collapse:hover { background: rgba(15,17,21,.05); color: var(--c-ink); } .sb-collapse svg { width: 16px; height: 16px; }
+.collapsed .sb-collapse { align-self: center; }
+.av { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--c-blue-deep); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.av.sm { width: 24px; height: 24px; font-size: 10px; border-radius: 7px; } .av.me { width: 24px; height: 24px; border-radius: 50%; background: var(--c-navy); font-size: 11px; }
+.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--c-paper); border-left: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); border-top-left-radius: 16px; margin-top: 10px; min-height: calc(100vh - 10px); }
+.topbar { height: var(--topbar-h); flex: none; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: saturate(1.4) blur(8px); z-index: 10; border-top-left-radius: 16px; }
+.tb-menu { display: none; width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--c-rule); background: #fff; color: var(--c-ink); cursor: pointer; place-items: center; } .tb-menu svg { width: 18px; height: 18px; }
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--c-muted); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; }
+.crumbs .cur { color: var(--c-ink); font-weight: 500; } .sep { color: var(--c-rule-strong); }
+.env { font-size: 11.5px; font-weight: 500; color: var(--c-signal); background: var(--c-signal-soft); padding: 3px 9px; border-radius: 999px; }
+.ws { position: relative; }
+.ws-btn { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px 0 5px; border: 1px solid var(--c-rule); border-radius: 10px; background: #fff; font: inherit; color: var(--c-ink); cursor: default; }
+.ws-btn.multi { cursor: pointer; } .ws-btn.multi:hover { background: var(--c-paper-3); }
+.ws-t { display: flex; flex-direction: column; line-height: 1.15; text-align: left; } .ws-t b { font-size: 13px; font-weight: 500; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ws-t em { font-style: normal; font-size: 11px; color: var(--c-muted); }
+.chev { width: 14px; height: 14px; color: var(--c-muted); transition: transform .15s; } .chev.up { transform: rotate(180deg); }
+.ws-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 260px; list-style: none; margin: 0; padding: 6px; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); box-shadow: var(--shadow-pop); z-index: 30; }
+.ws-menu button { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 8px; border-radius: var(--radius-sm); font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; text-align: left; }
+.ws-menu button span:last-child { display: flex; flex-direction: column; } .ws-menu em { font-style: normal; font-size: 11px; color: var(--c-muted); }
+.ws-menu button:hover { background: var(--c-paper-3); } .ws-menu button.cur { background: var(--c-signal-soft); }
+.content { flex: 1; min-width: 0; }
+.inner { max-width: 1200px; margin: 0 auto; padding: 28px 36px 72px; }
+.overlay { display: none; }
+@media (max-width: 880px) {
+  .sidebar { position: fixed; left: 0; top: 0; z-index: 60; background: var(--c-paper-2); width: var(--sidebar-w) !important; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-pop); }
+  .mobile-open .sidebar { transform: none; }
+  .collapsed .sb-label, .collapsed .sb-note { display: inline; }
+  .overlay { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(15,17,21,.4); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .mobile-open .overlay { opacity: 1; pointer-events: auto; }
+  .panel { border-radius: 0; margin-top: 0; border-left: 0; } .topbar { border-radius: 0; padding: 0 16px; }
+  .tb-menu { display: grid; } .ws-t { display: none; } .inner { padding: 20px 16px 56px; }
+  .sb-collapse { display: none; }
+}
 </style>

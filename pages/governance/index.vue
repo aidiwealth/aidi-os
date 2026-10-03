@@ -33,8 +33,8 @@ const RK: Record<string, string> = { resolution: 'Resolution', minutes: 'Minutes
 .lead { color: var(--c-muted); margin: 8px 0 20px; max-width: 75ch; }
 .await { border-left: 4px solid var(--c-blue); margin-bottom: 20px; } .await h2 { margin-bottom: 8px; }
 .await ul { list-style: none; padding: 0; margin: 0; } .await li { padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .await li span { display: block; font-size: 12px; color: var(--c-muted); }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); } .hl { color: var(--c-blue-deep); font-weight: 600; }
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; } .sub { display: block; font-size: 12px; color: var(--c-muted); text-transform: capitalize; }
 .error { color: var(--c-danger); }

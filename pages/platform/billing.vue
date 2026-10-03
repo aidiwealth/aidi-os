@@ -153,18 +153,18 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 16px; } .tools { display: flex; gap: 10px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 26px; color: var(--c-navy); } .sub { display: block; font-size: 12px; color: var(--c-muted); }
+.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 26px; color: var(--c-navy); } .sub { display: block; font-size: 12px; color: var(--c-muted); }
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin-bottom: 16px; align-items: end; } .frm > label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; } h2 { margin: 0; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; } .row { display: flex; gap: 10px; }
-.lines { display: flex; flex-direction: column; gap: 6px; } .lh, .lr { display: grid; grid-template-columns: 1fr 90px 160px 70px; gap: 8px; align-items: center; } .lh { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--c-muted); }
+.lines { display: flex; flex-direction: column; gap: 6px; } .lh, .lr { display: grid; grid-template-columns: 1fr 90px 160px 70px; gap: 8px; align-items: center; } .lh { font-size: 11px; letter-spacing: 0; color: var(--c-muted); }
 .lf { display: flex; justify-content: space-between; padding-top: 6px; } .lf b { font-weight: 500; color: var(--c-navy); }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--c-muted); margin-top: 8px; } .chk input { width: auto; }
 .bar2 { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 10px; }
 .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-right: 18px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 11px 14px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 11px 14px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } tr.off td { opacity: .55; } .num { text-align: right; } td b { font-weight: 500; }
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; }
 .st { text-transform: capitalize; font-weight: 500; font-size: 13px; } .st[data-s="active"], .st[data-s="paid"] { color: var(--c-ok); } .st[data-s="past_due"], .st[data-s="overdue"] { color: var(--c-danger); } .st[data-s="sent"] { color: var(--c-blue-deep); } .st[data-s="draft"], .st[data-s="void"], .st[data-s="ended"] { color: var(--c-muted); }

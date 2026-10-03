@@ -118,11 +118,11 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 .drop-main { margin: 0; color: var(--c-ink-soft); } .drop-main b { color: var(--c-navy); }
 .drop-hint { margin: 6px 0 0; font-size: 12px; color: var(--c-muted); }
 .picked { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.picked li { background: #fff; border: 1px solid var(--c-rule); padding: 6px 8px 6px 12px; font-size: 13px; }
+.picked li { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 6px 8px 6px 12px; font-size: 13px; }
 .picked span { color: var(--c-muted); margin-left: 6px; }
 .x { background: none; border: 0; font-size: 16px; line-height: 1; margin-left: 6px; cursor: pointer; color: var(--c-muted); }
-.table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); }
-th { text-align: left; font-size: var(--type-label); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
+th { text-align: left; font-size: var(--type-label); letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-navy); font-weight: 500; cursor: pointer; text-align: left; }
 .link:hover { text-decoration: underline; }
