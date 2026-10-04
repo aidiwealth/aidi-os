@@ -1,7 +1,7 @@
 // Pages: anyone not signed in goes to /login; a page in a module that is off (or not for this role) goes to Overview;
 // the Finvry console is only for Aidi platform staff on the Aidi OS address.
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (to.path === '/login' || to.path === '/start' || to.path.startsWith('/c/') || to.path.startsWith('/u/') || to.path.startsWith('/report/') || to.path.startsWith('/job/') || to.path.startsWith('/pay/') || to.path.startsWith('/lp/') || to.path.startsWith('/bill/') || to.path.startsWith('/info/') || to.path.startsWith('/formation/') || to.path.startsWith('/share/')) return
+  if (to.path === '/login' || to.path === '/start' || to.path.startsWith('/c/') || to.path.startsWith('/u/') || to.path.startsWith('/d/') || to.path.startsWith('/report/') || to.path.startsWith('/job/') || to.path.startsWith('/pay/') || to.path.startsWith('/lp/') || to.path.startsWith('/bill/') || to.path.startsWith('/info/') || to.path.startsWith('/formation/') || to.path.startsWith('/share/')) return
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
   let me: { platform: boolean; org: { id: string } | null }
   try {

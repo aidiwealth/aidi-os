@@ -23,11 +23,11 @@ export async function deleteObject(key: string): Promise<void> {
   if (!res.ok && res.status !== 404) throw new Error('R2 delete failed: ' + res.status)
 }
 
-export async function signedGetUrl(input: { key: string; filename: string; seconds: number }): Promise<string> {
+export async function signedGetUrl(input: { key: string; filename: string; seconds: number; inline?: boolean }): Promise<string> {
   const { aws, base } = r2()
   const u = new URL(base + '/' + keyPath(input.key))
   u.searchParams.set('X-Amz-Expires', String(input.seconds))
-  u.searchParams.set('response-content-disposition', 'attachment; filename="' + input.filename.replace(/["\\\r\n]/g, '_') + '"')
+  u.searchParams.set('response-content-disposition', (input.inline ? 'inline' : 'attachment') + '; filename="' + input.filename.replace(/["\\\r\n]/g, '_') + '"')
   const signed = await aws.sign(new Request(u.toString(), { method: 'GET' }), { aws: { signQuery: true } })
   return signed.url
 }

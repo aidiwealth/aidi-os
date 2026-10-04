@@ -24,6 +24,11 @@ export const RECORDS: Record<string, RecordType> = {
   fin_share: { table: 'financials.shares', module: 'financials', roles: ['admin', 'gp'], name: 'title' },
   update: { table: 'financials.updates', module: 'updates', roles: ['admin', 'gp'], name: 'title' },
   investor: { table: 'financials.investors', module: 'updates', roles: ['admin', 'gp'], name: 'name' },
+  dr_file: { table: 'fundraise.files', module: 'fundraising', roles: ['admin', 'gp'], name: 'title' },
+  dr_link: { table: 'fundraise.links', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
+  round_investor: { table: 'fundraise.round_investors', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
+  memo: { table: 'fundraise.memos', module: 'fundraising', roles: ['admin', 'gp'], name: 'title' },
+  safe: { table: 'fundraise.safes', module: 'fundraising', roles: ['admin', 'gp'], name: 'investor_name' },
   document: { table: 'core.documents', module: 'documents', roles: ['admin'], name: 'title', storage: true, blockers: [
     ['SELECT count(*) FROM deals.deal_events WHERE document_id = $1', 'deal note'], ['SELECT count(*) FROM services.job_events WHERE document_id = $1', 'client job update']] },
   obligation: { table: 'compliance.obligations', module: 'compliance', roles: ['admin'], name: 'title', children: ['DELETE FROM compliance.completions WHERE obligation_id = $1'] },
