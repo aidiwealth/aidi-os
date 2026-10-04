@@ -6,8 +6,8 @@ export default defineEventHandler(async (event) => {
   const isAdmin = user.roles.includes('admin')
   const company = (await currentOrg())?.kind === 'company'
   return MODULES.map((m) => ({
-    code: m.code, group: m.group, groupLabel: company && (m.group === 'fo' || m.code === 'directory') ? 'Company' : GROUP_LABEL[m.group], label: company && m.code === 'directory' ? 'Trusted partners' : m.label, to: m.to, pages: m.pages,
-    switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles) && (m.code !== 'modules' || user.platform),
+    code: m.code, group: m.group, groupLabel: company ? (m.group === 'fin' ? 'Investors' : m.group === 'fo' ? 'Company' : GROUP_LABEL[m.group]) : GROUP_LABEL[m.group], label: company && m.code === 'directory' ? 'Trusted partners' : m.label, to: m.to, pages: m.pages,
+    switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles) && (m.code !== 'modules' || user.platform) && !(company && m.code === 'directory'),
     roles: isAdmin ? m.roles : undefined
   }))
 })

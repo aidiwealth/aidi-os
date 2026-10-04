@@ -12,6 +12,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'credit', group: 'vc', label: 'Credit', to: '/credit', roles: ['gp', 'team'], api: ['/api/credit', '/api/public/cron/credit'], pages: ['/credit'], switchable: true },
   { code: 'analytics', group: 'vc', label: 'Analytics', to: '/analytics', roles: ['gp', 'team', 'family'], api: ['/api/analytics'], pages: ['/analytics'], switchable: true },
   { code: 'financials', group: 'fin', label: 'Financials', to: '/financials', roles: ['gp', 'team', 'family'], api: ['/api/financials'], pages: ['/financials'], switchable: true },
+  { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page'], pages: ['/investor-page'], switchable: true },
   { code: 'company_services', group: 'fo', label: 'Services', to: '/client', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/portal'], pages: ['/client'], switchable: true },
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
   { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents'], pages: ['/documents'], switchable: true },

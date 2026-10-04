@@ -32,7 +32,7 @@ const isOn = (to: string, exact = false) => (exact ? route.path === to : route.p
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
-  if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', 'Overview']
+  if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', me.value?.org?.kind === 'company' ? 'Dashboard' : 'Overview']
   for (const g of groups.value) { const m = g.items.find((x) => isOn(x.to)); if (m) return [g.label, m.label] }
   return [me.value?.org?.name ?? 'Workspace']
 })
@@ -62,7 +62,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 
       <nav class="sb-nav">
         <template v-if="!platformMode">
-          <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" title="Overview"><AppIcon name="home" class="sb-icon" /><span class="sb-label">Overview</span></NuxtLink>
+          <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
             <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to) }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span></NuxtLink>

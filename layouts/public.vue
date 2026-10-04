@@ -4,7 +4,7 @@ interface WS { name: string; firm: string; brand: 'aidi' | 'finvry' }
 const route = useRoute()
 const brand = useBrand()
 const token = String(route.params.token ?? route.params.slug ?? '')
-const kind = route.path.startsWith('/job/') ? 'job' : route.path.startsWith('/report/') ? 'report' : route.path.startsWith('/pay/') ? 'pay' : route.path.startsWith('/lp/') ? 'lp' : route.path.startsWith('/bill/') ? 'bill' : route.path.startsWith('/info/') ? 'info' : route.path.startsWith('/formation/') ? 'formation' : route.path.startsWith('/share/') ? 'share' : ''
+const kind = route.path.startsWith('/job/') ? 'job' : route.path.startsWith('/report/') ? 'report' : route.path.startsWith('/pay/') ? 'pay' : route.path.startsWith('/lp/') ? 'lp' : route.path.startsWith('/bill/') ? 'bill' : route.path.startsWith('/info/') ? 'info' : route.path.startsWith('/formation/') ? 'formation' : route.path.startsWith('/share/') ? 'share' : route.path.startsWith('/c/') ? 'c' : ''
 const { data } = await useFetch<{ workspace?: WS }>('/api/public/' + (kind || 'none') + '/' + token, { key: 'pub-' + kind + '-' + token, immediate: !!kind })
 const ws = computed(() => data.value?.workspace ?? null)
 const aidiLook = computed(() => (ws.value ? ws.value.brand === 'aidi' : brand.key === 'aidi'))
