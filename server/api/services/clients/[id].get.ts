@@ -10,5 +10,6 @@ export default defineEventHandler(async (event) => {
   const people = await db().query('SELECT p.*, p.ownership_pct::text, co.name AS company FROM services.people p LEFT JOIN services.companies co ON co.id = p.company_id WHERE p.client_id = $1 ORDER BY p.name', [id.data])
   const jobs = await db().query("SELECT id, title, service, status, to_char(due_date, 'YYYY-MM-DD') AS due_date FROM services.jobs WHERE client_id = $1 ORDER BY created_at DESC", [id.data])
   const invoices = await db().query("SELECT id, number, currency, amount::text, status, to_char(due_date, 'YYYY-MM-DD') AS due_date, (status = 'sent' AND due_date < current_date) AS overdue FROM services.invoices WHERE client_id = $1 ORDER BY issue_date DESC", [id.data])
-  return { client: c.rows[0], companies: companies.rows, people: people.rows, jobs: jobs.rows, invoices: invoices.rows }
+  const requests = await db().query("SELECT r.id, r.tax_year, r.status, r.sent_to, r.submitted_at, r.created_at, co.name AS company FROM services.info_requests r LEFT JOIN services.companies co ON co.id = r.company_id WHERE r.client_id = $1 ORDER BY r.created_at DESC", [id.data])
+  return { client: c.rows[0], companies: companies.rows, people: people.rows, jobs: jobs.rows, invoices: invoices.rows, requests: requests.rows }
 })

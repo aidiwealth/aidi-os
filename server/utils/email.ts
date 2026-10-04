@@ -274,3 +274,13 @@ export async function sendClientReceiptEmail(inv: { number: string; currency: st
   const html = shell(h1('Payment received') + para('Thank you. ' + esc(inv.issuer.issuer) + ' has received ' + money + ' for invoice ' + esc(inv.number) + '.'), 'Payment received for ' + inv.number)
   await sendEmail({ to: inv.bill_to.email, subject: 'Payment received: invoice ' + inv.number, text: 'Thank you. We have received ' + money + ' for invoice ' + inv.number + '.', html })
 }
+
+// Tax filing information request to a client (no login).
+export async function sendInfoRequestEmail(to: string, client: string, company: string, year: number, link: string): Promise<void> {
+  const html = shell(`<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(company)} · ${year} tax filing</p>` +
+    h1('Your ' + year + ' tax filing information') +
+    para('Hello ' + esc(client) + ', to prepare ' + esc(company) + '\'s ' + year + ' filings we need some details and documents: company details, shareholders, financial statements, bank accounts and a few questions about related-party payments.') +
+    para('It takes about 15 minutes. No account or password is needed: your answers save as you go, and you can come back to the same link.') +
+    button('Open the form →', link) + `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">The link is personal to you and expires in 120 days. Reply to this email if you have questions.</p>`, year + ' tax filing information')
+  await sendEmail({ to, subject: company + ': information needed for your ' + year + ' tax filing', text: 'Please complete your ' + year + ' tax filing information for ' + company + ': ' + link, html })
+}

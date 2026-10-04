@@ -2,10 +2,12 @@
 useHead({ title: 'Prices & settings' })
 interface Item { id: string; code: string; name: string; description: string | null; billing: string; price: string | null; currency: string; formation: boolean; active: boolean; sort: number }
 interface Region { issuer: string; address: string; phone: string; email: string; bank: Record<string, string> }
-const { data: s, refresh: rs } = await useFetch<{ prefix: string; terms_days: number; note_top: string; note_bottom: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
+const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
 const { data: items, refresh: ri } = await useFetch<Item[]>('/api/services/catalog')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const isAdmin = computed(() => !!me.value?.roles.includes('admin'))
+const origin = useRequestURL().origin
+const formationUrl = computed(() => origin + '/formation/' + (s.value?.slug ?? ''))
 const US_BANK = ['Account holder', 'Bank name', 'Routing number', 'Account number', 'SWIFT code', 'Bank address']
 const NG_BANK = ['Account name', 'Bank name', 'Account number', 'Sort code']
 const f = reactive({ prefix: 'INV', terms_days: 30, note_top: '', note_bottom: '', us: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> }, ng: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> } })
@@ -25,6 +27,7 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
   <section v-if="s">
     <CsNav />
     <h1>Prices &amp; settings</h1>
+    <div class="card link"><b>Formation sign-up page</b><span class="muted sm">Share this link or add it to your website. Prices come from the services marked "Offer in the formation sign-up".</span><a :href="formationUrl" target="_blank" rel="noopener">{{ formationUrl }}</a></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="card">
       <div class="ch"><h2>Price list</h2><button v-if="isAdmin" class="btn secondary" @click="edit()">Add service</button></div>
@@ -68,7 +71,7 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
 input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 
-.card { margin-bottom: 14px; } .ch { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.card { margin-bottom: 14px; } .card.link { display: flex; flex-direction: column; gap: 4px; } .ch { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-size: 12px; font-weight: 500; color: var(--c-muted); padding: 8px 6px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 9px 6px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .t tr.off td { opacity: .5; }
 .n { text-align: right; } .sub { display: block; font-size: 12px; color: var(--c-muted); } .acts { white-space: nowrap; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; margin-top: 12px; } .frm label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; } .frm h2 { margin: 0; }

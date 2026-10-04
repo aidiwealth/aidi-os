@@ -34,6 +34,7 @@ export const RECORDS: Record<string, RecordType> = {
   cs_person: { table: 'services.people', module: 'services', roles: ['admin'], name: 'name' },
   cs_invoice: { table: 'services.invoices', module: 'services', roles: ['admin'], name: "'invoice ' || number", children: ['DELETE FROM services.invoice_payments WHERE invoice_id = $1'],
     guard: { sql: "SELECT 1 FROM services.invoices WHERE id = $1 AND status IN ('sent','paid')", message: 'Sent and paid invoices are kept as a record. Void it instead.' } },
+  info_request: { table: 'services.info_requests', module: 'services', roles: ['admin'], name: "tax_year || ' tax information request'" },
   catalog: { table: 'services.catalog', module: 'services', roles: ['admin'], name: 'name' },
   job: { table: 'services.jobs', module: 'services', roles: ['admin'], name: 'title', children: ['DELETE FROM services.job_events WHERE job_id = $1'] },
   company: { table: 'portfolio.companies', module: 'portfolio', roles: VC, name: 'name', children: [

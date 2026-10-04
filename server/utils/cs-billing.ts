@@ -45,6 +45,7 @@ export async function csPaymentSucceeded(reference: string): Promise<void> {
       "UPDATE services.invoice_payments SET status = 'succeeded', completed_at = now() WHERE reference = $1 AND status <> 'succeeded' RETURNING invoice_id, organization_id, provider", [reference])
     if (!p.rows[0]) return null
     await db().query("UPDATE services.invoices SET status = 'paid', paid_at = current_date, paid_via = $2 WHERE id = $1 AND status IN ('draft','sent')", [p.rows[0].invoice_id, p.rows[0].provider])
+    await db().query("UPDATE services.clients SET status = 'active' WHERE status = 'lead' AND id = (SELECT client_id FROM services.invoices WHERE id = $1)", [p.rows[0].invoice_id])
     await db().query("INSERT INTO core.audit_log (organization_id, action, object_type, object_id, detail) VALUES ($1, 'services.invoice_paid', 'invoice', $2, $3)", [p.rows[0].organization_id, p.rows[0].invoice_id, JSON.stringify({ provider: p.rows[0].provider })])
     return p.rows[0]
   })

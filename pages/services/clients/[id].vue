@@ -3,7 +3,7 @@ const id = useRoute().params.id as string
 interface Co { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; registration_number: string | null; ein: string | null; formation_date: string | null; fiscal_year_end: string | null; address: string | null; registered_agent: string; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string; notes: string | null }
 interface Pe { id: string; name: string; email: string | null; phone: string | null; role: string; ownership_pct: string | null; company_id: string | null; company: string | null; address: string | null; nationality: string | null; portal_access: boolean }
 interface D { client: { id: string; name: string; kind: string; contact_name: string; email: string; phone: string | null; country: string | null; address: string | null; notes: string | null; status: string }
-  companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[] }
+  companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/services/clients/' + id)
 useHead({ title: () => data.value?.client.name ?? 'Client' })
 const tab = ref<'companies' | 'people' | 'jobs' | 'invoices' | 'details'>('companies')
@@ -24,6 +24,11 @@ const cl = reactive({ name: '', kind: 'company', contact_name: '', email: '', ph
 watchEffect(() => { const c = data.value?.client; if (c) Object.assign(cl, { name: c.name, kind: c.kind, contact_name: c.contact_name, email: c.email, phone: c.phone ?? '', country: c.country ?? '', address: c.address ?? '', notes: c.notes ?? '', status: c.status }) })
 const saveCl = () => run(() => $fetch('/api/services/clients', { method: 'POST', body: { id, ...cl } }), 'Client saved.')
 const money = (v: string, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v))
+const rq = reactive({ company_id: '', tax_year: new Date().getFullYear() - 1, email: '' })
+const sentLink = ref('')
+function askTax(c: Co) { rq.company_id = c.id; rq.email = data.value?.client.email ?? ''; sentLink.value = '' }
+const sendTax = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/requests', { method: 'POST', body: { client_id: id, ...rq } }); sentLink.value = r.link; rq.company_id = '' }, 'Tax information request sent.')
+const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
 </script>
 
 <template>
@@ -39,8 +44,18 @@ const money = (v: string, c: string) => new Intl.NumberFormat('en-US', { style: 
         <tbody><tr v-for="c in data.companies" :key="c.id"><td><b class="co">{{ c.name }}</b><span class="sub">{{ TYPES[c.entity_type] }} · {{ [c.jurisdiction, c.country].filter(Boolean).join(', ') }}</span></td>
           <td class="sm">{{ c.ein ? 'EIN ' + c.ein : 'No EIN yet' }}<span class="sub">{{ c.formation_date ? 'Formed ' + c.formation_date : '' }}{{ c.fiscal_year_end ? ' · FYE ' + c.fiscal_year_end : '' }}</span></td>
           <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : '', c.virtual_office ? 'Virtual office' : '', c.mailbox ? 'Mailbox' : ''].filter(Boolean).join(' · ') || '—' }}</td>
-          <td><span class="st">{{ c.status }}</span></td><td class="acts"><button class="link" @click="editCo(c)">Edit</button><DeleteButton type="cs_company" :id="c.id" :name="c.name" link @deleted="refresh()" /></td></tr></tbody></table>
+          <td><span class="st">{{ c.status }}</span></td><td class="acts"><button class="link" @click="askTax(c)">Request tax info</button> · <button class="link" @click="editCo(c)">Edit</button><DeleteButton type="cs_company" :id="c.id" :name="c.name" link @deleted="refresh()" /></td></tr></tbody></table>
       <p v-else class="muted">No companies yet.</p>
+      <form v-if="rq.company_id" class="card frm" @submit.prevent="sendTax">
+        <h2 class="wide">Request tax filing information</h2>
+        <label class="label">Tax year<input v-model="rq.tax_year" inputmode="numeric" required></label>
+        <label class="label">Send to<input v-model="rq.email" type="email" required maxlength="254"></label>
+        <div class="row"><button class="btn" type="submit">Send link</button><button class="btn secondary" type="button" @click="rq.company_id = ''">Cancel</button></div>
+        <p class="muted sm wide">The client gets a no-login link to answer the {{ rq.tax_year }} questions and upload their documents. A job is opened and waits on them.</p>
+      </form>
+      <p v-if="sentLink" class="sm">Link (also emailed): <a :href="sentLink" target="_blank" rel="noopener">{{ sentLink }}</a></p>
+      <template v-if="data.requests.length"><h2 class="sub2">Tax information requests</h2>
+        <table class="table"><tbody><tr v-for="r in data.requests" :key="r.id"><td><NuxtLink :to="'/services/requests/' + r.id" class="co">{{ r.tax_year }} · {{ r.company ?? 'Company' }}</NuxtLink><span class="sub">{{ r.sent_to }}</span></td><td><span class="st" :class="r.status === 'submitted' ? 'paid' : r.status === 'cancelled' ? 'void' : 'sent'">{{ RQ[r.status] }}</span></td></tr></tbody></table></template>
       <button v-if="!editingCo" class="btn secondary" @click="editCo()">Add company</button>
       <form v-else class="card frm" @submit.prevent="saveCo">
         <label class="label">Company name<input v-model="co.name" required maxlength="200"></label>
@@ -123,5 +138,5 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr; } }
 
 .tabs { margin: 14px 0 12px; } .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-right: 20px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
-.flags { display: flex; flex-direction: column; gap: 6px; } .acts { white-space: nowrap; } .sm { font-size: 13px; }
+.flags { display: flex; flex-direction: column; gap: 6px; } .acts { white-space: nowrap; } .sm { font-size: 13px; } .sub2 { font-size: 18px; margin: 18px 0 8px; }
 </style>
