@@ -284,3 +284,26 @@ export async function sendInfoRequestEmail(to: string, client: string, company: 
     button('Open the form →', link) + `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">The link is personal to you and expires in 120 days. Reply to this email if you have questions.</p>`, year + ' tax filing information')
   await sendEmail({ to, subject: company + ': information needed for your ' + year + ' tax filing', text: 'Please complete your ' + year + ' tax filing information for ' + company + ': ' + link, html })
 }
+
+// Client portal: sign-in code, invite, messages.
+export async function sendPortalCodeEmail(to: string, name: string, code: string): Promise<void> {
+  const html = shell(h1('Your sign-in code') + para('Hello ' + esc(name.split(' ')[0] ?? name) + ', use this code to sign in to your {{FIRM}} client portal. It expires in 10 minutes.') +
+    `<p style="font-size:34px;letter-spacing:.3em;font-weight:600;color:${BRAND.navy};margin:8px 0 18px;font-family:ui-monospace,Menlo,monospace;">${code}</p>` +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">If you did not ask for this, you can ignore this email.</p>`, 'Your sign-in code')
+  await sendEmail({ to, subject: code + ' is your {{FIRM}} sign-in code', text: 'Your sign-in code: ' + code + ' (expires in 10 minutes).', html })
+}
+export async function sendPortalInviteEmail(to: string, name: string, client: string, link: string): Promise<void> {
+  const html = shell(h1('Your client portal is ready') + para('Hello ' + esc(name.split(' ')[0] ?? name) + ', {{FIRM}} has set up a client portal for ' + esc(client) + '. You can see your companies, the status of your requests, documents, invoices and payments, and message us.') +
+    button('Open your portal →', link) + `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">No password needed: next time, sign in with your email and we send you a code. This invite link works once and expires in 14 days.</p>`, 'Your client portal')
+  await sendEmail({ to, subject: 'Your {{FIRM}} client portal', text: 'Your client portal is ready: ' + link, html })
+}
+export async function sendPortalMessageEmail(to: string, client: string, body: string, link: string | null): Promise<void> {
+  const html = shell(h1('A message from {{FIRM}}') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(body)}</div>` +
+    (link ? button('Reply in your portal →', link) : para('You can reply to this email.')), 'A message from {{FIRM}}')
+  await sendEmail({ to, subject: 'A message from {{FIRM}}' + (client ? ' for ' + client : ''), text: body + (link ? '\n\nReply in your portal: ' + link : ''), html })
+}
+export async function sendPortalMessageAlert(client: string, who: string, body: string, link: string): Promise<void> {
+  const to = await orgNotifyEmails()
+  const html = shell(h1(esc(who) + ' (' + esc(client) + ') sent a message') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;white-space:pre-wrap;font-size:14px;">${esc(body)}</div>` + button('Open the client →', link), 'Client message')
+  for (const addr of to) await sendEmail({ to: addr, subject: 'Message from ' + who + ' (' + client + ')', text: body + '\n\n' + link, html })
+}

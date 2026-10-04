@@ -6,7 +6,7 @@ interface D { client: { id: string; name: string; kind: string; contact_name: st
   companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/services/clients/' + id)
 useHead({ title: () => data.value?.client.name ?? 'Client' })
-const tab = ref<'companies' | 'people' | 'jobs' | 'invoices' | 'details'>('companies')
+const tab = ref<'companies' | 'people' | 'jobs' | 'invoices' | 'messages' | 'details'>('companies')
 const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function run(fn: () => Promise<unknown>, done: string) { msg.value = ''; ok.value = ''; try { await fn(); ok.value = done; await refresh() } catch (e) { msg.value = err(e) } }
@@ -29,6 +29,10 @@ const sentLink = ref('')
 function askTax(c: Co) { rq.company_id = c.id; rq.email = data.value?.client.email ?? ''; sentLink.value = '' }
 const sendTax = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/requests', { method: 'POST', body: { client_id: id, ...rq } }); sentLink.value = r.link; rq.company_id = '' }, 'Tax information request sent.')
 const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
+const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/people/' + p.id + '/invite', { method: 'POST', body: { send } }), send ? 'Portal invite sent to ' + p.email + '.' : p.name + ' can now sign in with their email.')
+const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null; read_by_client: string | null }[]>('/api/services/clients/' + id + '/messages')
+const reply = ref('')
+const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + id + '/messages', { method: 'POST', body: { body: reply.value } }); reply.value = ''; await rmsgs() }, 'Message sent.')
 </script>
 
 <template>
@@ -37,7 +41,7 @@ const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', s
     <div class="dh"><div><h1>{{ data.client.name }}</h1><p class="muted">{{ data.client.contact_name }} · {{ data.client.email }}{{ data.client.country ? ' · ' + data.client.country : '' }}</p></div>
       <div class="row"><NuxtLink :to="'/services/invoices/new?client=' + id" class="btn">New invoice</NuxtLink><DeleteButton type="client" :id="id" :name="data.client.name" to="/services/clients" /></div></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    <div class="tabs"><button v-for="t in (['companies', 'people', 'jobs', 'invoices', 'details'] as const)" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : 'Details' }}</button></div>
+    <div class="tabs"><button v-for="t in (['companies', 'people', 'jobs', 'invoices', 'messages', 'details'] as const)" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : t === 'messages' ? 'Messages' + (msgs?.filter((m) => !m.from_team).length ? ' (' + msgs.filter((m) => !m.from_team).length + ')' : '') : 'Details' }}</button></div>
 
     <template v-if="tab === 'companies'">
       <table v-if="data.companies.length" class="table"><thead><tr><th>Company</th><th>Registration</th><th>Services</th><th>Status</th><th /></tr></thead>
@@ -79,7 +83,7 @@ const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', s
     <template v-else-if="tab === 'people'">
       <table v-if="data.people.length" class="table"><thead><tr><th>Name</th><th>Role</th><th>Company</th><th>Portal</th><th /></tr></thead>
         <tbody><tr v-for="p in data.people" :key="p.id"><td><b class="co">{{ p.name }}</b><span class="sub">{{ [p.email, p.phone].filter(Boolean).join(' · ') }}</span></td>
-          <td>{{ ROLES[p.role] }}<span v-if="p.ownership_pct" class="sub">{{ Number(p.ownership_pct) }}% ownership</span></td><td>{{ p.company ?? '—' }}</td><td class="sm">{{ p.portal_access ? 'Can sign in (email code)' : '—' }}</td>
+          <td>{{ ROLES[p.role] }}<span v-if="p.ownership_pct" class="sub">{{ Number(p.ownership_pct) }}% ownership</span></td><td>{{ p.company ?? '—' }}</td><td class="sm">{{ p.portal_access ? 'Can sign in (email code)' : '—' }}<template v-if="p.email"><br><button class="link" @click="invite(p, true)">{{ p.portal_access ? 'Resend invite' : 'Invite by email' }}</button><template v-if="!p.portal_access"> · <button class="link" @click="invite(p, false)">Give access quietly</button></template></template></td>
           <td class="acts"><button class="link" @click="editPe(p)">Edit</button><DeleteButton type="cs_person" :id="p.id" :name="p.name" link @deleted="refresh()" /></td></tr></tbody></table>
       <p v-else class="muted">No people yet.</p>
       <button v-if="!editingPe" class="btn secondary" @click="editPe()">Add person</button>
@@ -97,6 +101,12 @@ const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', s
       </form>
     </template>
 
+    <template v-else-if="tab === 'messages'">
+      <form class="card frm" @submit.prevent="sendMsg"><label class="label wide">Message to the client<textarea v-model="reply" rows="3" maxlength="5000" required /></label>
+        <div class="wide row"><button class="btn" type="submit">Send</button><span class="muted sm">They see it in their portal (and get an email). Without portal access it goes to their main email.</span></div></form>
+      <div class="thread"><div v-for="m in msgs ?? []" :key="m.id" class="msg" :class="{ team: m.from_team }"><span class="sub">{{ m.from_team ? (m.author ?? 'Team') : (m.author ?? 'Client') }} · {{ new Date(m.created_at).toLocaleString('en-GB') }}{{ m.from_team && m.read_by_client ? ' · read' : '' }}</span><p>{{ m.body }}</p></div>
+        <p v-if="!msgs?.length" class="muted">No messages yet.</p></div>
+    </template>
     <template v-else-if="tab === 'jobs'">
       <table v-if="data.jobs.length" class="table"><thead><tr><th>Job</th><th>Status</th><th>Due</th></tr></thead>
         <tbody><tr v-for="j in data.jobs" :key="j.id"><td><NuxtLink :to="'/services/' + j.id" class="co">{{ j.title }}</NuxtLink></td><td class="st">{{ j.status.replace('_', ' ') }}</td><td>{{ j.due_date ?? '—' }}</td></tr></tbody></table>
@@ -139,4 +149,5 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 
 .tabs { margin: 14px 0 12px; } .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-right: 20px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
 .flags { display: flex; flex-direction: column; gap: 6px; } .acts { white-space: nowrap; } .sm { font-size: 13px; } .sub2 { font-size: 18px; margin: 18px 0 8px; }
+.thread { display: flex; flex-direction: column; gap: 8px; } .msg { background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; max-width: 80%; } .msg.team { align-self: flex-end; border-right: 3px solid var(--c-blue-deep); } .msg p { margin: 4px 0 0; white-space: pre-wrap; }
 </style>

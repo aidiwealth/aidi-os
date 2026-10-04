@@ -13,8 +13,8 @@ export default defineEventHandler(async (event) => {
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Fill in the update.')
   const d = b.data
-  const j = await db().query<{ status: string; title: string; email: string; contact_name: string; link_active: boolean }>(
-    'SELECT j.status, j.title, c.email, c.contact_name, (j.client_token_expires > now()) AS link_active FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id.data])
+  const j = await db().query<{ status: string; title: string; email: string; contact_name: string; link_active: boolean; client_id: string }>(
+    'SELECT j.status, j.title, c.email, c.contact_name, (j.client_token_expires > now()) AS link_active, j.client_id FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id.data])
   const job = j.rows[0]
   if (!job) throw apiError('not_found', 'Job not found', 404)
   const visible = d.kind === 'message' ? true : d.kind === 'note' ? false : d.visible_to_client
@@ -42,9 +42,10 @@ export default defineEventHandler(async (event) => {
   let emailed = false
   if (visible) {
     try {
-      const link = await issueClientLink(id.data)
-      const headline = d.kind === 'status' ? 'Status: ' + STATUS_LABEL[d.status!] : d.kind === 'document' ? 'A document has been shared with you' : 'A message from {{ORG}}'
-      await sendJobUpdate(job.email, job.contact_name, job.title, headline, d.body ?? '', link)
+      const to = await clientRecipients(job.client_id)
+      const link = to.portal ? await portalUrl('/jobs/' + id.data) : await issueClientLink(id.data)
+      const headline = d.kind === 'status' ? (d.status === 'completed' ? 'Your request is complete' : d.status === 'waiting_client' ? 'We need more information or documents' : 'Status: ' + STATUS_LABEL[d.status!]) : d.kind === 'document' ? 'A document has been shared with you' : 'A message from {{ORG}}'
+      for (const e of to.portal ? to.emails : [job.email]) await sendJobUpdate(e, job.contact_name, job.title, headline, d.body ?? '', link)
       emailed = true
     } catch (err) { console.error('[services] client email failed for ' + id.data, err) }
   }
