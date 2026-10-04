@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   for (const i of inv.rows) {
     const token = randomToken()
     await db().query('INSERT INTO financials.update_sends (update_id, investor_id, token_hash) VALUES ($1,$2,$3) ON CONFLICT (update_id, investor_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, sent_at = now()', [id.data, i.id, sha256(token)])
-    try { await sendInvestorUpdateEmail(i.email, i.name, org.name, u.title, u.body, brands().finvry.url + '/u/' + token); sent++ } catch (err) { console.error('[updates] email failed', err) }
+    try { await sendInvestorUpdateEmail(i.email, i.name, org.name, u.title, u.body, brands().finvry.url + '/u/' + token); sent++; await logActivity(org.id, i.email, 'update_sent', 'Sent ' + u.title, id.data) } catch (err) { console.error('[updates] email failed', err) }
   }
   await audit({ event, actorUserId: user.userId, action: 'updates.send', objectType: 'update', objectId: id.data, detail: { sent } })
   return { ok: true, sent }

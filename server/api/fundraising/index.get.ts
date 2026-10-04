@@ -1,4 +1,5 @@
-// Everything on the fundraising page: data room files, links and recent activity, the round and its investors, memos, SAFEs.
+// Everything on the fundraising page: data room files, links and recent activity, pipelines (the first open one in
+// detail), memos, SAFEs.
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team')
   const org = (await currentOrg())!
@@ -7,9 +8,12 @@ export default defineEventHandler(async (event) => {
       (SELECT coalesce(sum(v.seconds), 0)::int FROM fundraise.views v WHERE v.link_id = l.id) AS seconds, (SELECT count(DISTINCT v.viewer_email)::int FROM fundraise.views v WHERE v.link_id = l.id AND v.viewer_email IS NOT NULL) AS viewers
     FROM fundraise.links l ORDER BY l.created_at DESC`)
   const activity = await db().query(`SELECT v.viewer_email, v.seconds, v.started_at, l.name AS link, f.title AS file FROM fundraise.views v JOIN fundraise.links l ON l.id = v.link_id LEFT JOIN fundraise.files f ON f.id = v.file_id ORDER BY v.started_at DESC LIMIT 40`)
-  const round = (await db().query("SELECT id, name, instrument, currency, target::float, valuation_cap::float, discount::float, pre_money::float, status, to_char(target_close, 'YYYY-MM-DD') AS target_close FROM fundraise.rounds ORDER BY (status = 'open') DESC, created_at DESC LIMIT 1")).rows[0] ?? null
-  const investors = round ? (await db().query('SELECT id, name, firm, email, stage, amount::float, notes, updated_at FROM fundraise.round_investors WHERE round_id = $1 ORDER BY updated_at DESC', [round.id])).rows : []
+  const pipelines = await db().query(`SELECT p.id, p.name, p.currency, p.target::float, p.instrument, p.valuation_cap::float, p.discount::float, p.status, to_char(p.target_close, 'YYYY-MM-DD') AS target_close,
+      coalesce((SELECT sum(d.amount) FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id WHERE d.pipeline_id = p.id AND s.kind IN ('committed','won')), 0)::float AS committed,
+      coalesce((SELECT sum(d.amount) FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id WHERE d.pipeline_id = p.id AND s.kind = 'won'), 0)::float AS closed,
+      (SELECT count(*)::int FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id WHERE d.pipeline_id = p.id AND s.kind IN ('open','committed')) AS in_play
+    FROM crm.pipelines p ORDER BY (p.status = 'open') DESC, p.created_at DESC`)
   const memos = await db().query('SELECT id, title, updated_at FROM fundraise.memos ORDER BY updated_at DESC')
   const safes = await db().query("SELECT id, investor_name, amount::float, currency, valuation_cap::float, discount::float, to_char(safe_date, 'YYYY-MM-DD') AS safe_date FROM fundraise.safes ORDER BY created_at DESC")
-  return { company: org.name, currency: (org.settings.currency as string) || 'USD', state: (org.settings.state as string) || '', files: files.rows, links: links.rows, activity: activity.rows, round, investors, memos: memos.rows, safes: safes.rows, base: brands().finvry.url + '/d/' }
+  return { company: org.name, currency: (org.settings.currency as string) || 'USD', state: (org.settings.state as string) || '', files: files.rows, links: links.rows, activity: activity.rows, pipelines: pipelines.rows, memos: memos.rows, safes: safes.rows, base: brands().finvry.url + '/d/' }
 })

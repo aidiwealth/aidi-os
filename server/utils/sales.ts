@@ -24,5 +24,5 @@ export function nextRenewal(start: string, billing: string, today = new Date().t
 export interface BillingSettings { issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string; ngn_per_usd: number }
 export async function billingSettings(): Promise<BillingSettings> {
   const r = await asPlatform(() => db().query<{ value: Partial<BillingSettings> }>("SELECT value FROM platform.settings WHERE key = 'billing'"))
-  return { issuer_name: 'Finvry', issuer_address: '', issuer_email: '', invoice_prefix: 'FIN', payment_terms_days: 14, payment_instructions: '', ngn_per_usd: 1600, ...(r.rows[0]?.value ?? {}) }
+  return Object.assign({ issuer_name: 'Finvry', issuer_address: '', issuer_email: '', invoice_prefix: 'FIN', payment_terms_days: 14, payment_instructions: '', ngn_per_usd: 1600 }, r.rows[0]?.value ?? {}) as BillingSettings
 }

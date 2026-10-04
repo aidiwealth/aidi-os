@@ -29,6 +29,11 @@ export const RECORDS: Record<string, RecordType> = {
   round_investor: { table: 'fundraise.round_investors', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   memo: { table: 'fundraise.memos', module: 'fundraising', roles: ['admin', 'gp'], name: 'title' },
   safe: { table: 'fundraise.safes', module: 'fundraising', roles: ['admin', 'gp'], name: 'investor_name' },
+  crm_contact: { table: 'crm.contacts', module: 'contacts', roles: ['admin', 'gp', 'team'], name: 'name' },
+  crm_list: { table: 'crm.lists', module: 'contacts', roles: ['admin', 'gp', 'team'], name: 'name' },
+  crm_deal: { table: 'crm.deals', module: 'fundraising', roles: ['admin', 'gp', 'team'], name: 'investor' },
+  crm_pipeline: { table: 'crm.pipelines', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
+  crm_note: { table: 'crm.notes', module: 'contacts', roles: ['admin', 'gp', 'team'], name: 'body' },
   document: { table: 'core.documents', module: 'documents', roles: ['admin'], name: 'title', storage: true, blockers: [
     ['SELECT count(*) FROM deals.deal_events WHERE document_id = $1', 'deal note'], ['SELECT count(*) FROM services.job_events WHERE document_id = $1', 'client job update']] },
   obligation: { table: 'compliance.obligations', module: 'compliance', roles: ['admin'], name: 'title', children: ['DELETE FROM compliance.completions WHERE obligation_id = $1'] },

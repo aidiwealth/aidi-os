@@ -5,20 +5,20 @@ interface F { id: string; title: string; folder: string; is_deck: boolean; size_
 interface L { id: string; name: string; file_ids: string[]; require_email: boolean; allow_download: boolean; expires: string | null; revoked: boolean; views: number; last_viewed_at: string | null; seconds: number; viewers: number }
 interface R { id: string; name: string; instrument: string; currency: string; target: number | null; valuation_cap: number | null; discount: number | null; pre_money: number | null; status: string; target_close: string | null }
 interface I { id: string; name: string; firm: string | null; email: string | null; stage: string; amount: number | null; notes: string | null }
-interface D { company: string; currency: string; state: string; files: F[]; links: L[]; activity: { viewer_email: string | null; seconds: number; started_at: string; link: string; file: string | null }[]; round: R | null; investors: I[]; memos: { id: string; title: string; updated_at: string }[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; base: string }
+interface PL { id: string; name: string; currency: string; target: number | null; instrument: string; valuation_cap: number | null; discount: number | null; status: string; target_close: string | null; committed: number; closed: number; in_play: number }
+interface D { company: string; currency: string; state: string; files: F[]; links: L[]; activity: { viewer_email: string | null; seconds: number; started_at: string; link: string; file: string | null }[]; pipelines: PL[]; memos: { id: string; title: string; updated_at: string }[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; base: string }
 const { data, refresh } = await useFetch<D>('/api/fundraising')
 const route = useRoute(); const router = useRouter()
-const TABS = [['overview', 'Overview'], ['room', 'Data room'], ['round', 'Round'], ['memo', 'Deal memo'], ['safe', 'SAFEs']] as const
+const TABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs']] as const
+const main = computed(() => data.value?.pipelines.find((p) => p.status === 'open') ?? data.value?.pipelines[0] ?? null)
 const tab = computed(() => (TABS.find(([k]) => k === route.query.t)?.[0] ?? 'overview'))
 const go = (t: string) => router.replace({ query: { t } })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
-const cur = computed(() => data.value?.round?.currency ?? data.value?.currency ?? 'USD')
+const cur = computed(() => main.value?.currency ?? data.value?.currency ?? 'USD')
 const money = (v: number | null | undefined, c = cur.value) => (v == null ? '—' : (SYM[c] ?? '') + Math.round(v).toLocaleString('en-US'))
 const STAGES = [['contacted', 'Contacted'], ['meeting', 'Meeting'], ['diligence', 'Diligence'], ['committed', 'Committed'], ['signed', 'Signed'], ['wired', 'Wired'], ['passed', 'Passed']] as const
-const sum = (st: string[]) => (data.value?.investors ?? []).filter((i) => st.includes(i.stage)).reduce((t, i) => t + (i.amount ?? 0), 0)
-const committed = computed(() => sum(['committed', 'signed', 'wired'])); const closed = computed(() => sum(['wired']))
-const pct = (v: number) => (data.value?.round?.target ? Math.min(100, Math.round((v / data.value.round.target) * 100)) : 0)
-const own = (a: number | null) => (a && data.value?.round?.instrument === 'safe' && data.value.round.valuation_cap ? Math.round((a / data.value.round.valuation_cap) * 10000) / 100 + '%' : '—')
+const committed = computed(() => main.value?.committed ?? 0); const closed = computed(() => main.value?.closed ?? 0)
+const pct = (v: number, tg = main.value?.target) => (tg ? Math.min(100, Math.round((v / tg) * 100)) : 0)
 const mins = (s: number) => (s < 60 ? s + 's' : Math.round(s / 60) + ' min')
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
@@ -38,19 +38,19 @@ async function revoke(l: L, revoked: boolean) { try { await $fetch('/api/fundrai
 const copied = ref(''); async function copy(u: string) { await navigator.clipboard.writeText(u); copied.value = u; setTimeout(() => (copied.value = ''), 1500) }
 // round
 const rd = reactive({ open: false, id: '', name: 'Pre-seed', instrument: 'safe', currency: 'USD', target: '' as string | number, valuation_cap: '' as string | number, discount: '' as string | number, pre_money: '' as string | number, status: 'open', target_close: '' })
-function editRound() { const r = data.value?.round; Object.assign(rd, r ? { open: true, id: r.id, name: r.name, instrument: r.instrument, currency: r.currency, target: r.target ?? '', valuation_cap: r.valuation_cap ?? '', discount: r.discount ?? '', pre_money: r.pre_money ?? '', status: r.status, target_close: r.target_close ?? '' } : { open: true, id: '', currency: data.value?.currency ?? 'USD' }) }
-async function saveRound() { busy.value = true; msg.value = ''; try { await $fetch('/api/fundraising/round', { method: 'POST', body: { ...rd, id: rd.id || undefined } }); rd.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+function editRound() { const r = null as R | null; Object.assign(rd, r ? { open: true, id: r.id, name: r.name, instrument: r.instrument, currency: r.currency, target: r.target ?? '', valuation_cap: r.valuation_cap ?? '', discount: r.discount ?? '', pre_money: r.pre_money ?? '', status: r.status, target_close: r.target_close ?? '' } : { open: true, id: '', currency: data.value?.currency ?? 'USD' }) }
+async function saveRound() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/crm/pipelines', { method: 'POST', body: { ...rd, id: rd.id || undefined } }); rd.open = false; await navigateTo('/fundraising/pipelines/' + r.id) } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 const inv = reactive({ open: false, id: '', name: '', firm: '', email: '', stage: 'contacted', amount: '' as string | number, notes: '' })
 function editInv(i?: I) { Object.assign(inv, i ? { open: true, id: i.id, name: i.name, firm: i.firm ?? '', email: i.email ?? '', stage: i.stage, amount: i.amount ?? '', notes: i.notes ?? '' } : { open: true, id: '', name: '', firm: '', email: '', stage: 'contacted', amount: '', notes: '' }) }
-async function saveInv() { busy.value = true; msg.value = ''; try { await $fetch('/api/fundraising/investors', { method: 'POST', body: { ...inv, id: inv.id || undefined, round_id: data.value!.round!.id } }); inv.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-async function moveStage(i: I, stage: string) { try { await $fetch('/api/fundraising/investors', { method: 'POST', body: { id: i.id, round_id: data.value!.round!.id, name: i.name, firm: i.firm ?? '', email: i.email ?? '', stage, amount: i.amount, notes: i.notes ?? '' } }); await refresh() } catch (e) { msg.value = err(e) } }
+async function saveInv() { busy.value = true; msg.value = ''; try { inv.open = false } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function moveStage(i: I, stage: string) { void i; void stage }
 // memo
 async function newMemo() { try { const r = await $fetch<{ id: string }>('/api/fundraising/memo', { method: 'POST', body: { title: (data.value?.company ?? 'Company') + ': investment memo' } }); await navigateTo('/fundraising/memo/' + r.id) } catch (e) { msg.value = err(e) } }
 // SAFE flow
 const sf = reactive({ open: false, step: 1, investor_name: '', investor_email: '', amount: '' as string | number, currency: 'USD', valuation_cap: '' as string | number, discount: '' as string | number, mfn: false, pro_rata: false, company_name: '', company_state: 'Delaware', signatory_name: '', signatory_title: 'Chief Executive Officer', safe_date: new Date().toISOString().slice(0, 10) })
-function newSafe(i?: I) { Object.assign(sf, { open: true, step: 1, investor_name: i?.name ?? '', investor_email: i?.email ?? '', amount: i?.amount ?? '', currency: cur.value, valuation_cap: data.value?.round?.valuation_cap ?? '', discount: data.value?.round?.discount ?? '', mfn: false, pro_rata: false, company_name: data.value?.company ?? '', company_state: data.value?.state && data.value.state !== 'Other US state' ? data.value.state : 'Delaware' }) }
-function safeFromInv() { const i = data.value?.investors.find((x) => x.id === inv.id); inv.open = false; newSafe(i) }
-async function saveSafe() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/fundraising/safes', { method: 'POST', body: { ...sf, round_id: data.value?.round?.id } }); sf.open = false; await navigateTo('/fundraising/safe/' + r.id) } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+function newSafe(i?: I) { Object.assign(sf, { open: true, step: 1, investor_name: i?.name ?? '', investor_email: i?.email ?? '', amount: i?.amount ?? '', currency: cur.value, valuation_cap: main.value?.valuation_cap ?? '', discount: main.value?.discount ?? '', mfn: false, pro_rata: false, company_name: data.value?.company ?? '', company_state: data.value?.state && data.value.state !== 'Other US state' ? data.value.state : 'Delaware' }) }
+function safeFromInv() { const i = undefined as I | undefined; inv.open = false; newSafe(i) }
+async function saveSafe() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/fundraising/safes', { method: 'POST', body: { ...sf } }); sf.open = false; await navigateTo('/fundraising/safe/' + r.id) } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 </script>
 
 <template>
@@ -61,11 +61,11 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
 
     <template v-if="tab === 'overview'">
-      <div v-if="data.round" class="card rh"><div><span class="mut">{{ data.round.name }} · {{ data.round.instrument === 'safe' ? 'SAFE' : data.round.instrument === 'priced' ? 'Priced round' : 'Convertible note' }}{{ data.round.valuation_cap ? ' · ' + money(data.round.valuation_cap) + ' post-money cap' : '' }}</span>
-        <h2>{{ money(committed) }} <em>committed of {{ money(data.round.target) }}</em></h2><div class="bar"><i class="c" :style="{ width: pct(committed) + '%' }" /><i class="w" :style="{ width: pct(closed) + '%' }" /></div><span class="mut">{{ money(closed) }} received · {{ pct(committed) }}% committed{{ data.round.target_close ? ' · target close ' + new Date(data.round.target_close + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '' }}</span></div>
-        <button class="btn secondary" @click="go('round')">Open tracker</button></div>
+      <div v-if="main" class="card rh"><div><span class="mut">{{ main.name }} · {{ main.instrument === 'safe' ? 'SAFE' : main.instrument === 'priced' ? 'Priced round' : 'Convertible note' }}{{ main.valuation_cap ? ' · ' + money(main.valuation_cap) + ' post-money cap' : '' }}</span>
+        <h2>{{ money(committed) }} <em>committed of {{ money(main.target) }}</em></h2><div class="bar"><i class="c" :style="{ width: pct(committed) + '%' }" /><i class="w" :style="{ width: pct(closed) + '%' }" /></div><span class="mut">{{ money(closed) }} closed · {{ pct(committed) }}% committed{{ main.target_close ? ' · target close ' + new Date(main.target_close + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '' }}</span></div>
+        <NuxtLink :to="'/fundraising/pipelines/' + main.id" class="btn secondary">Open pipeline</NuxtLink></div>
       <div v-else class="card cta"><b>Set up your round</b><p>Track your target, who you're talking to, what's committed and what's in the bank.</p><button class="btn" @click="editRound()">Set up round</button></div>
-      <div class="kp"><div class="k"><span>Investors in play</span><b>{{ data.investors.filter((i) => !['passed', 'wired'].includes(i.stage)).length }}</b></div><div class="k"><span>Data room files</span><b>{{ data.files.length }}</b></div>
+      <div class="kp"><div class="k"><span>Investors in play</span><b>{{ main?.in_play ?? 0 }}</b></div><div class="k"><span>Data room files</span><b>{{ data.files.length }}</b></div>
         <div class="k"><span>Data room views</span><b>{{ data.links.reduce((t, l) => t + l.views, 0) }}</b></div><div class="k"><span>Time spent</span><b>{{ mins(data.links.reduce((t, l) => t + l.seconds, 0)) }}</b></div></div>
       <div class="two"><div class="card"><h3>Recent data room activity</h3><div v-for="(a, i) in data.activity.slice(0, 8)" :key="i" class="li"><span><b>{{ a.viewer_email ?? 'Someone' }}</b> opened {{ a.file ?? 'the room' }}<em> · via {{ a.link }}</em></span><span class="mut">{{ when(a.started_at) }}{{ a.seconds ? ' · ' + mins(a.seconds) : '' }}</span></div><p v-if="!data.activity.length" class="mut">No views yet. Share your data room to start tracking.</p></div>
         <div class="card"><h3>Next steps</h3><button class="nx" @click="go('room'); up.open = true"><b>Upload your deck</b><span>Then share tracked links with investors</span></button><button class="nx" @click="newMemo()"><b>Write your deal memo with AI</b><span>From your numbers and a few notes</span></button><button class="nx" @click="newSafe()"><b>Create a SAFE</b><span>Post-money cap, discount, MFN</span></button></div></div>
@@ -83,13 +83,10 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     </template>
 
     <template v-else-if="tab === 'round'">
-      <div v-if="!data.round" class="card cta"><b>No round yet</b><p>Set your target and terms, then add investors as conversations start.</p><button class="btn" @click="editRound()">Set up round</button></div>
-      <template v-else>
-        <div class="card rh"><div><span class="mut">{{ data.round.name }} · {{ data.round.status === 'open' ? 'Open' : 'Closed' }}</span><h2>{{ money(committed) }} <em>of {{ money(data.round.target) }}</em></h2><div class="bar"><i class="c" :style="{ width: pct(committed) + '%' }" /><i class="w" :style="{ width: pct(closed) + '%' }" /></div></div><div class="row"><button class="btn secondary" @click="editRound()">Edit round</button><button class="btn" @click="editInv()">Add investor</button></div></div>
-        <div class="pipe"><div v-for="[k, l] in STAGES" :key="k" class="col"><span class="ch">{{ l }} <em>{{ data.investors.filter((i) => i.stage === k).length }}</em></span>
-          <div v-for="i in data.investors.filter((x) => x.stage === k)" :key="i.id" class="card ic2" @click="editInv(i)"><b>{{ i.name }}</b><span class="mut">{{ i.firm ?? '' }}</span><span class="am">{{ money(i.amount) }}<em v-if="data.round.instrument === 'safe' && i.amount"> · {{ own(i.amount) }}</em></span>
-            <select :value="i.stage" @click.stop @change="moveStage(i, ($event.target as HTMLSelectElement).value)"><option v-for="[s, sl] in STAGES" :key="s" :value="s">{{ sl }}</option></select></div></div></div>
-      </template>
+      <div class="bar2"><span class="mut">A pipeline for each raise or target group. Track every investor from first contact to money in the bank.</span><button class="btn" @click="editRound()">New pipeline</button></div>
+      <div class="plg"><NuxtLink v-for="p in data.pipelines" :key="p.id" :to="'/fundraising/pipelines/' + p.id" class="card plc"><div class="lh"><b>{{ p.name }}</b><span class="pill" :class="{ off: p.status !== 'open' }">{{ p.status === 'open' ? 'Open' : 'Closed' }}</span></div>
+        <span class="am2">{{ money(p.committed, p.currency) }} <em>of {{ money(p.target, p.currency) }}</em></span><div class="bar"><i class="c" :style="{ width: pct(p.committed, p.target) + '%' }" /><i class="w" :style="{ width: pct(p.closed, p.target) + '%' }" /></div><span class="mut">{{ p.in_play }} investors in play · {{ money(p.closed, p.currency) }} closed</span></NuxtLink></div>
+      <div v-if="!data.pipelines.length" class="card cta"><b>No pipelines yet</b><p>Create one for your raise, set the target, then add investors as conversations start.</p><button class="btn" @click="editRound()">New pipeline</button></div>
     </template>
 
     <template v-else-if="tab === 'memo'">
@@ -118,8 +115,8 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
         <label class="chk"><input v-model="lk.require_email" type="checkbox"> Ask for the viewer's email</label><label class="chk"><input v-model="lk.allow_download" type="checkbox"> Allow downloads</label></form>
       <template #foot><template v-if="!lk.url"><button class="btn secondary" @click="lk.open = false">Cancel</button><button class="btn" type="submit" form="lkf" :disabled="busy">Create link</button></template><button v-else class="btn" @click="lk.open = false">Done</button></template>
     </AppModal>
-    <AppModal :open="rd.open" :title="rd.id ? 'Edit round' : 'Set up your round'" @close="rd.open = false">
-      <form id="rdf" class="frm g2" @submit.prevent="saveRound"><label class="label">Round name<select v-model="rd.name"><option v-for="n in ['Pre-seed', 'Seed', 'Seed extension', 'Series A', 'Series B', 'Bridge', 'Angel round']" :key="n">{{ n }}</option></select></label>
+    <AppModal :open="rd.open" :title="rd.id ? 'Edit pipeline' : 'New pipeline'" @close="rd.open = false">
+      <form id="rdf" class="frm g2" @submit.prevent="saveRound"><label class="label">Pipeline name<input v-model="rd.name" required maxlength="120" list="pln"><datalist id="pln"><option v-for="n in ['Pre-seed', 'Seed', 'Series A', 'Series B', 'Bridge', 'Angel round', 'Strategic investors']" :key="n" :value="n" /></datalist></label>
         <label class="label">Instrument<select v-model="rd.instrument"><option value="safe">SAFE</option><option value="priced">Priced round</option><option value="convertible_note">Convertible note</option></select></label>
         <label class="label">Currency<select v-model="rd.currency"><option value="USD">US dollar</option><option value="NGN">Naira</option></select></label>
         <label class="label">Target amount<input v-model="rd.target" inputmode="decimal" placeholder="e.g. 750000"></label>
@@ -133,7 +130,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
         <label class="label">Email<input v-model="inv.email" type="email" maxlength="254"></label><label class="label">Stage<select v-model="inv.stage"><option v-for="[s, l] in STAGES" :key="s" :value="s">{{ l }}</option></select></label>
         <label class="label">Amount<input v-model="inv.amount" inputmode="decimal"></label><span />
         <label class="label w">Notes<textarea v-model="inv.notes" rows="3" maxlength="2000" /></label></form>
-      <template #foot><button v-if="inv.id && data.round?.instrument === 'safe'" class="btn secondary" @click="safeFromInv">Create their SAFE</button><span class="sp" /><button class="btn secondary" @click="inv.open = false">Cancel</button><button class="btn" type="submit" form="invf" :disabled="busy">Save</button></template>
+      <template #foot><button v-if="false" class="btn secondary" @click="safeFromInv">Create their SAFE</button><span class="sp" /><button class="btn secondary" @click="inv.open = false">Cancel</button><button class="btn" type="submit" form="invf" :disabled="busy">Save</button></template>
     </AppModal>
     <AppModal :open="sf.open" title="Create a SAFE" @close="sf.open = false">
       <ol class="st"><li v-for="(s, i) in ['Investor', 'Terms', 'Company', 'Review']" :key="s" :class="{ on: sf.step === i + 1, ok: sf.step > i + 1 }"><span>{{ sf.step > i + 1 ? '✓' : i + 1 }}</span>{{ s }}</li></ol>
@@ -166,6 +163,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
 .pill { font-size: 12px; padding: 2px 8px; background: rgba(31,122,77,.1); color: var(--c-ok); } .pill.off { background: var(--c-paper-2); color: var(--c-muted); }
 .pipe { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 6px; } .col { background: var(--c-paper-2); padding: 8px; min-height: 200px; } .ch { display: block; font-size: 12px; font-weight: 600; color: var(--c-ink-soft); margin-bottom: 8px; } .ch em { font-style: normal; color: var(--c-muted); font-weight: 400; }
 .ic2 { padding: 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; } .ic2:hover { border-color: var(--c-navy); } .am { font-size: 13px; font-weight: 600; } .am em { font-style: normal; font-weight: 400; color: var(--c-muted); } .ic2 select { font: inherit; font-size: 12px; padding: 3px; border: 1px solid var(--c-rule); margin-top: 4px; }
+.plg { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; } .plc { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--c-ink); } .plc:hover { border-color: var(--c-navy); } .am2 { font-size: 22px; font-weight: 600; } .am2 em { font-style: normal; font-size: 13px; color: var(--c-muted); font-weight: 400; }
 .mm { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; text-decoration: none; color: var(--c-ink); } .mm:hover { border-color: var(--c-navy); }
 .box { background: #fff; border: 1px solid var(--c-rule); } table { width: 100%; border-collapse: collapse; } td { padding: 12px 14px; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .t { font-weight: 600; display: block; } .n { text-align: right; } .none { padding: 18px; color: var(--c-muted); margin: 0; }
 .frm { display: flex; flex-direction: column; gap: 12px; } .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .w { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 6px; }

@@ -16,7 +16,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
   <section>
     <p class="label">Investors</p><h1>Investor updates</h1>
     <p class="lead">Keep investors close with a short monthly or quarterly update. Add a few highlights; we draft it from your Financials for you to edit, publish on your investor page and email to your investors, and you see who opened it.</p>
-    <nav class="tabs"><button :class="{ on: tab === 'updates' }" @click="tab = 'updates'">Updates ({{ ups?.length ?? 0 }})</button><button :class="{ on: tab === 'investors' }" @click="tab = 'investors'">Investors ({{ invs?.length ?? 0 }})</button></nav>
+    <nav class="tabs"><button :class="{ on: tab === 'updates' }" @click="tab = 'updates'">Updates ({{ ups?.length ?? 0 }})</button><NuxtLink to="/contacts" class="tl">Contacts ({{ invs?.length ?? 0 }}) →</NuxtLink></nav>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <template v-if="tab === 'updates'">
       <form class="card new" @submit.prevent="start"><b>New update</b><select v-model="n.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option></select><label>Period ending<input v-model="n.period_end" type="date" required></label><button class="btn" type="submit">Start</button></form>
@@ -32,7 +32,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
   </section>
 </template>
 <style scoped>
-.lead { color: var(--c-ink-soft); max-width: 780px; } .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 14px 0; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
+.lead { color: var(--c-ink-soft); max-width: 780px; } .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 14px 0; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .tl { padding: 10px 0; color: var(--c-muted); text-decoration: none; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .new { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; } .new label { display: flex; gap: 8px; align-items: center; font-size: 14px; } .add { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 select, input, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .box { background: #fff; border: 1px solid var(--c-rule); } table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-weight: 400; font-size: 13px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); } td { padding: 12px 14px; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .n { text-align: right; } .t { font-weight: 500; } .s { display: block; font-size: 12.5px; color: var(--c-muted); }

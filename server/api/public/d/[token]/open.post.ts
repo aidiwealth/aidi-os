@@ -13,10 +13,11 @@ export default defineEventHandler(async (event) => {
   if (l.require_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.data.email)) throw apiError('email', 'Enter your email to view.', 400)
   if (l.file_ids.length && !l.file_ids.includes(b.data.file_id)) throw apiError('not_found', 'Not found', 404)
   setOrgContext(l.organization_id)
-  const f = (await db().query<{ title: string; storage_key: string }>('SELECT f.title, d.storage_key FROM fundraise.files f JOIN core.documents d ON d.id = f.document_id WHERE f.id = $1', [b.data.file_id])).rows[0]
+  const f = (await db().query<{ title: string; storage_key: string; is_deck: boolean }>('SELECT f.title, d.storage_key, f.is_deck FROM fundraise.files f JOIN core.documents d ON d.id = f.document_id WHERE f.id = $1', [b.data.file_id])).rows[0]
   if (!f) throw apiError('not_found', 'Not found', 404)
   const v = await one<{ id: string }>('INSERT INTO fundraise.views (organization_id, link_id, file_id, viewer_email) VALUES ($1,$2,$3,$4) RETURNING id', [l.organization_id, l.id, b.data.file_id, b.data.email.toLowerCase() || null])
   await db().query('UPDATE fundraise.links SET views = views + 1, last_viewed_at = now() WHERE id = $1', [l.id])
+  await logActivity(l.organization_id, b.data.email, f.is_deck ? 'deck_viewed' : 'file_viewed', 'Viewed ' + f.title, b.data.file_id)
   if (l.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, 'Data room: ' + l.name + (b.data.email ? ' (' + b.data.email + ')' : ''), brands().finvry.url + '/fundraising').catch(() => {}) }
   return { view_id: v.id, url: await signedGetUrl({ key: f.storage_key, filename: f.title, seconds: 300, inline: !(b.data.download && l.allow_download) }) }
 })
