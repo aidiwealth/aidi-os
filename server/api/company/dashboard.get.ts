@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   return {
     company: org.name, first: (name ?? user.email).split(' ')[0], currency: last?.currency ?? ((org.settings.currency as string) || 'USD'), plan: org.plan_code, status: org.status,
     last, growth, series, mix: last ? [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
-    due: due.rows, page, shares, services,
+    due: due.rows, page, shares, services, wallet: await walletOf(org.id),
     setup: [
       { label: 'Add your company type for filing reminders', done: !!org.settings.entity_type, to: '/settings' },
       { label: 'Add your first financials', done: series.length > 0, to: '/financials' },

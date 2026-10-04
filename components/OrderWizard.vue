@@ -11,6 +11,9 @@ const CATS = [
   { key: 'other', title: 'Something else', blurb: 'Other filings, legal reviews or setup help.', codes: [] as string[] }]
 const step = ref(1); const cat = ref(''); const picked = ref<string[]>([]); const company = ref(''); const notes = ref(''); const msg = ref(''); const busy = ref(false)
 const done = ref<{ quoted: string[]; job_id: string } | null>(null)
+const { data: wal } = await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
+const useWallet = ref(false)
+const walletCovers = computed(() => !!wal.value && wal.value.currency === cur.value && wal.value.balance_minor >= total.value * 100 && total.value > 0)
 const known = new Set(CATS.flatMap((c) => c.codes))
 const inCat = computed(() => { const c = CATS.find((x) => x.key === cat.value); const all = data.value?.items ?? []; return c?.key === 'other' ? all.filter((i) => !known.has(i.code)) : all.filter((i) => c?.codes.includes(i.code)) })
 watchEffect(() => { if (props.preset && data.value && !cat.value) { const c = CATS.find((x) => x.codes.includes(props.preset)); if (c) { cat.value = c.key; picked.value = [props.preset]; step.value = 2 } } })
@@ -24,7 +27,9 @@ const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
 function choose(k: string) { cat.value = k; step.value = 2 }
 async function place() {
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ pay_url: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, company_id: company.value || undefined, notes: notes.value } }); if (r.pay_url) window.location.href = r.pay_url; else { done.value = r; emit('done', r.job_id) } }
+  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, company_id: company.value || undefined, notes: notes.value } })
+    if (r.invoice_id && useWallet.value && walletCovers.value) { await $fetch('/api/portal/invoices/' + r.invoice_id + '/pay-wallet', { method: 'POST' }); done.value = r; emit('done', r.job_id) }
+    else if (r.pay_url) window.location.href = r.pay_url; else { done.value = r; emit('done', r.job_id) } }
   catch (e) { msg.value = portalErr(e) } finally { busy.value = false }
 }
 </script>
@@ -43,12 +48,13 @@ async function place() {
       <div v-else class="rev">
         <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="i.billing === 'monthly' && !quoted(i)"> · first 12 months</em></span><b>{{ quoted(i) ? 'Quote' : (SYM[i.currency] ?? '') + lineAmount(i).toLocaleString('en-US') }}</b></div>
         <div class="ln tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
+        <label v-if="walletCovers" class="wl"><input v-model="useWallet" type="checkbox"> Pay from my wallet (balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }})</label>
         <p class="hint">{{ total ? 'Pay securely by card, or by bank transfer using the details on your invoice.' : 'We will review your request and send you a quote.' }}{{ chosen.some(quoted) && total ? ' Quoted items are priced after review.' : '' }}</p></div>
       <p v-if="msg" class="error">{{ msg }}</p>
       <div class="nav"><button v-if="step > 1" type="button" class="btn secondary" @click="step--">Back</button><span />
         <button v-if="step === 2" type="button" class="btn" :disabled="!picked.length" @click="step = 3">Continue</button>
         <button v-else-if="step === 3" type="button" class="btn" @click="step = 4">Review</button>
-        <button v-else-if="step === 4" type="button" class="btn" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : total ? 'Pay ' + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button></div>
+        <button v-else-if="step === 4" type="button" class="btn" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : total ? (useWallet && walletCovers ? 'Pay from wallet ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button></div>
     </template>
   </div>
 </template>
@@ -61,7 +67,7 @@ async function place() {
 .it input { position: absolute; top: 14px; right: 14px; } .nm { font-weight: 600; padding-right: 26px; } .ds { font-size: 12.5px; color: var(--c-ink-soft); } .it b { font-weight: 600; margin-top: 4px; } .it b.q { color: var(--c-muted); font-weight: 500; }
 .det { display: flex; flex-direction: column; gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; } select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .ln { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14.5px; } .ln em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .ln.tot { font-size: 17px; font-weight: 600; border-bottom: 0; }
-.hint { font-size: 13px; color: var(--c-muted); margin: 0 0 10px; } .nav { display: flex; gap: 10px; align-items: center; margin-top: 18px; } .nav span { flex: 1; } .error { color: var(--c-danger); }
+.hint { font-size: 13px; color: var(--c-muted); margin: 0 0 10px; } .wl { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 8px 0; background: var(--c-signal-soft); padding: 10px 12px; } .wl input { width: auto; } .nav { display: flex; gap: 10px; align-items: center; margin-top: 18px; } .nav span { flex: 1; } .error { color: var(--c-danger); }
 .fin { text-align: center; padding: 10px 0; } .fin .big { display: inline-grid; place-items: center; width: 52px; height: 52px; background: rgba(31,122,77,.12); color: var(--c-ok); font-size: 26px; } .fin h3 { font-size: 24px; margin: 12px 0 6px; } .fin p { color: var(--c-ink-soft); max-width: 440px; margin: 0 auto 16px; } .fin a { text-decoration: none; }
 @media (max-width: 640px) { .cats, .items { grid-template-columns: 1fr; } }
 </style>

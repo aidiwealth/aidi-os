@@ -3,7 +3,7 @@
 type R = Record<string, number | null> & { period: string; currency: string }
 interface D { company: string; first: string; currency: string; plan: string; status: string; last: R | null; growth: number | null; series: R[]; mix: { label: string; value: number }[]
   due: { id: string; title: string; next_due: string; overdue: boolean }[]; page: { slug: string; published: boolean; views: number } | null; shares: { n: number; views: number }
-  services: { open: number; waiting: number; unpaid: number }; setup: { label: string; done: boolean; to: string }[] }
+  services: { open: number; waiting: number; unpaid: number }; wallet: { currency: string; balance_minor: number }; setup: { label: string; done: boolean; to: string }[] }
 const { data } = await useFetch<D>('/api/company/dashboard')
 useHead({ title: 'Dashboard' })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
@@ -51,6 +51,7 @@ const done = computed(() => (data.value?.setup ?? []).filter((s) => s.done).leng
         <p v-if="!data.due.length" class="muted">Nothing due in the next 60 days.</p>
         <div class="li"><span>Open service requests</span><b>{{ data.services.open }}{{ data.services.waiting ? ' · ' + data.services.waiting + ' need you' : '' }}</b></div>
         <div class="li"><span>Unpaid invoices</span><b :class="{ red: data.services.unpaid }">{{ data.services.unpaid }}</b></div>
+        <div class="li"><span>Wallet balance</span><b><NuxtLink to="/wallet"><Money :value="data.wallet.balance_minor / 100" :currency="data.wallet.currency" /></NuxtLink></b></div>
         <NuxtLink to="/client" class="more">Services →</NuxtLink></div>
     </div>
   </section>
