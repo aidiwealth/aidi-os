@@ -18,7 +18,8 @@ async function add() {
 }
 const usd = (v: number | string | null) => (v === null || v === '' ? '—' : '$' + Math.round(Number(v)).toLocaleString())
 const days = (s: string) => Math.max(0, Math.floor((Date.now() - Date.parse(s)) / 86400000))
-const KIND: Record<string, string> = { vc: 'Venture firm', family_office: 'Family office', company: 'Company', fund_admin: 'Fund administrator', other: 'Other' }
+const KIND: Record<string, string> = { vc: 'Venture fund', family_office: 'Family office' }
+watch(() => f.kind, () => { f.plan_code = '' })
 void refresh
 </script>
 
@@ -39,7 +40,7 @@ void refresh
       <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Country<input v-model="f.country" maxlength="100"></label>
       <label class="label">Source<select v-model="f.source"><option v-for="s in ['inbound', 'website', 'referral', 'event', 'outbound', 'partner', 'other']" :key="s" :value="s">{{ s }}</option></select></label>
-      <label class="label">Plan<select v-model="f.plan_code"><option value="">Not decided</option><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
+      <label class="label">Plan<select v-model="f.plan_code"><option value="">Not decided</option><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && (x.code.startsWith(f.kind === 'vc' ? 'vc_' : 'fo_')))" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
       <label class="label">Expected MRR (USD)<input v-model="f.value_monthly_usd" inputmode="decimal"></label>
       <label class="label">Expected close<input v-model="f.expected_close" type="date"></label>
       <label class="label wide">Notes<textarea v-model="f.notes" rows="2" maxlength="5000" /></label>

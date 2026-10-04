@@ -6,11 +6,11 @@ const { data, refresh } = await useFetch<F[]>('/api/funds')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const isGp = computed(() => !!me.value?.roles.includes('gp'))
 const { money, x, pct } = useMoney()
-const setup = reactive({ entity_id: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })
+const setup = reactive({ entity_id: '', name: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })
 const msg = ref('')
 async function doSetup() {
   msg.value = ''
-  try { const r = await $fetch<{ id: string }>('/api/funds/setup', { method: 'POST', body: setup }); await navigateTo('/funds/' + r.id) }
+  try { const r = await $fetch<{ id: string }>('/api/funds/setup', { method: 'POST', body: { ...setup, entity_id: setup.entity_id && setup.entity_id !== 'new' ? setup.entity_id : undefined, name: setup.entity_id === 'new' || !setup.entity_id ? setup.name : undefined } }); await navigateTo('/funds/' + r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not set up the fund.' }
 }
 const pending = computed(() => (data.value ?? []).filter((f) => !f.fund_id))
@@ -21,7 +21,7 @@ void refresh
 <template>
   <section v-if="data">
     <div class="head"><h1>Funds</h1><NuxtLink to="/funds/lps" class="btn secondary">LP register</NuxtLink></div>
-    <p v-if="!data.length" class="card muted">Add a fund or SPV under Entities (type: Fund) to manage its LPs, capital calls and distributions here.</p>
+    <p v-if="!data.length" class="card muted">Add your first fund below to manage its LPs, capital calls and distributions.</p>
     <div class="grid">
       <NuxtLink v-for="f in data.filter((x) => x.fund_id)" :key="f.entity_id" :to="'/funds/' + f.fund_id" class="card fund">
         <div class="fh"><h2>{{ f.name }}</h2><span class="tag">{{ STATUS[f.status ?? ''] }}<template v-if="f.vintage"> · {{ f.vintage }}</template></span></div>
@@ -32,9 +32,10 @@ void refresh
           <div><dt>DPI</dt><dd>{{ x(f.m!.dpi) }}</dd></div><div><dt>TVPI</dt><dd>{{ x(f.m!.tvpi) }}</dd></div><div><dt>Net IRR</dt><dd>{{ pct(f.m!.irr) }}</dd></div></dl>
       </NuxtLink>
     </div>
-    <form v-if="pending.length && isGp" class="card frm" @submit.prevent="doSetup">
-      <h2 class="wide">Set up a fund</h2>
-      <label class="label">Fund<select v-model="setup.entity_id" required><option value="" disabled>Choose</option><option v-for="f in pending" :key="f.entity_id" :value="f.entity_id">{{ f.name }}</option></select></label>
+    <form v-if="isGp" class="card frm" @submit.prevent="doSetup">
+      <h2 class="wide">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</h2>
+      <label v-if="pending.length" class="label">Fund<select v-model="setup.entity_id" required><option value="" disabled>Choose</option><option v-for="f in pending" :key="f.entity_id" :value="f.entity_id">{{ f.name }}</option><option value="new">New fund…</option></select></label>
+      <label v-if="!pending.length || setup.entity_id === 'new'" class="label">Fund name<input v-model="setup.name" required maxlength="200" placeholder="e.g. Acme Ventures Fund I"></label>
       <label class="label">Currency<select v-model="setup.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
       <label class="label">Target size<input v-model="setup.target_size" inputmode="decimal"></label>
       <label class="label">Vintage<input v-model="setup.vintage" inputmode="numeric"></label>

@@ -75,7 +75,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
     <form v-if="form === 'sub'" class="card frm" @submit.prevent="saveSub">
       <h2 class="wide">Start or change a subscription</h2>
       <label class="label">Customer<select v-model="sf.organization_id" required><option value="" disabled>Choose</option><option v-for="o in customers" :key="o.id" :value="o.id">{{ o.name }}</option></select></label>
-      <label class="label">Plan<select v-model="sf.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
+      <label class="label">Plan<select v-model="sf.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
       <label class="label">Billing<select v-model="sf.billing"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>
       <label class="label">Price per {{ sf.billing === 'annual' ? 'year' : 'month' }} ({{ sf.currency }})<input v-model="sf.amount_usd" inputmode="decimal" required></label>
       <label class="label">Paid by<select v-model="sf.method"><option value="invoice">Invoice (bank transfer or pay link)</option><option value="stripe">Card, renewed automatically (Stripe)</option><option value="paystack">Card, renewed automatically (Paystack)</option></select></label>

@@ -18,5 +18,5 @@ export async function platformAudit(event: H3Event, actorUserId: string, action:
     [orgId, actorUserId, 'platform.' + action, 'organization', orgId, JSON.stringify(detail), getRequestIP(event, { xForwardedFor: true }) ?? null]))
 }
 
-export const ORG_KINDS = ['vc', 'family_office', 'company', 'fund_admin', 'other'] as const
+export const ORG_KINDS = ['vc', 'family_office'] as const
 export const ORG_STATUSES = ['trial', 'active', 'past_due', 'suspended', 'closed'] as const

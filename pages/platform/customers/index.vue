@@ -8,7 +8,7 @@ const adding = ref(route.query.new === '1')
 const q = ref('')
 const status = ref('')
 const rows = computed(() => (data.value ?? []).filter((o) => (!status.value || o.status === status.value) && (!q.value || o.name.toLowerCase().includes(q.value.toLowerCase()))))
-const f = reactive({ name: '', slug: '', kind: 'vc', plan_code: 'starter', status: 'trial', trial_days: 14, admin_name: '', admin_email: '' })
+const f = reactive({ name: '', slug: '', kind: 'vc', plan_code: 'vc_starter', status: 'trial', trial_days: 14, admin_name: '', admin_email: '' })
 watch(() => f.name, (n) => { if (!slugTouched.value) f.slug = n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) })
 const slugTouched = ref(false)
 const msg = ref('')
@@ -17,7 +17,8 @@ async function create() {
   try { const r = await $fetch<{ id: string; emailed: boolean }>('/api/platform/orgs', { method: 'POST', body: f }); await navigateTo('/platform/customers/' + r.id + (r.emailed ? '?invited=1' : '')) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the workspace.' }
 }
-const KIND: Record<string, string> = { vc: 'Venture firm', family_office: 'Family office', company: 'Company', fund_admin: 'Fund administrator', other: 'Other' }
+const KIND: Record<string, string> = { vc: 'Venture fund', family_office: 'Family office' }
+watch(() => f.kind, (k) => { f.plan_code = (k === 'vc' ? 'vc_' : 'fo_') + 'starter' })
 const ago = (s: string | null) => { if (!s) return 'never'; const d = Math.floor((Date.now() - Date.parse(s)) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago' }
 void refresh
 </script>
@@ -30,7 +31,7 @@ void refresh
       <label class="label">Company<input v-model="f.name" required maxlength="200" placeholder="e.g. Acme Capital"></label>
       <label class="label">Link name<input v-model="f.slug" required pattern="[a-z0-9][a-z0-9-]{1,40}" @input="slugTouched = true"></label>
       <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
-      <label class="label">Plan<select v-model="f.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
+      <label class="label">Plan<select v-model="f.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && (x.code.startsWith(f.kind === 'vc' ? 'vc_' : 'fo_')))" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
       <label class="label">Start as<select v-model="f.status"><option value="trial">Trial</option><option value="active">Active (paying)</option></select></label>
       <label v-if="f.status === 'trial'" class="label">Trial days<input v-model.number="f.trial_days" type="number" min="1" max="90"></label>
       <label class="label">First admin's name<input v-model="f.admin_name" required maxlength="200"></label>

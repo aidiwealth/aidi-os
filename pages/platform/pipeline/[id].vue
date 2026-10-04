@@ -29,7 +29,7 @@ async function convert() {
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const KIND: Record<string, string> = { vc: 'Venture firm', family_office: 'Family office', company: 'Company', fund_admin: 'Fund administrator', other: 'Other' }
+const KIND: Record<string, string> = { vc: 'Venture fund', family_office: 'Family office' }
 const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email', meeting: 'Meeting', stage: 'Stage', converted: 'Became a customer' }
 </script>
 
@@ -50,7 +50,7 @@ const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email',
           <h2>Convert to customer</h2>
           <p class="hint">Creates their isolated Finvry workspace, invites the first admin, and marks this deal won.</p>
           <label class="label">Link name<input v-model="cv.slug" required pattern="[a-z0-9][a-z0-9-]{1,40}"></label>
-          <label class="label">Plan<select v-model="cv.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
+          <label class="label">Plan<select v-model="cv.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && (x.code.startsWith(f.kind === 'vc' ? 'vc_' : 'fo_')))" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
           <label class="label">Start as<select v-model="cv.status"><option value="trial">Trial</option><option value="active">Active</option></select></label>
           <label v-if="cv.status === 'trial'" class="label">Trial days<input v-model.number="cv.trial_days" type="number" min="1" max="90"></label>
           <label class="label">First admin's name<input v-model="cv.admin_name" required maxlength="200"></label>
@@ -77,7 +77,7 @@ const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email',
         <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
         <label class="label">Country<input v-model="f.country" maxlength="100"></label>
         <label class="label">Source<select v-model="f.source"><option v-for="s in ['inbound', 'website', 'referral', 'event', 'outbound', 'partner', 'other']" :key="s" :value="s">{{ s }}</option></select></label>
-        <label class="label">Plan<select v-model="f.plan_code"><option value="">Not decided</option><option v-for="p in (plans?.plans ?? []).filter((x) => x.code !== 'internal')" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
+        <label class="label">Plan<select v-model="f.plan_code"><option value="">Not decided</option><option v-for="p in (plans?.plans ?? []).filter((x) => (x.code.startsWith(f.kind === 'vc' ? 'vc_' : 'fo_')))" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
         <label class="label">Seats<input v-model="f.seats" inputmode="numeric"></label>
         <label class="label">Expected MRR (USD)<input v-model="f.value_monthly_usd" inputmode="decimal"></label>
         <label class="label">Billing<select v-model="f.billing"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>
