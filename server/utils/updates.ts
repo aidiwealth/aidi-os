@@ -37,8 +37,9 @@ export const updateLabel = (type: string, end: string) => { const d = new Date(e
 
 // What a reader sees: the update, the period's key figures, and the company.
 export async function publicUpdate(id: string, publishedOnly: boolean) {
-  const u = (await db().query<{ title: string; body: string | null; period_type: string; period_end: string; status: string; published_at: string | null }>("SELECT title, body, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, status, published_at FROM financials.updates WHERE id = $1", [id])).rows[0]
+  const u = (await db().query<{ title: string; body: string | null; period_type: string; period_end: string; status: string; published_at: string | null; blocks: Block[]; cover_id: string | null; from_name: string | null }>("SELECT title, body, blocks, cover_id, from_name, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, status, published_at FROM financials.updates WHERE id = $1", [id])).rows[0]
   if (!u || (publishedOnly && u.status !== 'published')) throw apiError('not_found', 'Not found', 404)
   const page = (await db().query<{ slug: string; published: boolean }>('SELECT slug, published FROM financials.public_pages LIMIT 1')).rows[0]
-  return { title: u.title, body: u.body ?? '', label: updateLabel(u.period_type, u.period_end), figures: await periodFigures(u.period_type, u.period_end), company: (await currentOrg())!.name, page: page?.published ? page.slug : null, workspace: await publicWorkspace() }
+  const html = u.blocks?.length ? await renderUpdateDoc(u, { company: (await currentOrg())!.name, base: brands().finvry.url, email: false }) : ''
+  return { html, title: u.title, body: u.body ?? '', label: updateLabel(u.period_type, u.period_end), figures: await periodFigures(u.period_type, u.period_end), company: (await currentOrg())!.name, page: page?.published ? page.slug : null, workspace: await publicWorkspace() }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // An investor update as readers see it: title, the period's key figures, then the letter.
-const props = defineProps<{ title: string; label: string; body: string; company: string; currency: string; current: Record<string, number | null> | null; previous: Record<string, number | null> | null }>()
+const props = defineProps<{ html?: string; title: string; label: string; body: string; company: string; currency: string; current: Record<string, number | null> | null; previous: Record<string, number | null> | null }>()
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const money = (v: number | null | undefined) => v == null ? '—' : (SYM[props.currency] ?? props.currency + ' ') + Math.round(v).toLocaleString('en-US')
 const chg = (k: string) => { const a = props.current?.[k], b = props.previous?.[k]; return a == null || b == null || b === 0 ? null : Math.round(((a - b) / Math.abs(b)) * 1000) / 10 }
@@ -8,7 +8,8 @@ const KPIS = [['revenue', 'Revenue'], ['gross_margin', 'Gross margin'], ['net_in
 const html = computed(() => renderMarkdown(props.body))
 </script>
 <template>
-  <article class="uv">
+  <article v-if="html" class="uv"><p class="label">{{ company }} · {{ label }}</p><div class="ext" v-html="html" /></article>
+  <article v-else class="uv">
     <p class="label">{{ company }} · {{ label }}</p><h1>{{ title }}</h1>
     <div v-if="current" class="ks"><div v-for="[k, l] in KPIS" :key="k" class="k"><span>{{ l }}</span><b>{{ k === 'gross_margin' ? (current[k] == null ? '—' : current[k] + '%') : money(current[k]) }}</b><em v-if="chg(k) != null" :class="{ up: chg(k)! > 0, dn: chg(k)! < 0 }">{{ chg(k)! > 0 ? '+' : '' }}{{ chg(k) }}%</em></div></div>
     <div class="md" v-html="html" />
