@@ -18,7 +18,7 @@ const done = computed(() => (data.value?.setup ?? []).filter((s) => s.done).leng
 <template>
   <section v-if="data" class="cd">
     <div class="hd"><div><p class="label">{{ data.company }}</p><h1>{{ greet }}, {{ data.first }}</h1></div>
-      <div class="qa"><NuxtLink to="/financials" class="btn">Add financials</NuxtLink><NuxtLink to="/investor-page" class="btn secondary">Investor page</NuxtLink><NuxtLink to="/client" class="btn secondary">Order a service</NuxtLink></div></div>
+      <div class="qa"><NuxtLink to="/financials" class="btn">Add financials</NuxtLink><NuxtLink to="/investor-page" class="btn secondary">Investor page</NuxtLink><NuxtLink to="/client/order" class="btn secondary">Order a service</NuxtLink></div></div>
 
     <div v-if="done < data.setup.length" class="card setup"><div class="sh"><b>Get set up</b><span>{{ done }} of {{ data.setup.length }} done</span></div><div class="bar"><i :style="{ width: (done / data.setup.length) * 100 + '%' }" /></div>
       <NuxtLink v-for="s in data.setup" :key="s.label" :to="s.to" class="step" :class="{ ok: s.done }"><span class="tick">{{ s.done ? '✓' : '' }}</span>{{ s.label }}</NuxtLink></div>

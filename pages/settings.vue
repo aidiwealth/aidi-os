@@ -39,6 +39,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
         <div class="row"><button class="btn" type="submit" :disabled="busy">Save</button><span v-if="ok" class="ok">{{ ok }}</span><span v-if="msg" class="error">{{ msg }}</span></div>
       </form>
       <div class="col">
+        <div v-if="data.org.kind === 'company'" class="card"><CompanyProfile /></div>
         <div class="card">
           <h2>Plan and usage</h2>
           <p class="plan"><b>{{ data.plan.name }}</b> plan<template v-if="data.org.status === 'trial'"> · trial</template></p>

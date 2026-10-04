@@ -303,3 +303,11 @@ export async function sendShareViewedEmail(to: string, title: string, link: stri
     `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">You hear about views at most once an hour per link.</p>`, 'Shared financials viewed')
   await sendEmail({ to, subject: 'Viewed: ' + title, text: 'Someone opened your shared financials "' + title + '". ' + link, html })
 }
+
+// An investor update: a short preview and the personal link to read it.
+export async function sendInvestorUpdateEmail(to: string, name: string, company: string, title: string, body: string, link: string): Promise<void> {
+  const preview = body.replace(/[#*_>`-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 320)
+  const html = shell(`<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(company)} · Investor update</p>` + h1(esc(title)) +
+    para('Hi ' + esc(name.split(' ')[0] ?? name) + ',') + para(esc(preview) + (body.length > 320 ? '…' : '')) + button('Read the full update →', link), title)
+  await sendEmail({ to, subject: title, text: 'Hi ' + name + ',\n\n' + preview + '\n\nRead the full update: ' + link, html })
+}

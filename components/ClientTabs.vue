@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Tabs across the Services pages when they are shown inside the Finvry app (the portal frame has its own top bar).
 const route = useRoute()
-const tabs = [{ to: '/client', label: 'Overview' }, { to: '/client/documents', label: 'Documents' }, { to: '/client/invoices', label: 'Invoices & payments' }, { to: '/client/messages', label: 'Messages' }]
+const tabs = [{ to: '/client', label: 'Overview' }, { to: '/client/documents', label: 'Documents' }, { to: '/client/invoices', label: 'Invoices & payments' }, { to: '/client/messages', label: 'Messages' }, { to: '/client/order', label: 'Order a service' }]
 const on = (to: string) => (to === '/client' ? route.path === '/client' || route.path.startsWith('/client/jobs') : route.path.startsWith(to))
 </script>
 <template>

@@ -29,10 +29,11 @@ export default defineEventHandler(async (event) => {
     last, growth, series, mix: last ? [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
     due: due.rows, page, shares, services,
     setup: [
+      { label: 'Add your company type for filing reminders', done: !!org.settings.entity_type, to: '/settings' },
       { label: 'Add your first financials', done: series.length > 0, to: '/financials' },
       { label: 'Publish your investor page', done: !!page?.published, to: '/investor-page' },
       { label: 'Invite a co-founder or your accountant', done: members.n > 1, to: '/team' },
-      { label: 'Order a service (virtual office, tax filing, registration)', done: services.open > 0 || services.unpaid > 0, to: '/client' }
+      { label: 'Order a service (virtual office, tax filing, registration)', done: services.open > 0 || services.unpaid > 0, to: '/client/order' }
     ]
   }
 })

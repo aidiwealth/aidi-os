@@ -22,6 +22,8 @@ export const RECORDS: Record<string, RecordType> = {
     ['SELECT count(*) FROM core.documents WHERE entity_id = $1', 'document']] },
   statement: { table: 'financials.statements', module: 'financials', roles: ['admin', 'gp'], name: "to_char(period_end, 'YYYY-MM-DD') || ' statement'" },
   fin_share: { table: 'financials.shares', module: 'financials', roles: ['admin', 'gp'], name: 'title' },
+  update: { table: 'financials.updates', module: 'updates', roles: ['admin', 'gp'], name: 'title' },
+  investor: { table: 'financials.investors', module: 'updates', roles: ['admin', 'gp'], name: 'name' },
   document: { table: 'core.documents', module: 'documents', roles: ['admin'], name: 'title', storage: true, blockers: [
     ['SELECT count(*) FROM deals.deal_events WHERE document_id = $1', 'deal note'], ['SELECT count(*) FROM services.job_events WHERE document_id = $1', 'client job update']] },
   obligation: { table: 'compliance.obligations', module: 'compliance', roles: ['admin'], name: 'title', children: ['DELETE FROM compliance.completions WHERE obligation_id = $1'] },

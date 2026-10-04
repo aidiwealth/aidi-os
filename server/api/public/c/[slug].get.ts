@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   const metrics = p.metrics.map((m) => ({ key: m, label: METRIC_LABEL[m] ?? m, points: rows.map((x) => ({ period: x.period_end, value: derive(x.lines, x.period_type)[m] ?? null })) }))
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
-  return { company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url, contact_email: p.contact_email, period_type: p.period_type,
+  const updates = (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows
+  return { updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url, contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? ((org.settings.currency as string) || 'USD'), metrics, workspace: await publicWorkspace() }
 })
