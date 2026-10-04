@@ -12,7 +12,7 @@ async function go() { busy.value = true; msg.value = ''; try { await $fetch('/ap
 
 <template>
   <section class="box card">
-    <template v-if="error"><h1>{{ error.statusCode === 410 ? 'This invite has expired' : 'This link is not valid' }}</h1><p class="muted">{{ error.data?.data?.error?.message }}</p><NuxtLink to="/client/login" class="btn">Sign in with your email</NuxtLink></template>
+    <template v-if="error"><h1>{{ error.statusCode === 410 ? 'This invite has expired' : 'This link is not valid' }}</h1><p class="muted">{{ portalErr(error) }}</p><NuxtLink to="/client/login" class="btn">Sign in with your email</NuxtLink></template>
     <form v-else-if="data" @submit.prevent="go">
       <p class="label">{{ data.workspace.firm }} · Client portal</p>
       <h1>Welcome, {{ data.client }}</h1>
