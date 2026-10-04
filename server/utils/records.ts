@@ -15,6 +15,11 @@ export const RECORDS: Record<string, RecordType> = {
     ['SELECT count(*) FROM deals.deals WHERE vehicle_entity_id = $1', 'deal'], ['SELECT count(*) FROM portfolio.companies WHERE holding_entity_id = $1', 'portfolio company'],
     ['SELECT count(*) FROM services.jobs WHERE provider_entity_id = $1', 'client job'], ['SELECT count(*) FROM core.entities WHERE parent_id = $1', 'owned entity'],
     ['SELECT count(*) FROM funds.funds WHERE entity_id = $1', 'fund set-up']] },
+  vehicle: { table: 'core.entities', module: 'pipeline', roles: ['admin', 'gp'], name: 'name', blockers: [
+    ["SELECT count(*) FROM core.entities WHERE id = $1 AND kind NOT IN ('fund','spv')", 'non-fund entity (delete it under Entities)'],
+    ['SELECT count(*) FROM deals.deals WHERE vehicle_entity_id = $1', 'deal'], ['SELECT count(*) FROM portfolio.companies WHERE holding_entity_id = $1', 'portfolio company'],
+    ['SELECT count(*) FROM funds.funds WHERE entity_id = $1', 'fund set-up (remove its LPs and the fund first)'], ['SELECT count(*) FROM credit.loans WHERE lender_entity_id = $1', 'loan'],
+    ['SELECT count(*) FROM core.documents WHERE entity_id = $1', 'document']] },
   document: { table: 'core.documents', module: 'documents', roles: ['admin'], name: 'title', storage: true, blockers: [
     ['SELECT count(*) FROM deals.deal_events WHERE document_id = $1', 'deal note'], ['SELECT count(*) FROM services.job_events WHERE document_id = $1', 'client job update']] },
   obligation: { table: 'compliance.obligations', module: 'compliance', roles: ['admin'], name: 'title', children: ['DELETE FROM compliance.completions WHERE obligation_id = $1'] },

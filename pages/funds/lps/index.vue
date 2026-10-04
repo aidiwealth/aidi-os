@@ -3,7 +3,7 @@ useHead({ title: 'LP register' })
 interface L { id: string; name: string; kind: string; contact_name: string | null; email: string | null; country: string | null; kyc_status: string; portal: boolean | null; committed: string; funds: number }
 const { data, refresh } = await useFetch<L[]>('/api/funds/lps')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const isGp = computed(() => !!me.value?.roles.includes('gp'))
+const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const { money } = useMoney()
 const adding = ref(false)
 const f = reactive({ name: '', kind: 'individual', contact_name: '', email: '', country: '', kyc_status: 'pending' })

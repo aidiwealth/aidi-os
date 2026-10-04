@@ -11,7 +11,7 @@ interface D {
 }
 const { data, refresh } = await useFetch<D>('/api/funds/' + id)
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const isGp = computed(() => !!me.value?.roles.includes('gp'))
+const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 useHead({ title: () => data.value?.fund.name ?? 'Fund' })
 const { money, x, pct, day } = useMoney()
 const cur = computed(() => data.value?.fund.currency ?? 'USD')

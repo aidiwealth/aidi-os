@@ -43,7 +43,7 @@ export function adminName(f: { administrator: string; administrator_name: string
 // GP approvals needed: two, or every GP when there are fewer than two.
 export async function requiredApprovals(): Promise<number> {
   const r = await one<{ n: number }>(`SELECT count(DISTINCT ur.user_id)::int AS n FROM core.user_roles ur JOIN core.memberships m ON m.user_id = ur.user_id AND m.status = 'active'
-     JOIN core.users u ON u.id = ur.user_id AND u.status = 'active' WHERE ur.role_code = 'gp'`)
+     JOIN core.users u ON u.id = ur.user_id AND u.status = 'active' WHERE ur.role_code IN ('gp','admin')`)
   return Math.max(1, Math.min(2, r.n))
 }
 

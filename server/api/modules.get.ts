@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const isAdmin = user.roles.includes('admin')
   return MODULES.map((m) => ({
     code: m.code, group: m.group, groupLabel: GROUP_LABEL[m.group], label: m.label, to: m.to, pages: m.pages,
-    switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles),
+    switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles) && (m.code !== 'modules' || user.platform),
     roles: isAdmin ? m.roles : undefined
   }))
 })

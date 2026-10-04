@@ -53,6 +53,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
           <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b><a v-if="i.payUrl" :href="i.payUrl" class="payl">Pay</a></span></li></ul>
           <p v-if="billing?.card" class="muted small">Card on file: {{ billing.card.brand ?? 'card' }} •••• {{ billing.card.last4 }}. Renewals are charged to it automatically.</p>
         </div>
+        <div id="vehicles" class="card"><VehicleManager /></div>
         <div class="card">
           <h2>Public pitch form</h2>
           <p class="muted small">Founders can pitch you through this address. Point your website's pitch form at it.</p>

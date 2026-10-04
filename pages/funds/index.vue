@@ -4,7 +4,7 @@ interface F { entity_id: string; name: string; fund_id: string | null; currency?
   totals?: { committed: number; called: number; paidIn: number; distributed: number; nav: number; calledPct: number }; m?: { dpi: number | null; tvpi: number | null; irr: number | null } }
 const { data, refresh } = await useFetch<F[]>('/api/funds')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const isGp = computed(() => !!me.value?.roles.includes('gp'))
+const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const { money, x, pct } = useMoney()
 const setup = reactive({ entity_id: '', name: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })
 const msg = ref('')
@@ -31,6 +31,11 @@ void refresh
         <dl><div><dt>Paid in</dt><dd>{{ money(f.totals!.paidIn, f.currency) }}</dd></div><div><dt>Distributed</dt><dd>{{ money(f.totals!.distributed, f.currency) }}</dd></div>
           <div><dt>DPI</dt><dd>{{ x(f.m!.dpi) }}</dd></div><div><dt>TVPI</dt><dd>{{ x(f.m!.tvpi) }}</dd></div><div><dt>Net IRR</dt><dd>{{ pct(f.m!.irr) }}</dd></div></dl>
       </NuxtLink>
+    </div>
+    <div v-if="!(data ?? []).some((f) => f.fund_id)" class="card intro">
+      <b>What Funds &amp; LPs is for</b>
+      <p>Track each fund's LPs and commitments, capital calls (with two-GP approval) and distributions, and NAV. You get DPI, TVPI and net IRR per fund and per LP, and each LP gets a private, read-only portal link. Your fund administrator (for example Sydecar or Carta) still handles KYC, money movement, official statements and tax documents.</p>
+      <p>Start by setting up a fund below, then add its LPs.</p>
     </div>
     <form v-if="isGp" class="card frm" @submit.prevent="doSetup">
       <h2 class="wide">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</h2>
@@ -60,4 +65,5 @@ dl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 6px
 input, select { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr 1fr; } dl { grid-template-columns: repeat(3, 1fr); } }
+.intro { margin-bottom: 14px; border-left: 3px solid var(--c-blue-deep); } .intro p { margin: 6px 0 0; font-size: 14px; color: var(--c-ink-soft); max-width: 760px; }
 </style>

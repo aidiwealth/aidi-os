@@ -11,5 +11,5 @@ export default defineEventHandler(async (event) => {
   const lines = await db().query(
     `SELECT l.id, l.lp_id, lp.name, lp.email, l.amount::text, l.paid_amount::text, to_char(l.paid_on, 'YYYY-MM-DD') AS paid_on FROM funds.call_lines l JOIN funds.lps lp ON lp.id = l.lp_id WHERE l.call_id = $1 ORDER BY l.amount DESC`, [id.data])
   const appr = await db().query(`SELECT a.user_id, p.full_name AS name, a.decided_at FROM funds.call_approvals a JOIN core.users u ON u.id = a.user_id JOIN core.people p ON p.id = u.person_id WHERE a.call_id = $1 ORDER BY a.decided_at`, [id.data])
-  return { call: c.rows[0], lines: lines.rows, approvals: appr.rows, iAmGp: user.roles.includes('gp'), iApproved: appr.rows.some((a: { user_id: string }) => a.user_id === user.userId) }
+  return { call: c.rows[0], lines: lines.rows, approvals: appr.rows, iAmGp: user.roles.includes('gp') || user.roles.includes('admin'), iApproved: appr.rows.some((a: { user_id: string }) => a.user_id === user.userId) }
 })

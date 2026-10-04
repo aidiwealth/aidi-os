@@ -6,7 +6,7 @@ interface D { lp: { id: string; name: string; kind: string; contact_name: string
   history: { id: string; fund: string; currency: string; kind: string; number: number; due_date: string; status: string; amount: string; paid_amount: string; paid_on: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/funds/lps/' + id)
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const isGp = computed(() => !!me.value?.roles.includes('gp'))
+const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 useHead({ title: () => data.value?.lp.name ?? 'LP' })
 const { money, x, pct, day } = useMoney()
 const f = reactive({ name: '', kind: 'individual', contact_name: '', email: '', country: '', kyc_status: 'pending', notes: '' })

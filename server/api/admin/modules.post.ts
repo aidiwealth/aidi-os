@@ -3,6 +3,7 @@ import { z } from 'zod'
 const Body = z.object({ code: z.string(), enabled: z.boolean() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin')
+  if (!user.platform) throw apiError('forbidden', 'Modules are set by your plan. Contact Finvry support to change them.', 403)
   const b = Body.safeParse(await readBody(event))
   const m = b.success ? MODULES.find((x) => x.code === b.data.code) : undefined
   if (!b.success || !m || !m.switchable) throw apiError('invalid', 'Unknown module.')

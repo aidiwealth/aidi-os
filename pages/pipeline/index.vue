@@ -46,7 +46,7 @@ async function add() {
       <label class="label">Round<select v-model="form.round"><option value="">—</option><option v-for="(l, k) in ROUND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Raising (USD)<input v-model="form.raise_usd" inputmode="numeric"></label>
       <label class="label">Source<select v-model="form.source"><option value="referral">Referral</option><option value="network">Network</option><option value="outbound">Outbound</option><option value="other">Other</option></select></label>
-      <label class="label">Vehicle<select v-model="form.vehicle_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
+      <label class="label"><span>Vehicle · <NuxtLink to="/settings#vehicles" class="mng">manage</NuxtLink></span><select v-model="form.vehicle_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Start at<select v-model="form.stage"><option value="screening">Screening</option><option value="first_call">First call</option><option value="diligence">Diligence</option></select></label>
       <button class="btn" type="submit">Add to pipeline</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
@@ -94,4 +94,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .passed { padding-left: 18px; } .passed span { color: var(--c-muted); font-size: 13px; }
 .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr 1fr; } }
+.mng { font-size: 12px; text-transform: none; letter-spacing: 0; }
 </style>
