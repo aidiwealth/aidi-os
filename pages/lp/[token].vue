@@ -5,7 +5,8 @@ const token = useRoute().params.token as string
 interface M { dpi: number | null; rvpi: number | null; tvpi: number | null; irr: number | null }
 interface D { lp: { name: string }; workspace: { firm: string }
   positions: { fund: string; currency: string; vintage: number | null; navDate: string | null; admin: string | null; adminUrl: string | null; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M; fundM: M }[]
-  history: { fund: string; currency: string; kind: string; number: number; purpose: string | null; due_date: string; amount: string; paid_amount: string; paid_on: string | null }[] }
+  history: { fund: string; currency: string; kind: string; number: number; purpose: string | null; due_date: string; amount: string; paid_amount: string; paid_on: string | null }[]
+  financials?: { fund: string; period_end: string; period_type: string; currency: string; investments: number | null; cash: number | null; total_assets: number | null; net_income: number | null; opex_total: number | null }[] }
 const { data, error } = await useFetch<D>('/api/public/lp/' + token, { key: 'pub-lp-' + token })
 useHead({ titleTemplate: '%s', title: () => (data.value ? 'Investor statement · ' + data.value.lp.name + ' — ' + data.value.workspace.firm : 'Investor portal'), meta: [{ name: 'robots', content: 'noindex' }] })
 const { money, x, pct, day } = useMoney()
@@ -34,6 +35,13 @@ const doPrint = () => window.print()
         <table><thead><tr><th>Notice</th><th>Date</th><th class="n">Amount</th><th class="n">Settled</th></tr></thead>
           <tbody><tr v-for="(h, i) in data.history" :key="i"><td>{{ h.kind === 'call' ? 'Capital call' : 'Distribution' }} {{ h.number }}<span class="sub">{{ h.fund }}{{ h.purpose ? ' · ' + h.purpose : '' }}</span></td><td>{{ day(h.due_date) }}</td>
             <td class="n">{{ money(h.amount, h.currency, true) }}</td><td class="n">{{ money(h.paid_amount, h.currency, true) }}<span v-if="h.paid_on" class="sub">{{ day(h.paid_on) }}</span></td></tr></tbody></table>
+      </div>
+      <div v-if="data.financials?.length" class="card">
+        <h2>Fund financials</h2>
+        <table><thead><tr><th>Fund · period</th><th class="n">Investments</th><th class="n">Cash</th><th class="n">Total assets</th><th class="n">Operating costs</th><th class="n">Net income</th></tr></thead>
+          <tbody><tr v-for="(f, i) in data.financials" :key="i"><td>{{ f.fund }}<span class="sub">{{ f.period_type === 'year' ? 'Year' : f.period_type === 'quarter' ? 'Quarter' : 'Month' }} to {{ day(f.period_end) }}</span></td>
+            <td class="n">{{ f.investments == null ? '—' : money(f.investments, f.currency) }}</td><td class="n">{{ f.cash == null ? '—' : money(f.cash, f.currency) }}</td><td class="n">{{ f.total_assets == null ? '—' : money(f.total_assets, f.currency) }}</td>
+            <td class="n">{{ f.opex_total == null ? '—' : money(f.opex_total, f.currency) }}</td><td class="n">{{ f.net_income == null ? '—' : money(f.net_income, f.currency) }}</td></tr></tbody></table>
       </div>
       <p class="fine">Unaudited summary for information only, based on the latest valuation the fund has recorded. It is not an official capital account statement. Prepared by {{ data.workspace.firm }}.</p>
     </template>

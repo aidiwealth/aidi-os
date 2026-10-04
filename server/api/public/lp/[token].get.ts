@@ -22,5 +22,10 @@ export default defineEventHandler(async (event) => {
     `SELECT e.name AS fund, f.currency, c.kind, c.number, c.purpose, to_char(c.due_date, 'YYYY-MM-DD') AS due_date, l.amount::text, l.paid_amount::text, to_char(l.paid_on, 'YYYY-MM-DD') AS paid_on
        FROM funds.call_lines l JOIN funds.calls c ON c.id = l.call_id JOIN funds.funds f ON f.id = c.fund_id JOIN core.entities e ON e.id = f.entity_id
       WHERE l.lp_id = $1 AND c.status IN ('sent','completed') ORDER BY c.due_date DESC`, [lp.id])
-  return { lp: { name: lp.name }, positions, history: history.rows, workspace: await publicWorkspace() }
+  const fin = (await enabledModules()).has('financials') ? await db().query<{ fund: string; period_end: string; period_type: string; currency: string; lines: Record<string, number> }>(
+    `SELECT e.name AS fund, to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.period_type, s.currency, s.lines FROM financials.statements s
+       JOIN funds.funds f ON f.entity_id = s.entity_id JOIN core.entities e ON e.id = f.entity_id JOIN funds.commitments c ON c.fund_id = f.id AND c.lp_id = $1
+      WHERE s.show_to_lps ORDER BY e.name, s.period_end DESC LIMIT 24`, [lp.id]) : { rows: [] }
+  const financials = fin.rows.map((x) => ({ fund: x.fund, period_end: x.period_end, period_type: x.period_type, currency: x.currency, ...derive(x.lines, x.period_type) }))
+  return { lp: { name: lp.name }, positions, history: history.rows, financials, workspace: await publicWorkspace() }
 })

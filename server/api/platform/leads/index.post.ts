@@ -7,7 +7,7 @@ const Body = z.object({
   contact_name: z.string().trim().max(200).optional(),
   contact_email: z.string().trim().email().max(254).optional().or(z.literal('').transform(() => undefined)),
   contact_phone: z.string().trim().max(40).optional(),
-  kind: z.enum(ORG_KINDS).default('vc'),
+  kind: z.enum(ORG_KINDS).default('company'),
   country: z.string().trim().max(100).optional(),
   source: z.enum(LEAD_SOURCES).default('inbound'),
   plan_code: z.string().optional().or(z.literal('').transform(() => undefined)),

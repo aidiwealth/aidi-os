@@ -13,10 +13,10 @@ export async function requirePlatform(event: H3Event, write = false): Promise<Se
 }
 
 // Platform actions are logged in the customer's own audit trail, so they can see what Aidi staff changed.
-export async function platformAudit(event: H3Event, actorUserId: string, action: string, orgId: string | null, detail: Record<string, unknown> = {}): Promise<void> {
+export async function platformAudit(event: H3Event, actorUserId: string | null, action: string, orgId: string | null, detail: Record<string, unknown> = {}): Promise<void> {
   await asPlatform(() => db().query('INSERT INTO core.audit_log (organization_id, actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',
     [orgId, actorUserId, 'platform.' + action, 'organization', orgId, JSON.stringify(detail), getRequestIP(event, { xForwardedFor: true }) ?? null]))
 }
 
-export const ORG_KINDS = ['vc', 'family_office'] as const
+export const ORG_KINDS = ['company'] as const
 export const ORG_STATUSES = ['trial', 'active', 'past_due', 'suspended', 'closed'] as const

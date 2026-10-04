@@ -307,3 +307,10 @@ export async function sendPortalMessageAlert(client: string, who: string, body: 
   const html = shell(h1(esc(who) + ' (' + esc(client) + ') sent a message') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;white-space:pre-wrap;font-size:14px;">${esc(body)}</div>` + button('Open the client →', link), 'Client message')
   for (const addr of to) await sendEmail({ to: addr, subject: 'Message from ' + who + ' (' + client + ')', text: body + '\n\n' + link, html })
 }
+
+// Someone opened a shared financials link.
+export async function sendShareViewedEmail(to: string, title: string, link: string): Promise<void> {
+  const html = shell(h1('Your shared financials were viewed') + para('Someone just opened <b>' + esc(title) + '</b>.') + button('See your share links →', link) +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">You hear about views at most once an hour per link.</p>`, 'Shared financials viewed')
+  await sendEmail({ to, subject: 'Viewed: ' + title, text: 'Someone opened your shared financials "' + title + '". ' + link, html })
+}

@@ -44,6 +44,7 @@ async function verify() {
       <button class="link" type="button" @click="step = 'email'; code = ''">Use a different email</button>
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p v-if="brand.key === 'finvry' && step === 'email'" class="new">New to Finvry? <NuxtLink to="/start">Create a free account</NuxtLink></p>
   </div>
 </template>
 
@@ -57,4 +58,5 @@ input { width: 100%; font: inherit; padding: 9px 12px; border: 1px solid var(--c
 .btn { width: 100%; justify-content: center; }
 .link { background: none; border: 0; color: var(--c-blue-deep); margin-top: 14px; cursor: pointer; font: inherit; padding: 0; }
 .error { color: var(--c-danger); margin-top: 16px; }
+.new { margin: 18px 0 0; font-size: 13.5px; color: var(--c-muted); }
 </style>

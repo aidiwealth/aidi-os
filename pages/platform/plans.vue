@@ -1,12 +1,12 @@
 <script setup lang="ts">
 useHead({ title: 'Finvry · Plans & pricing' })
-interface Plan { code: string; name: string; description: string | null; modules: string[]; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price_monthly: string | null; price_annual: string | null; public: boolean; active: boolean; sort: number; customers: number }
+interface Plan { code: string; name: string; description: string | null; modules: string[]; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price_monthly: string | null; price_annual: string | null; price_monthly_ngn: string | null; price_annual_ngn: string | null; public: boolean; active: boolean; sort: number; customers: number }
 const { data, refresh } = await useFetch<{ plans: Plan[]; modules: { code: string; label: string; group: string }[] }>('/api/platform/plans')
 const editing = ref<string | null>(null)
-const f = reactive({ code: '', name: '', description: '', modules: [] as string[], seat_limit: '' as string | number, storage_gb: '' as string | number, ai_runs_month: '' as string | number, price_monthly: '' as string | number, price_annual: '' as string | number, public: true, active: true, sort: 5 })
+const f = reactive({ code: '', name: '', description: '', modules: [] as string[], seat_limit: '' as string | number, storage_gb: '' as string | number, ai_runs_month: '' as string | number, price_monthly: '' as string | number, price_annual: '' as string | number, price_monthly_ngn: '' as string | number, price_annual_ngn: '' as string | number, public: true, active: true, sort: 5 })
 function edit(p?: Plan) {
-  Object.assign(f, p ? { code: p.code, name: p.name, description: p.description ?? '', modules: [...p.modules], seat_limit: p.seat_limit ?? '', storage_gb: p.storage_gb ?? '', ai_runs_month: p.ai_runs_month ?? '', price_monthly: p.price_monthly ?? '', price_annual: p.price_annual ?? '', public: p.public, active: p.active, sort: p.sort }
-    : { code: '', name: '', description: '', modules: [], seat_limit: '', storage_gb: '', ai_runs_month: '', price_monthly: '', price_annual: '', public: true, active: true, sort: 5 })
+  Object.assign(f, p ? { code: p.code, name: p.name, description: p.description ?? '', modules: [...p.modules], seat_limit: p.seat_limit ?? '', storage_gb: p.storage_gb ?? '', ai_runs_month: p.ai_runs_month ?? '', price_monthly: p.price_monthly ?? '', price_annual: p.price_annual ?? '', price_monthly_ngn: p.price_monthly_ngn ?? '', price_annual_ngn: p.price_annual_ngn ?? '', public: p.public, active: p.active, sort: p.sort }
+    : { code: '', name: '', description: '', modules: [], seat_limit: '', storage_gb: '', ai_runs_month: '', price_monthly: '', price_annual: '', price_monthly_ngn: '', price_annual_ngn: '', public: true, active: true, sort: 5 })
   editing.value = p?.code ?? 'new'
 }
 const msg = ref('')
@@ -32,6 +32,8 @@ const lim = (v: number | null, unit = '') => (v === null ? 'Unlimited' : v.toLoc
       <label class="label wide">Description<input v-model="f.description" maxlength="300"></label>
       <label class="label">Price per month (USD)<input v-model="f.price_monthly" inputmode="decimal" placeholder="blank = not listed"></label>
       <label class="label">Price per year (USD)<input v-model="f.price_annual" inputmode="decimal"></label>
+      <label class="label">Price per month (NGN, for Nigeria)<input v-model="f.price_monthly_ngn" inputmode="decimal" placeholder="blank = not listed"></label>
+      <label class="label">Price per year (NGN)<input v-model="f.price_annual_ngn" inputmode="decimal"></label>
       <label class="label">Seats<input v-model="f.seat_limit" inputmode="numeric" placeholder="blank = unlimited"></label>
       <label class="label">Storage (GB)<input v-model="f.storage_gb" inputmode="numeric" placeholder="blank = unlimited"></label>
       <label class="label">AI runs per month<input v-model="f.ai_runs_month" inputmode="numeric" placeholder="blank = unlimited"></label>
@@ -45,7 +47,7 @@ const lim = (v: number | null, unit = '') => (v === null ? 'Unlimited' : v.toLoc
     <div class="plans">
       <div v-for="p in data.plans" :key="p.code" class="card plan" :class="{ off: !p.active }">
         <div class="ph"><h2>{{ p.name }}</h2><span v-if="!p.public" class="tag">Private</span><span v-if="!p.active" class="tag">Inactive</span></div>
-        <p class="price"><b>{{ p.price_monthly ? '$' + Number(p.price_monthly).toLocaleString() : '—' }}</b><span v-if="p.price_monthly">/ month</span></p>
+        <p class="price"><b>{{ p.price_monthly ? '$' + Number(p.price_monthly).toLocaleString() : '—' }}</b><span v-if="p.price_monthly">/ month</span><span v-if="p.price_monthly_ngn" class="ngn"> · ₦{{ Number(p.price_monthly_ngn).toLocaleString() }}</span></p>
         <p class="muted">{{ p.description }}</p>
         <ul class="lims"><li>{{ lim(p.seat_limit) }} seats</li><li>{{ lim(p.storage_gb, ' GB') }} storage</li><li>{{ lim(p.ai_runs_month) }} AI runs / month</li></ul>
         <p class="mods-l">{{ p.modules.map(label).join(' · ') }}</p>
