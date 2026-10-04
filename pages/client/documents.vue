@@ -1,5 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
 useHead({ title: 'Documents' })
 const { data } = await usePortalFetch<{ id: string; title: string; size_bytes: number; kind: string; reason: string | null; created_at: string; job_id: string; job: string }[]>('/api/portal/documents')
 const msg = ref('')

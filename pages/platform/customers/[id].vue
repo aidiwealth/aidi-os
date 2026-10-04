@@ -32,7 +32,7 @@ const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace cr
         <form class="card frm" @submit.prevent="save">
           <h2>Subscription</h2>
           <label class="label">Name<input v-model="f.name" required maxlength="200"></label>
-          <label class="label">Plan<select v-model="f.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.code === f.plan_code || x.code.startsWith(data!.org.kind === 'company' ? 'company_' : data!.org.kind === 'vc' ? 'vc_' : 'fo_') || (data!.org.brand === 'aidi' && x.code === 'internal'))" :key="p.code" :value="p.code">{{ p.name }}{{ p.active ? '' : ' (inactive)' }}</option></select></label>
+          <label class="label">Plan<select v-model="f.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.code === f.plan_code || x.code.startsWith('company_') || (data!.org.brand === 'aidi' && x.code === 'internal'))" :key="p.code" :value="p.code">{{ p.name }}{{ p.active ? '' : ' (inactive)' }}</option></select></label>
           <label class="label">Status<select v-model="f.status"><option value="trial">Trial</option><option value="active">Active</option><option value="past_due">Past due</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></label>
           <label v-if="f.status === 'trial'" class="label">Trial ends<input v-model="f.trial_ends_at" type="date"></label>
           <button class="btn" type="submit" :disabled="busy">Save</button>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
 useHead({ title: 'Home' })
 interface O { due: { currency: string; amount: number; count: number }[]; jobs: { id: string; title: string; status: string; due_date: string | null; company: string | null }[]; documents: { id: string; title: string; reason: string | null; created_at: string; job: string }[]; unread: number; forms: { id: string; tax_year: number; status: string; company: string | null }[] }
 interface Me { name: string; companies: { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; ein: string | null; address: string | null; registered_agent: string; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string }[] }

@@ -18,7 +18,7 @@ async function add() {
 }
 const usd = (v: number | string | null) => (v === null || v === '' ? '—' : '$' + Math.round(Number(v)).toLocaleString())
 const days = (s: string) => Math.max(0, Math.floor((Date.now() - Date.parse(s)) / 86400000))
-const KIND: Record<string, string> = { company: 'Company', vc: 'Venture fund', family_office: 'Family office' }
+const KIND: Record<string, string> = { company: 'Company', family_office: 'Internal' }
 watch(() => f.kind, () => { f.plan_code = '' })
 void refresh
 </script>

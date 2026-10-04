@@ -17,7 +17,7 @@ async function create() {
   try { const r = await $fetch<{ id: string; emailed: boolean }>('/api/platform/orgs', { method: 'POST', body: f }); await navigateTo('/platform/customers/' + r.id + (r.emailed ? '?invited=1' : '')) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the workspace.' }
 }
-const KIND: Record<string, string> = { company: 'Company', vc: 'Venture fund', family_office: 'Family office' }
+const KIND: Record<string, string> = { company: 'Company', family_office: 'Internal' }
 watch(() => f.kind, () => { f.plan_code = 'company_free' })
 const ago = (s: string | null) => { if (!s) return 'never'; const d = Math.floor((Date.now() - Date.parse(s)) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago' }
 void refresh

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
 useHead({ title: 'Messages' })
 const { data, refresh } = await usePortalFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null }[]>('/api/portal/messages')
 const text = ref(''); const msg = ref(''); const busy = ref(false)

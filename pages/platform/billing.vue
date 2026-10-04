@@ -20,7 +20,7 @@ function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: 
 async function run(fn: () => Promise<unknown>, done: string) { busy.value = true; msg.value = ''; ok.value = ''; try { await fn(); ok.value = done; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 
 const form = ref<'' | 'sub' | 'inv'>('')
-const sf = reactive({ organization_id: '', plan_code: 'starter', billing: 'monthly', method: 'invoice', currency: 'USD', amount_usd: '' as string | number, start_date: today(), notes: '' })
+const sf = reactive({ organization_id: '', plan_code: 'company_startup', billing: 'monthly', method: 'invoice', currency: 'USD', amount_usd: '' as string | number, start_date: today(), notes: '' })
 const cardOf = (orgId: string) => data.value?.cards.find((c) => c.organization_id === orgId)
 const cur = (v: number | string, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 2 }).format(Number(v))
 watch(() => [sf.plan_code, sf.billing, sf.currency], () => { const p = plans.value?.plans.find((x) => x.code === sf.plan_code); if (p && sf.currency === 'USD') sf.amount_usd = (sf.billing === 'annual' ? p.price_annual : p.price_monthly) ?? '' })

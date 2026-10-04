@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   event.context.orgId = null
   event.context.dbBypass = false
   const path = getRequestURL(event).pathname
-  if (!path.startsWith('/api/') || PUBLIC.includes(path) || path.startsWith('/api/public/') || path.startsWith('/api/portal/')) return
+  if (!path.startsWith('/api/') || PUBLIC.includes(path) || path.startsWith('/api/public/')) return
   const s = await readSession(event)
   if (!s) throw apiError('unauthorized', 'Sign in required', 401)
   if (s.roles.includes('services') && /^\/api\/(services|cs-analytics|documents|records)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']

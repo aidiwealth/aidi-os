@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const b = Body.safeParse(await readBody(event))
   if (!cid.success || !b.success) throw apiError('invalid', 'Add the name; check the email and ownership.')
   const d = b.data
-  if (d.portal_access && !d.email) throw apiError('invalid', 'Portal access needs an email address (sign-in is by emailed code).')
+  if (d.portal_access && !d.email) throw apiError('invalid', 'Finvry access needs an email address (sign-in is by emailed code).')
   if (d.company_id && !(await db().query('SELECT 1 FROM services.companies WHERE id = $1 AND client_id = $2', [d.company_id, cid.data])).rowCount) throw apiError('invalid', 'Choose one of this client\'s companies.')
   const vals = [d.name, d.email?.toLowerCase() ?? null, d.phone || null, d.role, d.ownership_pct ?? null, d.company_id ?? null, d.address || null, d.nationality || null, d.portal_access]
   const r = d.id

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
 useHead({ title: 'Invoices & payments' })
 interface I { id: string; number: string; currency: string; amount: string; status: string; issue_date: string; due_date: string; paid_at: string | null; paid_via: string | null; company: string | null; overdue: boolean; summary: string; link: string }
 const { data } = await usePortalFetch<I[]>('/api/portal/invoices')

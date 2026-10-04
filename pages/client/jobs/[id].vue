@@ -1,5 +1,4 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
 const id = useRoute().params.id as string
 interface D { job: { id: string; title: string; status: string; due_date: string | null; company: string | null }; events: { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; from_client: boolean; document_id: string | null; document: string | null }[] }
 const { data, refresh } = await usePortalFetch<D>('/api/portal/jobs/' + id)

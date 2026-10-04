@@ -96,14 +96,13 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <label class="label">Ownership (%)<input v-model="pe.ownership_pct" inputmode="decimal"></label>
         <label class="label">Nationality<input v-model="pe.nationality" maxlength="100"></label>
         <label class="label wide">Address<input v-model="pe.address" maxlength="500"></label>
-        <label class="chk wide"><input v-model="pe.portal_access" type="checkbox"> Allow sign-in to the client portal with an emailed code (no password)</label>
         <div class="wide row"><button class="btn" type="submit">Save person</button><button class="btn secondary" type="button" @click="editingPe = false">Cancel</button></div>
       </form>
     </template>
 
     <template v-else-if="tab === 'messages'">
       <form class="card frm" @submit.prevent="sendMsg"><label class="label wide">Message to the client<textarea v-model="reply" rows="3" maxlength="5000" required /></label>
-        <div class="wide row"><button class="btn" type="submit">Send</button><span class="muted sm">They see it in their portal (and get an email). Without portal access it goes to their main email.</span></div></form>
+        <div class="wide row"><button class="btn" type="submit">Send</button><span class="muted sm">Clients on Finvry see it under Services and get an email; otherwise it goes to their main email.</span></div></form>
       <div class="thread"><div v-for="m in msgs ?? []" :key="m.id" class="msg" :class="{ team: m.from_team }"><span class="sub">{{ m.from_team ? (m.author ?? 'Team') : (m.author ?? 'Client') }} · {{ new Date(m.created_at).toLocaleString('en-GB') }}{{ m.from_team && m.read_by_client ? ' · read' : '' }}</span><p>{{ m.body }}</p></div>
         <p v-if="!msgs?.length" class="muted">No messages yet.</p></div>
     </template>

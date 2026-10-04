@@ -22,14 +22,14 @@ const f = reactive({ company: '', contact_name: '', contact_email: '', contact_p
 watchEffect(() => { const l = data.value?.lead; if (!l) return; Object.assign(f, { company: l.company, contact_name: l.contact_name ?? '', contact_email: l.contact_email ?? '', contact_phone: l.contact_phone ?? '', kind: l.kind, country: l.country ?? '', source: l.source, plan_code: l.plan_code ?? '', seats: l.seats ?? '', value_monthly_usd: l.value_monthly_usd ?? '', billing: l.billing, owner_id: l.owner_id ?? '', expected_close: l.expected_close ?? '', notes: l.notes ?? '' }) })
 const save = () => run(() => $fetch('/api/platform/leads', { method: 'POST', body: { id, ...f } }), 'Saved.')
 const cv = reactive({ slug: '', plan_code: '', status: 'trial', trial_days: 14, admin_name: '', admin_email: '' })
-watchEffect(() => { const l = data.value?.lead; if (!l || cv.slug) return; Object.assign(cv, { slug: l.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40), plan_code: l.plan_code ?? 'starter', admin_name: l.contact_name ?? '', admin_email: l.contact_email ?? '' }) })
+watchEffect(() => { const l = data.value?.lead; if (!l || cv.slug) return; Object.assign(cv, { slug: l.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40), plan_code: l.plan_code ?? 'company_startup', admin_name: l.contact_name ?? '', admin_email: l.contact_email ?? '' }) })
 async function convert() {
   busy.value = true; msg.value = ''
   try { const r = await $fetch<{ organization_id: string }>('/api/platform/leads/' + id + '/convert', { method: 'POST', body: cv }); await navigateTo('/platform/customers/' + r.organization_id + '?invited=1') }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const KIND: Record<string, string> = { company: 'Company', vc: 'Venture fund', family_office: 'Family office' }
+const KIND: Record<string, string> = { company: 'Company', family_office: 'Internal' }
 const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email', meeting: 'Meeting', stage: 'Stage', converted: 'Became a customer' }
 </script>
 

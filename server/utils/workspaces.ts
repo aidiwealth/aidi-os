@@ -1,5 +1,5 @@
-// Creating a customer workspace (from the console or by converting a won lead): an isolated workspace on the Finvry
-// brand, a first fund or holding entity, and its first admin, who is invited by email.
+// Creating a Finvry company workspace (self sign-up, the console, a won lead or a services client): an isolated
+// workspace on the Finvry brand, the company's own record, and its first admin.
 import type { H3Event } from 'h3'
 export interface NewWorkspace { name: string; slug: string; kind: string; plan_code: string; status: 'trial' | 'active'; trial_days: number; admin_name: string; admin_email: string }
 
@@ -17,7 +17,7 @@ export async function createWorkspace(event: H3Event, staffUserId: string | null
         [d.name, d.slug, d.kind, d.status, d.plan_code, d.trial_days, staffUserId, JSON.stringify(opts.settings ?? {})])
       const id = o.rows[0]!.id
       const ent = await client.query<{ id: string }>("INSERT INTO core.entities (organization_id, name, kind, status) VALUES ($1, $2, $3, 'active') RETURNING id",
-        [id, d.kind === 'family_office' ? d.name + ' Holdings' : d.kind === 'company' ? d.name : d.name + ' Fund I', d.kind === 'family_office' ? 'holding' : d.kind === 'company' ? 'operating' : 'fund'])
+        [id, d.name, d.kind === 'company' ? 'operating' : 'holding'])
       await client.query("UPDATE core.organizations SET settings = settings || jsonb_build_object('default_vehicle_id', $2::text) WHERE id = $1", [id, ent.rows[0]!.id])
       const existing = await client.query<{ id: string }>('SELECT id FROM core.users WHERE email = $1', [email])
       let userId = existing.rows[0]?.id
