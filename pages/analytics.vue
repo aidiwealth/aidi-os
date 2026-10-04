@@ -52,8 +52,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
 
       <div class="two">
         <div v-if="data.pipeline" class="card">
-          <h3>Pipeline by stage</h3>
-          <div v-for="[k, l] in STAGES" :key="k" class="bar"><span>{{ l }}</span><i :style="{ width: (Number(data.pipeline.byStage[k] ?? 0) / stageMax) * 100 + '%' }" /><b>{{ data.pipeline.byStage[k] ?? 0 }}</b></div>
+          <DonutChart title="Pipeline by stage" total-label="Deals" :segments="STAGES.map(([k, l]) => ({ label: l, value: Number(data.pipeline.byStage[k] ?? 0) }))" />
         </div>
         <div v-if="data.portfolio" class="card">
           <h3>Runway watch</h3>

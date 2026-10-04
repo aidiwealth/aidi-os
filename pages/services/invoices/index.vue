@@ -13,6 +13,7 @@ const kpis = computed(() => (data.value?.kpis ?? []).filter((k) => k.currency ==
     <CsNav />
     <div class="head"><h1>Invoices</h1><NuxtLink to="/services/invoices/new" class="btn">New invoice</NuxtLink></div>
     <div class="kpis"><div v-for="k in kpis" :key="k.currency" class="kpi"><span>Outstanding ({{ k.currency }})</span><b>{{ money(k.outstanding, k.currency) }}</b><em :class="{ error: k.overdue }">{{ money(k.overdue, k.currency) }} overdue · {{ money(k.paid30, k.currency) }} paid in 30 days</em></div></div>
+    <div v-if="data.invoices.length" class="card donut"><DonutChart title="Invoices by status" total-label="Invoices" :segments="['sent', 'paid', 'draft', 'void'].map((s) => ({ label: s === 'sent' ? 'Unpaid' : s[0]!.toUpperCase() + s.slice(1), value: data!.invoices.filter((i) => i.status === s).length }))" /></div>
     <div class="filters"><button v-for="f in (['all', 'unpaid', 'overdue', 'paid'] as const)" :key="f" :class="{ on: filter === f }" @click="filter = f">{{ f[0]!.toUpperCase() + f.slice(1) }}</button></div>
     <table class="table">
       <thead><tr><th>Invoice</th><th>Client</th><th>Issued</th><th>Due</th><th class="n">Amount</th><th>Status</th></tr></thead>
@@ -42,5 +43,6 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; } .kpi span { font-size: 12.5px; color: var(--c-muted); font-weight: 500; }
 .kpi b { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); } .kpi em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.donut { margin-bottom: 14px; max-width: 620px; }
 .filters { display: flex; gap: 6px; margin-bottom: 10px; } .filters button { font: inherit; font-size: 13px; background: #fff; border: 1px solid var(--c-rule); padding: 5px 12px; cursor: pointer; color: var(--c-ink-soft); } .filters button.on { border-color: var(--c-navy); color: var(--c-navy); }
 </style>

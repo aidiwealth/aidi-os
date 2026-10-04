@@ -40,11 +40,8 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
         <TrendChart title="Fees earned" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" unit="usd" :points="pts(data.feeSeries)" foot="On completion" />
       </div>
       <div class="three">
-        <div class="card"><h3>Open jobs by service</h3>
-          <div v-for="s in data.byService" :key="s.label" class="bar"><span>{{ s.label }}</span><i :style="{ width: (s.c / svcMax) * 100 + '%' }" /><b>{{ s.c }}</b></div>
-          <p v-if="!data.byService.length" class="muted">No open jobs.</p></div>
-        <div class="card"><h3>Jobs by status</h3>
-          <div v-for="[k, l] in STATUS" :key="k" class="bar"><span>{{ l }}</span><i :style="{ width: (Number(data.byStatus[k] ?? 0) / statusMax) * 100 + '%' }" /><b>{{ data.byStatus[k] ?? 0 }}</b></div></div>
+        <div class="card"><DonutChart title="Open jobs by service" total-label="Open jobs" :segments="data.byService.map((s: any) => ({ label: s.label, value: s.c }))" /></div>
+        <div class="card"><DonutChart title="Jobs by status" total-label="Jobs" :segments="STATUS.map(([k, l]) => ({ label: l, value: Number(data.byStatus[k] ?? 0) }))" /></div>
         <div class="card"><h3>Top clients</h3>
           <ul class="list"><li v-for="c in data.topClients" :key="c.name"><span>{{ c.name }}<em>{{ c.jobs }} job{{ c.jobs === 1 ? '' : 's' }}</em></span><b>{{ usd(c.fees) }}</b></li></ul>
           <p v-if="!data.topClients.length" class="muted">No clients in this period.</p></div>

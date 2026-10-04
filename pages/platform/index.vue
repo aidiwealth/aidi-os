@@ -22,8 +22,7 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
     </div>
     <div class="charts">
       <TrendChart title="Monthly recurring revenue" sub="Last 12 months" unit="usd" :points="pts(data.mrrSeries)" :foot="data.kpis.seats + ' seats in use'" />
-      <div class="card"><h3>Customers by plan</h3>
-        <div v-for="p in data.byPlan" :key="p.plan" class="bar"><span>{{ p.plan }}</span><i :style="{ width: (p.n / max) * 100 + '%' }" /><b>{{ p.n }}</b></div>
+      <div class="card"><DonutChart title="Customers by plan" total-label="Customers" :segments="data.byPlan.map((p) => ({ label: p.plan, value: p.n }))" />
         <p v-if="data.kpis.overdueCount" class="warn"><NuxtLink to="/platform/billing">{{ data.kpis.overdueCount }} overdue invoice{{ data.kpis.overdueCount === 1 ? '' : 's' }} · {{ usd(data.kpis.overdue) }}</NuxtLink></p></div>
     </div>
     <div class="three">

@@ -52,6 +52,7 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <div class="tabs"><button :class="{ on: tab === 'lps' }" @click="tab = 'lps'">LPs &amp; commitments</button><button :class="{ on: tab === 'calls' }" @click="tab = 'calls'">Calls &amp; distributions</button><button :class="{ on: tab === 'nav' }" @click="tab = 'nav'">NAV</button><button :class="{ on: tab === 'terms' }" @click="tab = 'terms'">Terms</button></div>
 
     <template v-if="tab === 'lps'">
+      <div v-if="data.lps.length" class="card donut"><DonutChart title="Commitments by LP" total-label="Committed" :currency="cur" :segments="data.lps.map((l) => ({ label: l.name, value: l.commitment }))" /></div>
       <table class="table">
         <thead><tr><th>LP</th><th class="n">Commitment</th><th class="n">Called</th><th class="n">Paid in</th><th class="n">Unfunded</th><th class="n">Distributed</th><th class="n">TVPI</th><th /></tr></thead>
         <tbody><tr v-for="l in data.lps" :key="l.lp_id">
@@ -137,7 +138,7 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .st { font-size: 13px; font-weight: 500; } .st[data-s="completed"] { color: var(--c-ok); } .st[data-s="sent"], .st[data-s="approved"] { color: var(--c-blue-deep); } .st[data-s="pending_approval"] { color: var(--c-warn); } .st[data-s="draft"], .st[data-s="cancelled"] { color: var(--c-muted); }
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; } .frm label { display: flex; flex-direction: column; gap: 6px; } .wide, .row { grid-column: 1 / -1; } .row { display: flex; gap: 14px; align-items: center; } .frm h2 { margin: 0; }
 input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
-.hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .small { font-size: 13px; }
+.hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .small { font-size: 13px; } .donut { margin-bottom: 14px; max-width: 620px; }
 .adm { background: var(--c-signal-soft); padding: 10px 14px; margin: 0 0 16px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; } .adm b { font-weight: 600; color: var(--c-navy); } .adm span { color: var(--c-muted); width: 100%; } .adm.self { background: var(--c-paper-2); }
 .chk { display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; font-size: 13px; } .chk input { width: auto; }
 .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }

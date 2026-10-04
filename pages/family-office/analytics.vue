@@ -39,8 +39,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
           <TrendChart v-for="c in cashCurrencies.slice(0, 3)" :key="c" :title="'Cash · ' + c" sub="Month-end, last 12 months" :points="pts(data.cash.series[c], true)" :foot="'Across ' + data.cash.accounts + ' accounts'" />
         </div>
         <div v-if="cashCurrencies.length" class="three">
-          <div class="card cashent"><h3>Cash by entity</h3>
-            <div v-for="e in data.cash.byEntity" :key="e.name" class="ce"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(Number(v), c)).join(' · ') }}</b></div></div>
+          <div class="card cashent"><DonutChart :title="'Cash by entity · ' + cashCurrencies[0]" :currency="cashCurrencies[0]" :segments="data.cash.byEntity.map((e: any) => ({ label: e.name, value: Number(e.totals[cashCurrencies[0]!] ?? 0) }))" /></div>
           <div class="card"><h3>Statements out of date</h3>
             <ul v-if="data.cash.stale.length" class="stale"><li v-for="s in data.cash.stale" :key="s.id"><NuxtLink :to="'/banking/' + s.id">{{ s.label }}</NuxtLink><span>{{ s.entity }} · last statement {{ day(s.as_of) }}</span></li></ul>
             <p v-else class="muted">Every account has a statement from the last 45 days.</p></div>
@@ -61,11 +60,8 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
         <TrendChart title="Activity" :sub="data.bucket === 'week' ? 'Actions per week' : 'Actions per month'" :points="pts(data.activity)" foot="Uploads, decisions and changes" />
       </div>
       <div class="three">
-        <div class="card"><h3>Entities by type</h3>
-          <div v-for="[k, c] in kinds" :key="k" class="bar"><span>{{ KIND[k] ?? k }}</span><i :style="{ width: (c / kindMax) * 100 + '%' }" /><b>{{ c }}</b></div></div>
-        <div class="card"><h3>Documents by entity</h3>
-          <div v-for="d in data.documents.byEntity" :key="d.name" class="bar"><span>{{ d.name }}</span><i :style="{ width: (d.c / maxOf(data.documents.byEntity)) * 100 + '%' }" /><b>{{ d.c }}</b></div>
-          <p v-if="!data.documents.byEntity.length" class="muted">No documents yet.</p></div>
+        <div class="card"><DonutChart title="Entities by type" total-label="Entities" :segments="kinds.map(([k, c]) => ({ label: KIND[k] ?? k, value: c }))" /></div>
+        <div class="card"><DonutChart title="Documents by entity" total-label="Documents" :segments="data.documents.byEntity.map((d: any) => ({ label: d.name, value: d.c }))" /></div>
         <div class="card"><h3>Companies held by entity</h3>
           <div v-for="d in data.heldByEntity" :key="d.name" class="bar"><span>{{ d.name }}</span><i :style="{ width: (d.c / maxOf(data.heldByEntity)) * 100 + '%' }" /><b>{{ d.c }}</b></div>
           <p v-if="!data.heldByEntity.length" class="muted">No holdings recorded.</p></div>
