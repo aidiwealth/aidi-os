@@ -191,3 +191,7 @@ export async function providerCheckout(provider: Provider, o: { amount: number |
 export async function paystackStatus(reference: string): Promise<string> {
   return (await paystack<{ status: string }>('transaction/verify/' + encodeURIComponent(reference))).status
 }
+
+// Provider calls for the wallet (top-ups that save the card; charging a saved card).
+export const stripeApi = stripe
+export const paystackApi = paystack

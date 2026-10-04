@@ -311,3 +311,9 @@ export async function sendInvestorUpdateEmail(to: string, name: string, company:
     para('Hi ' + esc(name.split(' ')[0] ?? name) + ',') + para(esc(preview) + (body.length > 320 ? '…' : '')) + button('Read the full update →', link), title)
   await sendEmail({ to, subject: title, text: 'Hi ' + name + ',\n\n' + preview + '\n\nRead the full update: ' + link, html })
 }
+
+// Wallet and billing notices (low balance, charge failed, plan moved to Free, service paused, transfer to confirm).
+export async function sendWalletNotice(to: string, subject: string, heading: string, body: string, cta: string, link: string): Promise<void> {
+  const html = shell(h1(esc(heading)) + para(esc(body)) + button(cta, link), heading)
+  await sendEmail({ to, subject, text: heading + '\n\n' + body + '\n\n' + cta + ': ' + link, html })
+}

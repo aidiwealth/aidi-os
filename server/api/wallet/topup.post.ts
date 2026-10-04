@@ -13,6 +13,6 @@ export default defineEventHandler(async (event) => {
   if (!provider) throw apiError('unavailable', 'Card top-ups are not switched on yet. Contact support.', 503)
   const reference = 'wt_' + randomToken().replace(/[^A-Za-z0-9]/g, '').slice(0, 20)
   await db().query('INSERT INTO wallet.topups (organization_id, amount_minor, currency, provider, reference, created_by) VALUES ($1,$2,$3,$4,$5,$6)', [org.id, minor, w.currency, provider, reference, user.userId])
-  const url = await providerCheckout(provider, { amount: minor / 100, currency: w.currency, email: user.email, name: org.name + ' wallet top-up', reference, returnUrl: brands().finvry.url + '/wallet?ref=' + reference })
+  const url = await walletCheckout(provider, { minor, currency: w.currency, email: user.email, name: org.name + ' wallet top-up', reference, returnUrl: brands().finvry.url + '/wallet' })
   return { ok: true, url }
 })

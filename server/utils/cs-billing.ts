@@ -50,6 +50,7 @@ export async function csPaymentSucceeded(reference: string): Promise<void> {
     return p.rows[0]
   })
   if (!row) return
+  await subscriptionsFromInvoice(row.invoice_id).catch((e) => console.error('[cs] renewals failed', e))
   setOrgContext(row.organization_id)
   const inv = await loadCsInvoice(row.invoice_id)
   if (inv) { try { await sendClientReceiptEmail(inv) } catch (err) { console.error('[cs] receipt failed', err) } }

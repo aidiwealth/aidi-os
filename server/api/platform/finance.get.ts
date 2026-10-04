@@ -20,6 +20,8 @@ export default defineEventHandler(async (event) => {
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.created_at DESC LIMIT 300`, args)
     const workspaces = await db().query(`SELECT o.id, o.name, coalesce(w.currency, CASE WHEN o.settings->>'currency' = 'NGN' THEN 'NGN' ELSE 'USD' END) AS currency, coalesce(w.balance_minor, 0)::float AS balance_minor
       FROM core.organizations o LEFT JOIN wallet.wallets w ON w.organization_id = o.id WHERE o.kind = 'company' AND o.status <> 'closed' ORDER BY o.name`)
-    return { totals: totals.rows, ledger: ledger.rows, workspaces: workspaces.rows }
+    const accounts = await db().query('SELECT v.organization_id, o.name AS workspace, o.slug, v.bank_name, v.account_number, v.account_name, v.created_at, coalesce(w.balance_minor, 0)::float AS balance_minor FROM wallet.virtual_accounts v JOIN core.organizations o ON o.id = v.organization_id LEFT JOIN wallet.wallets w ON w.organization_id = v.organization_id ORDER BY v.created_at DESC')
+    const subs = await db().query("SELECT s.id, o.name AS workspace, s.kind, s.name, s.amount_minor::float AS amount_minor, s.currency, s.interval, to_char(s.next_charge_at, 'YYYY-MM-DD') AS next_charge_at, s.status, s.failures, s.last_error FROM wallet.subscriptions s JOIN core.organizations o ON o.id = s.organization_id WHERE s.status <> 'cancelled' ORDER BY (s.status = 'suspended') DESC, s.next_charge_at LIMIT 300")
+    return { totals: totals.rows, ledger: ledger.rows, workspaces: workspaces.rows, accounts: accounts.rows, subscriptions: subs.rows }
   })
 })

@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   if (priced.length) {
     const settings = await csBilling()
     const currency = priced[0]!.currency, region = currency === 'NGN' ? 'ng' : 'us'
-    const lines = priced.filter((i) => i.currency === currency).map((i) => { const qty = i.billing === 'monthly' ? 12 : 1, unit = Number(i.price); return { description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: qty, unit_amount: unit, amount: Math.round(qty * unit * 100) / 100 } })
+    const lines = priced.filter((i) => i.currency === currency).map((i) => { const qty = i.billing === 'monthly' ? 12 : 1, unit = Number(i.price); return { code: i.code, description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: qty, unit_amount: unit, amount: Math.round(qty * unit * 100) / 100 } })
     const amount = Math.round(lines.reduce((t, l) => t + l.amount, 0) * 100) / 100
     const inv = await one<{ id: string }>(
       `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at)

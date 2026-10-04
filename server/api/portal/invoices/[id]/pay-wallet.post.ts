@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   await postLedger(inv.workspace_id, 'debit', Math.round(Number(inv.amount) * 100), 'service', 'Invoice ' + inv.number, { reference: 'invoice:' + inv.id, userId: u.userId ?? null })
   await db().query("UPDATE services.invoices SET status = 'paid', paid_at = current_date, paid_via = 'wallet' WHERE id = $1 AND status = 'sent'", [inv.id])
   await db().query("UPDATE services.clients SET status = 'active' WHERE status = 'lead' AND id = $1", [u.clientId])
+  await subscriptionsFromInvoice(inv.id).catch((e) => console.error('[wallet] renewals failed', e))
   await audit({ event, actorUserId: u.userId ?? null, action: 'services.invoice_paid_wallet', objectType: 'invoice', objectId: inv.id })
   const full = await loadCsInvoice(inv.id); if (full) sendClientReceiptEmail(full).catch((e) => console.error('[wallet] receipt failed', e))
   return { ok: true }

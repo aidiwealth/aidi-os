@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
   const ws = await createWorkspace(event, null, { name: d.company, slug, kind: 'company', plan_code: d.plan, status: d.plan === 'company_free' ? 'active' : 'trial', trial_days: 14, admin_name: d.name, admin_email: email },
     { invite: false, settings: { country: d.country, currency: nigeria ? 'NGN' : 'USD', public_name: d.company, entity_type: d.entity_type ?? '', state: d.state, ...(d.plan === 'company_free' ? {} : { trial_used: 'true' }) } })
   if (d.entity_type && d.entity_type !== 'other') { setOrgContext(ws.id); try { await seedCompanyCompliance(d.entity_type, d.state) } catch (err) { console.error('[signup] compliance seed failed', err) } finally { setOrgContext(null) } }
+  await syncPlanSubscription(ws.id).catch((e) => console.error('[signup] plan charge setup failed', e))
   try { await startLogin(email, clientIp(event)) } catch (err) { console.error('[signup] code email failed', err); return { ok: true, id: ws.id, emailed: false } }
   return { ok: true, id: ws.id, emailed: true }
 })

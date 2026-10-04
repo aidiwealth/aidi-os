@@ -36,6 +36,7 @@ async function save() {
       <div class="hk"><code>{{ pay.paystackWebhookUrl }}</code><button type="button" class="link" @click="copy(pay.paystackWebhookUrl)">Copy</button></div>
       <p class="hint">Keys are set as app secrets, never here: NUXT_STRIPE_SECRET_KEY, NUXT_STRIPE_WEBHOOK_SECRET and NUXT_PAYSTACK_SECRET_KEY.</p>
     </div>
+    <div class="card" style="margin-top: 16px"><WalletSettings /></div>
   </section>
 </template>
 
