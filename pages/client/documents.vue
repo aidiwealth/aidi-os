@@ -9,6 +9,7 @@ const size = (b: number) => (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1
 </script>
 <template>
   <section v-if="data">
+    <ClientTabs />
     <h1>Documents</h1><p v-if="msg" class="error">{{ msg }}</p>
     <div class="box"><table v-if="data.length"><thead><tr><th>Document</th><th>Reason</th><th>Request</th><th>Date</th><th /></tr></thead>
       <tbody><tr v-for="d in data" :key="d.id + d.created_at"><td><b>{{ d.title.split(' — ').pop() }}</b><span class="s">{{ d.kind === 'client_document' ? 'Sent by you' : 'From our team' }} · {{ size(d.size_bytes) }}</span></td>

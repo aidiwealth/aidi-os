@@ -6,7 +6,7 @@ const TYPES: Record<string, string> = {
 }
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
-  rateLimit('portal_upload', u.personId, 40, 60 * 60 * 1000)
+  rateLimit('portal_upload', (u.personId ?? u.userId ?? 'x'), 40, 60 * 60 * 1000)
   const id = String(getRouterParam(event, 'id') ?? '')
   if (!/^[0-9a-f-]{36}$/.test(id)) throw apiError('not_found', 'Not found', 404)
   const j = (await db().query<{ title: string; owner_email: string | null }>('SELECT j.title, ou.email AS owner_email FROM services.jobs j LEFT JOIN core.users ou ON ou.id = j.owner_id WHERE j.id = $1 AND j.client_id = $2', [id, u.clientId])).rows[0]

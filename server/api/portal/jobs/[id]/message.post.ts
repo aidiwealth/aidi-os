@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
-  rateLimit('portal_msg', u.personId, 30, 60 * 60 * 1000)
+  rateLimit('portal_msg', (u.personId ?? u.userId ?? 'x'), 30, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ body: z.string().trim().min(1).max(5000) }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Write a message.')

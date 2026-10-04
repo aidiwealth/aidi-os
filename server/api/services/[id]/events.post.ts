@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
   if (visible) {
     try {
       const to = await clientRecipients(job.client_id)
-      const link = to.portal ? await portalUrl('/jobs/' + id.data) : await issueClientLink(id.data)
+      const link = to.portal ? await portalUrl('/jobs/' + id.data, job.client_id) : await issueClientLink(id.data)
       const headline = d.kind === 'status' ? (d.status === 'completed' ? 'Your request is complete' : d.status === 'waiting_client' ? 'We need more information or documents' : 'Status: ' + STATUS_LABEL[d.status!]) : d.kind === 'document' ? 'A document has been shared with you' : 'A message from {{ORG}}'
       for (const e of to.portal ? to.emails : [job.email]) await sendJobUpdate(e, job.contact_name, job.title, headline, d.body ?? '', link)
       emailed = true

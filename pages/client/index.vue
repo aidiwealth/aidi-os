@@ -15,6 +15,7 @@ const day = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numer
 
 <template>
   <section v-if="data && me">
+    <ClientTabs />
     <h1>Hello, {{ me.name.split(' ')[0] }}</h1>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div class="cards">

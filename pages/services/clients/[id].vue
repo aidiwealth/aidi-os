@@ -29,7 +29,7 @@ const sentLink = ref('')
 function askTax(c: Co) { rq.company_id = c.id; rq.email = data.value?.client.email ?? ''; sentLink.value = '' }
 const sendTax = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/requests', { method: 'POST', body: { client_id: id, ...rq } }); sentLink.value = r.link; rq.company_id = '' }, 'Tax information request sent.')
 const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
-const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/people/' + p.id + '/invite', { method: 'POST', body: { send } }), send ? 'Portal invite sent to ' + p.email + '.' : p.name + ' can now sign in with their email.')
+const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/finvry', { method: 'POST', body: { person_id: p.id, send } }), send ? p.name + ' has a Finvry account and was emailed.' : p.name + ' can now sign in to Finvry with their email.')
 const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null; read_by_client: string | null }[]>('/api/services/clients/' + id + '/messages')
 const reply = ref('')
 const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + id + '/messages', { method: 'POST', body: { body: reply.value } }); reply.value = ''; await rmsgs() }, 'Message sent.')
@@ -83,7 +83,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
     <template v-else-if="tab === 'people'">
       <table v-if="data.people.length" class="table"><thead><tr><th>Name</th><th>Role</th><th>Company</th><th>Portal</th><th /></tr></thead>
         <tbody><tr v-for="p in data.people" :key="p.id"><td><b class="co">{{ p.name }}</b><span class="sub">{{ [p.email, p.phone].filter(Boolean).join(' · ') }}</span></td>
-          <td>{{ ROLES[p.role] }}<span v-if="p.ownership_pct" class="sub">{{ Number(p.ownership_pct) }}% ownership</span></td><td>{{ p.company ?? '—' }}</td><td class="sm">{{ p.portal_access ? 'Can sign in (email code)' : '—' }}<template v-if="p.email"><br><button class="link" @click="invite(p, true)">{{ p.portal_access ? 'Resend invite' : 'Invite by email' }}</button><template v-if="!p.portal_access"> · <button class="link" @click="invite(p, false)">Give access quietly</button></template></template></td>
+          <td>{{ ROLES[p.role] }}<span v-if="p.ownership_pct" class="sub">{{ Number(p.ownership_pct) }}% ownership</span></td><td>{{ p.company ?? '—' }}</td><td class="sm">{{ p.portal_access ? 'Finvry access' : '—' }}<template v-if="p.email"><br><button class="link" @click="invite(p, true)">{{ p.portal_access ? 'Email them again' : 'Give Finvry access + email' }}</button><template v-if="!p.portal_access"> · <button class="link" @click="invite(p, false)">Give access quietly</button></template></template></td>
           <td class="acts"><button class="link" @click="editPe(p)">Edit</button><DeleteButton type="cs_person" :id="p.id" :name="p.name" link @deleted="refresh()" /></td></tr></tbody></table>
       <p v-else class="muted">No people yet.</p>
       <button v-if="!editingPe" class="btn secondary" @click="editPe()">Add person</button>

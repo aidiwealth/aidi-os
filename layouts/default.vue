@@ -9,25 +9,28 @@ const brand = useBrand()
 const route = useRoute()
 const { data: me } = await useFetch<Me>('/api/auth/me', { key: 'me' })
 const { data: mods } = await useFetch<Mod[]>('/api/modules', { key: 'modules' })
-const platformMode = computed(() => route.path === '/platform' || route.path.startsWith('/platform/'))
 const canPlatform = computed(() => !!me.value?.platform && brand.key === 'aidi')
+const deskPath = computed(() => route.path === '/services' || route.path.startsWith('/services/') || route.path.startsWith('/client-services'))
+const platformMode = computed(() => route.path === '/platform' || route.path.startsWith('/platform/') || (canPlatform.value && deskPath.value))
+const desk = computed(() => (mods.value ?? []).filter((m) => m.usable && m.group === 'cs'))
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
-  for (const m of (mods.value ?? []).filter((x) => x.usable)) {
+  for (const m of (mods.value ?? []).filter((x) => x.usable && !(canPlatform.value && x.group === 'cs'))) {
     let g = out.find((x) => x.label === m.groupLabel)
     if (!g) { g = { label: m.groupLabel, items: [] }; out.push(g) }
     g.items.push(m)
   }
   return out
 })
-const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/professionals', label: 'Fund services', icon: 'professionals', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
-const PLAN: Record<string, string> = { starter: 'Starter', growth: 'Growth', family_office: 'Family Office', enterprise: 'Enterprise', internal: 'Internal' }
+const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/professionals', label: 'Trusted partners', icon: 'professionals', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
+const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', starter: 'Starter', growth: 'Growth', family_office: 'Family Office', enterprise: 'Enterprise', internal: 'Internal' }
 const collapsed = useState('sb-collapsed', () => false)
 const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
 const isOn = (to: string, exact = false) => (exact ? route.path === to : route.path === to || route.path.startsWith(to + '/'))
 const crumbs = computed(() => {
+  if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
   if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', 'Overview']
   for (const g of groups.value) { const m = g.items.find((x) => isOn(x.to)); if (m) return [g.label, m.label] }
@@ -68,7 +71,9 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
         <template v-else>
           <p class="sb-group">Finvry platform</p>
           <NuxtLink v-for="n in PLATFORM_NAV" :key="n.to" :to="n.to" class="sb-link" :class="{ on: isOn(n.to, n.exact) }" :title="n.label"><AppIcon :name="n.icon" class="sb-icon" /><span class="sb-label">{{ n.label }}</span></NuxtLink>
-          <p v-if="!collapsed" class="sb-note">Commercial data only. Customer data is never shown here.</p>
+          <template v-if="desk.length"><p class="sb-group">Services desk</p>
+            <NuxtLink v-for="m in desk" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to) }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span></NuxtLink></template>
+          <p v-if="!collapsed && !deskPath" class="sb-note">Commercial data only. Customer data is never shown here.</p>
         </template>
       </nav>
 

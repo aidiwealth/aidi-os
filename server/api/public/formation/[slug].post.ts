@@ -59,6 +59,8 @@ export default defineEventHandler(async (event) => {
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   await audit({ event, actorUserId: null, action: 'services.formation_order', objectType: 'job', objectId: ids.job, detail: { company: names[0], state: d.state, amount } })
   sendJobClientActivity(null, ids.job, d.contact.name, 'Form ' + names[0], 'placed a formation order for ' + names[0] + ' (' + d.state + ')', '').catch((e) => console.error('[formation] alert failed', e))
+  try { const op = currentOrgId(); const ws = await workspaceForClient(event, ids.client); setOrgContext(ws.orgId); try { await sendInviteEmail(email, d.contact.name, 'the Aidi team') } finally { setOrgContext(op) } }
+  catch (err) { console.error('[formation] finvry account failed', err) }
   const link = await billUrl(ids.invoice)
   const o = await currentOrg()
   const providers = csProviders('USD', o?.settings.brand)

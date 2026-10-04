@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   if (!path.startsWith('/api/') || PUBLIC.includes(path) || path.startsWith('/api/public/') || path.startsWith('/api/portal/')) return
   const s = await readSession(event)
   if (!s) throw apiError('unauthorized', 'Sign in required', 401)
+  if (s.roles.includes('services') && /^\/api\/(services|cs-analytics|documents|records)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']
   event.context.user = s
   event.context.orgId = s.orgId
 })

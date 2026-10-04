@@ -12,11 +12,22 @@ async function add() {
   try { const r = await $fetch<{ id: string }>('/api/services/clients', { method: 'POST', body: f }); await navigateTo('/services/clients/' + r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the client.' }
 }
+const { data: meM } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const isAdmin = computed(() => !!meM.value?.roles.includes('admin'))
+const preview = ref<{ client: string; already: boolean; users: string[] }[] | null>(null); const moveMsg = ref('')
+async function move(dry: boolean) {
+  moveMsg.value = ''
+  try { const r = await $fetch<{ clients: { client: string; already: boolean; users: string[] }[] }>('/api/services/finvry-move', { method: 'POST', body: { dry_run: dry } }); preview.value = dry ? r.clients : null; if (!dry) moveMsg.value = 'Moved. ' + r.clients.filter((c) => !c.already).length + ' client(s) now have a Finvry account.' }
+  catch (e) { moveMsg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not move clients.' }
+}
 </script>
 
 <template>
   <section v-if="data">
     <CsNav />
+    <div v-if="isAdmin" class="card move"><div><b>Move clients to Finvry</b><span>Each client gets a free Finvry company account and its contacts become users. No emails are sent; they sign in at app.finvry.com with their email.</span></div>
+      <div class="row"><button class="btn secondary" type="button" @click="move(true)">Preview</button><button class="btn" type="button" :disabled="!preview" @click="move(false)">Move {{ preview ? preview.filter((c) => !c.already).length : '' }}</button></div>
+      <ul v-if="preview" class="mv"><li v-for="c in preview" :key="c.client">{{ c.client }} — {{ c.already ? 'already on Finvry' : c.users.join(', ') }}</li></ul><p v-if="moveMsg" class="ok">{{ moveMsg }}</p></div>
     <div class="head"><h1>Clients</h1><div class="row"><input v-model="q" placeholder="Search clients" aria-label="Search"><button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add client' }}</button></div></div>
     <form v-if="adding" class="card frm" @submit.prevent="add">
       <label class="label">Client name<input v-model="f.name" required maxlength="200" placeholder="Company or person"></label>
@@ -52,4 +63,5 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .st { font-size: 13px; font-weight: 500; text-transform: capitalize; } .st.paid { color: var(--c-ok); } .st.sent { color: var(--c-blue-deep); } .st.overdue { color: var(--c-danger); } .st.draft, .st.void { color: var(--c-muted); }
 .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr; } }
+.move { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; border-left: 3px solid var(--c-blue-deep); } .move span { display: block; font-size: 13px; color: var(--c-ink-soft); margin-top: 3px; } .mv { margin: 0; padding-left: 18px; font-size: 13px; } .ok { color: var(--c-ok); margin: 0; }
 </style>

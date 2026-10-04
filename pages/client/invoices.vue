@@ -10,6 +10,7 @@ const VIA: Record<string, string> = { stripe: 'Card', paystack: 'Paystack', manu
 </script>
 <template>
   <section v-if="data">
+    <ClientTabs />
     <h1>Invoices &amp; payments</h1>
     <h2>To pay</h2>
     <div class="box"><table v-if="unpaid.length"><tbody><tr v-for="i in unpaid" :key="i.id"><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}{{ i.company ? ' · ' + i.company : '' }}</span></td>

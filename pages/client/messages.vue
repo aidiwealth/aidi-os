@@ -8,6 +8,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
 </script>
 <template>
   <section v-if="data" class="wrap">
+    <ClientTabs />
     <h1>Messages</h1>
     <form class="card comp" @submit.prevent="send"><textarea v-model="text" rows="3" maxlength="5000" placeholder="Write to our team" required /><div class="row"><span class="mut">We reply here and by email.</span><button class="btn" type="submit" :disabled="busy || !text.trim()">Send</button></div><p v-if="msg" class="error">{{ msg }}</p></form>
     <div class="thread"><div v-for="m in data" :key="m.id" class="m" :class="{ team: m.from_team }"><span class="w">{{ m.from_team ? (m.author ?? 'Our team') : 'You' }} · {{ when(m.created_at) }}</span><p>{{ m.body }}</p></div>
