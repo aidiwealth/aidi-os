@@ -53,7 +53,7 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
     </form>
 
     <div v-if="totals.length" class="kpis">
-      <div v-for="[c, v] in totals" :key="c" class="kpi"><span class="label">Total {{ c }}</span><b>{{ money(v, c) }}</b><span class="sub">latest statement per account</span></div>
+      <WalletCard v-for="[c, v] in totals" :key="c" title="Group cash" :label="'Total ' + c" :value="v" :currency="c" sub="latest tied-out statement per account" foot-label="Accounts" :foot-value="String(rows.filter((a) => a.currency === c).length)" />
     </div>
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Bank & cash is limited to GPs and family.' : 'Could not load accounts.' }}</p>
@@ -63,7 +63,7 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
       <table class="table"><tbody>
         <tr v-for="a in accts" :key="a.id">
           <td><NuxtLink :to="'/banking/' + a.id" class="co">{{ a.bank_name }} · {{ a.account_name }}</NuxtLink><span class="sub">{{ KIND[a.kind] }}<template v-if="a.last4"> · ••{{ a.last4 }}</template> · {{ a.currency }}</span></td>
-          <td class="num"><b>{{ money(a.balance, a.currency) }}</b><span class="sub">as of {{ day(a.as_of) }}</span></td>
+          <td class="num"><b><Money :value="a.balance" :currency="a.currency" /></b><span class="sub">as of {{ day(a.as_of) }}</span></td>
           <td class="muted">{{ a.statements }} statement{{ a.statements === 1 ? '' : 's' }}<span v-if="a.continuous === false" class="sub amber">gap between statements</span></td>
         </tr>
       </tbody></table>
@@ -78,7 +78,7 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
 .add { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; margin-bottom: 20px; } .add label { display: flex; flex-direction: column; gap: 6px; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; grid-column: 1 / -1; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-bottom: 22px; }
 .kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 .kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
 .grp { margin-bottom: 18px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }

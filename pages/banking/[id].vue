@@ -58,9 +58,11 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
     <div class="dh"><h1>{{ data.account.bank_name }} · {{ data.account.account_name }}</h1><DeleteButton type="bank_account" :id="id" :name="data.account.bank_name + ' · ' + data.account.account_name" to="/banking" /></div>
 
     <div class="top">
-      <div class="card bal"><span class="label">Balance</span><b>{{ data.statements[0] ? money(data.statements[0].closing) : '—' }}</b><span class="sub">{{ data.statements[0] ? 'per statement ending ' + day(data.statements[0].period_end) : 'Import a statement to see the balance' }}</span></div>
-      <TrendChart title="Closing balance" sub="By statement" :points="series" :foot="data.statements.length + ' statements'" />
+      <WalletCard :title="data.account.bank_name" label="Balance" :value="data.statements[0]?.closing ?? null" :currency="data.account.currency"
+        :sub="data.statements[0] ? 'per statement ending ' + day(data.statements[0].period_end) : 'Import a statement to see the balance'" foot-label="Account" :foot-value="data.account.account_name + (data.account.last4 ? ' ··' + data.account.last4 : '')" :tag="data.account.entity" />
+      <TrendChart title="Closing balance" sub="By statement" unit="usd" :symbol="({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as Record<string, string>)[cur] ?? cur + ' '" :points="series" :foot="data.statements.length + ' statements'" />
     </div>
+    <MoneyFlow v-if="data.transactions.length" class="flow" :rows="data.transactions" :currency="cur" />
 
     <div class="card">
       <h2>Import a statement</h2>
@@ -104,12 +106,10 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
       <p v-else class="muted">No statements yet.</p>
     </div>
 
-    <div class="card">
-      <div class="row"><h2>Transactions</h2><input v-model="q" placeholder="Search descriptions" aria-label="Search transactions" class="search"></div>
-      <div class="scroll"><table v-if="txs.length" class="table sm"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
-        <tbody><tr v-for="(t, i) in txs" :key="i"><td>{{ day(t.date) }}</td><td>{{ t.description }}</td><td class="num" :class="{ neg: Number(t.amount) < 0 }">{{ money(t.amount) }}</td><td class="num muted">{{ t.balance === null ? '' : money(t.balance) }}</td></tr></tbody></table></div>
-      <p v-if="!txs.length" class="muted">{{ q ? 'No matches.' : 'No transactions yet.' }}</p>
-    </div>
+    <TxnTable class="txn" :rows="txs" :currency="cur" :filename="data.account.bank_name + '-' + data.account.account_name">
+      <template #tools><input v-model="q" placeholder="Search descriptions" aria-label="Search transactions" class="search"></template>
+      <template #empty>{{ q ? 'No matches.' : 'No transactions yet. Import a statement above.' }}</template>
+    </TxnTable>
   </section>
   <p v-else-if="error" class="error" role="alert">{{ error.statusCode === 404 ? 'Account not found.' : 'Could not load this account.' }}</p>
 </template>
@@ -117,7 +117,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
 h1 { margin-bottom: 18px; } h2 { margin-bottom: 12px; }
-.top { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px; }
+.top { display: grid; grid-template-columns: minmax(320px, 1fr) 1.4fr; gap: 16px; margin-bottom: 22px; } .flow { margin-bottom: 22px; } .txn { margin-bottom: 22px; }
 .bal { display: flex; flex-direction: column; gap: 6px; justify-content: center; } .bal b { font-weight: 500; letter-spacing: -0.02em; font-size: 34px; color: var(--c-navy); }
 .card { margin-bottom: 16px; }
 .drop { border: 1px dashed var(--c-rule-strong); background: var(--c-paper); padding: 20px; text-align: center; cursor: pointer; } .drop p { margin: 0; font-size: 13px; color: var(--c-muted); } .drop b { color: var(--c-navy); }

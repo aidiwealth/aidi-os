@@ -1,52 +1,60 @@
 <script setup lang="ts">
-// A client invoice laid out like the invoices clients already receive: issuer, bill to, amount due, lines, bank transfer.
+// A client invoice in the Telroi invoice layout: issuer and number, billed to / period / issued, lines, totals, bank transfer.
 interface Inv { number: string; currency: string; amount: string; issue_date: string; due_date: string; status: string; paid_at: string | null; company?: string | null
   lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; bill_to: { name: string; email: string; address?: string }
   issuer: { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string>; note_top?: string; note_bottom?: string }; note: string | null }
 const props = defineProps<{ inv: Inv; payable?: boolean }>()
 defineEmits<{ pay: [] }>()
 const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: props.inv.currency }).format(Number(v))
-const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+const short = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const bank = computed(() => Object.entries(props.inv.issuer.bank ?? {}).filter(([, v]) => v))
+const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.paid_at ? ' ' + short(props.inv.paid_at) : '') : props.inv.status === 'void' ? 'Void' : 'Due ' + short(props.inv.due_date))
 </script>
 
 <template>
-  <article class="ci">
-    <div class="bar" />
-    <header class="top"><div><h1>Invoice</h1>
-      <dl class="meta"><dt>Invoice number</dt><dd>{{ inv.number }}</dd><dt>Date of issue</dt><dd>{{ day(inv.issue_date) }}</dd><dt>Date due</dt><dd>{{ day(inv.due_date) }}</dd></dl></div>
-      <span v-if="inv.status === 'paid'" class="stamp paid">Paid{{ inv.paid_at ? ' ' + day(inv.paid_at) : '' }}</span><span v-else-if="inv.status === 'void'" class="stamp void">Void</span></header>
-    <div class="parties">
-      <div><b>{{ inv.issuer.issuer }}</b><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
-      <div><b>Bill to</b><p>{{ inv.bill_to.name }}</p><p v-if="inv.company && inv.company !== inv.bill_to.name">{{ inv.company }}</p><p v-if="inv.bill_to.address" class="pre">{{ inv.bill_to.address }}</p><p>{{ inv.bill_to.email }}</p></div>
+  <article class="ti">
+    <header class="hd">
+      <div><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
+      <div class="rt"><span class="lb">Invoice</span><b class="no">{{ inv.number }}</b><span class="chip" :class="inv.status">{{ chip }}</span></div>
+    </header>
+    <div class="info">
+      <div><span class="lb">Billed to</span><b>{{ inv.bill_to.name }}</b><span v-if="inv.company && inv.company !== inv.bill_to.name">{{ inv.company }}</span><span v-if="inv.bill_to.address" class="pre">{{ inv.bill_to.address }}</span><span class="mut">{{ inv.bill_to.email }}</span></div>
+      <div><span class="lb">Due</span><b>{{ day(inv.due_date) }}</b></div>
+      <div><span class="lb">Issued</span><b>{{ day(inv.issue_date) }}</b></div>
     </div>
-    <h2 class="due">{{ money(inv.amount) }} {{ inv.currency }} {{ inv.status === 'paid' ? 'paid' : 'due ' + day(inv.due_date) }}</h2>
-    <button v-if="payable" type="button" class="paylink" @click="$emit('pay')">Pay online</button>
     <p v-if="inv.issuer.note_top" class="note">{{ inv.issuer.note_top }}</p>
-    <table class="lines"><thead><tr><th>Description</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead>
-      <tbody><tr v-for="(l, i) in inv.lines" :key="i"><td>{{ l.description }}</td><td class="n">{{ l.quantity }}</td><td class="n">{{ money(l.unit_amount) }}</td><td class="n">{{ money(l.amount) }}</td></tr></tbody></table>
-    <table class="tot"><tbody><tr><td>Subtotal</td><td class="n">{{ money(inv.amount) }}</td></tr><tr><td>Total</td><td class="n">{{ money(inv.amount) }}</td></tr><tr class="ad"><td>Amount due</td><td class="n">{{ inv.status === 'paid' ? money(0) : money(inv.amount) }} {{ inv.currency }}</td></tr></tbody></table>
+    <table class="ln"><thead><tr><th>Description</th><th class="q">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead>
+      <tbody><tr v-for="(l, i) in inv.lines" :key="i"><td>{{ l.description }}</td><td class="q">{{ l.quantity }}</td><td class="n m">{{ money(l.unit_amount) }}</td><td class="n m">{{ money(l.amount) }}</td></tr></tbody></table>
+    <div class="tot">
+      <div><span>Subtotal</span><span class="m">{{ money(inv.amount) }}</span></div>
+      <div v-if="inv.status === 'paid'"><span>Paid</span><span class="m ok">−{{ money(inv.amount) }}</span></div>
+      <div class="due"><span>Amount due</span><span class="m">{{ inv.status === 'paid' ? money(0) : money(inv.amount) }}</span></div>
+      <button v-if="payable" type="button" class="btn paynow" @click="$emit('pay')">Pay now</button>
+    </div>
     <p v-if="inv.note" class="note">{{ inv.note }}</p>
-    <p v-if="inv.issuer.note_bottom" class="note">{{ inv.issuer.note_bottom }}</p>
-    <div v-if="bank.length && inv.status !== 'paid'" class="bank"><b>Pay {{ money(inv.amount) }} with a bank transfer</b><p>Bank transfers can take up to two business days. Use the details below and the invoice number as the reference.</p>
-      <dl><template v-for="[k, v] in bank" :key="k"><dt>{{ k }}</dt><dd>{{ v }}</dd></template><dt>Reference</dt><dd>{{ inv.number }}</dd></dl></div>
+    <div v-if="bank.length && inv.status !== 'paid'" class="bank"><span class="lb">Pay by transfer</span>
+      <div class="bg"><div v-for="[k, v] in bank" :key="k"><span class="lb sm">{{ k }}</span><b :class="{ m: /number|routing|swift|sort/i.test(k) }">{{ v }}</b></div><div><span class="lb sm">Reference</span><b class="m">{{ inv.number }}</b></div></div>
+      <p class="mut">Use the invoice number as the reference. Bank transfers can take up to two business days.</p></div>
+    <p v-if="inv.issuer.note_bottom" class="foot">{{ inv.issuer.note_bottom }}</p>
   </article>
 </template>
 
 <style scoped>
-.ci { background: #fff; border: 1px solid var(--c-rule); padding: 0 44px 40px; position: relative; color: #1f1f1f; font-family: var(--font-body); }
-.bar { height: 6px; background: var(--c-navy); margin: 0 -44px 28px; }
-.top { display: flex; justify-content: space-between; align-items: flex-start; } h1 { font-family: var(--font-body); font-weight: 700; font-size: 30px; color: #111; margin: 0 0 12px; }
-.meta { display: grid; grid-template-columns: auto auto; gap: 2px 18px; margin: 0; font-size: 13.5px; } .meta dt { font-weight: 600; } .meta dd { margin: 0; font-weight: 600; }
-.stamp { font-size: 13px; font-weight: 600; padding: 4px 10px; } .stamp.paid { background: rgba(31,122,77,.1); color: var(--c-ok); } .stamp.void { background: var(--c-paper-2); color: var(--c-muted); }
-.parties { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 26px 0 28px; font-size: 13.5px; } .parties b { display: block; margin-bottom: 6px; } .parties p { margin: 0; line-height: 1.55; } .pre { white-space: pre-line; }
-.due { font-family: var(--font-body); font-weight: 700; font-size: 21px; color: #111; margin: 0 0 8px; }
-.paylink { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--c-blue-deep); text-decoration: underline; cursor: pointer; }
-.note { font-size: 13.5px; margin: 14px 0; line-height: 1.55; }
-.lines { width: 100%; border-collapse: collapse; margin: 22px 0 8px; font-size: 13.5px; } .lines th { text-align: left; font-weight: 500; font-size: 12px; padding: 6px 0; border-bottom: 2px solid #111; }
-.lines td { padding: 13px 0; border-bottom: 1px solid var(--c-rule); } .n { text-align: right; font-variant-numeric: tabular-nums; } .lines th.n { text-align: right; } .lines td.n { padding-left: 16px; }
-.tot { margin-left: auto; width: 46%; border-collapse: collapse; font-size: 13.5px; } .tot td { padding: 5px 0; border-bottom: 1px solid var(--c-rule); } .tot .ad td { font-weight: 700; border-bottom: 0; }
-.bank { margin-top: 26px; font-size: 13.5px; } .bank p { margin: 4px 0 8px; max-width: 420px; line-height: 1.5; } .bank dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 18px; margin: 0; } .bank dd { margin: 0; }
-@media (max-width: 700px) { .ci { padding: 0 20px 28px; } .bar { margin: 0 -20px 22px; } .parties { grid-template-columns: 1fr; } .tot { width: 100%; } }
-@media print { .ci { border: 0; } .paylink { display: none; } }
+.ti { background: #fff; border: 1px solid var(--c-rule); padding: 48px 56px; color: var(--c-ink); font-family: var(--font-body); }
+.hd { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--c-rule); }
+.hd h1 { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); margin: 0 0 10px; } .hd p { margin: 0 0 4px; color: var(--c-ink-soft); font-size: 15px; } .pre { white-space: pre-line; }
+.rt { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .lb { display: block; font-size: 13.5px; color: var(--c-muted); } .lb.sm { font-size: 12.5px; margin-bottom: 3px; }
+.no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: .02em; } .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chip { font-size: 13.5px; background: var(--c-paper-2); padding: 5px 12px; color: var(--c-ink-soft); } .chip.paid { background: rgba(31,122,77,.1); color: var(--c-ok); } .chip.void { color: var(--c-muted); }
+.info { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 24px; padding: 26px 0; border-bottom: 1px solid var(--c-rule); } .info > div { display: flex; flex-direction: column; gap: 4px; font-size: 15px; } .info b { font-weight: 500; } .mut { color: var(--c-muted); }
+.note { font-size: 14px; color: var(--c-ink-soft); margin: 18px 0 0; line-height: 1.55; }
+.ln { width: 100%; border-collapse: collapse; margin-top: 26px; } .ln th { text-align: left; font-weight: 400; font-size: 13.5px; color: var(--c-muted); padding: 10px 0; border-bottom: 1px solid var(--c-rule); }
+.ln td { padding: 16px 0; border-bottom: 1px solid var(--c-rule); font-size: 15px; } .n { text-align: right; } .q { text-align: center; width: 70px; color: var(--c-ink-soft); } .ln th.n { text-align: right; } .ln th.q { text-align: center; } .ln td.n { padding-left: 16px; }
+.tot { margin: 26px 0 0 auto; width: 46%; min-width: 280px; display: flex; flex-direction: column; } .tot > div { display: flex; justify-content: space-between; padding: 8px 0; font-size: 15px; color: var(--c-ink-soft); }
+.tot .ok { color: var(--c-ok); } .tot .due { border-top: 1px solid var(--c-ink); margin-top: 8px; padding-top: 14px; font-size: 20px; color: var(--c-ink); font-weight: 500; } .paynow { margin-top: 12px; align-self: flex-end; }
+.bank { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--c-rule); } .bg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 24px; margin: 12px 0; } .bg b { font-weight: 500; font-size: 15px; }
+.foot { margin: 26px 0 0; font-size: 13px; color: var(--c-muted); }
+@media (max-width: 760px) { .ti { padding: 26px 20px; } .hd { flex-direction: column; } .rt { align-items: flex-start; text-align: left; } .info, .bg { grid-template-columns: 1fr; } .tot { width: 100%; } }
+@media print { .ti { border: 0; padding: 0; } .paynow { display: none; } }
 </style>

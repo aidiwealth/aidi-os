@@ -28,13 +28,13 @@ const doPrint = () => window.print()
         <div class="row"><button class="btn secondary" @click="doPrint">Download PDF</button><button v-if="data.providers.length && data.invoice.status === 'sent'" class="btn" :disabled="busy" @click="pay">{{ busy ? 'Opening…' : 'Pay now' }}</button></div>
       </div>
       <p v-if="msg" class="error noprint" role="alert">{{ msg }}</p>
-      <ClientInvoice :inv="data.invoice" :payable="data.providers.length > 0 && data.invoice.status === 'sent'" @pay="pay" />
+      <ClientInvoice :inv="data.invoice" />
     </template>
   </section>
 </template>
 
 <style scoped>
-.wrap { max-width: 860px; margin: 0 auto; } .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; } .bar p { margin: 0; }
+.wrap { max-width: 900px; margin: 0 auto; } .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; } .bar p { margin: 0; }
 .row { display: flex; gap: 8px; } .muted { color: var(--c-muted); } .ok { color: var(--c-ok); font-weight: 500; } .error { color: var(--c-danger); }
 @media print { .noprint { display: none !important; } }
 </style>

@@ -1,45 +1,60 @@
 <script setup lang="ts">
-// A printable invoice (Print, then Save as PDF). For Aidi platform staff and admins of the invoiced workspace.
+// A Finvry subscription invoice, laid out like the Telroi invoice. For Aidi platform staff and admins of the invoiced workspace.
 definePageMeta({ layout: false })
 const id = useRoute().params.id as string
-interface I { number: string; customer: string; issue_date: string; due_date: string; period_start: string | null; period_end: string | null; currency: string; lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: string; bill_to: { name: string; email: string; address?: string }; status: string; paid_at: string | null; overdue: boolean }
+interface I { number: string; customer: string; issue_date: string; due_date: string; period_start: string | null; period_end: string | null; currency: string; lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: string; status: string; overdue: boolean; paid_at: string | null; bill_to: { name: string; email: string; address?: string } }
 const { data, error } = await useFetch<{ invoice: I; issuer: { issuer_name: string; issuer_address: string; issuer_email: string; payment_instructions: string }; payUrl: string | null }>('/api/billing/invoices/' + id)
 useHead({ titleTemplate: '%s', title: () => (data.value ? 'Invoice ' + data.value.invoice.number : 'Invoice') })
 const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.invoice.currency ?? 'USD' }).format(Number(v))
 const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '')
+const short = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '')
 const doPrint = () => window.print()
+const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'))
 </script>
 
 <template>
   <div class="page">
     <p v-if="error" class="err">This invoice is not available.</p>
-    <article v-else-if="data" class="inv">
-      <div class="noprint bar"><a v-if="data.payUrl" :href="data.payUrl" class="btn">Pay online</a><button type="button" class="btn" :class="{ secondary: data.payUrl }" @click="doPrint">Print or save as PDF</button></div>
-      <header><div><h1>{{ data.issuer.issuer_name }}</h1><p class="muted pre">{{ data.issuer.issuer_address }}</p><p class="muted">{{ data.issuer.issuer_email }}</p></div>
-        <div class="meta"><p class="tag" :data-s="data.invoice.overdue ? 'overdue' : data.invoice.status">{{ data.invoice.overdue ? 'Overdue' : data.invoice.status === 'paid' ? 'Paid' : data.invoice.status === 'void' ? 'Void' : 'Invoice' }}</p><h2>{{ data.invoice.number }}</h2><p>Issued {{ day(data.invoice.issue_date) }}</p><p><b>Due {{ day(data.invoice.due_date) }}</b></p></div></header>
-      <section class="bill"><p class="lbl">Bill to</p><p><b>{{ data.invoice.customer }}</b></p><p>{{ data.invoice.bill_to.name }} · {{ data.invoice.bill_to.email }}</p><p v-if="data.invoice.bill_to.address" class="pre">{{ data.invoice.bill_to.address }}</p>
-        <p v-if="data.invoice.period_start" class="muted">Service period {{ day(data.invoice.period_start) }} – {{ day(data.invoice.period_end) }}</p></section>
-      <table><thead><tr><th>Description</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Amount</th></tr></thead>
-        <tbody><tr v-for="(l, i) in data.invoice.lines" :key="i"><td>{{ l.description }}</td><td class="n">{{ l.quantity }}</td><td class="n">{{ money(l.unit_amount) }}</td><td class="n">{{ money(l.amount) }}</td></tr></tbody>
-        <tfoot><tr><td colspan="3">Total ({{ data.invoice.currency }})</td><td class="n">{{ money(data.invoice.amount) }}</td></tr></tfoot></table>
-      <p v-if="data.invoice.status === 'paid'" class="paid">Paid {{ day(data.invoice.paid_at) }}. Thank you.</p>
-      <section v-else class="pay"><p class="lbl">How to pay</p><p class="pre">{{ data.issuer.payment_instructions }}</p><p class="muted">Please quote {{ data.invoice.number }} with your payment.</p></section>
-    </article>
+    <template v-else-if="data">
+      <div class="bar noprint"><button type="button" class="btn secondary" @click="back">← Back</button><span /><button type="button" class="btn secondary" @click="doPrint">Download PDF</button><a v-if="data.payUrl && data.invoice.status !== 'paid'" :href="data.payUrl" class="btn">Pay now</a></div>
+      <article class="ti">
+        <header class="hd">
+          <div><h1>{{ data.issuer.issuer_name }}</h1><p class="pre">{{ data.issuer.issuer_address }}</p><p>{{ data.issuer.issuer_email }}</p></div>
+          <div class="rt"><span class="lb">Invoice</span><b class="no">{{ data.invoice.number }}</b>
+            <span class="chip" :class="data.invoice.overdue ? 'over' : data.invoice.status">{{ data.invoice.status === 'paid' ? 'Paid ' + short(data.invoice.paid_at) : data.invoice.status === 'void' ? 'Void' : (data.invoice.overdue ? 'Overdue · ' : 'Due ') + short(data.invoice.due_date) }}</span></div>
+        </header>
+        <div class="info">
+          <div><span class="lb">Billed to</span><b>{{ data.invoice.customer }}</b><span>{{ data.invoice.bill_to.name }}</span><span class="mut">{{ data.invoice.bill_to.email }}</span><span v-if="data.invoice.bill_to.address" class="pre">{{ data.invoice.bill_to.address }}</span></div>
+          <div><span class="lb">Period</span><b>{{ data.invoice.period_start ? day(data.invoice.period_start) + ' – ' + day(data.invoice.period_end) : '—' }}</b></div>
+          <div><span class="lb">Issued</span><b>{{ day(data.invoice.issue_date) }}</b></div>
+        </div>
+        <table class="ln"><thead><tr><th>Description</th><th class="q">Qty</th><th class="n">Amount</th></tr></thead>
+          <tbody><tr v-for="(l, i) in data.invoice.lines" :key="i"><td>{{ l.description }}</td><td class="q">{{ l.quantity }}</td><td class="n m">{{ money(l.amount) }}</td></tr></tbody></table>
+        <div class="tot"><div><span>Subtotal</span><span class="m">{{ money(data.invoice.amount) }}</span></div>
+          <div v-if="data.invoice.status === 'paid'"><span>Paid</span><span class="m ok">−{{ money(data.invoice.amount) }}</span></div>
+          <div class="due"><span>Amount due</span><span class="m">{{ data.invoice.status === 'paid' ? money(0) : money(data.invoice.amount) }}</span></div></div>
+        <div v-if="data.invoice.status !== 'paid' && data.issuer.payment_instructions" class="bank"><span class="lb">Pay by transfer</span><p class="pre">{{ data.issuer.payment_instructions }}</p><p class="mut">Please quote {{ data.invoice.number }} with your payment.</p></div>
+      </article>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.page { background: #f5f5f3; min-height: 100vh; padding: 32px 16px; font-family: var(--font-body); color: var(--c-ink); }
-.inv { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 48px; }
-.bar { display: flex; justify-content: flex-end; gap: 10px; margin: -24px -24px 16px 0; } .bar a.btn { text-decoration: none; }
-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid var(--c-navy); padding-bottom: 20px; margin-bottom: 24px; }
-h1 { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); margin: 0 0 6px; } h2 { font-family: var(--font-heading); font-weight: 500; font-size: 24px; margin: 4px 0; color: var(--c-navy); }
-.meta { text-align: right; } .meta p { margin: 2px 0; font-size: 14px; }
-.tag { display: inline-block; font-size: 11px; letter-spacing: 0; color: var(--c-blue-deep); } .tag[data-s="paid"] { color: var(--c-ok); } .tag[data-s="overdue"] { color: var(--c-danger); } .tag[data-s="void"] { color: var(--c-muted); }
-.lbl { font-size: 11px; letter-spacing: 0; color: var(--c-muted); margin: 0 0 6px; }
-.bill p, .pay p { margin: 2px 0; font-size: 14px; } .bill { margin-bottom: 24px; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; margin-bottom: 24px; } th { text-align: left; font-size: 11px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; padding: 10px 0; border-bottom: 1px solid var(--c-rule); }
-td { padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .n { text-align: right; } tfoot td { font-weight: 600; font-size: 16px; border-bottom: 0; color: var(--c-navy); }
-.paid { color: var(--c-ok); font-weight: 500; } .pre { white-space: pre-wrap; } .muted { color: var(--c-muted); font-size: 13px; } .err { text-align: center; color: var(--c-muted); }
-@media print { .page { background: #fff; padding: 0; } .inv { border: 0; padding: 0; } .noprint { display: none; } }
+.page { background: var(--c-paper-2); min-height: 100vh; padding: 32px 16px; font-family: var(--font-body); color: var(--c-ink); }
+.bar { max-width: 900px; margin: 0 auto 16px; display: flex; gap: 10px; align-items: center; } .bar span { flex: 1; } .bar a.btn { text-decoration: none; }
+.ti { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); padding: 48px 56px; }
+.hd { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--c-rule); }
+.hd h1 { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); margin: 0 0 10px; } .hd p { margin: 0 0 4px; color: var(--c-ink-soft); font-size: 15px; } .pre { white-space: pre-line; }
+.rt { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .lb { display: block; font-size: 13.5px; color: var(--c-muted); }
+.no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; } .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chip { font-size: 13.5px; background: var(--c-paper-2); padding: 5px 12px; color: var(--c-ink-soft); } .chip.paid { background: rgba(31,122,77,.1); color: var(--c-ok); } .chip.over { background: rgba(180,35,24,.08); color: var(--c-danger); }
+.info { display: grid; grid-template-columns: 1.4fr 1.2fr 1fr; gap: 24px; padding: 26px 0; border-bottom: 1px solid var(--c-rule); } .info > div { display: flex; flex-direction: column; gap: 4px; font-size: 15px; } .info b { font-weight: 500; } .mut { color: var(--c-muted); }
+.ln { width: 100%; border-collapse: collapse; margin-top: 26px; } .ln th { text-align: left; font-weight: 400; font-size: 13.5px; color: var(--c-muted); padding: 10px 0; border-bottom: 1px solid var(--c-rule); }
+.ln td { padding: 16px 0; border-bottom: 1px solid var(--c-rule); font-size: 15px; } .n { text-align: right; } .q { text-align: center; width: 70px; color: var(--c-ink-soft); } .ln th.n { text-align: right; } .ln th.q { text-align: center; } .ln td.n { padding-left: 16px; }
+.tot { margin: 26px 0 0 auto; width: 46%; min-width: 280px; } .tot > div { display: flex; justify-content: space-between; padding: 8px 0; font-size: 15px; color: var(--c-ink-soft); } .tot .ok { color: var(--c-ok); }
+.tot .due { border-top: 1px solid var(--c-ink); margin-top: 8px; padding-top: 14px; font-size: 20px; color: var(--c-ink); font-weight: 500; }
+.bank { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--c-rule); font-size: 15px; } .bank p { margin: 8px 0 0; }
+.err { text-align: center; color: var(--c-muted); }
+@media (max-width: 760px) { .ti { padding: 26px 20px; } .hd { flex-direction: column; } .rt { align-items: flex-start; text-align: left; } .info { grid-template-columns: 1fr; } .tot { width: 100%; } }
+@media print { .page { background: #fff; padding: 0; } .ti { border: 0; padding: 0; } .noprint { display: none; } }
 </style>
