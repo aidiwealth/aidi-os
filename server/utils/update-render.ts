@@ -80,9 +80,9 @@ export async function renderBlocks(blocks: Block[], base: string): Promise<strin
   return out.join('')
 }
 // The full email (or web) document for one reader.
-export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string }): Promise<string> {
+export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
   const body = await renderBlocks(u.blocks, o.base)
-  const head = '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
+  const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
   const cover = u.cover_id ? '<img src="' + o.base + '/api/public/media/' + u.cover_id + '" alt="" style="width:100%;display:block;margin:0 0 20px">' : ''
   const hi = o.greeting ? '<p style="margin:0 0 14px">Hi ' + esc(o.greeting) + ',</p>' : ''
   const inner = head + cover + hi + body
@@ -90,7 +90,7 @@ export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover
   return '<!doctype html><html><body style="margin:0;background:#f4f3ef"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">' +
     (o.viewUrl ? '<div style="max-width:640px;font-size:12px;color:#8a8a8a;text-align:right;margin:0 0 8px;font-family:Helvetica,Arial,sans-serif"><a href="' + o.viewUrl + '" style="color:#8a8a8a">View in browser</a></div>' : '') +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff"><tr><td style="padding:32px 36px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</td></tr></table>' +
-    '<div style="max-width:640px;font-size:11.5px;color:#8a8a8a;margin:14px 0 0;font-family:Helvetica,Arial,sans-serif">Sent by ' + esc(o.company) + ' with Finvry.' + (o.unsubUrl ? ' <a href="' + o.unsubUrl + '" style="color:#8a8a8a">Unsubscribe</a>' : '') + '</div>' +
+    '<div style="max-width:640px;font-size:11.5px;color:#8a8a8a;margin:14px 0 0;font-family:Helvetica,Arial,sans-serif">Sent by ' + esc(o.company) + (o.hideFinvry ? '.' : ' with Finvry.') + (o.unsubUrl ? ' <a href="' + o.unsubUrl + '" style="color:#8a8a8a">Unsubscribe</a>' : '') + '</div>' +
     (o.pixelUrl ? '<img src="' + o.pixelUrl + '" width="1" height="1" alt="" style="display:block">' : '') + '</td></tr></table></body></html>'
 }
 export function blocksText(blocks: Block[]): string { return blocks.filter((b) => b.type === 'text').map((b) => (b.md ?? '').replace(/[#*_>`]/g, '')).join('\n\n').slice(0, 4000) }

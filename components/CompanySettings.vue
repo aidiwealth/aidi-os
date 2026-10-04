@@ -5,7 +5,7 @@ interface D { name: string; website: string; country: string; currency: string; 
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const COUNTRIES = ['Nigeria', 'United States', 'United Kingdom', 'Ghana', 'Kenya', 'South Africa', 'Rwanda', 'Egypt', 'Canada', 'Other']
@@ -41,6 +41,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders for this legal form to Compliance</label>
           <div class="wide"><button class="btn" type="submit" :disabled="busy">Save changes</button></div>
         </form>
+        <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
         <div v-else-if="sec === 'notifications'" class="card frm">
           <h2>Notifications</h2>
           <p class="muted wide">Filing reminders, investor page views and service updates go to these addresses. Leave empty to email your admins.</p>

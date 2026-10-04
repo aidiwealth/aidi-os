@@ -9,12 +9,14 @@ export default defineEventHandler(async (event) => {
   if (!p || !p.published) throw apiError('not_found', 'This page does not exist.', 404)
   setOrgContext(p.organization_id)
   const org = (await currentOrg())!
+  const branding = await brandingOf(p.organization_id)
+  if (ndaOn(branding, 'page') && !(await ndaSigned(p.organization_id, getQuery(event).nda))) return { gated: true, nda: { required: true, text: branding.nda_text, key: branding.org_key }, branding, company: org.name, headline: null, about: null, website: null, deck_url: null, contact_email: null, period_type: 'month', currency: 'USD', metrics: [], updates: [], workspace: await publicWorkspace() }
   const ent = await companyEntityId()
   const rows = ent ? (await loadStatements('entity:' + ent, p.period_type, (org.settings.currency as string) || 'USD')).slice(-12) : []
   const metrics = p.metrics.map((m) => ({ key: m, label: METRIC_LABEL[m] ?? m, points: rows.map((x) => ({ period: x.period_end, value: derive(x.lines, x.period_type)[m] ?? null })) }))
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
   const updates = (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows
-  return { updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url, contact_email: p.contact_email, period_type: p.period_type,
+  return { gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url, contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? ((org.settings.currency as string) || 'USD'), metrics, workspace: await publicWorkspace() }
 })

@@ -2,14 +2,17 @@
 // Fundraising: your data room and tracked links, the round and its investors, AI deal memos and SAFEs.
 useHead({ title: 'Fundraising' })
 interface F { id: string; title: string; folder: string; is_deck: boolean; size_bytes: number; mime_type: string }
-interface L { id: string; name: string; file_ids: string[]; require_email: boolean; allow_download: boolean; expires: string | null; revoked: boolean; views: number; last_viewed_at: string | null; seconds: number; viewers: number }
+interface L { id: string; slug: string | null; name: string; file_ids: string[]; require_email: boolean; allow_download: boolean; expires: string | null; revoked: boolean; views: number; last_viewed_at: string | null; seconds: number; viewers: number }
 interface R { id: string; name: string; instrument: string; currency: string; target: number | null; valuation_cap: number | null; discount: number | null; pre_money: number | null; status: string; target_close: string | null }
 interface I { id: string; name: string; firm: string | null; email: string | null; stage: string; amount: number | null; notes: string | null }
 interface PL { id: string; name: string; currency: string; target: number | null; instrument: string; valuation_cap: number | null; discount: number | null; status: string; target_close: string | null; committed: number; closed: number; in_play: number }
-interface D { company: string; currency: string; state: string; files: F[]; links: L[]; activity: { viewer_email: string | null; seconds: number; started_at: string; link: string; file: string | null }[]; pipelines: PL[]; memos: { id: string; title: string; updated_at: string }[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; base: string }
+interface ND { id: string; scope: string; name: string; email: string; company: string | null; signature: string; nda_text: string; signed_at: string }
+interface D { handle: string | null; ndas: ND[]; company: string; currency: string; state: string; files: F[]; links: L[]; activity: { viewer_email: string | null; seconds: number; started_at: string; link: string; file: string | null }[]; pipelines: PL[]; memos: { id: string; title: string; updated_at: string }[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; base: string }
 const { data, refresh } = await useFetch<D>('/api/fundraising')
 const route = useRoute(); const router = useRouter()
-const TABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs']] as const
+const TABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs'], ['nda', 'NDAs']] as const
+const ndaView = ref<ND | null>(null)
+const shortUrl = (l: { slug: string | null }) => (l.slug && data.value?.handle ? 'app.finvry.com/' + data.value.handle + '/' + l.slug : '')
 const main = computed(() => data.value?.pipelines.find((p) => p.status === 'open') ?? data.value?.pipelines[0] ?? null)
 const tab = computed(() => (TABS.find(([k]) => k === route.query.t)?.[0] ?? 'overview'))
 const go = (t: string) => router.replace({ query: { t } })
@@ -31,9 +34,9 @@ async function upload(ev: Event) { const files = Array.from((ev.target as HTMLIn
   busy.value = false; up.open = false; await refresh() }
 const folders = computed(() => { const m = new Map<string, F[]>(); for (const f of data.value?.files ?? []) m.set(f.is_deck ? 'Pitch deck' : f.folder, [...(m.get(f.is_deck ? 'Pitch deck' : f.folder) ?? []), f]); return [...m.entries()] })
 // links
-const lk = reactive({ open: false, id: '', name: '', all: true, file_ids: [] as string[], require_email: true, allow_download: false, days: 30, url: '' })
-function newLink() { Object.assign(lk, { open: true, id: '', name: '', all: true, file_ids: [], require_email: true, allow_download: false, days: 30, url: '' }) }
-async function saveLink() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ url?: string }>('/api/fundraising/links', { method: 'POST', body: { id: lk.id || undefined, name: lk.name, file_ids: lk.all ? [] : lk.file_ids, require_email: lk.require_email, allow_download: lk.allow_download, days: lk.days } }); lk.url = r.url ?? ''; if (!r.url) lk.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+const lk = reactive({ open: false, id: '', name: '', slug: '', short: '', all: true, file_ids: [] as string[], require_email: true, allow_download: false, days: 30, url: '' })
+function newLink() { Object.assign(lk, { open: true, id: '', name: '', slug: '', short: '', all: true, file_ids: [], require_email: true, allow_download: false, days: 30, url: '' }) }
+async function saveLink() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ url?: string; short?: string | null }>('/api/fundraising/links', { method: 'POST', body: { id: lk.id || undefined, name: lk.name, slug: lk.slug, file_ids: lk.all ? [] : lk.file_ids, require_email: lk.require_email, allow_download: lk.allow_download, days: lk.days } }); lk.url = r.short || r.url || ''; lk.short = r.short ?? ''; if (!r.url) lk.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function revoke(l: L, revoked: boolean) { try { await $fetch('/api/fundraising/links', { method: 'POST', body: { id: l.id, name: l.name, file_ids: l.file_ids, require_email: l.require_email, allow_download: l.allow_download, days: 0, revoked } }); await refresh() } catch (e) { msg.value = err(e) } }
 const copied = ref(''); async function copy(u: string) { await navigator.clipboard.writeText(u); copied.value = u; setTimeout(() => (copied.value = ''), 1500) }
 // round
@@ -76,7 +79,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <div class="two"><div><h3>Files</h3><div v-for="[fo, list] in folders" :key="fo" class="card fold"><span class="fl">{{ fo }}</span><div v-for="f in list" :key="f.id" class="fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
           <div v-if="!data.files.length" class="card cta"><b>Your data room is empty</b><p>Upload your deck, financials, cap table and legal documents.</p><button class="btn" @click="up.open = true">Upload files</button></div></div>
         <div><h3>Tracked links</h3><div v-for="l in data.links" :key="l.id" class="card lnk" :class="{ dead: l.revoked }"><div class="lh"><b>{{ l.name }}</b><span class="pill" :class="{ off: l.revoked }">{{ l.revoked ? 'Off' : 'Live' }}</span></div>
-          <span class="mut">{{ l.file_ids.length ? l.file_ids.length + ' files' : 'Whole room' }} · {{ l.require_email ? 'email required' : 'no email' }} · {{ l.allow_download ? 'downloads on' : 'view only' }}{{ l.expires ? ' · until ' + l.expires : '' }}</span>
+          <span v-if="shortUrl(l)" class="su">{{ shortUrl(l) }}</span><span class="mut">{{ l.file_ids.length ? l.file_ids.length + ' files' : 'Whole room' }} · {{ l.require_email ? 'email required' : 'no email' }} · {{ l.allow_download ? 'downloads on' : 'view only' }}{{ l.expires ? ' · until ' + l.expires : '' }}</span>
           <div class="ls"><span><b>{{ l.views }}</b> views</span><span><b>{{ l.viewers }}</b> people</span><span><b>{{ mins(l.seconds) }}</b> spent</span></div>
           <div class="row"><button class="link" @click="revoke(l, !l.revoked)">{{ l.revoked ? 'Turn on' : 'Turn off' }}</button><DeleteButton type="dr_link" :id="l.id" :name="l.name" link @deleted="refresh()" /></div></div>
           <p v-if="!data.links.length" class="mut">Create a link for each investor or firm to see exactly who looks at what.</p></div></div>
@@ -95,12 +98,18 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <div v-if="!data.memos.length" class="card cta"><b>Write your deal memo with AI</b><p>Add a few notes on the problem, product, market and team. We combine them with your financials into a clear memo you can edit and share.</p><button class="btn" @click="newMemo()">Start a memo</button></div>
     </template>
 
+    <template v-else-if="tab === 'nda'">
+      <div class="bar2"><span class="mut">Everyone who signed your NDA before viewing your page, data room or updates. Turn the NDA on or off in Settings → Sharing &amp; branding.</span><NuxtLink to="/settings?s=sharing" class="btn secondary">NDA settings</NuxtLink></div>
+      <div class="box"><table v-if="data.ndas.length"><thead><tr><th style="text-align:left;padding:10px 14px;font-weight:400;color:var(--c-muted);font-size:12.5px">Signed by</th><th style="text-align:left;font-weight:400;color:var(--c-muted);font-size:12.5px">For</th><th style="text-align:left;font-weight:400;color:var(--c-muted);font-size:12.5px">Signed</th><th /></tr></thead><tbody><tr v-for="n in data.ndas" :key="n.id"><td><b>{{ n.name }}</b><span class="mut" style="display:block">{{ n.email }}{{ n.company ? ' · ' + n.company : '' }}</span></td><td class="mut">{{ n.scope === 'room' ? 'Data room' : n.scope === 'page' ? 'Investor page' : 'Updates' }}</td><td class="mut">{{ when(n.signed_at) }}</td><td class="n"><button class="link" @click="ndaView = n">View signed NDA</button></td></tr></tbody></table>
+        <p v-else class="none">No NDAs signed yet.</p></div>
+    </template>
     <template v-else>
       <div class="bar2"><span class="mut">SAFE term sheets based on the post-money SAFE structure.</span><button class="btn" @click="newSafe()">Create a SAFE</button></div>
       <div class="box"><table v-if="data.safes.length"><tbody><tr v-for="s in data.safes" :key="s.id"><td><NuxtLink :to="'/fundraising/safe/' + s.id" class="t">{{ s.investor_name }}</NuxtLink><span class="mut">{{ s.safe_date }}</span></td><td>{{ money(s.amount, s.currency) }}</td><td class="mut">{{ s.valuation_cap ? money(s.valuation_cap, s.currency) + ' cap' : '' }}{{ s.discount ? ' · ' + s.discount + '% discount' : '' }}</td><td class="n"><DeleteButton type="safe" :id="s.id" :name="'SAFE for ' + s.investor_name" link @deleted="refresh()" /></td></tr></tbody></table>
         <p v-else class="none">No SAFEs yet.</p></div>
     </template>
 
+    <AppModal :open="!!ndaView" title="Signed NDA" wide @close="ndaView = null"><div v-if="ndaView" class="ndv"><pre>{{ ndaView.nda_text }}</pre><div class="sg"><span>Signed electronically by</span><b class="sig">{{ ndaView.signature }}</b><span>{{ ndaView.name }} · {{ ndaView.email }}{{ ndaView.company ? ' · ' + ndaView.company : '' }} · {{ new Date(ndaView.signed_at).toLocaleString('en-GB') }}</span></div></div></AppModal>
     <AppModal :open="up.open" title="Upload to the data room" @close="up.open = false">
       <div class="frm"><label class="label">Folder<select v-model="up.folder"><option v-for="f in ['General', 'Financials', 'Legal', 'Product', 'Team', 'Customers', 'Cap table']" :key="f">{{ f }}</option></select></label>
         <label class="chk"><input v-model="up.is_deck" type="checkbox"> This is our pitch deck</label>
@@ -109,6 +118,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     <AppModal :open="lk.open" :title="lk.url ? 'Your link is ready' : 'Create a tracked link'" @close="lk.open = false">
       <div v-if="lk.url" class="frm"><p>Send this to {{ lk.name }}. You'll see each time they open a file and how long they spend.</p><div class="cp"><input :value="lk.url" readonly><button class="btn" @click="copy(lk.url)">{{ copied === lk.url ? 'Copied' : 'Copy' }}</button></div></div>
       <form v-else id="lkf" class="frm" @submit.prevent="saveLink"><label class="label">Who is it for?<input v-model="lk.name" required maxlength="200" placeholder="e.g. Amara at Ventures Africa"></label>
+        <label class="label">Short address (optional)<span class="sa"><span>{{ data.handle ? 'app.finvry.com/' + data.handle + '/' : 'Set your address in Settings → Sharing & branding' }}</span><input v-model="lk.slug" :disabled="!data.handle" maxlength="41" placeholder="bridge-deck"></span></label>
         <label class="label">What it shares<select v-model="lk.all"><option :value="true">The whole data room</option><option :value="false">Chosen files only</option></select></label>
         <div v-if="!lk.all" class="pick"><label v-for="f in data.files" :key="f.id" class="chk"><input v-model="lk.file_ids" type="checkbox" :value="f.id"> {{ f.title }}</label></div>
         <label class="label">Link expires<select v-model.number="lk.days"><option :value="7">In 7 days</option><option :value="30">In 30 days</option><option :value="90">In 90 days</option><option :value="0">Never</option></select></label>
@@ -164,6 +174,8 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
 .pipe { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 6px; } .col { background: var(--c-paper-2); padding: 8px; min-height: 200px; } .ch { display: block; font-size: 12px; font-weight: 600; color: var(--c-ink-soft); margin-bottom: 8px; } .ch em { font-style: normal; color: var(--c-muted); font-weight: 400; }
 .ic2 { padding: 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; } .ic2:hover { border-color: var(--c-navy); } .am { font-size: 13px; font-weight: 600; } .am em { font-style: normal; font-weight: 400; color: var(--c-muted); } .ic2 select { font: inherit; font-size: 12px; padding: 3px; border: 1px solid var(--c-rule); margin-top: 4px; }
 .plg { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; } .plc { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--c-ink); } .plc:hover { border-color: var(--c-navy); } .am2 { font-size: 22px; font-weight: 600; } .am2 em { font-style: normal; font-size: 13px; color: var(--c-muted); font-weight: 400; }
+.sa { display: flex; align-items: center; border: 1px solid var(--c-rule-strong); } .sa span { padding: 0 8px; font-size: 12.5px; color: var(--c-muted); background: var(--c-paper-2); align-self: stretch; display: flex; align-items: center; } .sa input { border: 0; flex: 1; } .su { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--c-blue-deep); }
+.ndv pre { white-space: pre-wrap; font-family: inherit; font-size: 13.5px; line-height: 1.6; background: var(--c-paper-2); padding: 14px; max-height: 50vh; overflow-y: auto; } .sg { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; } .sg span { font-size: 12.5px; color: var(--c-muted); } .sig { font-family: 'Brush Script MT', cursive; font-size: 30px; font-weight: 400; color: var(--c-navy); }
 .mm { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; text-decoration: none; color: var(--c-ink); } .mm:hover { border-color: var(--c-navy); }
 .box { background: #fff; border: 1px solid var(--c-rule); } table { width: 100%; border-collapse: collapse; } td { padding: 12px 14px; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .t { font-weight: 600; display: block; } .n { text-align: right; } .none { padding: 18px; color: var(--c-muted); margin: 0; }
 .frm { display: flex; flex-direction: column; gap: 12px; } .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .w { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 6px; }

@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', b.error.issues[0]?.message.includes('http') ? b.error.issues[0].message : 'Check the page address (letters, numbers and dashes) and the other fields.')
   const d = b.data
   const metrics = d.metrics.filter((m) => m in METRIC_LABEL)
+  if (RESERVED_HANDLES.has(d.slug)) throw apiError('taken', 'That page address is reserved. Try another.', 409)
   const taken = await asPlatform(() => db().query('SELECT 1 FROM financials.public_pages WHERE slug = $1 AND organization_id <> $2', [d.slug, currentOrgId()]))
   if (taken.rowCount) throw apiError('taken', 'That page address is taken. Try another.', 409)
   await db().query(`INSERT INTO financials.public_pages (slug, published, headline, about, website, deck_url, contact_email, metrics, period_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
