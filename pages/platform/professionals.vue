@@ -43,7 +43,7 @@ async function save() {
         <td class="acts"><button type="button" class="link" @click="edit(p)">Edit</button><DeleteButton type="professional" :id="p.id" :name="p.name" :url="'/api/platform/professionals/' + p.id" link @deleted="refresh()" /></td>
       </tr></tbody>
     </table>
-    <p v-if="!data.professionals.length" class="muted">No professionals listed yet.</p>
+    <EmptyState v-if="!data.professionals.length" compact icon="customers" title="No professionals listed yet" />
   </section>
 </template>
 

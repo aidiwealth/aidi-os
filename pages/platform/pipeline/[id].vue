@@ -65,7 +65,7 @@ const EV: Record<string, string> = { note: 'Note', call: 'Call', email: 'Email',
             <button class="btn sm" type="submit" :disabled="busy">Add</button>
           </form>
           <ul class="tl"><li v-for="e in data.events" :key="e.id"><b>{{ EV[e.kind] }}<template v-if="e.kind === 'stage'">: {{ label(e.from_stage) }} → {{ label(e.to_stage) }}</template></b><span v-if="e.body" class="b">{{ e.body }}</span><span class="m">{{ e.by_name ?? '—' }} · {{ when(e.created_at) }}</span></li></ul>
-          <p v-if="!data.events.length" class="muted">No activity yet.</p>
+          <EmptyState v-if="!data.events.length" compact icon="customers" title="No activity yet" />
         </div>
       </div>
       <form class="card frm2" @submit.prevent="save">

@@ -34,7 +34,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
         <div v-if="cashCurrencies.length" class="kpis">
           <div v-for="c in cashCurrencies" :key="c" class="kpi"><span class="label">Cash · {{ c }}</span><b>{{ money(data.cash.byCurrency[c], c) }}</b><span class="sub">latest tied-out statements</span></div>
         </div>
-        <p v-else class="muted">No bank statements yet. Add accounts and import statements on Bank &amp; cash.</p>
+        <EmptyState v-else compact icon="empty" title="No bank statements yet. Add accounts and import statements on Bank &amp; cash" />
         <div v-if="cashCurrencies.length" class="charts">
           <TrendChart v-for="c in cashCurrencies.slice(0, 3)" :key="c" :title="'Cash · ' + c" sub="Month-end, last 12 months" :points="pts(data.cash.series[c], true)" :foot="'Across ' + data.cash.accounts + ' accounts'" />
         </div>

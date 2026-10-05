@@ -50,7 +50,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
         <div class="card">
           <h2>Billing</h2>
           <p v-if="billing?.subscription" class="plan"><b>{{ billing.subscription.plan }}</b> · {{ usd(billing.subscription.amount_usd) }} / {{ billing.subscription.billing === 'annual' ? 'year' : 'month' }} · renews {{ billing.subscription.renews }}</p>
-          <p v-else class="muted small">No subscription on file{{ data.org.status === 'trial' ? ' yet: you are on a trial' : '' }}.</p>
+          <EmptyState v-else compact icon="empty" title="No subscription on file{{ data.org.status === 'trial' ? ' yet: you are on a trial' : '' }}" />
           <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b><a v-if="i.payUrl" :href="i.payUrl" class="payl">Pay</a></span></li></ul>
           <p v-if="billing?.card" class="muted small">Card on file: {{ billing.card.brand ?? 'card' }} •••• {{ billing.card.last4 }}. Renewals are charged to it automatically.</p>
         </div>

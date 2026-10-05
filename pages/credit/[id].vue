@@ -67,7 +67,7 @@ const RS: Record<string, string> = { paid: 'Paid', partial: 'Part paid', overdue
         <div class="card">
           <h2>Repayments</h2>
           <ul class="list"><li v-for="r in data.repayments" :key="r.id"><span>{{ day(r.received_on) }}<em>{{ r.allocation ? 'interest ' + money(r.allocation.interest) + ' · principal ' + money(r.allocation.principal + r.allocation.excess) : '' }}<template v-if="r.note"> · {{ r.note }}</template></em></span><b>{{ money(r.amount) }}</b></li></ul>
-          <p v-if="!data.repayments.length" class="muted">None yet.</p>
+          <EmptyState v-if="!data.repayments.length" compact icon="credit" title="None yet" />
         </div>
       </div>
     </div>

@@ -68,7 +68,7 @@ const WHAT: Record<string, string> = { status: 'Status update', message: 'Messag
             <p class="m">{{ when(e.created_at) }}</p>
           </li>
         </ul>
-        <p v-if="!data.events.length" class="muted">No updates yet. We'll email you when there is one.</p>
+        <EmptyState v-if="!data.events.length" compact icon="empty" title="No updates yet. We'll email you when there is one" />
       </div>
     </template>
   </div>

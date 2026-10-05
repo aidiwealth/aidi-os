@@ -38,7 +38,7 @@ const groups = computed(() => { const m = new Map<string, Fi[]>(); for (const f 
         <div v-for="[g, list] in groups" :key="g" class="grp"><h2>{{ g }}</h2>
           <div v-for="f in list" :key="f.id" class="card fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft"><b>{{ f.title }}</b><em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span>
             <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download && (!data.watermark || f.mime_type.includes('pdf'))" class="btn secondary" @click="open(f, true)">Download</button></div></div>
-        <p v-if="!data.files.length" class="mut">No documents shared yet.</p>
+        <EmptyState v-if="!data.files.length" compact icon="documents" title="No documents shared yet" />
       </template>
     </template>
     <div v-if="viewing" class="viewer" @contextmenu.prevent><div class="vh"><b>{{ viewing.title }}</b><button class="btn secondary" @click="close">Close</button></div>

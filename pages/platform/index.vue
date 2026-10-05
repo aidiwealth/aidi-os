@@ -28,13 +28,13 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
     <div class="three">
       <div class="card"><h3>Renewals in 30 days</h3>
         <ul v-if="data.renewals.length" class="list"><li v-for="r in data.renewals" :key="r.id"><NuxtLink :to="'/platform/customers/' + r.organization_id">{{ r.customer }}</NuxtLink><span class="nc">{{ day(r.renews) }} · {{ usd(r.amount_usd) }} / {{ r.billing === 'annual' ? 'year' : 'month' }}</span></li></ul>
-        <p v-else class="muted">None due.</p></div>
+        <EmptyState v-else compact icon="customers" title="None due" /></div>
       <div class="card"><h3>Trials</h3>
         <ul v-if="data.trials.length" class="list"><li v-for="t in data.trials" :key="t.id"><NuxtLink :to="'/platform/customers/' + t.id">{{ t.name }}</NuxtLink><span>ends {{ day(t.ends) }}</span></li></ul>
         <p v-else class="muted">No trials running.</p></div>
       <div class="card"><h3>Newest customers</h3>
         <ul v-if="data.recent.length" class="list"><li v-for="r in data.recent" :key="r.id"><NuxtLink :to="'/platform/customers/' + r.id">{{ r.name }}</NuxtLink><span>{{ r.plan }} · {{ r.status }}</span></li></ul>
-        <p v-else class="muted">No customers yet.</p></div>
+        <EmptyState v-else compact icon="customers" title="No customers yet" /></div>
     </div>
   </section>
 </template>

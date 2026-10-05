@@ -106,7 +106,7 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
           <p v-if="u.challenges"><b>Challenges.</b> {{ u.challenges }}</p>
           <p v-if="u.asks"><b>Asks.</b> {{ u.asks }}</p>
         </div>
-        <p v-if="!data.updates.length" class="muted">None yet.</p>
+        <EmptyState v-if="!data.updates.length" compact icon="portfolio" title="None yet" />
       </div>
       <div class="card">
         <h2>Requests</h2>
@@ -117,7 +117,7 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
             <button v-if="r.file_document_id" type="button" class="link" @click="openDoc(r.file_document_id)">Spreadsheet</button>
           </li>
         </ul>
-        <p v-if="!data.requests.length" class="muted">No links sent yet.</p>
+        <EmptyState v-if="!data.requests.length" compact icon="portfolio" title="No links sent yet" />
       </div>
     </div>
   </section>

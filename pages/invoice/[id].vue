@@ -40,7 +40,7 @@ const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'
 </template>
 
 <style scoped>
-.page { background: var(--c-paper-2); min-height: 100vh; padding: 32px 16px; font-family: var(--font-body); color: var(--c-ink); }
+.page { background: var(--c-paper-2); min-height: var(--vh100); padding: 32px 16px; font-family: var(--font-body); color: var(--c-ink); }
 .bar { max-width: 900px; margin: 0 auto 16px; display: flex; gap: 10px; align-items: center; } .bar span { flex: 1; } .bar a.btn { text-decoration: none; }
 .ti { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); padding: 48px 56px; }
 .hd { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--c-rule); }

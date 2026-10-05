@@ -38,7 +38,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
     </form>
     <p v-if="error" class="error" role="alert">Could not load the portfolio.</p>
-    <p v-else-if="!data?.length" class="muted">No portfolio companies yet. Add one, or mark a deal Invested in Pipeline first.</p>
+    <EmptyState v-else-if="!data?.length" compact icon="portfolio" title="No portfolio companies yet. Add one, or mark a deal Invested in Pipeline first" />
     <table v-else class="table">
       <thead><tr><th>Company</th><th>Held by</th><th>Latest month</th><th>Revenue</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
       <tbody>

@@ -37,7 +37,7 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value) rconv() },
   </section>
 </template>
 <style scoped>
-h1 { margin: 0 0 14px; } .ib { display: grid; grid-template-columns: 320px 1fr; gap: 0; border: 1px solid var(--c-rule); background: #fff; height: calc(100vh - 210px); min-height: 520px; }
+h1 { margin: 0 0 14px; } .ib { display: grid; grid-template-columns: 320px 1fr; gap: 0; border: 1px solid var(--c-rule); background: #fff; height: calc(var(--vh100) - 210px); min-height: 520px; }
 .ls { border-right: 1px solid var(--c-rule); display: flex; flex-direction: column; overflow-y: auto; } .lt { display: flex; border-bottom: 1px solid var(--c-rule); } .lt button { flex: 1; background: none; border: 0; padding: 11px; font: inherit; cursor: pointer; color: var(--c-muted); border-bottom: 2px solid transparent; } .lt .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .ls input { margin: 10px; font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .it { position: relative; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--c-rule); padding: 12px 14px; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 3px; } .it.on { background: var(--c-signal-soft); } .it:hover { background: #fafaf8; }
 .r1 { display: flex; justify-content: space-between; gap: 8px; } .r1 b { font-size: 14px; font-weight: 500; } .it.un .r1 b, .it.un .sj { font-weight: 700; } .r1 em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sj { font-size: 13px; } .lm { font-size: 12.5px; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 26px; }

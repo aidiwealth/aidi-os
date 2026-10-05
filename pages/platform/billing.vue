@@ -124,7 +124,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
           <td class="acts"><template v-if="s.status !== 'ended'"><button type="button" class="link" @click="newInv(s)">Invoice</button><button type="button" class="link" @click="endSub(s)">End</button></template></td>
         </tr></tbody>
       </table>
-      <p v-if="!subs.length" class="muted">No subscriptions{{ org ? ' for this customer' : '' }} yet.</p>
+      <EmptyState v-if="!subs.length" compact icon="customers" title="No subscriptions{{ org ? ' for this customer' : '' }} yet" />
       <label class="chk"><input v-model="showEnded" type="checkbox"> Show ended subscriptions</label>
     </template>
 
@@ -145,7 +145,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
           </td>
         </tr></tbody>
       </table>
-      <p v-if="!invs.length" class="muted">No invoices{{ org ? ' for this customer' : '' }} yet.</p>
+      <EmptyState v-if="!invs.length" compact icon="customers" title="No invoices{{ org ? ' for this customer' : '' }} yet" />
     </template>
   </section>
 </template>

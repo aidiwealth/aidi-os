@@ -68,7 +68,7 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
           <td><button v-if="canManageParties" type="button" class="link" @click="editParty(p)">Edit</button></td>
         </tr></tbody>
       </table>
-      <p v-else class="muted">No one recorded yet. Add the settlor, trustees, protector and beneficiaries (or directors and members for a company).</p>
+      <EmptyState v-else compact icon="governance" title="No one recorded yet. Add the settlor, trustees, protector and beneficiaries (or directors and members for a company)" />
     </div>
 
     <div class="card">
@@ -94,7 +94,7 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
           <td><span class="st" :data-s="r.status">{{ ST[r.status] }}</span><span class="sub">{{ r.approvals }} of {{ r.required_approvals }} approvals<template v-if="r.rejections"> · {{ r.rejections }} rejected</template></span></td>
         </tr></tbody>
       </table>
-      <p v-else class="muted">None yet.</p>
+      <EmptyState v-else compact icon="governance" title="None yet" />
     </div>
   </section>
   <p v-else-if="error" class="error" role="alert">{{ error.statusCode === 404 ? 'Not found.' : 'Could not load.' }}</p>

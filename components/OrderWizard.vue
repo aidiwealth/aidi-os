@@ -25,6 +25,12 @@ const lineAmount = (i: It) => (i.billing === 'monthly' ? 12 : 1) * (i.price ?? 0
 const total = computed(() => chosen.value.filter((i) => !quoted(i)).reduce((t, i) => t + lineAmount(i), 0))
 const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
 function choose(k: string) { cat.value = k; step.value = 2 }
+const ICON: Record<string, string> = { address: 'customers', start: 'entities', tax: 'compliance', other: 'company_services' }
+const catItems = (k: string) => { const c = CATS.find((x) => x.key === k); const all = data.value?.items ?? []; return k === 'other' ? all.filter((i) => !known.has(i.code)) : all.filter((i) => c?.codes.includes(i.code)) }
+const catFrom = (k: string) => { const p = catItems(k).filter((i) => i.price != null).map((i) => i.price as number); if (!p.length) return 'Priced after review'; const c = catItems(k).find((i) => i.price != null)!.currency; return 'From ' + (SYM[c] ?? '') + Math.min(...p).toLocaleString('en-US') }
+const toggle = (code: string) => { picked.value = picked.value.includes(code) ? picked.value.filter((x) => x !== code) : [...picked.value, code] }
+const STEPS = ['What you need', 'Services', 'Details', 'Review & pay']
+const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? '')
 async function place() {
   busy.value = true; msg.value = ''
   try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, company_id: company.value || undefined, notes: notes.value } })
@@ -34,40 +40,60 @@ async function place() {
 }
 </script>
 <template>
-  <div v-if="data" class="wz">
-    <div v-if="done" class="fin"><span class="big">✓</span><h3>Order received</h3><p>We've opened a request for you{{ done.quoted.length ? ' and will send you a quote for ' + done.quoted.join(', ') : '' }}. You'll get an email as it moves, and you can follow it under Services.</p><NuxtLink :to="'/client/jobs/' + done.job_id" class="btn">View the request</NuxtLink></div>
+  <div v-if="data" class="oz">
+    <div v-if="done" class="fin"><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><h3>Order received</h3><p>We've opened a request for you{{ done.quoted.length ? ' and will send you a quote for ' + done.quoted.join(', ') : '' }}. You'll get an email as it moves, and you can follow it under Services.</p><NuxtLink :to="'/client/jobs/' + done.job_id" class="btn">View the request</NuxtLink></div>
     <template v-else>
-      <ol class="steps"><li v-for="(s, i) in ['What you need', 'Services', 'Details', 'Review']" :key="s" :class="{ on: step === i + 1, ok: step > i + 1 }"><span>{{ step > i + 1 ? '✓' : i + 1 }}</span>{{ s }}</li></ol>
-      <div v-if="step === 1" class="cats"><button v-for="c in CATS" :key="c.key" type="button" class="cat" @click="choose(c.key)"><b>{{ c.title }}</b><span>{{ c.blurb }}</span><em>Choose →</em></button></div>
-      <div v-else-if="step === 2"><p class="hint">Pick one or more. You can add notes in the next step.</p>
-        <div class="items"><label v-for="i in inCat" :key="i.code" class="it" :class="{ on: picked.includes(i.code) }"><input v-model="picked" type="checkbox" :value="i.code"><span class="nm">{{ i.name }}</span><span v-if="i.description" class="ds">{{ i.description }}</span><b :class="{ q: quoted(i) }">{{ price(i) }}</b></label>
-          <p v-if="!inCat.length" class="hint">Nothing listed here yet. Go back and choose "Something else", or message us.</p></div></div>
-      <div v-else-if="step === 3" class="det">
-        <label v-if="data.companies.length" class="label">For which company?<select v-model="company"><option value="">Not specific, or a new company</option><option v-for="c in data.companies" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
-        <label class="label">Anything we should know?<textarea v-model="notes" rows="5" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
-      <div v-else class="rev"><ServiceNotice compact />
-        <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="i.billing === 'monthly' && !quoted(i)"> · first 12 months</em></span><b>{{ quoted(i) ? 'Quote' : (SYM[i.currency] ?? '') + lineAmount(i).toLocaleString('en-US') }}</b></div>
-        <div class="ln tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
-        <label v-if="walletCovers" class="wl"><input v-model="useWallet" type="checkbox"> Pay from my wallet (balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }})</label>
-        <p class="hint">{{ total ? 'Pay securely by card, or by bank transfer using the details on your invoice.' : 'We will review your request and send you a quote.' }}{{ chosen.some(quoted) && total ? ' Quoted items are priced after review.' : '' }}</p></div>
-      <p v-if="msg" class="error">{{ msg }}</p>
-      <div class="nav"><button v-if="step > 1" type="button" class="btn secondary" @click="step--">Back</button><span />
-        <button v-if="step === 2" type="button" class="btn" :disabled="!picked.length" @click="step = 3">Continue</button>
-        <button v-else-if="step === 3" type="button" class="btn" @click="step = 4">Review</button>
-        <button v-else-if="step === 4" type="button" class="btn" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : total ? (useWallet && walletCovers ? 'Pay from wallet ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button></div>
+      <div class="prog"><div class="pl"><i :style="{ width: ((step - 1) / 3) * 100 + '%' }" /></div><ol><li v-for="(s, i) in STEPS" :key="s" :class="{ on: step === i + 1, ok: step > i + 1 }" @click="step > i + 1 && (step = i + 1)"><span>{{ step > i + 1 ? '✓' : i + 1 }}</span>{{ s }}</li></ol></div>
+      <div v-if="step === 1" class="cats">
+        <button v-for="c in CATS" :key="c.key" type="button" class="cat" @click="choose(c.key)"><span class="ci"><AppIcon :name="ICON[c.key] ?? 'company_services'" /></span><span class="ct"><b>{{ c.title }}</b><span>{{ c.blurb }}</span></span>
+          <span class="cf"><em v-if="catItems(c.key).length">{{ catItems(c.key).length }} service{{ catItems(c.key).length === 1 ? '' : 's' }}</em><em v-else>Tell us what you need</em><strong>{{ catFrom(c.key) }}</strong></span><svg class="go" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 5 5 5-5 5" /></svg></button></div>
+      <div v-else class="body2">
+        <div class="mainc">
+          <template v-if="step === 2"><h3>{{ catTitle }}</h3><p class="hint">Pick one or more. You can add notes in the next step.</p>
+            <div class="items"><button v-for="i in inCat" :key="i.code" type="button" class="it" :class="{ on: picked.includes(i.code) }" @click="toggle(i.code)"><span class="ck"><svg v-if="picked.includes(i.code)" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 10.5 3.5 3.5L15 7" /></svg></span>
+              <span class="itx"><b>{{ i.name }}</b><span v-if="i.description">{{ i.description }}</span></span><span class="pr" :class="{ q: quoted(i) }">{{ price(i) }}</span></button>
+              <EmptyState v-if="!inCat.length" icon="company_services" title="Nothing listed here yet" text="Go back and choose “Something else”, or message us." /></div></template>
+          <div v-else-if="step === 3" class="det"><h3>A few details</h3>
+            <label v-if="data.companies.length" class="label">For which company?<select v-model="company"><option value="">Not specific, or a new company</option><option v-for="c in data.companies" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+            <label class="label">Anything we should know?<textarea v-model="notes" rows="6" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
+          <div v-else class="rev"><h3>Review and pay</h3><ServiceNotice compact />
+            <div v-if="total" class="pays"><button v-if="walletCovers" type="button" class="pay" :class="{ on: useWallet }" @click="useWallet = true"><AppIcon name="wallet" /><span><b>Wallet</b><em>Balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }}</em></span></button>
+              <button type="button" class="pay" :class="{ on: !useWallet || !walletCovers }" @click="useWallet = false"><AppIcon name="billing" /><span><b>Card or bank transfer</b><em>Secure checkout, or pay from your invoice</em></span></button></div>
+            <p class="hint">{{ total ? (chosen.some(quoted) ? 'Quoted items are priced after review and invoiced separately.' : 'You will get a receipt by email.') : 'We will review your request and send you a quote.' }}</p></div>
+        </div>
+        <aside class="sum"><p class="sl">Your order</p>
+          <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="i.billing === 'monthly' && !quoted(i)">First 12 months</em><em v-else-if="quoted(i)">Quoted after review</em></span><b>{{ quoted(i) ? '—' : (SYM[i.currency] ?? '') + lineAmount(i).toLocaleString('en-US') }}</b></div>
+          <p v-if="!chosen.length" class="emp">Nothing selected yet.</p>
+          <div class="tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
+          <button v-if="step === 2" type="button" class="btn full" :disabled="!picked.length" @click="step = 3">Continue</button>
+          <button v-else-if="step === 3" type="button" class="btn full" @click="step = 4">Review order</button>
+          <button v-else-if="step === 4" type="button" class="btn full" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : total ? (useWallet && walletCovers ? 'Pay from wallet · ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button>
+          <button type="button" class="back" @click="step--">← Back</button>
+          <p v-if="msg" class="error">{{ msg }}</p></aside>
+      </div>
     </template>
   </div>
 </template>
 <style scoped>
-.steps { display: flex; gap: 18px; list-style: none; padding: 0; margin: 0 0 18px; font-size: 13px; color: var(--c-muted); flex-wrap: wrap; } .steps li { display: flex; align-items: center; gap: 7px; }
-.steps span { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--c-rule-strong); font-size: 12px; } .steps .on { color: var(--c-navy); font-weight: 500; } .steps .on span { background: var(--c-navy); color: #fff; border-color: var(--c-navy); } .steps .ok span { color: var(--c-ok); border-color: var(--c-ok); }
-.cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .cat { text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 18px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 6px; } .cat:hover { border-color: var(--c-navy); }
-.cat b { font-family: var(--font-heading); font-weight: 500; font-size: 21px; color: var(--c-navy); } .cat span { font-size: 13.5px; color: var(--c-ink-soft); } .cat em { font-style: normal; font-size: 13px; color: var(--c-blue-deep); margin-top: 6px; }
-.items { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .it { border: 1px solid var(--c-rule); padding: 14px; display: flex; flex-direction: column; gap: 5px; cursor: pointer; position: relative; } .it.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f7f9fc; }
-.it input { position: absolute; top: 14px; right: 14px; } .nm { font-weight: 600; padding-right: 26px; } .ds { font-size: 12.5px; color: var(--c-ink-soft); } .it b { font-weight: 600; margin-top: 4px; } .it b.q { color: var(--c-muted); font-weight: 500; }
-.det { display: flex; flex-direction: column; gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; } select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.ln { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14.5px; } .ln em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .ln.tot { font-size: 17px; font-weight: 600; border-bottom: 0; }
-.hint { font-size: 13px; color: var(--c-muted); margin: 0 0 10px; } .wl { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 8px 0; background: var(--c-signal-soft); padding: 10px 12px; } .wl input { width: auto; } .nav { display: flex; gap: 10px; align-items: center; margin-top: 18px; } .nav span { flex: 1; } .error { color: var(--c-danger); }
-.fin { text-align: center; padding: 10px 0; } .fin .big { display: inline-grid; place-items: center; width: 52px; height: 52px; background: rgba(31,122,77,.12); color: var(--c-ok); font-size: 26px; } .fin h3 { font-size: 24px; margin: 12px 0 6px; } .fin p { color: var(--c-ink-soft); max-width: 440px; margin: 0 auto 16px; } .fin a { text-decoration: none; }
-@media (max-width: 640px) { .cats, .items { grid-template-columns: 1fr; } }
+.prog { margin: 0 0 22px; } .pl { height: 3px; background: var(--c-paper-2); margin-bottom: 12px; } .pl i { display: block; height: 100%; background: var(--c-navy); transition: width .25s ease; }
+.prog ol { display: flex; justify-content: space-between; list-style: none; padding: 0; margin: 0; font-size: 13px; color: var(--c-muted); } .prog li { display: flex; align-items: center; gap: 8px; } .prog li.ok { cursor: pointer; color: var(--c-ink-soft); }
+.prog span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--c-rule-strong); font-size: 12px; font-weight: 600; background: #fff; } .prog .on { color: var(--c-ink); font-weight: 600; } .prog .on span { background: var(--c-navy); border-color: var(--c-navy); color: #fff; } .prog .ok span { background: var(--c-ok); border-color: var(--c-ok); color: #fff; }
+.cats { display: flex; flex-direction: column; gap: 10px; } .cat { display: flex; align-items: center; gap: 16px; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 18px 20px; font: inherit; cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
+.cat:hover { border-color: var(--c-navy); box-shadow: 0 8px 24px rgba(12,26,46,.08); transform: translateY(-1px); } .ci { width: 48px; height: 48px; border-radius: 12px; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; flex: none; } .ci :deep(svg) { width: 24px; height: 24px; }
+.ct { flex: 1; display: flex; flex-direction: column; gap: 3px; } .ct b { font-size: 16.5px; font-weight: 600; color: var(--c-ink); letter-spacing: -.01em; } .ct span { font-size: 13.5px; color: var(--c-ink-soft); }
+.cf { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; } .cf em { font-style: normal; font-size: 12px; color: var(--c-muted); } .cf strong { font-size: 14px; font-weight: 600; color: var(--c-ink); } .go { width: 18px; height: 18px; color: var(--c-muted); flex: none; }
+.body2 { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; } .mainc h3 { font-size: 18px; margin: 0 0 4px; } .hint { font-size: 13px; color: var(--c-muted); margin: 0 0 14px; }
+.items { display: flex; flex-direction: column; gap: 8px; } .it { display: flex; align-items: flex-start; gap: 14px; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 15px 16px; font: inherit; cursor: pointer; transition: border-color .12s, background .12s; }
+.it:hover { border-color: var(--c-rule-strong); } .it.on { border-color: var(--c-navy); background: #f6f8fb; box-shadow: inset 0 0 0 1px var(--c-navy); } .ck { width: 20px; height: 20px; border: 1.5px solid var(--c-rule-strong); border-radius: 6px; display: grid; place-items: center; flex: none; margin-top: 1px; background: #fff; }
+.it.on .ck { background: var(--c-navy); border-color: var(--c-navy); color: #fff; } .ck svg { width: 14px; height: 14px; } .itx { flex: 1; display: flex; flex-direction: column; gap: 3px; } .itx b { font-weight: 600; font-size: 14.5px; color: var(--c-ink); } .itx span { font-size: 13px; color: var(--c-ink-soft); line-height: 1.45; }
+.pr { font-weight: 600; font-size: 14px; white-space: nowrap; color: var(--c-ink); } .pr.q { color: var(--c-muted); font-weight: 500; font-size: 13px; }
+.det { display: flex; flex-direction: column; gap: 14px; } label.label { display: flex; flex-direction: column; gap: 6px; } select, textarea { font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; }
+.pays { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 12px; } .pay { display: flex; gap: 12px; align-items: center; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 14px; font: inherit; cursor: pointer; } .pay.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f6f8fb; }
+.pay :deep(svg) { width: 22px; height: 22px; color: var(--c-blue-deep); flex: none; } .pay span { display: flex; flex-direction: column; } .pay b { font-size: 14px; } .pay em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.sum { background: #fbfaf7; border: 1px solid var(--c-rule); padding: 18px; position: sticky; top: 10px; display: flex; flex-direction: column; gap: 4px; } .sl { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--c-muted); margin: 0 0 8px; }
+.ln { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .ln span { display: flex; flex-direction: column; } .ln em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .ln b { font-weight: 600; white-space: nowrap; }
+.emp { font-size: 13px; color: var(--c-muted); margin: 0 0 6px; } .tot { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 14px; } .tot span { font-size: 13.5px; color: var(--c-ink-soft); } .tot b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.btn.full { width: 100%; height: 44px; font-size: 14.5px; font-weight: 600; } .back { background: none; border: 0; font: inherit; font-size: 13px; color: var(--c-muted); cursor: pointer; margin-top: 8px; } .back:hover { color: var(--c-ink); } .error { color: var(--c-danger); font-size: 13px; }
+.fin { text-align: center; padding: 18px 0; } .fin .ok { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: rgba(31,122,77,.12); color: var(--c-ok); } .fin .ok svg { width: 30px; height: 30px; } .fin h3 { font-size: 22px; margin: 14px 0 6px; } .fin p { color: var(--c-ink-soft); max-width: 440px; margin: 0 auto 18px; } .fin a { text-decoration: none; }
+@media (max-width: 820px) { .body2 { grid-template-columns: 1fr; } .sum { position: static; } .prog ol li:not(.on) { font-size: 0; gap: 0; } .cf { display: none; } .pays { grid-template-columns: 1fr; } }
 </style>

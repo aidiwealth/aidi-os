@@ -95,7 +95,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
               <p class="tl-meta">{{ e.by_name ?? 'System' }} · {{ when(e.created_at) }}</p>
             </li>
           </ul>
-          <p v-if="!data.events.length" class="muted">Nothing yet.</p>
+          <EmptyState v-if="!data.events.length" compact icon="pipeline" title="Nothing yet" />
         </div>
       </div>
 

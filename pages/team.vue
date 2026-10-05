@@ -3,12 +3,16 @@ import type { TeamUser } from '~/server/api/admin/users/index.get'
 useHead({ title: 'Team' })
 const { data: users, error, refresh } = await useFetch<TeamUser[]>('/api/admin/users')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: me } = await useFetch<{ email: string }>('/api/auth/me')
-const ROLES = [
+const { data: me } = await useFetch<{ email: string; org: { kind: string } | null }>('/api/auth/me')
+const isCo = computed(() => me.value?.org?.kind === 'company')
+const AIDI_ROLES = [
   { v: 'admin', label: 'Admin' }, { v: 'gp', label: 'GP' }, { v: 'team', label: 'Team' }, { v: 'family', label: 'Family' },
   { v: 'adviser', label: 'Adviser' }, { v: 'founder', label: 'Founder' }, { v: 'investor', label: 'Investor' }, { v: 'client', label: 'Client' }
 ]
-const label = (r: string) => ROLES.find((x) => x.v === r)?.label ?? r
+const CO_ROLES = [{ v: 'admin', label: 'Admin · billing, plan and team' }, { v: 'gp', label: 'Founder · every company feature' }, { v: 'team', label: 'Team member · day-to-day work' }]
+const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 'Team member' }
+const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES))
+const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
 const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', send_email: true })
 const busy = ref(false)
 const msg = ref('')
@@ -45,7 +49,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
         <label class="label">Full name<input v-model="form.full_name" required maxlength="200"></label>
         <label class="label">Email<input v-model="form.email" type="email" required maxlength="254"></label>
         <label class="label">Role<select v-model="form.role"><option v-for="r in ROLES" :key="r.v" :value="r.v">{{ r.label }}</option></select></label>
-        <label class="label">Limited to entity<select v-model="form.entity_id"><option value="">All (group-wide)</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+        <label v-if="!isCo" class="label">Limited to entity<select v-model="form.entity_id"><option value="">All (group-wide)</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       </div>
       <label class="check"><input v-model="form.send_email" type="checkbox"> Email them an invitation</label>
       <button class="btn" type="submit" :disabled="busy">Invite</button>

@@ -34,7 +34,7 @@ const foot = computed(() => {
 </template>
 
 <style scoped>
-.pub { min-height: 100vh; background: #fff; display: flex; flex-direction: column; }
+.pub { min-height: var(--vh100); background: #fff; display: flex; flex-direction: column; }
 .pub-top { display: flex; align-items: center; gap: 12px; padding: 22px 32px; border-bottom: 1px solid var(--c-rule); color: var(--c-navy); }
 .pub-mark { display: flex; width: 58px; height: 23px; } .pub-mark :deep(svg) { width: 100%; height: 100%; display: block; }
 .pub-div { width: 1px; height: 18px; background: var(--c-rule-strong); }

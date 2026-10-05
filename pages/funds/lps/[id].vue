@@ -30,12 +30,12 @@ const KIND: Record<string, string> = { individual: 'Individual', entity: 'Compan
       <dl><div><dt>Commitment</dt><dd>{{ money(p.commitment, p.currency) }}</dd></div><div><dt>Called</dt><dd>{{ money(p.called, p.currency) }}</dd></div><div><dt>Paid in</dt><dd>{{ money(p.paidIn, p.currency) }}</dd></div>
         <div><dt>Unfunded</dt><dd>{{ money(p.unfunded, p.currency) }}</dd></div><div><dt>Distributed</dt><dd>{{ money(p.distributed, p.currency) }}</dd></div><div><dt>Share of NAV</dt><dd>{{ money(p.navShare, p.currency) }}</dd></div></dl>
     </div>
-    <p v-if="!data.positions.length" class="muted">No commitments yet. Add one on a fund's page.</p>
+    <EmptyState v-if="!data.positions.length" compact icon="funds" title="No commitments yet. Add one on a fund's page" />
     <div class="grid">
       <div class="card">
         <h2>Calls and distributions</h2>
         <table v-if="data.history.length" class="mini"><tbody><tr v-for="h in data.history" :key="h.id + h.kind"><td><NuxtLink :to="'/funds/calls/' + h.id">{{ h.kind === 'call' ? 'Call' : 'Distribution' }} {{ h.number }}</NuxtLink><span class="sub">{{ h.fund }} · {{ day(h.due_date) }}</span></td><td class="n">{{ money(h.amount, h.currency, true) }}<span class="sub">{{ Number(h.paid_amount) >= Number(h.amount) ? 'settled' : Number(h.paid_amount) ? 'part paid' : 'open' }}</span></td></tr></tbody></table>
-        <p v-else class="muted">None yet.</p>
+        <EmptyState v-else compact icon="funds" title="None yet" />
       </div>
       <form class="card frm" @submit.prevent="save">
         <h2>Details</h2>

@@ -57,7 +57,7 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
     </div>
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Bank & cash is limited to GPs and family.' : 'Could not load accounts.' }}</p>
-    <p v-else-if="!rows.length" class="muted">No accounts yet. Add one, then import its statements.</p>
+    <EmptyState v-else-if="!rows.length" compact icon="banking" title="No accounts yet. Add one, then import its statements" />
     <div v-for="[name, accts] in byEntity" :key="name" class="grp">
       <h2>{{ name }}</h2>
       <table class="table"><tbody>

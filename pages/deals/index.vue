@@ -21,7 +21,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       </div>
     </div>
     <p v-if="error" class="error" role="alert">Could not load deals: {{ error.message }}</p>
-    <p v-else-if="!rows.length" class="empty">No pitches yet. They arrive here from your public pitch form (see Settings).</p>
+    <EmptyState v-else-if="!rows.length" compact icon="pitches" title="No pitches yet. They arrive here from your public pitch form (see Settings)" />
     <table v-else class="table">
       <thead><tr><th>Received</th><th>Company</th><th>Stage</th><th>AI screening</th><th>Status</th></tr></thead>
       <tbody>

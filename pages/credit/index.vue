@@ -74,7 +74,7 @@ void refresh
         <div class="card"><h3>Exposure by sector</h3><div v-for="e in data.bySector" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div><p v-if="!data.bySector.length" class="muted">No exposure.</p>
           <h3 class="mt">By country</h3><div v-for="e in data.byCountry" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div></div>
       </div>
-      <p v-if="!data.loans.length" class="muted">No loans yet. Add a borrower, then book the loan.</p>
+      <EmptyState v-if="!data.loans.length" compact icon="credit" title="No loans yet. Add a borrower, then book the loan" />
       <table v-else class="table">
         <thead><tr><th>Borrower</th><th>Terms</th><th class="num">Outstanding</th><th>Next payment</th><th>Status</th></tr></thead>
         <tbody><tr v-for="l in rows" :key="l.id" :data-b="l.status === 'active' ? l.bucket : 'closed'">

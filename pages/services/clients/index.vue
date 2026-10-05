@@ -47,7 +47,7 @@ async function move(dry: boolean) {
         <td>{{ c.contact_name }}<span class="sub">{{ c.email }}</span></td><td class="n">{{ c.companies }}</td><td class="n">{{ c.open_jobs }}</td><td class="n" :class="{ error: c.unpaid }">{{ c.unpaid }}</td>
       </tr></tbody>
     </table>
-    <p v-if="!shown.length" class="muted">No clients yet.</p>
+    <EmptyState v-if="!shown.length" compact icon="services" title="No clients yet" />
   </section>
 </template>
 

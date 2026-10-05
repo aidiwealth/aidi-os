@@ -70,7 +70,7 @@ const KIND: Record<string, string> = { note: 'Internal note', message: 'Message 
             <p class="m">{{ e.by_name ?? (e.kind.startsWith('client') ? data.job.contact_name : 'System') }} · {{ when(e.created_at) }}</p>
           </li>
         </ul>
-        <p v-if="!data.events.length" class="muted">Nothing yet.</p>
+        <EmptyState v-if="!data.events.length" compact icon="services" title="Nothing yet" />
       </div>
 
       <div class="col">

@@ -53,7 +53,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <div v-if="data.quick.length" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink></div>
     </div>
 
-    <div v-if="empty" class="card none"><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
+    <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
 
     <div v-if="kpis.length" class="kpis" :class="'n' + Math.min(4, kpis.length)">
       <NuxtLink v-for="k in kpis" :key="k.label" :to="k.to" class="kpi"><span class="kl">{{ k.label }}</span><b>{{ k.value }}</b><span class="ks" :class="k.tone">{{ k.sub }}</span></NuxtLink>
@@ -76,7 +76,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <div class="card act">
         <h2>Recent activity</h2>
         <ul v-if="data.activity.length" class="tl"><li v-for="(a, i) in data.activity" :key="i"><span class="ic"><AppIcon :name="a.area" /></span><span class="tt"><b>{{ a.text }}</b><em>{{ a.who ?? 'System' }} · {{ ago(a.at) }}</em></span></li></ul>
-        <p v-else class="muted">No activity yet.</p>
+        <EmptyState v-else compact icon="home" title="No activity yet" />
       </div>
     </div>
   </section>
@@ -113,4 +113,5 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 .muted { color: var(--c-muted); }
 @media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpis, .kpis.n2, .kpis.n3 { grid-template-columns: 1fr; } }
+.wic { width: 64px; height: 64px; border-radius: 50%; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; margin: 0 auto 12px; } .wic :deep(svg) { width: 28px; height: 28px; } .card.none { text-align: center; padding: 44px 24px; }
 </style>

@@ -1,4 +1,5 @@
 html, body { margin: 0; }
+html { zoom: var(--app-zoom); }
 body { font-family: var(--font-body); font-size: var(--type-body); line-height: 1.55; color: var(--c-ink-soft); background: var(--c-paper-2); -webkit-font-smoothing: antialiased; font-feature-settings: "ss01"; }
 h1, h2, h3 { font-family: var(--font-heading); color: var(--c-ink); margin: 0; font-weight: 600; letter-spacing: -0.02em; }
 h1 { font-size: var(--type-headline); font-weight: 600; line-height: 1.15; letter-spacing: -0.025em; }

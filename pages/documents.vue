@@ -93,7 +93,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
     </form>
 
     <p v-if="error" class="error" role="alert">Could not load documents.</p>
-    <p v-else-if="!docs?.length" class="muted">No documents yet.</p>
+    <EmptyState v-else-if="!docs?.length" compact icon="documents" title="No documents yet" />
     <label v-if="docs?.length" class="filter"><span class="label">Entity</span><select v-model="entityFilter"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.name">{{ e.name }}</option></select></label>
     <table v-if="docs?.length" class="table">
       <thead><tr><th>Title</th><th>Entity</th><th>Type</th><th>Access</th><th>Size</th><th>Added</th></tr></thead>

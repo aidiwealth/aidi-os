@@ -62,7 +62,7 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
           <td><DeleteButton v-if="isGp && commitmentOf(l.lp_id)" type="commitment" :id="commitmentOf(l.lp_id)!.id" :name="'the commitment from ' + l.name" link @deleted="refresh()" /></td>
         </tr></tbody>
       </table>
-      <p v-if="!data.lps.length" class="muted">No commitments yet.</p>
+      <EmptyState v-if="!data.lps.length" compact icon="funds" title="No commitments yet" />
       <form v-if="isGp" class="card frm" @submit.prevent="addCommit">
         <h2 class="wide">Add or change a commitment</h2>
         <label class="label">LP<select v-model="cm.lp_id" required><option value="" disabled>Choose</option><option v-for="l in data.allLps" :key="l.id" :value="l.id">{{ l.name }}</option></select></label>
@@ -81,7 +81,7 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
           <td><span class="st" :data-s="c.status">{{ ST[c.status] }}</span></td>
         </tr></tbody>
       </table>
-      <p v-if="!data.calls.length" class="muted">No capital calls or distributions yet.</p>
+      <EmptyState v-if="!data.calls.length" compact icon="funds" title="No capital calls or distributions yet" />
       <form v-if="isGp" class="card frm" @submit.prevent="addCall">
         <h2 class="wide">New capital call or distribution</h2>
         <label class="label">Type<select v-model="cl.kind"><option value="call">Capital call (split by commitment)</option><option value="distribution">Distribution (split by paid-in)</option></select></label>
@@ -96,7 +96,7 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <template v-else-if="tab === 'nav'">
       <table class="table"><thead><tr><th>As of</th><th class="n">Net asset value</th><th>Note</th><th /></tr></thead>
         <tbody><tr v-for="n in data.navs" :key="n.id"><td>{{ day(n.as_of) }}</td><td class="n">{{ money(n.nav, cur, true) }}</td><td class="muted">{{ n.note ?? '' }}</td><td><DeleteButton v-if="isGp" type="nav" :id="n.id" :name="'the NAV at ' + day(n.as_of)" link @deleted="refresh()" /></td></tr></tbody></table>
-      <p v-if="!data.navs.length" class="muted">No NAV recorded yet. RVPI, TVPI and IRR use the latest NAV.</p>
+      <EmptyState v-if="!data.navs.length" compact icon="funds" title="No NAV recorded yet. RVPI, TVPI and IRR use the latest NAV" />
       <form v-if="isGp" class="card frm" @submit.prevent="addNav">
         <h2 class="wide">Record NAV</h2>
         <label class="label">As of<input v-model="nv.as_of" type="date" required></label>

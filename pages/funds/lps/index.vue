@@ -38,7 +38,7 @@ void refresh
         <td class="n">{{ money(l.committed) }}<span class="sub">{{ l.funds }} fund{{ l.funds === 1 ? '' : 's' }}</span></td><td class="muted">{{ l.portal ? 'Link active' : '—' }}</td>
       </tr></tbody>
     </table>
-    <p v-if="!data.length" class="muted">No LPs yet.</p>
+    <EmptyState v-if="!data.length" compact icon="funds" title="No LPs yet" />
   </section>
 </template>
 

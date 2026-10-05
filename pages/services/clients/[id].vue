@@ -49,7 +49,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
           <td class="sm">{{ c.ein ? 'EIN ' + c.ein : 'No EIN yet' }}<span class="sub">{{ c.formation_date ? 'Formed ' + c.formation_date : '' }}{{ c.fiscal_year_end ? ' · FYE ' + c.fiscal_year_end : '' }}</span></td>
           <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : '', c.virtual_office ? 'Virtual office' : '', c.mailbox ? 'Mailbox' : ''].filter(Boolean).join(' · ') || '—' }}</td>
           <td><span class="st">{{ c.status }}</span></td><td class="acts"><button class="link" @click="askTax(c)">Request tax info</button> · <button class="link" @click="editCo(c)">Edit</button><DeleteButton type="cs_company" :id="c.id" :name="c.name" link @deleted="refresh()" /></td></tr></tbody></table>
-      <p v-else class="muted">No companies yet.</p>
+      <EmptyState v-else compact icon="services" title="No companies yet" />
       <form v-if="rq.company_id" class="card frm" @submit.prevent="sendTax">
         <h2 class="wide">Request tax filing information</h2>
         <label class="label">Tax year<input v-model="rq.tax_year" inputmode="numeric" required></label>
@@ -85,7 +85,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <tbody><tr v-for="p in data.people" :key="p.id"><td><b class="co">{{ p.name }}</b><span class="sub">{{ [p.email, p.phone].filter(Boolean).join(' · ') }}</span></td>
           <td>{{ ROLES[p.role] }}<span v-if="p.ownership_pct" class="sub">{{ Number(p.ownership_pct) }}% ownership</span></td><td>{{ p.company ?? '—' }}</td><td class="sm">{{ p.portal_access ? 'Finvry access' : '—' }}<template v-if="p.email"><br><button class="link" @click="invite(p, true)">{{ p.portal_access ? 'Email them again' : 'Give Finvry access + email' }}</button><template v-if="!p.portal_access"> · <button class="link" @click="invite(p, false)">Give access quietly</button></template></template></td>
           <td class="acts"><button class="link" @click="editPe(p)">Edit</button><DeleteButton type="cs_person" :id="p.id" :name="p.name" link @deleted="refresh()" /></td></tr></tbody></table>
-      <p v-else class="muted">No people yet.</p>
+      <EmptyState v-else compact icon="services" title="No people yet" />
       <button v-if="!editingPe" class="btn secondary" @click="editPe()">Add person</button>
       <form v-else class="card frm" @submit.prevent="savePe">
         <label class="label">Name<input v-model="pe.name" required maxlength="200"></label>
@@ -104,18 +104,18 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
       <form class="card frm" @submit.prevent="sendMsg"><label class="label wide">Message to the client<textarea v-model="reply" rows="3" maxlength="5000" required /></label>
         <div class="wide row"><button class="btn" type="submit">Send</button><span class="muted sm">Clients on Finvry see it under Services and get an email; otherwise it goes to their main email.</span></div></form>
       <div class="thread"><div v-for="m in msgs ?? []" :key="m.id" class="msg" :class="{ team: m.from_team }"><span class="sub">{{ m.from_team ? (m.author ?? 'Team') : (m.author ?? 'Client') }} · {{ new Date(m.created_at).toLocaleString('en-GB') }}{{ m.from_team && m.read_by_client ? ' · read' : '' }}</span><p>{{ m.body }}</p></div>
-        <p v-if="!msgs?.length" class="muted">No messages yet.</p></div>
+        <EmptyState v-if="!msgs?.length" compact icon="services" title="No messages yet" /></div>
     </template>
     <template v-else-if="tab === 'jobs'">
       <table v-if="data.jobs.length" class="table"><thead><tr><th>Job</th><th>Status</th><th>Due</th></tr></thead>
         <tbody><tr v-for="j in data.jobs" :key="j.id"><td><NuxtLink :to="'/services/' + j.id" class="co">{{ j.title }}</NuxtLink></td><td class="st">{{ j.status.replace('_', ' ') }}</td><td>{{ j.due_date ?? '—' }}</td></tr></tbody></table>
-      <p v-else class="muted">No jobs yet. Create one from Jobs.</p>
+      <EmptyState v-else compact icon="services" title="No jobs yet. Create one from Jobs" />
     </template>
 
     <template v-else-if="tab === 'invoices'">
       <table v-if="data.invoices.length" class="table"><thead><tr><th>Invoice</th><th>Due</th><th class="n">Amount</th><th>Status</th></tr></thead>
         <tbody><tr v-for="i in data.invoices" :key="i.id"><td><NuxtLink :to="'/services/invoices/' + i.id" class="co">{{ i.number }}</NuxtLink></td><td>{{ i.due_date }}</td><td class="n">{{ money(i.amount, i.currency) }}</td><td><span class="st" :class="i.overdue ? 'overdue' : i.status">{{ i.overdue ? 'overdue' : i.status }}</span></td></tr></tbody></table>
-      <p v-else class="muted">No invoices yet.</p>
+      <EmptyState v-else compact icon="services" title="No invoices yet" />
     </template>
 
     <form v-else class="card frm" @submit.prevent="saveCl">

@@ -121,8 +121,8 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 </template>
 
 <style scoped>
-.shell { display: flex; min-height: 100vh; background: var(--c-paper-2); }
-.sidebar { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; padding: 18px 12px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; transition: width .18s ease; }
+.shell { display: flex; min-height: var(--vh100); background: var(--c-paper-2); }
+.sidebar { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; padding: 18px 12px 12px; position: sticky; top: 0; height: var(--vh100); overflow-y: auto; transition: width .18s ease; }
 .collapsed .sidebar { width: 68px; }
 .sb-brand { display: flex; align-items: center; height: 32px; padding: 0 10px; margin-bottom: 18px; text-decoration: none; color: var(--c-navy); }
 .sb-mono { width: 32px; height: 32px; border-radius: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; margin-left: -4px; }
@@ -152,7 +152,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .collapsed .sb-collapse { align-self: center; }
 .av { flex: none; width: 28px; height: 28px; border-radius: 0; display: grid; place-items: center; background: var(--c-blue-deep); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
 .av.sm { width: 24px; height: 24px; font-size: 10px; border-radius: 0; } .av.me { width: 24px; height: 24px; border-radius: 0; background: var(--c-navy); font-size: 11px; }
-.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--c-paper); border-left: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); border-top-left-radius: 0; margin-top: 10px; min-height: calc(100vh - 10px); }
+.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--c-paper); border-left: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); border-top-left-radius: 0; margin-top: 10px; min-height: calc(var(--vh100) - 10px); }
 .topbar { height: var(--topbar-h); flex: none; display: flex; align-items: center; gap: 14px; padding: 0 28px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: saturate(1.4) blur(8px); z-index: 10; border-top-left-radius: 0; }
 .tb-menu { display: none; width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--c-rule); background: #fff; color: var(--c-ink); cursor: pointer; place-items: center; } .tb-menu svg { width: 18px; height: 18px; }
 .crumbs { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--c-muted); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; }

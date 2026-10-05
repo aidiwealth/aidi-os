@@ -103,7 +103,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
           <td class="num">{{ money(s.opening) }}</td><td class="num">{{ money(s.credits) }}</td><td class="num">{{ money(s.debits) }}</td><td class="num"><b>{{ money(s.closing) }}</b></td>
           <td><span class="okmark">✓ tied</span><button v-if="s.document_id" type="button" class="link" @click="openDoc(s.document_id)">File</button></td>
         </tr></tbody></table>
-      <p v-else class="muted">No statements yet.</p>
+      <EmptyState v-else compact icon="banking" title="No statements yet" />
     </div>
 
     <TxnTable class="txn" :rows="txs" :currency="cur" :filename="data.account.bank_name + '-' + data.account.account_name">

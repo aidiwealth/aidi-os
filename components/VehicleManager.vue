@@ -17,7 +17,7 @@ async function save() {
     <p class="muted small">Your funds and SPVs. Pick them on deals and portfolio companies so pipeline, portfolio and analytics can be viewed per fund.</p>
     <ul v-if="data?.length" class="vl"><li v-for="v in data" :key="v.id"><span><b>{{ v.name }}</b><em>{{ v.kind === 'spv' ? 'SPV' : 'Fund' }}{{ v.status === 'closed' ? ' · closed' : '' }} · {{ v.deals }} deal{{ v.deals === 1 ? '' : 's' }} · {{ v.companies }} compan{{ v.companies === 1 ? 'y' : 'ies' }}</em></span>
       <span class="act"><button type="button" class="link" @click="edit(v)">Edit</button><DeleteButton type="vehicle" :id="v.id" :name="v.name" link @deleted="refresh()" /></span></li></ul>
-    <p v-else class="muted small">No fund vehicles yet.</p>
+    <EmptyState v-else compact icon="funds" title="No fund vehicles yet" />
     <form class="vf" @submit.prevent="save">
       <input v-model="f.name" required maxlength="200" :placeholder="f.id ? 'Name' : 'e.g. Acme Ventures Fund I'" aria-label="Fund vehicle name">
       <select v-model="f.kind" aria-label="Type"><option value="fund">Fund</option><option value="spv">SPV</option></select>
