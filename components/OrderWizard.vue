@@ -45,7 +45,7 @@ async function place() {
       <div v-else-if="step === 3" class="det">
         <label v-if="data.companies.length" class="label">For which company?<select v-model="company"><option value="">Not specific, or a new company</option><option v-for="c in data.companies" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
         <label class="label">Anything we should know?<textarea v-model="notes" rows="5" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
-      <div v-else class="rev">
+      <div v-else class="rev"><ServiceNotice compact />
         <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="i.billing === 'monthly' && !quoted(i)"> · first 12 months</em></span><b>{{ quoted(i) ? 'Quote' : (SYM[i.currency] ?? '') + lineAmount(i).toLocaleString('en-US') }}</b></div>
         <div class="ln tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
         <label v-if="walletCovers" class="wl"><input v-model="useWallet" type="checkbox"> Pay from my wallet (balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }})</label>

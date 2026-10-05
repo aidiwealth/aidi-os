@@ -67,7 +67,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <div v-if="main" class="card rh"><div><span class="mut">{{ main.name }} · {{ main.instrument === 'safe' ? 'SAFE' : main.instrument === 'priced' ? 'Priced round' : 'Convertible note' }}{{ main.valuation_cap ? ' · ' + money(main.valuation_cap) + ' post-money cap' : '' }}</span>
         <h2>{{ money(committed) }} <em>committed of {{ money(main.target) }}</em></h2><div class="bar"><i class="c" :style="{ width: pct(committed) + '%' }" /><i class="w" :style="{ width: pct(closed) + '%' }" /></div><span class="mut">{{ money(closed) }} closed · {{ pct(committed) }}% committed{{ main.target_close ? ' · target close ' + new Date(main.target_close + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '' }}</span></div>
         <NuxtLink :to="'/fundraising/pipelines/' + main.id" class="btn secondary">Open pipeline</NuxtLink></div>
-      <div v-else class="card cta"><b>Set up your round</b><p>Track your target, who you're talking to, what's committed and what's in the bank.</p><button class="btn" @click="editRound()">Set up round</button></div>
+      <EmptyState v-else card icon="fundraising" title="Set up your raise" text="Track your target, who you're talking to, what's committed and what's in the bank."><button class="btn" @click="editRound()">New pipeline</button></EmptyState>
       <div class="kp"><div class="k"><span>Investors in play</span><b>{{ main?.in_play ?? 0 }}</b></div><div class="k"><span>Data room files</span><b>{{ data.files.length }}</b></div>
         <div class="k"><span>Data room views</span><b>{{ data.links.reduce((t, l) => t + l.views, 0) }}</b></div><div class="k"><span>Time spent</span><b>{{ mins(data.links.reduce((t, l) => t + l.seconds, 0)) }}</b></div></div>
       <div class="two"><div class="card"><h3>Recent data room activity</h3><div v-for="(a, i) in data.activity.slice(0, 8)" :key="i" class="li"><span><b>{{ a.viewer_email ?? 'Someone' }}</b> opened {{ a.file ?? 'the room' }}<em> · via {{ a.link }}</em></span><span class="mut">{{ when(a.started_at) }}{{ a.seconds ? ' · ' + mins(a.seconds) : '' }}</span></div><p v-if="!data.activity.length" class="mut">No views yet. Share your data room to start tracking.</p></div>
@@ -77,25 +77,25 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     <template v-else-if="tab === 'room'">
       <div class="bar2"><span class="mut">{{ data.files.length }} file{{ data.files.length === 1 ? '' : 's' }} · investors only see what each link shares</span><div class="row"><button class="btn secondary" @click="up.open = true">Upload files</button><button class="btn" :disabled="!data.files.length" @click="newLink()">Create tracked link</button></div></div>
       <div class="two"><div><h3>Files</h3><div v-for="[fo, list] in folders" :key="fo" class="card fold"><span class="fl">{{ fo }}</span><div v-for="f in list" :key="f.id" class="fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
-          <div v-if="!data.files.length" class="card cta"><b>Your data room is empty</b><p>Upload your deck, financials, cap table and legal documents.</p><button class="btn" @click="up.open = true">Upload files</button></div></div>
+          <EmptyState v-if="!data.files.length" card icon="upload" title="Your data room is empty" text="Upload your deck, financials, cap table and legal documents. Drag and drop works too."><button class="btn" @click="up.open = true">Upload files</button></EmptyState></div>
         <div><h3>Tracked links</h3><div v-for="l in data.links" :key="l.id" class="card lnk" :class="{ dead: l.revoked }"><div class="lh"><b>{{ l.name }}</b><span class="pill" :class="{ off: l.revoked }">{{ l.revoked ? 'Off' : 'Live' }}</span></div>
           <span v-if="shortUrl(l)" class="su">{{ shortUrl(l) }}</span><span class="mut">{{ l.file_ids.length ? l.file_ids.length + ' files' : 'Whole room' }} · {{ l.require_email ? 'email required' : 'no email' }} · {{ l.allow_download ? 'downloads on' : 'view only' }}{{ l.expires ? ' · until ' + l.expires : '' }}</span>
           <div class="ls"><span><b>{{ l.views }}</b> views</span><span><b>{{ l.viewers }}</b> people</span><span><b>{{ mins(l.seconds) }}</b> spent</span></div>
           <div class="row"><button class="link" @click="revoke(l, !l.revoked)">{{ l.revoked ? 'Turn on' : 'Turn off' }}</button><DeleteButton type="dr_link" :id="l.id" :name="l.name" link @deleted="refresh()" /></div></div>
-          <p v-if="!data.links.length" class="mut">Create a link for each investor or firm to see exactly who looks at what.</p></div></div>
+          <EmptyState v-if="!data.links.length" card icon="link" title="No tracked links yet" text="Create a link for each investor or firm to see exactly who looks at what." /></div></div>
     </template>
 
     <template v-else-if="tab === 'round'">
       <div class="bar2"><span class="mut">A pipeline for each raise or target group. Track every investor from first contact to money in the bank.</span><button class="btn" @click="editRound()">New pipeline</button></div>
       <div class="plg"><NuxtLink v-for="p in data.pipelines" :key="p.id" :to="'/fundraising/pipelines/' + p.id" class="card plc"><div class="lh"><b>{{ p.name }}</b><span class="pill" :class="{ off: p.status !== 'open' }">{{ p.status === 'open' ? 'Open' : 'Closed' }}</span></div>
         <span class="am2">{{ money(p.committed, p.currency) }} <em>of {{ money(p.target, p.currency) }}</em></span><div class="bar"><i class="c" :style="{ width: pct(p.committed, p.target) + '%' }" /><i class="w" :style="{ width: pct(p.closed, p.target) + '%' }" /></div><span class="mut">{{ p.in_play }} investors in play · {{ money(p.closed, p.currency) }} closed</span></NuxtLink></div>
-      <div v-if="!data.pipelines.length" class="card cta"><b>No pipelines yet</b><p>Create one for your raise, set the target, then add investors as conversations start.</p><button class="btn" @click="editRound()">New pipeline</button></div>
+      <EmptyState v-if="!data.pipelines.length" card icon="pipeline" title="No pipelines yet" text="Create one for your raise, set the target, then add investors as conversations start."><button class="btn" @click="editRound()">New pipeline</button></EmptyState>
     </template>
 
     <template v-else-if="tab === 'memo'">
       <div class="bar2"><span class="mut">An investment memo investors can read before or after your meeting.</span><button class="btn" @click="newMemo()">New memo</button></div>
       <div v-for="m in data.memos" :key="m.id" class="card mm"><NuxtLink :to="'/fundraising/memo/' + m.id" class="mt"><b>{{ m.title }}</b></NuxtLink><span class="mut">Edited {{ when(m.updated_at) }}</span><DeleteButton type="memo" :id="m.id" :name="m.title" link @deleted="refresh()" /></div>
-      <div v-if="!data.memos.length" class="card cta"><b>Write your deal memo with AI</b><p>Add a few notes on the problem, product, market and team. We combine them with your financials into a clear memo you can edit and share.</p><button class="btn" @click="newMemo()">Start a memo</button></div>
+      <EmptyState v-if="!data.memos.length" card icon="documents" title="Write your deal memo with AI" text="Add a few notes on the problem, product, market and team. We combine them with your financials into a clear memo you can edit and share."><button class="btn" @click="newMemo()">Start a memo</button></EmptyState>
     </template>
 
     <template v-else-if="tab === 'nda'">

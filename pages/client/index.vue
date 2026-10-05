@@ -18,13 +18,14 @@ const TYPES: Record<string, string> = { llc: 'LLC', c_corp: 'C-Corp (Inc)', s_co
 <template>
   <section v-if="data && me">
     <ClientTabs />
+    <ServiceNotice />
     <div class="hero"><div><p class="label">Services by Aidi</p><h1>Company admin, done for you</h1><p>Virtual office, registered agent, tax filings and business registration in the US and Nigeria, handled by our team. Order here, pay online, and follow every step.</p></div>
       <button class="btn big" type="button" @click="open()">Order a service</button></div>
     <div class="tiles"><button v-for="t in TILES" :key="t.code" type="button" class="tile" @click="open(t.code)"><b>{{ t.t }}</b><span>{{ t.d }}</span><em>Get started →</em></button></div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div v-for="f in data.forms" :key="f.id" class="card todo"><div><b>{{ f.tax_year }} tax filing information{{ f.company ? ' · ' + f.company : '' }}</b><span>We need a few details and documents to prepare your filing.</span></div><button class="btn" type="button" @click="openForm(f.id)">{{ f.status === 'sent' ? 'Start' : 'Continue' }}</button></div>
     <div class="stats">
-      <NuxtLink to="/client/invoices" class="st"><span>Amount due</span><b v-if="data.due.length"><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template></b><b v-else>Nothing due</b></NuxtLink>
+      <NuxtLink to="/client/invoices" class="st"><span>Amount due</span><b v-if="data.due.length"><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template></b><b v-else>0</b></NuxtLink>
       <div class="st"><span>Open requests</span><b>{{ data.jobs.filter((j) => j.status !== 'completed').length }}</b></div>
       <div class="st" :class="{ warn: data.jobs.some((j) => j.status === 'waiting_client') }"><span>Waiting on you</span><b>{{ data.jobs.filter((j) => j.status === 'waiting_client').length }}</b></div>
       <NuxtLink to="/client/messages" class="st"><span>Unread messages</span><b>{{ data.unread }}</b></NuxtLink>

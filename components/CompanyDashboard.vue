@@ -69,7 +69,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; } .kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
 .kpi .l { font-size: 13px; color: var(--c-muted); } .kpi b { font-size: 28px; font-weight: 600; } .kpi .s { font-size: 12.5px; color: var(--c-muted); } .s.up { color: var(--c-ok); } .s.dn { color: var(--c-danger); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .empty { margin-bottom: 12px; } .empty p { color: var(--c-ink-soft); max-width: 680px; } .empty a { text-decoration: none; }
-.three { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
+.three { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; margin-top: 16px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
 .more { display: inline-block; margin-top: 10px; font-size: 13.5px; } .muted { color: var(--c-muted); font-size: 13.5px; }
 @media (max-width: 1000px) { .kpis { grid-template-columns: 1fr 1fr; } .charts, .three { grid-template-columns: 1fr; } }
 </style>
