@@ -29,6 +29,8 @@ onBeforeUnmount(() => clearInterval(badgeTimer))
 const badgeTotal = computed(() => Object.values(badges.value).reduce((a, b) => a + b, 0))
 useHead({ titleTemplate: (t?: string) => (badgeTotal.value ? '(' + badgeTotal.value + ') ' : '') + (t ?? '') })
 const desk = computed(() => (mods.value ?? []).filter((m) => !m.navHidden && m.usable && m.group === 'cs'))
+const supportBy = computed(() => (me.value as { support_by?: string | null } | null)?.support_by ?? null)
+async function endSupport() { const r = await $fetch<{ to: string }>('/api/auth/return', { method: 'POST' }); window.location.href = r.to }
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
   for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))) {
@@ -44,7 +46,7 @@ const collapsed = useState('sb-collapsed', () => false)
 const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
-const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || nowPath.value.startsWith(to + '/'))
+const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages'))))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
@@ -115,6 +117,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           </ul>
         </div>
       </header>
+      <div v-if="supportBy" class="supbar">You are signed in as <b>{{ me?.email }}</b> with Finvry support access ({{ supportBy }}). Changes are made as this person. <button type="button" @click="endSupport">Return to console</button></div>
       <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
     </div>
   </div>
@@ -180,4 +183,5 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
   .tb-menu { display: grid; } .ws-t { display: none; } .inner { padding: 20px 16px 56px; }
   .sb-collapse { display: none; }
 }
+.supbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; } .supbar button { background: #fff; color: #b5470b; border: 0; padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer; }
 </style>

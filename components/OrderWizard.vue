@@ -6,7 +6,7 @@ const emit = defineEmits<{ done: [jobId: string] }>()
 interface It { code: string; name: string; description: string | null; price: number | null; currency: string; billing: string }
 const { data } = await useFetch<{ items: It[]; companies: { id: string; name: string; entity_type: string | null; state: string | null; country: string | null; status: string }[] }>('/api/portal/catalog', { key: 'portal:catalog' })
 const CATS = [
-  { key: 'address', title: 'Address and registered agent', blurb: 'A US mailing address, virtual office and registered agent for your company.', codes: ['virtual_office', 'de_mailbox', 'registered_agent'] },
+  { key: 'address', title: 'Address and registered agent', blurb: 'A US mailing address, virtual office and registered agent for your company.', codes: ['virtual_office', 'registered_agent'] },
   { key: 'start', title: 'Start a company', blurb: 'Form an LLC or C-Corp in the US, get your EIN and founding documents.', codes: ['llc_formation', 'inc_formation', 'ein', 'operating_agreement'] },
   { key: 'tax', title: 'Tax and annual filings', blurb: 'Federal returns, state franchise tax and annual reports, filed for you.', codes: ['irs_annual', 'de_franchise', 'ca_state'] },
   { key: 'other', title: 'Something else', blurb: 'Other filings, legal reviews or setup help.', codes: [] as string[] }]
@@ -21,7 +21,7 @@ watchEffect(() => { if (props.preset && data.value && !cat.value) { const c = CA
 const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
 const quoted = (i: It) => i.price == null || i.billing === 'quoted'
 const price = (i: It) => quoted(i) ? (i.price ? 'From ' + (SYM[i.currency] ?? '') + i.price.toLocaleString('en-US') : 'Priced after review') : (SYM[i.currency] ?? '') + i.price!.toLocaleString('en-US') + (i.billing === 'monthly' ? ' / month' : i.billing === 'annual' ? ' / year' : ' one-off')
-const chosen = computed(() => (data.value?.items ?? []).filter((i) => picked.value.includes(i.code)))
+const chosen = computed(() => (data.value?.items ?? []).filter((i) => picked.value.includes(i.code)).map((i) => { const alt = (i as It & { alt?: { us: { price: number | null; currency: string }; ng: { price: number | null; currency: string } } }).alt; if (!alt || step.value < 3) return i; const p = /^nigeria$/i.test(vo.country) ? alt.ng : alt.us; return { ...i, price: p.price, currency: p.currency } }))
 const lineAmount = (i: It) => (i.billing === 'monthly' ? 12 : 1) * (i.price ?? 0)
 const total = computed(() => chosen.value.filter((i) => !quoted(i)).reduce((t, i) => t + lineAmount(i), 0))
 const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
@@ -37,7 +37,14 @@ const nr = ref<NR | null>(null); const checking = ref(false)
 watch(() => [nf.name, nf.state, nf.entity_type], () => { nr.value = null })
 async function checkName() { checking.value = true; msg.value = ''; try { nr.value = await $fetch<NR>('/api/portal/name-check', { method: 'POST', body: { name: nf.name, state: nf.state, type: nf.entity_type === 'llc' ? 'llc' : 'corp' } }) } catch (e) { msg.value = portalErr(e) } finally { checking.value = false } }
 const isUS = computed(() => /^united states$/i.test(nf.country))
-const detailsOk = computed(() => !forming.value ? (!sel.value || (cp.country && (!/^united states$/i.test(cp.country) || cp.state))) : nf.name.trim().length > 1 && nf.country && (!isUS.value || nf.state) && nr.value?.status !== 'taken')
+const wantsVO = computed(() => picked.value.includes('virtual_office'))
+const vo = reactive({ country: 'United States', state: 'California' })
+const OFFICES: Record<string, { address: string; map: string; q: string }> = {
+  California: { address: '6472 Camden Ave, Suite 204, San Jose, CA 95120, United States', map: 'https://maps.app.goo.gl/qivuRN7v6xLfAp539', q: '6472 Camden Ave Suite 204, San Jose, CA 95120' },
+  Nigeria: { address: '1 Towobola Street, Gbagada, Lagos, Nigeria (LA-19-A13-FY-01)', map: 'https://maps.app.goo.gl/uFDFscqBRHBP38ou7', q: '1 Towobola Street, Gbagada, Lagos, Nigeria' } }
+const voOffice = computed(() => (/^nigeria$/i.test(vo.country) ? OFFICES.Nigeria : /^united states$/i.test(vo.country) ? OFFICES[vo.state] ?? null : null))
+const voOk = computed(() => !wantsVO.value || /^nigeria$/i.test(vo.country) || (/^united states$/i.test(vo.country) && !!vo.state))
+const detailsOk = computed(() => voOk.value && (!forming.value ? (!sel.value || (cp.country && (!/^united states$/i.test(cp.country) || cp.state))) : nf.name.trim().length > 1 && nf.country && (!isUS.value || nf.state) && nr.value?.status !== 'taken'))
 const ICON: Record<string, string> = { address: 'customers', start: 'entities', tax: 'compliance', other: 'company_services' }
 const catItems = (k: string) => { const c = CATS.find((x) => x.key === k); const all = data.value?.items ?? []; return k === 'other' ? all.filter((i) => !known.has(i.code)) : all.filter((i) => c?.codes.includes(i.code)) }
 const catFrom = (k: string) => { const p = catItems(k).filter((i) => i.price != null).map((i) => i.price as number); if (!p.length) return 'Priced after review'; const c = catItems(k).find((i) => i.price != null)!.currency; return 'From ' + (SYM[c] ?? '') + Math.min(...p).toLocaleString('en-US') }
@@ -46,7 +53,7 @@ const STEPS = ['What you need', 'Services', 'Details', 'Review & pay']
 const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? '')
 async function place() {
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
+  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, virtual_office: wantsVO.value ? { country: vo.country, state: /^nigeria$/i.test(vo.country) ? 'Lagos' : vo.state } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
     if (r.invoice_id && useWallet.value && walletCovers.value) { await $fetch('/api/portal/invoices/' + r.invoice_id + '/pay-wallet', { method: 'POST' }); done.value = r; emit('done', r.job_id) }
     else if (r.pay_url) window.location.href = r.pay_url; else { done.value = r; emit('done', r.job_id) } }
   catch (e) { msg.value = portalErr(e) } finally { busy.value = false }
@@ -84,6 +91,11 @@ async function place() {
               <p v-if="sel && sel.state && sel.country" class="hint">Filings for {{ sel.name }} go to {{ sel.state }}, {{ sel.country }} (from your records).</p>
               <div v-else-if="sel" class="g2"><p class="hint w2">Tell us where {{ sel.name }} is registered. We save it for future filings.</p><label class="label">Country<CountrySelect v-model="cp.country" /></label><label v-if="/^united states$/i.test(cp.country)" class="label">State<select v-model="cp.state"><option value="" disabled>Choose</option><option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option></select></label></div>
             </template>
+            <div v-if="wantsVO" class="vo"><b>Virtual office location</b><p class="hint">Pick where you want your business address. US addresses are one price in every state; Lagos is billed in naira.</p>
+              <div class="g2"><label class="label">Country<select v-model="vo.country"><option>United States</option><option>Nigeria</option></select></label>
+                <label v-if="/^united states$/i.test(vo.country)" class="label">State<select v-model="vo.state"><option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option></select></label><p v-else class="hint">Lagos, Nigeria (one location).</p></div>
+              <div v-if="voOffice" class="map"><iframe :src="'https://www.google.com/maps?q=' + encodeURIComponent(voOffice.q) + '&output=embed'" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Office location" /><span>{{ voOffice.address }} · <a :href="voOffice.map" target="_blank" rel="noopener">Open in Google Maps</a></span></div>
+              <p v-else class="hint">We assign your {{ vo.state }} address when we set it up and share it in your Documents.</p></div>
             <label class="label">Anything we should know?<textarea v-model="notes" rows="6" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
           <div v-else class="rev"><h3>Review and pay</h3><ServiceNotice compact />
             <div v-if="total" class="pays"><button v-if="walletCovers" type="button" class="pay" :class="{ on: useWallet }" @click="useWallet = true"><AppIcon name="wallet" /><span><b>Wallet</b><em>Balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }}</em></span></button>
@@ -128,4 +140,6 @@ async function place() {
 .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .w2 { grid-column: 1 / -1; margin: 0; } .nrow { display: flex; gap: 8px; } .nrow input { flex: 1; }
 .nres { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--c-rule); background: #fbfaf7; font-size: 13px; } .nres b { font-size: 14px; } .nres.available { border-color: rgba(31,122,77,.35); background: rgba(31,122,77,.06); } .nres.available b { color: var(--c-ok); } .nres.taken { border-color: rgba(180,35,24,.35); background: rgba(180,35,24,.05); } .nres.taken b { color: var(--c-danger); } .nres.similar b, .nres.unknown b { color: var(--c-warn); }
 .nres .iss { color: var(--c-warn); } .nres .mt { color: var(--c-ink-soft); font-size: 12.5px; } .nres a { color: var(--c-blue-deep); margin-top: 4px; }
+.vo { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); padding: 14px; background: #fbfaf7; } .vo b { font-size: 14.5px; } .map { display: flex; flex-direction: column; gap: 6px; } .map iframe { width: 100%; height: 220px; border: 0; } .map span { font-size: 12.5px; color: var(--c-ink-soft); } .map a { color: var(--c-blue-deep); }
+input:not([type=checkbox]):not([type=radio]) { font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; box-sizing: border-box; width: 100%; }
 </style>

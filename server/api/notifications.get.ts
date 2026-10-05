@@ -13,6 +13,7 @@ export default defineEventHandler(async (event): Promise<Record<string, number>>
         const r = (await db().query<{ msgs: number; ev: number }>(`SELECT (SELECT count(*)::int FROM services.messages WHERE client_id = $1 AND from_team AND read_by_client IS NULL) AS msgs,
             (SELECT count(*)::int FROM services.job_events e JOIN services.jobs j ON j.id = e.job_id WHERE j.client_id = $1 AND e.visible_to_client AND e.kind <> 'client_document' AND e.kind <> 'client_message' AND e.created_at > $2) AS ev`, [c.id, since])).rows[0]!
         if (r.msgs + r.ev) out['/client'] = r.msgs + r.ev
+        if (r.msgs) out['/client/messages'] = r.msgs
       })
       const s2 = await seen('fundraising')
       const n = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM fundraise.nda_signatures WHERE signed_at > $1', [s2]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n

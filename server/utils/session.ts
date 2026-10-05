@@ -7,6 +7,7 @@ const COOKIE = 'aidi_os_session'
 const MAX_AGE = 60 * 60 * 12 // 12 hours
 
 export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean }
+export const RETURN_COOKIE = 'aidi_os_return'
 
 function secret(): Uint8Array {
   const s = useRuntimeConfig().jwtSecret

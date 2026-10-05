@@ -39,7 +39,7 @@ void refresh
     </div>
     <p v-if="msg" class="error" role="alert">{{ msg }}</p>
 
-    <AppModal :open="adding === 'borrower'" title="New borrower" @close="adding = ''"><form class="frm" @submit.prevent="addBorrower">
+    <AppModal :open="adding === 'borrower'" title="New borrower" @close="adding = ''"><form class="frm mfx" @submit.prevent="addBorrower">
       <label class="label">Borrower<input v-model="bf.name" required maxlength="200"></label>
       <label class="label">Country<CountrySelect v-model="bf.country" /></label>
       <label class="label">Sector<input v-model="bf.sector" maxlength="100" placeholder="e.g. Logistics, Fintech"></label>
@@ -48,7 +48,7 @@ void refresh
       <div class="actions"><button class="btn" type="submit">Save borrower</button></div>
     </form></AppModal>
 
-    <AppModal :open="adding === 'loan'" title="Book a loan" wide @close="adding = ''"><form class="frm" @submit.prevent="addLoan">
+    <AppModal :open="adding === 'loan'" title="Book a loan" wide @close="adding = ''"><form class="frm mfx" @submit.prevent="addLoan">
       <label class="label">Borrower<select v-model="lf.borrower_id" required><option value="" disabled>Choose</option><option v-for="b in borrowers ?? []" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
       <label class="label">Lender<select v-model="lf.lender_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Reference<input v-model="lf.reference" maxlength="60" placeholder="optional"></label>
@@ -126,4 +126,5 @@ tr[data-b="1-30"] .st { color: var(--c-warn); } tr[data-b="31-90"] .st, tr[data-
 .bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; } .bc { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; font: inherit; text-align: left; cursor: pointer; } .bc:hover { border-color: var(--c-navy); }
 .bn { display: flex; flex-direction: column; min-width: 0; } .bn em, .sc em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sc { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 4px 8px; } .sc b { font-size: 20px; font-weight: 700; }
 .sc.g b { color: var(--c-ok); } .sc.b b { color: var(--c-blue-deep); } .sc.a b { color: var(--c-warn); } .sc.r b { color: var(--c-danger); }
+.frm.mfx { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 14px 16px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; align-items: start; } .frm.mfx label { display: flex !important; flex-direction: column; gap: 6px; font-size: 13px; } .frm.mfx input, .frm.mfx select { width: 100%; box-sizing: border-box; } .frm.mfx .hint, .frm.mfx .actions { grid-column: 1 / -1; }
 </style>

@@ -1,6 +1,6 @@
 // Every /api route needs a signed-in user unless it is on this allow-list (public endpoints sit above the gate).
 // The signed-in person's workspace becomes the database context for the whole request.
-const PUBLIC = ['/api/ping', '/api/health', '/api/auth/request', '/api/auth/verify-otp', '/api/auth/magic', '/api/auth/logout']
+const PUBLIC = ['/api/ping', '/api/health', '/api/auth/request', '/api/auth/verify-otp', '/api/auth/magic', '/api/auth/logout', '/api/auth/return']
 export default defineEventHandler(async (event) => {
   event.context.orgId = null
   event.context.dbBypass = false

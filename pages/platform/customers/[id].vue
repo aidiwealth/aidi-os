@@ -27,13 +27,14 @@ function openInvite() {
     message: 'Hi,\n\nWe have moved ' + n + "'s company services from Aidi Ventures to Finvry. Your filings, renewals, compliance calendar and invoices are now in one place, and you can message our team from there.\n\nSign in at https://app.finvry.com/login with this email address. We will send you a one-time code; there is no password.\n\nThe Aidi team" })
 }
 async function sendInvite() { inv.busy = true; inv.msg = ''; try { const r = await $fetch<{ emailed: boolean }>('/api/platform/orgs/' + id + '/invite', { method: 'POST', body: { full_name: inv.full_name, email: inv.email, subject: inv.subject, message: inv.message, send: inv.send } }); inv.ok = true; inv.msg = inv.send ? (r.emailed ? 'Access given and invitation sent.' : 'Access given, but the email could not be sent. Try again later.') : 'Access given. Send the invitation whenever you are ready.' } catch (e) { inv.ok = false; inv.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not invite.' } finally { inv.busy = false } }
+async function supportSignIn() { if (!confirm('Sign in to ' + (data.value?.org.name ?? 'this workspace') + ' as its owner? You will act as them until you return to the console. This is recorded.')) return; try { await $fetch('/api/platform/orgs/' + id + '/impersonate', { method: 'POST' }); window.location.href = '/' } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not sign in.') } }
 </script>
 
 <template>
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
-    <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
+    <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.org.kind === 'company'" type="button" class="btn secondary" @click="supportSignIn">Sign in as owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
     <AppModal :open="inv.open" title="Invite the owner" wide @close="inv.open = false">
       <form id="invf" class="invf" @submit.prevent="sendInvite">
         <label class="label">Name<input v-model="inv.full_name" required maxlength="200"></label>
