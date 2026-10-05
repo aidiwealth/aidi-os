@@ -5,6 +5,6 @@ export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team', 'family')
   const q = Q.safeParse(getQuery(event))
   if (!q.success) throw apiError('invalid', 'Bad filter.')
-  const rows = await loadStatements(q.data.subject, q.data.period_type, q.data.currency)
+  const rows = await loadStatements(q.data.subject, q.data.period_type, q.data.currency, { raw: getQuery(event).raw === '1' })
   return { name: await subjectName(q.data.subject), statements: rows.map((r) => ({ ...r, derived: derive(r.lines, r.period_type) })) }
 })

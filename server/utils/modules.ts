@@ -8,7 +8,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'pipeline', group: 'vc', label: 'Pipeline', to: '/pipeline', roles: ['gp', 'team'], api: ['/api/pipeline'], pages: ['/pipeline'], switchable: true },
   { code: 'portfolio', group: 'vc', label: 'Portfolio', to: '/portfolio', roles: ['gp', 'team'], api: ['/api/portfolio', '/api/public/report'], pages: ['/portfolio', '/report'], switchable: true },
   { code: 'funds', group: 'vc', label: 'Funds & LPs', to: '/funds', roles: ['gp', 'team'], api: ['/api/funds', '/api/vc'], pages: ['/funds'], switchable: true },
-  { code: 'directory', group: 'vc', label: 'Fund services', to: '/directory', roles: ['gp', 'team', 'family', 'adviser'], api: ['/api/directory'], pages: ['/directory'], switchable: false },
+  { code: 'directory', group: 'vc', label: 'Fund services', to: '/directory', roles: ['gp', 'team', 'family', 'adviser'], api: ['/api/directory'], pages: ['/directory'], switchable: true },
   { code: 'credit', group: 'vc', label: 'Credit', to: '/credit', roles: ['gp', 'team'], api: ['/api/credit', '/api/public/cron/credit'], pages: ['/credit'], switchable: true },
   { code: 'analytics', group: 'vc', label: 'Analytics', to: '/analytics', roles: ['gp', 'team', 'family'], api: ['/api/analytics'], pages: ['/analytics'], switchable: true },
   { code: 'financials', group: 'fin', label: 'Financials', to: '/financials', roles: ['gp', 'team', 'family'], api: ['/api/financials'], pages: ['/financials'], switchable: true },

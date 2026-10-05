@@ -2,18 +2,18 @@
 import { currencyForCountry, isNigeria } from '~/shared/countries'
 // Company settings with a side menu: Company, Notifications, Plan & billing, Team.
 interface P { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null; ai_s?: number | null; ai_w?: number | null }
-interface D { name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
+interface D { reporting_currency?: string; name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
-const f = reactive({ name: '', website: '', country: '', currency: 'USD', entity_type: '', state: 'Delaware', seed: true })
+const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
 const ngCo = computed(() => isNigeria(f.country))
 watch(() => f.country, (c, old) => { if (old !== undefined && old !== '' && c) { f.currency = currencyForCountry(c); if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' } })
 const emails = ref<string[]>([]); const newEmail = ref('')
-watchEffect(() => { const d = data.value; if (d) { Object.assign(f, { name: d.name, website: d.website, country: d.country, currency: d.currency, entity_type: d.entity_type, state: d.state || 'Delaware' }); emails.value = [...d.notify_emails] } })
+watchEffect(() => { const d = data.value; if (d) { Object.assign(f, { name: d.name, website: d.website, country: d.country, currency: d.currency, reporting_currency: d.reporting_currency ?? '', entity_type: d.entity_type, state: d.state || 'Delaware' }); emails.value = [...d.notify_emails] } })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function saveProfile() { busy.value = true; msg.value = ''; ok.value = ''; try { const r = await $fetch<{ added: number }>('/api/company/profile', { method: 'POST', body: { section: 'profile', ...f } }); ok.value = 'Saved.' + (r.added ? ' ' + r.added + ' filing reminder' + (r.added === 1 ? '' : 's') + ' added to Compliance.' : ''); await refresh(); await refreshNuxtData('me') } catch (e) { msg.value = err(e) } finally { busy.value = false } }
@@ -37,7 +37,8 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <label class="label wide">Company name<input v-model="f.name" required maxlength="200"></label>
           <label class="label wide">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label>
           <label class="label">Country<CountrySelect v-model="f.country" required /></label>
-          <label class="label">Reporting currency<select v-model="f.currency"><option value="USD">US dollar (USD)</option><option value="NGN">Nigerian naira (NGN)</option></select></label>
+          <label class="label">Billing currency<select v-model="f.currency" disabled><option value="USD">US dollar (USD)</option><option value="NGN">Nigerian naira (NGN)</option></select><span class="hint">Set by your country: naira for Nigeria, US dollars elsewhere.</span></label>
+          <label class="label">Reporting currency<select v-model="f.reporting_currency"><option value="">Same as my figures</option><option v-for="c in ['USD', 'NGN', 'GBP', 'EUR', 'CAD', 'KES', 'GHS', 'ZAR', 'EGP', 'RWF', 'AED']" :key="c" :value="c">{{ c }}</option></select><span class="hint">Show your figures to you and investors in this currency, at the latest daily rate. Billing is not affected.</span></label>
           <label class="label">Legal form<select v-model="f.entity_type"><option value="">Not set</option><option v-for="(l, k) in data.types" v-show="k !== 'ng_ltd' || ngCo" :key="k" :value="k">{{ l }}</option></select></label>
           <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option v-for="s in data.states" :key="s">{{ s }}</option></select></label>
           <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders for this legal form to Compliance</label>
@@ -45,6 +46,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
         </form>
         <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
         <div v-else-if="sec === 'ai'"><AiUsage /></div>
+        <div v-else-if="sec === 'api'"><ApiKeys /></div>
         <div v-else-if="sec === 'notifications'" class="card frm">
           <h2>Notifications</h2>
           <p class="muted wide">Filing reminders, investor page views and service updates go to these addresses. Leave empty to email your admins.</p>

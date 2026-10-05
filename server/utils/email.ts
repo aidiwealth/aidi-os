@@ -1,5 +1,5 @@
 // Transactional email through Resend. Fails loudly; never reports success it did not get.
-export async function sendEmail(input: { to: string; subject: string; text: string; html: string }): Promise<void> {
+export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string }): Promise<void> {
   const { resendApiKey } = useRuntimeConfig()
   // Brand: the workspace's (or, before sign-in, the address's) name, logo, links and sender
   const b = brands()[await resolveBrand()]
@@ -16,7 +16,7 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html })
+    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html })
   })
   if (!res.ok) throw new Error('Resend ' + res.status + ': ' + (await res.text()).slice(0, 300))
 }

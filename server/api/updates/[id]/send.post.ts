@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   const br = await brandingOf(org.id), look = { logoUrl: br.logo_url, hideFinvry: br.hide_finvry }
   if (b.data.mode === 'test') {
     const html = await renderUpdateDoc(u, { company: org.name, base, email: true, greeting: 'there', viewUrl: base + '/updates/' + id.data, ...look })
-    await sendEmail({ to: user.email, subject: '[Test] ' + u.title, text, html })
+    await sendEmail({ to: user.email, subject: '[Test] ' + u.title, text, html, fromName: u.from_name || org.name })
     return { ok: true, sent: 1 }
   }
   if (b.data.mode === 'publish' || b.data.mode === 'email_publish') await db().query("UPDATE financials.updates SET status = 'published', published_at = coalesce(published_at, now()) WHERE id = $1", [id.data])
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     const token = randomToken()
     await db().query('INSERT INTO financials.update_sends (update_id, investor_id, token_hash) VALUES ($1,$2,$3) ON CONFLICT (update_id, investor_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, sent_at = now()', [id.data, inv.id, sha256(token)])
     const html = await renderUpdateDoc(u, { company: org.name, base, email: true, greeting: p.name.split(' ')[0], viewUrl: base + '/u/' + token, unsubUrl: base + '/unsub/' + token, pixelUrl: base + '/api/public/u/' + token + '/o', ...look })
-    try { await sendEmail({ to: p.email, subject: u.title, text: text + '\n\nRead online: ' + base + '/u/' + token + '\nUnsubscribe: ' + base + '/unsub/' + token, html }); sent++; await logActivity(org.id, p.email, 'update_sent', 'Sent ' + u.title, id.data) }
+    try { await sendEmail({ fromName: u.from_name || org.name, to: p.email, subject: u.title, text: text + '\n\nRead online: ' + base + '/u/' + token + '\nUnsubscribe: ' + base + '/unsub/' + token, html }); sent++; await logActivity(org.id, p.email, 'update_sent', 'Sent ' + u.title, id.data) }
     catch (err) { console.error('[updates] email failed', err) }
   }
   const r = u.recipients

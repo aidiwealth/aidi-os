@@ -1,7 +1,7 @@
 // Save company settings. section: profile (name, website, country, currency, legal form, state, reminders) or notifications.
 import { z } from 'zod'
 const Profile = z.object({ section: z.literal('profile'), name: z.string().trim().min(1).max(200), website: z.string().trim().max(300).refine((v) => v === '' || /^https?:\/\//i.test(v), 'Website must start with http:// or https://').default(''),
-  country: z.string().trim().max(60).default(''), currency: z.enum(['USD', 'NGN']), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other', '']).default(''), state: z.string().max(40).default(''), seed: z.boolean().default(false) })
+  country: z.string().trim().max(60).default(''), currency: z.enum(['USD', 'NGN']), reporting_currency: z.string().regex(/^([A-Z]{3})?$/).default(''), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other', '']).default(''), state: z.string().max(40).default(''), seed: z.boolean().default(false) })
 const Notify = z.object({ section: z.literal('notifications'), notify_emails: z.array(z.string().trim().email().max(254)).max(10) })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
@@ -15,7 +15,8 @@ export default defineEventHandler(async (event) => {
     const d = b.data
     if (!/^\s*nigeria\s*$/i.test(d.country) && d.entity_type === 'ng_ltd') throw apiError('invalid', 'A Nigerian limited company needs Nigeria as the country.')
     await asPlatform(() => db().query("UPDATE core.organizations SET name = $2, settings = settings || jsonb_build_object('website', $3::text, 'country', $4::text, 'currency', $5::text, 'entity_type', $6::text, 'state', $7::text, 'public_name', $2::text) WHERE id = $1",
-      [org.id, d.name, d.website, d.country, d.currency, d.entity_type, d.state]))
+      [org.id, d.name, d.website, d.country, /^\s*nigeria\s*$/i.test(d.country) ? 'NGN' : 'USD', d.entity_type, d.state]))
+    await asPlatform(() => db().query("UPDATE core.organizations SET settings = CASE WHEN $2 = '' THEN settings - 'reporting_currency' ELSE settings || jsonb_build_object('reporting_currency', $2::text) END WHERE id = $1", [org.id, d.reporting_currency]))
     await asPlatform(() => db().query('UPDATE wallet.wallets SET currency = $2 WHERE organization_id = $1 AND balance_minor = 0', [org.id, d.currency]))
     await syncPlanSubscription(org.id)
     if (d.seed && d.entity_type && d.entity_type !== 'other') added = await seedCompanyCompliance(d.entity_type, d.state)

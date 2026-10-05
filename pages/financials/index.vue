@@ -2,7 +2,7 @@
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
-interface Subjects { company: { subject: string; name: string; currency: string } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[] }
+interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[] }
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null> }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
@@ -11,7 +11,10 @@ const co = computed(() => subj.value?.company ?? null)
 const subject = ref(co.value?.subject ?? 'group'); const periodType = ref('month'); const currency = ref(co.value?.currency ?? 'USD')
 watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.currency } })
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
-const { data, refresh } = await useFetch<{ name: string; statements: St[] }>('/api/financials', { query: { subject, period_type: periodType, currency }, watch: [subject, periodType, currency] })
+const original = ref(false)
+const rawQ = computed(() => (original.value ? '1' : undefined))
+const { data, refresh } = await useFetch<{ name: string; statements: St[] }>('/api/financials', { query: { subject, period_type: periodType, currency, raw: rawQ }, watch: [subject, periodType, currency, original] })
+const converting = computed(() => !!co.value?.reporting && !original.value && rows.value.some((r) => r.currency === co.value?.reporting))
 const rows = computed(() => data.value?.statements ?? [])
 const latest = computed(() => rows.value[rows.value.length - 1]); const prev = computed(() => rows.value[rows.value.length - 2])
 const cur = computed(() => latest.value?.currency ?? currency.value)
@@ -88,10 +91,12 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       <div class="tools">
         <div class="seg" role="group" aria-label="Period"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly']]" :key="k" :class="{ on: periodType === k }" @click="periodType = k">{{ l }}</button></div>
         <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
+        <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <button v-if="canEdit" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
     <p v-if="!co && subject === 'group'" class="hint">Adds up every fund and entity, plus companies marked as subsidiaries, in {{ currency }}. Intercompany amounts are not eliminated.</p>
+    <p v-if="converting" class="hint">Shown in {{ co?.reporting }} for reporting, converted at the latest daily exchange rate{{ co?.rate_as_of ? ' (' + new Date(co.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}. Your figures are stored in their original currency; switch to Original to edit. Billing is not affected.</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>
 
     <template v-if="rows.length && latest">
@@ -116,7 +121,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end"><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
           <td class="n"><Money :value="r.derived.revenue" :currency="r.currency" /></td><td class="n">{{ pctFmt(r.derived.gross_margin) }}</td><td class="n"><Money :value="r.derived.ebitda" :currency="r.currency" /></td>
           <td class="n"><Money :value="r.derived.net_income" :currency="r.currency" /></td><td class="n"><Money :value="r.derived.cash" :currency="r.currency" /></td>
-          <td class="n"><template v-if="r.id && canEdit"><button class="link" type="button" @click="openForm(r)">Edit</button> · <DeleteButton type="statement" :id="r.id" :name="lbl(r.period_end) + ' statement'" link @deleted="refresh()" /></template></td></tr></tbody></table></div></div>
+          <td class="n"><template v-if="r.id && canEdit && !converting"><button class="link" type="button" @click="openForm(r)">Edit</button> · <DeleteButton type="statement" :id="r.id" :name="lbl(r.period_end) + ' statement'" link @deleted="refresh()" /></template></td></tr></tbody></table></div></div>
       <template v-else>
         <div class="card frm"><div class="sh"><div><h3>Share your financials</h3><p class="hint">A private link showing only the metrics you pick. It expires, and you get an email when it is viewed.</p></div></div>
           <div class="g3"><label class="label">Title<input v-model="sh.title" :placeholder="title" maxlength="200"></label><label class="label">Expires after<select v-model.number="sh.days"><option :value="7">7 days</option><option :value="30">30 days</option><option :value="90">90 days</option><option :value="365">1 year</option></select></label></div>
