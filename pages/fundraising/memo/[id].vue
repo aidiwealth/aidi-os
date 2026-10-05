@@ -16,7 +16,7 @@ const doPrint = () => window.print()
 <template>
   <section v-if="data">
     <NuxtLink to="/fundraising?t=memo" class="back noprint">← Fundraising</NuxtLink>
-    <div class="hd noprint"><input v-model="f.title" class="title" maxlength="200"><div class="row"><button class="btn secondary" :disabled="!!busy" @click="save">Save</button><button class="btn secondary" @click="doPrint">Download PDF</button></div></div>
+    <div class="hd noprint"><input v-model="f.title" class="title" maxlength="200"><div class="row"><button class="btn secondary" :disabled="!!busy" @click="save">Save</button><button class="btn secondary" @click="doPrint">Download PDF</button><DeleteButton type="memo" :id="id" :name="f.title || 'this memo'" to="/fundraising?t=memo" /></div></div>
     <p v-if="msg" class="error noprint">{{ msg }}</p><p v-if="ok" class="ok noprint">{{ ok }}</p>
     <div class="grid">
       <div class="card notes noprint"><h3>Your notes</h3><p class="mut">A sentence or two each. Your financials are added automatically.</p>

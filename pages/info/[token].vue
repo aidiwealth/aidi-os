@@ -58,7 +58,7 @@ async function removeFile(id: string) { try { await $fetch('/api/public/info/' +
             <div v-else-if="q.type === 'yesno'" class="yn"><label><input v-model="a[q.id]" type="radio" value="yes"> Yes</label><label><input v-model="a[q.id]" type="radio" value="no"> No</label></div>
             <div v-else-if="q.type === 'file'" class="files">
               <div v-for="f in filesFor(q.id)" :key="f.id" class="file"><span>{{ f.title.split(' — ').pop() }}</span><button type="button" class="link" @click="removeFile(f.id)">Remove</button></div>
-              <label class="btn secondary up">{{ uploading === q.id ? 'Uploading…' : filesFor(q.id).length ? 'Add another file' : 'Upload file' }}<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx" :disabled="!!uploading" @change="upload(q.id, $event)"></label>
+              <DropZone compact multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx" :disabled="!!uploading" :label="uploading === q.id ? 'Uploading…' : filesFor(q.id).length ? 'Drop another file' : 'Drop files here'" hint="or click to choose" @change="upload(q.id, $event)" />
             </div>
             <div v-else-if="q.type === 'shareholders'" class="rep">
               <div v-for="(r, i) in a[q.id]" :key="i" class="row6">

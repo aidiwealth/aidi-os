@@ -80,7 +80,7 @@ const pctFmt = (v: number | null | undefined) => (v == null ? '—' : v + '%')
 
     <form v-if="showForm" class="card frm" @submit.prevent="save">
       <div class="fh"><h2>{{ form.period_end && rows.some((r) => r.period_end === form.period_end) ? 'Edit statement' : 'Add figures' }}</h2>
-        <label class="btn secondary up">{{ busy ? 'Reading…' : 'Fill from a spreadsheet' }}<input type="file" accept=".xlsx,.csv" :disabled="busy" @change="fromSheet"></label></div>
+        <DropZone compact accept=".xlsx,.csv" :disabled="busy" :label="busy ? 'Reading…' : 'Fill from a spreadsheet: drop an Excel or CSV file'" hint="or click to choose" @change="fromSheet" /></div>
       <p v-if="aiNote" class="note">{{ aiNote }}</p>
       <div class="g4">
         <label class="label">For<select v-model="form.subject" required><option value="" disabled>Choose</option>

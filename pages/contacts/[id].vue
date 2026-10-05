@@ -51,7 +51,7 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
           <label v-for="fd in data.fields" :key="fd.key" class="label">{{ fd.label }}<select v-if="fd.type === 'select'" v-model="f.custom[fd.key]"><option value="">—</option><option v-for="o in fd.options" :key="o">{{ o }}</option></select><input v-else v-model="f.custom[fd.key]" :type="fd.type === 'number' ? 'number' : fd.type === 'date' ? 'date' : fd.type === 'url' ? 'url' : 'text'" maxlength="500"></label>
           <div><span class="lb">Lists</span><div class="chips"><label v-for="l in data.allLists" :key="l.id" class="cb"><input v-model="f.list_ids" type="checkbox" :value="l.id"> {{ l.name }}</label><span v-if="!data.allLists.length" class="mut">No lists yet.</span></div></div>
           <label class="cb"><input v-model="f.subscribed" type="checkbox"> Receives investor updates</label>
-          <button class="btn" type="submit">{{ saved ? 'Saved' : 'Save' }}</button><p v-if="msg" class="error">{{ msg }}</p>
+          <div class="sv"><button class="btn" type="submit">{{ saved ? 'Saved' : 'Save' }}</button><DeleteButton type="crm_contact" :id="id" :name="data.contact.name" to="/contacts" /></div><p v-if="msg" class="error">{{ msg }}</p>
         </form>
       </aside>
       <div class="main">
@@ -64,7 +64,7 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
         </template>
         <div v-else-if="tab === 'shared'" class="card"><h3>Updates sent</h3><div v-for="s in data.shared" :key="s.id + s.sent_at" class="act"><NuxtLink :to="'/updates/' + s.id" class="al">{{ s.title }}</NuxtLink><span class="mut">Sent {{ when(s.sent_at) }}</span><span :class="s.opened_at ? 'okk' : 'mut'">{{ s.opened_at ? 'Opened' + (s.opens > 1 ? ' ' + s.opens + '×' : '') : 'Not opened' }}</span></div><p v-if="!data.shared.length" class="mut">No updates sent to this contact yet.</p></div>
         <div v-else class="card"><form class="nf" @submit.prevent="addNote"><textarea v-model="note" rows="3" maxlength="5000" placeholder="Add a note: a call summary, their interests, next steps" /><button class="btn" type="submit" :disabled="!note.trim()">Add note</button></form>
-          <div v-for="n in data.notes" :key="n.id" class="note"><p>{{ n.body }}</p><span class="mut">{{ n.by ?? 'Someone' }} · {{ when(n.created_at) }}</span></div><p v-if="!data.notes.length" class="mut">No notes yet.</p></div>
+          <div v-for="n in data.notes" :key="n.id" class="note"><p>{{ n.body }}</p><span class="mut">{{ n.by ?? 'Someone' }} · {{ when(n.created_at) }} · <DeleteButton type="crm_note" :id="n.id" name="this note" link @deleted="refresh()" /></span></div><p v-if="!data.notes.length" class="mut">No notes yet.</p></div>
       </div>
     </div>
   </section>
@@ -85,4 +85,5 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
 .kd { font-size: 11.5px; padding: 2px 8px; background: var(--c-signal-soft); color: var(--c-blue-deep); text-align: center; } .kd.update_sent { background: var(--c-paper-2); color: var(--c-muted); } .kd.deck_viewed { background: #eee8fb; color: #5b3fb5; } .okk { color: var(--c-ok); font-size: 13px; }
 .nf { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; } .note { border-top: 1px solid var(--c-rule); padding: 10px 0; } .note p { margin: 0 0 4px; white-space: pre-wrap; } .mut { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1000px) { .lay { grid-template-columns: 1fr; } }
+.sv { display: flex; gap: 8px; align-items: center; }
 </style>

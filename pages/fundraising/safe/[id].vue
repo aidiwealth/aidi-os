@@ -11,7 +11,7 @@ const doPrint = () => window.print()
 </script>
 <template>
   <section v-if="data" class="wrap">
-    <div class="bar noprint"><NuxtLink to="/fundraising?t=safe" class="back">← Fundraising</NuxtLink><span /><button class="btn" @click="doPrint">Download PDF</button></div>
+    <div class="bar noprint"><NuxtLink to="/fundraising?t=safe" class="back">← Fundraising</NuxtLink><span /><DeleteButton type="safe" :id="id" :name="'the SAFE for ' + data.investor_name" to="/fundraising?t=safe" /><button class="btn" @click="doPrint">Download PDF</button></div>
     <p class="note noprint">This is a term sheet and signature page based on the structure of the post-money SAFE (Simple Agreement for Future Equity). It is not legal advice. Have a lawyer review it, and sign the full official SAFE form, which Y Combinator publishes for free at ycombinator.com/documents.</p>
     <article class="doc">
       <p class="lb">Term sheet</p><h1>Simple Agreement for Future Equity</h1><p class="sub">{{ data.company_name }}, a {{ data.company_state }} {{ data.company_state === 'Delaware' || data.company_state === 'Other' ? 'corporation' : 'corporation' }} · {{ day(data.safe_date) }}</p>

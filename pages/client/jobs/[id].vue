@@ -28,7 +28,7 @@ const label = (e: D['events'][number]) => e.kind === 'status' ? 'Status: ' + (ST
         <p v-if="!data.events.length" class="mut">No updates yet.</p></div>
       <div class="side">
         <div class="card"><h2>Send documents</h2><label class="label">What are they? (optional)<input v-model="note" maxlength="1000" placeholder="e.g. 2025 bank statements"></label>
-          <label class="btn secondary up">{{ busy ? 'Uploading…' : 'Choose files' }}<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx" :disabled="busy" @change="upload"></label></div>
+          <DropZone multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.xlsx,.xls,.docx" :disabled="busy" :label="busy ? 'Uploading…' : ''" @change="upload" /></div>
         <form class="card" @submit.prevent="send"><h2>Message us about this</h2><textarea v-model="text" rows="4" maxlength="5000" required /><button class="btn" type="submit" :disabled="busy || !text.trim()">Send</button></form>
         <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
       </div>
