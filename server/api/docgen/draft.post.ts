@@ -10,5 +10,5 @@ export default defineEventHandler(async (event) => {
   if (missing.length) throw apiError('invalid', 'Please fill in: ' + missing.join(', ') + '.')
   const org = (await currentOrg())!, s = org.settings as Record<string, string>
   try { return await draftDocument(b.data.type, b.data.answers, { name: org.name, form: s.entity_type || 'other', state: s.state || '', country: s.country || '', ref: 'org:' + org.id }) }
-  catch (err) { console.error('[docgen] failed', err); throw apiError('ai_failed', 'Could not draft the document just now. Try again in a moment.', 502) }
+  catch (err) { if ((err as { statusCode?: number }).statusCode === 429) throw err; console.error('[docgen] failed', err); throw apiError('ai_failed', 'Could not draft the document just now. Try again in a moment.', 502) }
 })

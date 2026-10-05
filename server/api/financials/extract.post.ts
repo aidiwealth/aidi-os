@@ -19,5 +19,5 @@ export default defineEventHandler(async (event) => {
   try {
     const out = await extractStatement(text, wanted, 'document:' + docId)
     return { ...out, kpis: Object.fromEntries(out.kpis.map((k) => [k.name, k.value])), document_id: docId }
-  } catch (err) { console.error('[financials] extract failed', err); throw apiError('ai_failed', 'Could not read that sheet automatically. Enter the figures by hand; the file is kept with the statement.', 422) }
+  } catch (err) { if ((err as { statusCode?: number }).statusCode === 429) throw err; console.error('[financials] extract failed', err); throw apiError('ai_failed', 'Could not read that sheet automatically. Enter the figures by hand; the file is kept with the statement.', 422) }
 })

@@ -20,5 +20,5 @@ export default defineEventHandler(async (event) => {
         '\nMonthly figures (oldest first):\n' + (figures || 'none recorded') + '\nRound: ' + (round ? JSON.stringify(round) : 'not set') + '\nFounder notes: ' + JSON.stringify(b.data.notes),
       toolName: 'write_memo', toolDescription: 'Return the memo.', jsonSchema: { type: 'object', additionalProperties: false, required: ['body'], properties: { body: { type: 'string' } } }, schema: zz.object({ body: zz.string().max(40000) }), maxTokens: 2500 })
     return output
-  } catch (err) { console.error('[memo] failed', err); throw apiError('ai_failed', 'Could not draft the memo just now. Try again, or write it yourself.', 502) }
+  } catch (err) { if ((err as { statusCode?: number }).statusCode === 429) throw err; console.error('[memo] failed', err); throw apiError('ai_failed', 'Could not draft the memo just now. Try again, or write it yourself.', 502) }
 })

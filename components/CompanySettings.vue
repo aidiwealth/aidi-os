@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // Company settings with a side menu: Company, Notifications, Plan & billing, Team.
-interface P { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null }
+interface P { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null; ai_s?: number | null; ai_w?: number | null }
 interface D { name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const COUNTRIES = ['Nigeria', 'United States', 'United Kingdom', 'Ghana', 'Kenya', 'South Africa', 'Rwanda', 'Egypt', 'Canada', 'Other']
@@ -42,6 +42,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <div class="wide"><button class="btn" type="submit" :disabled="busy">Save changes</button></div>
         </form>
         <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
+        <div v-else-if="sec === 'ai'"><AiUsage /></div>
         <div v-else-if="sec === 'notifications'" class="card frm">
           <h2>Notifications</h2>
           <p class="muted wide">Filing reminders, investor page views and service updates go to these addresses. Leave empty to email your admins.</p>
@@ -52,7 +53,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
         <div v-else-if="sec === 'plan'">
           <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><span class="muted">Prices in {{ ngn ? 'naira' : 'US dollars' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span></div>
           <div class="plans"><div v-for="p in data.plans" :key="p.code" class="card pl" :class="{ on: p.code === data.plan }"><b>{{ p.name }}</b><span class="pr">{{ price(p) }}<em v-if="(ngn ? p.ngn : p.usd)"> / month</em></span>
-            <ul><li v-for="x in FEAT[p.code] ?? []" :key="x">{{ x }}</li></ul>
+            <ul><li v-for="x in FEAT[p.code] ?? []" :key="x">{{ x }}</li><li v-if="p.ai_w">AI: {{ Math.round((p.ai_w ?? 0) / 1000) }}K tokens a week</li></ul>
             <button v-if="p.code !== data.plan" type="button" class="btn" :class="{ secondary: p.code === 'company_free' }" :disabled="busy" @click="choose(p.code)">{{ p.code === 'company_free' ? 'Move to Free' : !data.trial_used ? 'Start 14-day free trial' : 'Switch to ' + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
           <p class="muted">Card billing (Stripe, or Paystack in naira) at the end of a trial is being switched on; until then we will email you before anything is charged.</p>
         </div>

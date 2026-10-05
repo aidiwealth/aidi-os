@@ -12,5 +12,5 @@ export default defineEventHandler(async (event) => {
   try {
     const out = await draftUpdate({ company: (await currentOrg())!.name, periodLabel: updateLabel(u.period_type, u.period_end), currency: f.currency, current: f.current, previous: f.previous, ...b.data, ref: 'update:' + id.data })
     return out
-  } catch (err) { console.error('[updates] draft failed', err); throw apiError('ai_failed', 'Could not draft the update just now. Try again, or write it yourself.', 502) }
+  } catch (err) { if ((err as { statusCode?: number }).statusCode === 429) throw err; console.error('[updates] draft failed', err); throw apiError('ai_failed', 'Could not draft the update just now. Try again, or write it yourself.', 502) }
 })

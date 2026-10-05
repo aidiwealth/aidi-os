@@ -4,7 +4,9 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   ssr: true,
   experimental: { appManifest: false },
-  nitro: { experimental: { asyncContext: true } },
+  // Route return types are not generated: with this many API routes, typed fetch inference exceeds TypeScript's depth
+  // limit. Every call site states its response type explicitly instead.
+  nitro: { experimental: { asyncContext: true }, hooks: { 'types:extend'(types) { types.routes = {} } } },
   typescript: { strict: true, typeCheck: false },
   css: [
     '@fontsource/cormorant-garamond/400.css',
