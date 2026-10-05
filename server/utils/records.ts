@@ -35,6 +35,7 @@ export const RECORDS: Record<string, RecordType> = {
   crm_pipeline: { table: 'crm.pipelines', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   crm_note: { table: 'crm.notes', module: 'contacts', roles: ['admin', 'gp', 'team'], name: 'body' },
   nda_sig: { table: 'fundraise.nda_signatures', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
+  holding: { table: 'wealth.holdings', module: 'wealth', roles: ['admin', 'gp'], name: 'name' },
   crm_meeting: { table: 'crm.meetings', module: 'fundraising', roles: ['admin', 'gp', 'team'], name: 'title' },
   document: { table: 'core.documents', module: 'documents', roles: ['admin'], name: 'title', storage: true, blockers: [
     ['SELECT count(*) FROM deals.deal_events WHERE document_id = $1', 'deal note'], ['SELECT count(*) FROM services.job_events WHERE document_id = $1', 'client job update']] },

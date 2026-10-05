@@ -1,16 +1,16 @@
 <script setup lang="ts">
 useHead({ title: 'Entities' })
-interface Ent { id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string; parent_id: string | null; parent_name: string | null; deals: number; companies: number; documents: number }
+interface Ent { tax_id?: string | null; registration_number?: string | null; formation_date?: string | null; address?: string | null; id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string; parent_id: string | null; parent_name: string | null; deals: number; companies: number; documents: number }
 const { data, refresh } = await useFetch<Ent[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
 const isAdmin = computed(() => me.value?.roles.includes('admin'))
 const KIND: Record<string, string> = { holding: 'Holding', operating: 'Operating company', fund: 'Fund', gp: 'General partner', management_company: 'Management company', trust: 'Trust', household: 'Household', spv: 'SPV', other: 'Other' }
-const form = reactive({ id: '', name: '', legal_name: '', kind: 'operating', jurisdiction: '', status: 'active', parent_id: '' })
+const form = reactive({ id: '', name: '', legal_name: '', kind: 'operating', jurisdiction: '', status: 'active', parent_id: '', tax_id: '', registration_number: '', formation_date: '', address: '' })
 const open = ref(false)
 const msg = ref('')
 function edit(e?: Ent) {
-  Object.assign(form, e ? { id: e.id, name: e.name, legal_name: e.legal_name ?? '', kind: e.kind, jurisdiction: e.jurisdiction ?? '', status: e.status, parent_id: e.parent_id ?? '' }
-    : { id: '', name: '', legal_name: '', kind: 'operating', jurisdiction: '', status: 'active', parent_id: '' })
+  Object.assign(form, e ? { id: e.id, name: e.name, legal_name: e.legal_name ?? '', kind: e.kind, jurisdiction: e.jurisdiction ?? '', status: e.status, parent_id: e.parent_id ?? '', tax_id: e.tax_id ?? '', registration_number: e.registration_number ?? '', formation_date: e.formation_date ?? '', address: e.address ?? '' }
+    : { id: '', name: '', legal_name: '', kind: 'operating', jurisdiction: '', status: 'active', parent_id: '', tax_id: '', registration_number: '', formation_date: '', address: '' })
   open.value = true
 }
 async function save() {
@@ -30,6 +30,10 @@ async function save() {
       <label class="label">Legal name<input v-model="form.legal_name" maxlength="300"></label>
       <label class="label">Type<select v-model="form.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Jurisdiction<input v-model="form.jurisdiction" maxlength="20" placeholder="e.g. US-DE, NG"></label>
+      <label class="label">Tax ID (EIN / TIN)<input v-model="form.tax_id" maxlength="40" placeholder="e.g. 37-2007053"></label>
+      <label class="label">Registration number<input v-model="form.registration_number" maxlength="60" placeholder="e.g. RC 1779621"></label>
+      <label class="label">Formation date<input v-model="form.formation_date" type="date"></label>
+      <label class="label">Registered address<input v-model="form.address" maxlength="500"></label>
       <label class="label">Status<select v-model="form.status"><option value="active">Active</option><option value="forming">Forming</option><option value="dormant">Dormant</option><option value="closed">Closed</option></select></label>
       <label class="label">Owned by<select v-model="form.parent_id"><option value="">—</option><option v-for="e in (data ?? []).filter((x) => x.id !== form.id)" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <div class="actions"><button class="btn" type="submit">Save</button><button class="btn secondary" type="button" @click="open = false">Cancel</button></div>
@@ -39,7 +43,7 @@ async function save() {
       <thead><tr><th>Entity</th><th>Type</th><th>Status</th><th>Deals</th><th>Companies held</th><th>Documents</th><th v-if="isAdmin" /></tr></thead>
       <tbody>
         <tr v-for="e in data ?? []" :key="e.id">
-          <td><b>{{ e.name }}</b><span class="sub">{{ [e.jurisdiction, e.parent_name ? 'owned by ' + e.parent_name : ''].filter(Boolean).join(' · ') }}</span></td>
+          <td><b>{{ e.name }}</b><span class="sub">{{ [e.jurisdiction, e.tax_id ? 'EIN ' + e.tax_id : '', e.registration_number ? (/^rc/i.test(e.registration_number) ? '' : 'RC ') + e.registration_number : '', e.formation_date ? 'formed ' + new Date(e.formation_date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '', e.parent_name ? 'owned by ' + e.parent_name : ''].filter(Boolean).join(' · ') }}</span></td>
           <td>{{ KIND[e.kind] ?? e.kind }}</td><td><span class="st" :data-s="e.status">{{ e.status }}</span></td>
           <td>{{ e.deals || '—' }}</td><td>{{ e.companies || '—' }}</td><td>{{ e.documents || '—' }}</td>
           <td v-if="isAdmin"><button type="button" class="link" @click="edit(e)">Edit</button><DeleteButton type="entity" :id="e.id" :name="e.name" link @deleted="refresh()" /></td>

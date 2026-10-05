@@ -35,7 +35,7 @@ const setupOpen = ref(false)
       </NuxtLink>
     </div>
     <EmptyState v-if="!(data ?? []).some((f) => f.fund_id)" card icon="funds" title="Set up your first fund" text="Track each fund's LPs and commitments, capital calls (with two-GP approval), distributions and NAV, with DPI, TVPI and net IRR per fund and per LP. Every LP gets a private, read-only portal."><button v-if="isGp" class="btn" @click="setupOpen = true">Set up a fund</button></EmptyState>
-    <AppModal :open="setupOpen" :title="pending.length ? 'Set up a fund' : 'Add a fund'" @close="setupOpen = false"><form v-if="isGp" class="frm" @submit.prevent="doSetup">
+    <AppModal :open="setupOpen" :title="pending.length ? 'Set up a fund' : 'Add a fund'" wide @close="setupOpen = false"><form v-if="isGp" class="frm mfund" @submit.prevent="doSetup">
       <h2 class="wide">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</h2>
       <label v-if="pending.length" class="label">Fund<select v-model="setup.entity_id" required><option value="" disabled>Choose</option><option v-for="f in pending" :key="f.entity_id" :value="f.entity_id">{{ f.name }}</option><option value="new">New fund…</option></select></label>
       <label v-if="!pending.length || setup.entity_id === 'new'" class="label">Fund name<input v-model="setup.name" required maxlength="200" placeholder="e.g. Acme Ventures Fund I"></label>
@@ -44,7 +44,7 @@ const setupOpen = ref(false)
       <label class="label">Vintage<input v-model="setup.vintage" inputmode="numeric"></label>
       <label class="label">Status<select v-model="setup.status"><option value="raising">Raising</option><option value="investing">Investing</option><option value="harvesting">Harvesting</option><option value="closed">Closed</option></select></label>
       <label class="label">Administrator<select v-model="setup.administrator"><option value="self">Self-administered</option><option value="sydecar">Sydecar</option><option value="carta">Carta</option><option value="angellist">AngelList</option><option value="other">Other</option></select></label>
-      <p class="hint">Finvry tracks your LPs, calls, distributions and performance. Formation, KYC, money movement, tax and filings stay with your administrator and lawyers;.</p>
+      <p class="hint">Aidi tracks your LPs, calls, distributions and performance. Formation, KYC, money movement, tax and filings stay with your administrator and lawyers.</p>
       <div class="row"><button class="btn" type="submit">Set up fund</button><span v-if="msg" class="error">{{ msg }}</span></div>
     </form></AppModal>
   </section>
@@ -65,4 +65,5 @@ input, select { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px s
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr 1fr; } dl { grid-template-columns: repeat(3, 1fr); } }
 .intro { margin-bottom: 14px; border-left: 3px solid var(--c-blue-deep); } .intro p { margin: 6px 0 0; font-size: 14px; color: var(--c-ink-soft); max-width: 760px; }
 .dk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .tools { display: flex; gap: 8px; } .tools a { text-decoration: none; } @media (max-width: 900px) { .dk { grid-template-columns: 1fr 1fr; } }
+.frm.mfund { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 14px 16px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: none !important; } .frm.mfund > h2 { display: none !important; } .frm.mfund label { display: flex !important; flex-direction: column; gap: 6px; grid-column: auto !important; } .frm.mfund input, .frm.mfund select { width: 100%; box-sizing: border-box; } .frm.mfund .hint, .frm.mfund .row { grid-column: 1 / -1 !important; } .frm.mfund .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; }
 </style>

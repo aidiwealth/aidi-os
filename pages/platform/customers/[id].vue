@@ -20,13 +20,32 @@ const pct = (v: number, max: number | null) => (max ? Math.min(100, (v / max) * 
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'never')
 const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace created', 'platform.workspace_update': 'Workspace updated', 'platform.plan_save': 'Plan saved' }
 async function delOrg() { const n = data.value?.org.name ?? ''; const typed = prompt('This permanently deletes ' + n + ' and all its data. Type the workspace name to confirm:'); if (typed === null) return; try { await $fetch('/api/platform/orgs/' + id, { method: 'DELETE', body: { confirm: typed } }); await navigateTo('/platform/customers') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
+const inv = reactive({ open: false, full_name: '', email: '', subject: '', message: '', send: true, busy: false, msg: '', ok: false })
+function openInvite() {
+  const n = data.value?.org.name ?? 'your company'
+  Object.assign(inv, { open: true, msg: '', ok: false, send: true, full_name: inv.full_name || '', email: inv.email || '', subject: 'Your Finvry workspace for ' + n + ' is ready',
+    message: 'Hi,\n\nWe have moved ' + n + "'s company services from Aidi Ventures to Finvry. Your filings, renewals, compliance calendar and invoices are now in one place, and you can message our team from there.\n\nSign in at https://app.finvry.com/login with this email address. We will send you a one-time code; there is no password.\n\nThe Aidi team" })
+}
+async function sendInvite() { inv.busy = true; inv.msg = ''; try { const r = await $fetch<{ emailed: boolean }>('/api/platform/orgs/' + id + '/invite', { method: 'POST', body: { full_name: inv.full_name, email: inv.email, subject: inv.subject, message: inv.message, send: inv.send } }); inv.ok = true; inv.msg = inv.send ? (r.emailed ? 'Access given and invitation sent.' : 'Access given, but the email could not be sent. Try again later.') : 'Access given. Send the invitation whenever you are ready.' } catch (e) { inv.ok = false; inv.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not invite.' } finally { inv.busy = false } }
 </script>
 
 <template>
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
-    <div class="cuh"><h1>{{ data.org.name }}</h1><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div>
+    <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
+    <AppModal :open="inv.open" title="Invite the owner" wide @close="inv.open = false">
+      <form id="invf" class="invf" @submit.prevent="sendInvite">
+        <label class="label">Name<input v-model="inv.full_name" required maxlength="200"></label>
+        <label class="label">Email<input v-model="inv.email" type="email" required maxlength="254"></label>
+        <label class="label w">Subject<input v-model="inv.subject" required maxlength="200"></label>
+        <label class="label w">Message<textarea v-model="inv.message" rows="10" maxlength="5000" /></label>
+        <label class="cb w"><input v-model="inv.send" type="checkbox"> Send the email now (untick to give access only, and send later)</label>
+        <p class="hint w">They get admin access to {{ data.org.name }} and sign in with a one-time code sent to this email. No password.</p>
+        <p v-if="inv.msg" :class="inv.ok ? 'okm w' : 'error w'">{{ inv.msg }}</p>
+      </form>
+      <template #foot><button class="btn secondary" type="button" @click="inv.open = false">Close</button><button class="btn" type="submit" form="invf" :disabled="inv.busy">{{ inv.busy ? 'Working…' : inv.send ? 'Give access and send' : 'Give access' }}</button></template>
+    </AppModal>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="grid">
       <div class="col">
@@ -78,4 +97,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .hint { font-size: 12px; color: var(--c-muted); margin: 8px 0 0; } .mt2 { margin-top: 18px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .cuh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .danger { color: var(--c-danger); }
+.cua { display: flex; gap: 8px; } .invf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .invf .w { grid-column: 1 / -1; } .invf label.label { display: flex; flex-direction: column; gap: 6px; } .invf input, .invf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .invf .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .invf .cb input { width: auto; } .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
 </style>

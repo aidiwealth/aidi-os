@@ -7,7 +7,8 @@ const Body = z.object({
   kind: z.enum(['holding', 'operating', 'fund', 'gp', 'management_company', 'trust', 'household', 'spv', 'other']),
   jurisdiction: z.string().trim().max(20).optional(),
   status: z.enum(['active', 'forming', 'dormant', 'closed']),
-  parent_id: z.string().uuid().nullable().optional()
+  parent_id: z.string().uuid().nullable().optional(),
+  tax_id: z.string().trim().max(40).optional(), registration_number: z.string().trim().max(60).optional(), formation_date: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(), address: z.string().trim().max(500).optional()
 })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin')
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event) => {
         [d.id, d.name, d.legal_name || null, d.kind, d.jurisdiction || null, d.status, d.parent_id ?? null])
     : await one<{ id: string }>('INSERT INTO core.entities (name, legal_name, kind, jurisdiction, status, parent_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
         [d.name, d.legal_name || null, d.kind, d.jurisdiction || null, d.status, d.parent_id ?? null])
+  await db().query('UPDATE core.entities SET tax_id = $2, registration_number = $3, formation_date = $4, address = $5 WHERE id = $1', [row.id, d.tax_id || null, d.registration_number || null, d.formation_date || null, d.address || null])
   await audit({ event, actorUserId: user.userId, action: d.id ? 'entity.update' : 'entity.create', objectType: 'entity', objectId: row.id, entityId: row.id, detail: { name: d.name } })
   return { ok: true, id: row.id }
 })
