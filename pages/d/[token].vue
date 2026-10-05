@@ -33,11 +33,11 @@ const groups = computed(() => { const m = new Map<string, Fi[]>(); for (const f 
       <p class="label">Data room</p><h1>{{ data.company }}</h1>
       <form v-if="data.require_email && !entered" class="card gate" @submit.prevent="enter"><b>Enter your email to view</b><p class="mut">{{ data.company }} will see that you viewed their documents.</p><div class="row"><input v-model="email" type="email" required placeholder="you@fund.com"><button class="btn" type="submit">View documents</button></div><p v-if="msg" class="error">{{ msg }}</p></form>
       <template v-else>
-        <p v-if="data.watermark" class="wmn">Documents are watermarked with your email and today's date.</p>
+        <p v-if="data.watermark" class="wmn">Documents are watermarked with your email and today's date, including downloads.</p>
         <p v-if="msg" class="error">{{ msg }}</p>
         <div v-for="[g, list] in groups" :key="g" class="grp"><h2>{{ g }}</h2>
           <div v-for="f in list" :key="f.id" class="card fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft"><b>{{ f.title }}</b><em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span>
-            <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download" class="btn secondary" @click="open(f, true)">Download</button></div></div>
+            <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download && (!data.watermark || f.mime_type.includes('pdf'))" class="btn secondary" @click="open(f, true)">Download</button></div></div>
         <p v-if="!data.files.length" class="mut">No documents shared yet.</p>
       </template>
     </template>

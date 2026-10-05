@@ -17,6 +17,13 @@ export async function putObject(input: { key: string; body: Uint8Array; contentT
   if (!res.ok) throw new Error('R2 upload failed: ' + res.status + ' ' + (await res.text()).slice(0, 300))
 }
 
+export async function getObject(key: string): Promise<Uint8Array> {
+  const { aws, base } = r2()
+  const res = await aws.fetch(base + '/' + keyPath(key), { method: 'GET' })
+  if (!res.ok) throw new Error('R2 read failed: ' + res.status)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const { aws, base } = r2()
   const res = await aws.fetch(base + '/' + keyPath(key), { method: 'DELETE' })

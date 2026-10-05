@@ -2,7 +2,7 @@
 import type { DocumentRow } from '~/server/api/documents/index.get'
 useHead({ title: 'Documents' })
 const { data: docs, error, refresh } = await useFetch<DocumentRow[]>('/api/documents')
-const { data: meD } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const { data: meD } = await useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
 const canDelete = computed(() => !!meD.value?.roles.includes('admin'))
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
@@ -69,7 +69,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 <template>
   <section>
     <p class="label">Records</p>
-    <h1>Documents</h1>
+    <div class="dh"><h1>Documents</h1><NuxtLink v-if="meD?.org?.kind === 'company'" to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div>
     <p class="lead">Stored privately. Links last 60 seconds, and every view is logged.</p>
 
     <form class="card up" @submit.prevent="upload">
@@ -131,4 +131,5 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .sub { display: block; color: var(--c-muted); font-size: 12px; }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); margin: 0; } .ok { color: var(--c-ok); margin: 0; }
 @media (max-width: 900px) { .up { grid-template-columns: 1fr; } }
+.dh { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .dh h1 { margin: 0; } .dh a { text-decoration: none; }
 </style>
