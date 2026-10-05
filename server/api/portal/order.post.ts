@@ -5,7 +5,9 @@ const SERVICE: Record<string, string> = { irs_annual: 'tax_filing', de_franchise
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
   rateLimit('portal_order', u.userId ?? u.clientId, 10, 60 * 60 * 1000)
-  const b = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).min(1).max(15), company_id: z.string().uuid().optional(), notes: z.string().trim().max(2000).default('') }).safeParse(await readBody(event))
+  const b = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).min(1).max(15), company_id: z.string().uuid().optional(), notes: z.string().trim().max(2000).default(''),
+    formation: z.object({ name: z.string().trim().min(2).max(200), alt_name: z.string().trim().max(200).default(''), country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default(''), entity_type: z.enum(['llc', 'c_corp']), name_status: z.string().max(20).default('') }).optional(),
+    company_place: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose at least one service.')
   const ng = await clientIsNigerian(u.clientId)
   const items = (await db().query<{ code: string; name: string; price: string | null; price_ngn: string | null; currency: string; billing: string; region: string }>('SELECT code, name, price::text, price_ngn::text, currency, billing, region FROM services.catalog WHERE active AND code = ANY($1)', [b.data.codes])).rows
@@ -16,8 +18,15 @@ export default defineEventHandler(async (event) => {
   const quoted = items.filter((i) => !priced.includes(i))
   const c = (await db().query<{ name: string; email: string }>('SELECT name, email FROM services.clients WHERE id = $1', [u.clientId])).rows[0]!
   const title = ('Order: ' + items.map((i) => i.name).join(', ')).slice(0, 200)
-  const desc = ['Ordered in Finvry by ' + u.name + ' (' + u.email + ')', ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), b.data.notes ? '\nNotes: ' + b.data.notes : ''].join('\n').slice(0, 5000)
-  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [u.clientId, b.data.company_id ?? null, SERVICE[items[0]!.code] ?? 'other', title, desc, items.map((i) => i.code)])
+  let companyId = b.data.company_id ?? null
+  if (b.data.formation) {
+    const f = b.data.formation
+    companyId = (await one<{ id: string }>("INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, status, notes) VALUES ($1,$2,$3,$4,$5,'forming',$6) RETURNING id",
+      [u.clientId, f.name, f.entity_type, f.state || null, f.country, ('Proposed in Finvry.' + (f.alt_name ? ' Backup name: ' + f.alt_name + '.' : '') + (f.name_status ? ' Name check: ' + f.name_status + '.' : '')).slice(0, 3000)])).id
+  } else if (companyId && b.data.company_place) await db().query('UPDATE services.companies SET country = coalesce(country, $2), jurisdiction = coalesce(jurisdiction, nullif($3, \'\')) WHERE id = $1', [companyId, b.data.company_place.country, b.data.company_place.state])
+  const place = b.data.formation ? 'New company: ' + b.data.formation.name + ' (' + (b.data.formation.entity_type === 'llc' ? 'LLC' : 'C-Corp') + ', ' + [b.data.formation.state, b.data.formation.country].filter(Boolean).join(', ') + ')' + (b.data.formation.alt_name ? '; backup name ' + b.data.formation.alt_name : '') + (b.data.formation.name_status ? '; name check: ' + b.data.formation.name_status : '') : ''
+  const desc = ['Ordered in Finvry by ' + u.name + ' (' + u.email + ')', ...(place ? [place] : []), ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), b.data.notes ? '\nNotes: ' + b.data.notes : ''].join('\n').slice(0, 5000)
+  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [u.clientId, companyId, SERVICE[items[0]!.code] ?? 'other', title, desc, items.map((i) => i.code)])
   let invoice: string | null = null, invoiceId: string | null = null
   if (priced.length) {
     const settings = await csBilling()
@@ -28,7 +37,7 @@ export default defineEventHandler(async (event) => {
       `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at)
        VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT count(*) FROM services.invoices WHERE issue_date >= date_trunc('year', current_date)) + 1)::text, 4, '0'),
                $2,$3,$4,$5,$6, current_date + 7, $7, $8, $9, $10, 'sent', now()) RETURNING id`,
-      [settings.prefix, u.clientId, b.data.company_id ?? null, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom })])
+      [settings.prefix, u.clientId, companyId, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom })])
     invoice = await billUrl(inv.id); invoiceId = inv.id
   }
   await filingsOrdered(u.clientId, items.map((i) => i.code)).catch((e) => console.error('[order] compliance', e))
