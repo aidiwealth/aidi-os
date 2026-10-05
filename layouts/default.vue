@@ -12,7 +12,9 @@ const { data: mods } = await useFetch<Mod[]>('/api/modules', { key: 'modules' })
 const canPlatform = computed(() => !!me.value?.platform && brand.key === 'aidi')
 const deskPath = computed(() => route.path === '/services' || route.path.startsWith('/services/') || route.path.startsWith('/client-services'))
 const platformMode = computed(() => route.path === '/platform' || route.path.startsWith('/platform/') || (canPlatform.value && deskPath.value))
-const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => route.path === p || route.path.startsWith(p + '/'))) ?? null)
+const lockRouter = useRouter()
+const nowPath = computed(() => lockRouter.currentRoute.value.path)
+const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => nowPath.value === p || nowPath.value.startsWith(p + '/'))) ?? null)
 const desk = computed(() => (mods.value ?? []).filter((m) => m.usable && m.group === 'cs'))
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
@@ -100,7 +102,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           </ul>
         </div>
       </header>
-      <main id="main" class="content"><div class="inner"><Paywall v-if="lockedHere" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
+      <main id="main" class="content"><div class="inner"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
     </div>
   </div>
 </template>
