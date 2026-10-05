@@ -297,6 +297,13 @@ export async function sendPortalMessageAlert(client: string, who: string, body: 
   for (const addr of to) await sendEmail({ to: addr, subject: 'Message from ' + who + ' (' + client + ')', text: body + '\n\n' + link, html })
 }
 
+// A pipeline meeting is coming up.
+export async function sendMeetingReminder(to: string, title: string, investor: string | null, startsAt: string, location: string | null, link: string): Promise<void> {
+  const when = new Date(startsAt).toUTCString().replace(':00 GMT', ' UTC')
+  const html = shell(h1('Coming up: ' + esc(title)) + para((investor ? 'With <b>' + esc(investor) + '</b>. ' : '') + 'Starts ' + esc(when) + '.' + (location ? '<br>' + esc(location) : '')) + button('Open the pipeline →', link), 'Meeting reminder')
+  await sendEmail({ to, subject: 'Reminder: ' + title, text: title + (investor ? ' with ' + investor : '') + ' starts ' + when + (location ? '\n' + location : '') + '\n' + link, html })
+}
+
 // Someone opened a shared financials link.
 export async function sendShareViewedEmail(to: string, title: string, link: string): Promise<void> {
   const html = shell(h1('Your shared financials were viewed') + para('Someone just opened <b>' + esc(title) + '</b>.') + button('See your share links →', link) +

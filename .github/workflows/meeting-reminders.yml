@@ -1,0 +1,14 @@
+# Meeting reminders every 15 minutes. Needs the repository secret CRON_SECRET (same value as NUXT_CRON_SECRET).
+name: Meeting reminders
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send meeting reminders
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/meetings \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

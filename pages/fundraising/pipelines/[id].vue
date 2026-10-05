@@ -2,7 +2,8 @@
 // A fundraising pipeline: stages with totals on the left; investors with stage, amount and primary contact.
 const id = useRoute().params.id as string
 interface St { id: string; name: string; color: string; kind: string; sort: number; total: number; n: number }
-interface Dl { id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null }
+interface Dl { id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
+const calOpen = ref(false)
 interface D { pipeline: { id: string; name: string; currency: string; target: number | null; instrument: string; valuation_cap: number | null; discount: number | null; pre_money: number | null; status: string; target_close: string | null }; stages: St[]; deals: Dl[]; contacts: { id: string; name: string; email: string; firm: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/crm/pipelines/' + id)
 useHead({ title: () => data.value?.pipeline.name ?? 'Pipeline' })
@@ -41,14 +42,14 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
       <button class="lk ed" @click="editStages">Edit stages</button></aside>
     <div class="main">
       <div class="top"><div class="pg"><select v-model="progStage" aria-label="Progress from stage"><option value="">All stages</option><option v-for="s in data.stages.filter((x) => x.kind !== 'lost')" :key="s.id" :value="s.id">{{ s.name }} and later</option></select><span>{{ money(prog.total) }} ({{ prog.pct.toFixed(1) }}%)</span><div class="pb"><i :style="{ width: prog.pct + '%' }" /></div><span class="mut">{{ money(committedTotal) }} committed</span></div>
-        <div class="row"><input v-model="q" placeholder="Search investors" aria-label="Search"><button class="btn" @click="openDeal()">New investor</button></div></div>
+        <div class="row"><input v-model="q" placeholder="Search investors" aria-label="Search"><button class="btn secondary" @click="calOpen = true">Calendar</button><button class="btn" @click="openDeal()">New investor</button></div></div>
       <p v-if="msg" class="error">{{ msg }}</p>
       <div v-if="sel.length" class="bulk"><b>{{ sel.length }} selected</b><select v-model="bulkTo"><option value="">Move to stage…</option><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></div>
-      <div class="box"><table v-if="list.length"><thead><tr><th class="ck" /><th>Investor</th><th>Stage</th><th class="n">Amount</th><th>Primary contact</th></tr></thead>
+      <div class="box"><table v-if="list.length"><thead><tr><th class="ck" /><th>Investor</th><th>Stage</th><th class="n">Amount</th><th>Primary contact</th><th>Next meeting</th></tr></thead>
         <tbody><tr v-for="d in list" :key="d.id" @click="openDeal(d)"><td class="ck" @click.stop><input v-model="sel" type="checkbox" :value="d.id" aria-label="Select"></td><td><b>{{ d.investor }}</b></td>
           <td @click.stop><select class="stsel" :class="st(d.stage_id)?.color" :value="d.stage_id" @change="move(($event.target as HTMLSelectElement).value, [d.id])"><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></td>
           <td class="n">{{ d.amount != null ? money(d.amount) : '—' }}</td>
-          <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">—</span></td></tr></tbody></table>
+          <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">—</span></td><td><span v-if="d.next_meeting" class="nm">{{ new Date(d.next_meeting).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span><span v-else class="mut">—</span></td></tr></tbody></table>
         <EmptyState v-else icon="pipeline" :title="data.deals.length ? 'No investors in this stage' : 'No investors yet'" :text="data.deals.length ? 'Pick another stage on the left.' : 'Add the funds and angels you are talking to, with their primary contact.'"><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></EmptyState></div>
     </div>
     <AppModal :open="dl.open" :title="dl.id ? dl.investor : 'New investor'" @close="dl.open = false">
@@ -56,9 +57,11 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
         <label class="label">Stage<select v-model="dl.stage_id" required><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></label><label class="label">Amount ({{ data.pipeline.currency }})<input v-model="dl.amount" inputmode="decimal"></label>
         <label class="label w">Primary contact<select v-model="dl.contact_id"><option value="">None</option><option value="__new">+ New contact</option><option v-for="c in data.contacts" :key="c.id" :value="c.id">{{ contactLabel(c) }}</option></select></label>
         <template v-if="dl.contact_id === '__new'"><label class="label">Contact name<input v-model="dl.contact_name" maxlength="200"></label><label class="label">Contact email<input v-model="dl.contact_email" type="email" maxlength="254"></label></template>
-        <label class="label w">Notes<textarea v-model="dl.notes" rows="3" maxlength="3000" /></label><p v-if="msg" class="error w">{{ msg }}</p></form>
+        <label class="label w">Notes<textarea v-model="dl.notes" rows="3" maxlength="3000" /></label>
+        <div v-if="dl.id" class="w"><MeetingPanel :key="dl.id" :deal-id="dl.id" :investor="dl.investor" @changed="refresh()" /></div><p v-if="msg" class="error w">{{ msg }}</p></form>
       <template #foot><DeleteButton v-if="dl.id" type="crm_deal" :id="dl.id" :name="dl.investor" link @deleted="dl.open = false; refresh()" /><span class="sp" /><button class="btn secondary" @click="dl.open = false">Cancel</button><button class="btn" type="submit" form="dlf" :disabled="busy">Save</button></template>
     </AppModal>
+    <AppModal :open="calOpen" title="Calendar" wide @close="calOpen = false"><CalendarSync :pipeline-id="id" @changed="refresh()" /></AppModal>
     <AppModal :open="pe.open" title="Edit pipeline" @close="pe.open = false">
       <form id="pef" class="frm g2" @submit.prevent="savePipeline"><label class="label w">Name<input v-model="pe.name" required maxlength="120"></label><label class="label">Target<input v-model="pe.target" inputmode="decimal"></label><label class="label">Currency<select v-model="pe.currency"><option value="USD">US dollar</option><option value="NGN">Naira</option></select></label>
         <label class="label">Instrument<select v-model="pe.instrument"><option value="safe">SAFE</option><option value="priced">Priced round</option><option value="convertible_note">Convertible note</option></select></label><label v-if="pe.instrument !== 'priced'" class="label">Post-money cap<input v-model="pe.valuation_cap" inputmode="decimal"></label><label v-else class="label">Pre-money valuation<input v-model="pe.pre_money" inputmode="decimal"></label>
@@ -88,4 +91,5 @@ th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted
 input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .stg { display: flex; gap: 6px; } .stg input { flex: 1; } .mv, .x { background: none; border: 1px solid var(--c-rule); width: 30px; cursor: pointer; } .x { border: 0; font-size: 20px; color: var(--c-muted); }
 .sp { flex: 1; } .btn.sm { padding: 5px 10px; font-size: 12.5px; align-self: flex-start; } .mut { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1000px) { .pl { grid-template-columns: 1fr; } .side { position: static; } }
+.nm { font-size: 12.5px; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 2px 8px; white-space: nowrap; }
 </style>
