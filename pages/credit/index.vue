@@ -4,7 +4,11 @@ interface Loan { id: string; reference: string | null; borrower: string; sector:
 interface Tot { outstanding: number; arrears: number; par30: number; interest12m: number; loans: number }
 interface Exp { name: string; totals: Record<string, number> }
 const { data, error, refresh } = await useFetch<{ loans: Loan[]; totals: Record<string, Tot>; interestSeries: Record<string, { period: string; value: number }[]>; byBorrower: Exp[]; bySector: Exp[]; byCountry: Exp[] }>('/api/credit')
-const { data: borrowers, refresh: refreshB } = await useFetch<{ id: string; name: string }[]>('/api/credit/borrowers')
+const { data: borrowers, refresh: refreshB } = await useFetch<{ id: string; name: string; country: string | null; kind: string; monitor: boolean; last_check: { score: number | null; band: string | null; status: string; at: string } | null }[]>('/api/credit/borrowers')
+const report = ref('')
+const bookMix = computed(() => { const c = currencies.value[0]; if (!c) return []; const m: Record<string, number> = { current: 0, '1-30': 0, '31-90': 0, '90+': 0 }; for (const l of data.value?.loans ?? []) if (l.status === 'active' && l.currency === c) m[l.bucket] = (m[l.bucket] ?? 0) + l.outstanding; return Object.entries(m).map(([k, v]) => ({ label: BUCKET[k] ?? k, value: v })) })
+const sectorMix = computed(() => { const c = currencies.value[0]; return c ? (data.value?.bySector ?? []).map((e) => ({ label: e.name, value: e.totals[c] ?? 0 })).filter((x) => x.value > 0) : [] })
+const BAND: Record<string, string> = { Excellent: 'g', Good: 'b', Fair: 'a', Poor: 'r' }
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
 const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv', 'holding'].includes(e.kind)))
 const money = (v: number | string, c: string) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: c, notation: Math.abs(Number(v)) >= 1e6 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(Number(v)) >= 1e6 ? 1 : 0 }).format(Number(v))
@@ -31,20 +35,20 @@ void refresh
     <p class="label">Venture Capital</p>
     <div class="head">
       <h1>Credit</h1>
-      <div class="tools"><button class="btn secondary" type="button" @click="adding = adding === 'borrower' ? '' : 'borrower'">New borrower</button><button class="btn" type="button" @click="adding = adding === 'loan' ? '' : 'loan'">Book a loan</button></div>
+      <div class="tools"><button class="btn secondary" type="button" @click="adding = 'borrower'">New borrower</button><button class="btn" type="button" @click="adding = 'loan'">Book a loan</button></div>
     </div>
     <p v-if="msg" class="error" role="alert">{{ msg }}</p>
 
-    <form v-if="adding === 'borrower'" class="card frm" @submit.prevent="addBorrower">
+    <AppModal :open="adding === 'borrower'" title="New borrower" @close="adding = ''"><form class="frm" @submit.prevent="addBorrower">
       <label class="label">Borrower<input v-model="bf.name" required maxlength="200"></label>
       <label class="label">Country<CountrySelect v-model="bf.country" /></label>
       <label class="label">Sector<input v-model="bf.sector" maxlength="100" placeholder="e.g. Logistics, Fintech"></label>
       <label class="label">Contact<input v-model="bf.contact_name" maxlength="200"></label>
       <label class="label">Contact email<input v-model="bf.contact_email" type="email" maxlength="254"></label>
       <div class="actions"><button class="btn" type="submit">Save borrower</button></div>
-    </form>
+    </form></AppModal>
 
-    <form v-if="adding === 'loan'" class="card frm" @submit.prevent="addLoan">
+    <AppModal :open="adding === 'loan'" title="Book a loan" wide @close="adding = ''"><form class="frm" @submit.prevent="addLoan">
       <label class="label">Borrower<select v-model="lf.borrower_id" required><option value="" disabled>Choose</option><option v-for="b in borrowers ?? []" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
       <label class="label">Lender<select v-model="lf.lender_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles.filter((x) => x.name !== 'Aidi Ventures Fund I')" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
       <label class="label">Reference<input v-model="lf.reference" maxlength="60" placeholder="optional"></label>
@@ -59,7 +63,7 @@ void refresh
       <label class="label">Security<input v-model="lf.security" maxlength="1000" placeholder="e.g. receivables, guarantee"></label>
       <p class="hint">The schedule is generated from these terms: amortising loans repay in equal instalments; interest-only loans repay principal at the end; bullet loans repay everything on the final date.</p>
       <div class="actions"><button class="btn" type="submit">Book loan</button></div>
-    </form>
+    </form></AppModal>
 
     <p v-if="error" class="error" role="alert">Could not load the credit book.</p>
     <template v-else-if="data">
@@ -71,10 +75,16 @@ void refresh
       </div>
       <div v-if="currencies.length" class="charts">
         <TrendChart v-for="c in currencies.slice(0, 2)" :key="c" :title="'Interest received · ' + c" sub="Per month" :points="pts(data.interestSeries[c])" foot="Applied interest-first to instalments" />
+        <div v-if="bookMix.some((x) => x.value > 0)" class="card"><DonutChart :title="'Book health · ' + currencies[0]" total-label="Outstanding" :currency="currencies[0]" :segments="bookMix" /></div>
+        <div v-if="sectorMix.length" class="card"><DonutChart :title="'Exposure by sector · ' + currencies[0]" total-label="Outstanding" :currency="currencies[0]" :segments="sectorMix" /></div>
         <div class="card"><h3>Exposure by sector</h3><div v-for="e in data.bySector" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div><p v-if="!data.bySector.length" class="muted">No exposure.</p>
           <h3 class="mt">By country</h3><div v-for="e in data.byCountry" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div></div>
       </div>
-      <EmptyState v-if="!data.loans.length" compact icon="credit" title="No loans yet. Add a borrower, then book the loan" />
+      <div class="card bw"><div class="bwh"><h3>Borrowers</h3><span class="mut">Credit checks: Nigeria through CreditChek (all three bureaus); other countries by manual review.</span></div>
+        <div v-if="borrowers?.length" class="bgrid"><button v-for="b in borrowers" :key="b.id" type="button" class="bc" @click="report = b.id"><span class="bn"><b>{{ b.name }}</b><em>{{ b.country ?? 'Country not set' }} · {{ b.kind === 'individual' ? 'Individual' : 'Business' }}{{ b.monitor ? ' · monitored' : '' }}</em></span>
+          <span v-if="b.last_check?.score" class="sc" :class="BAND[b.last_check.band ?? '']"><b>{{ b.last_check.score }}</b><em>{{ b.last_check.band }}</em></span><span v-else-if="b.last_check?.status === 'manual'" class="sc m"><em>Manual review</em></span><span v-else class="sc n"><em>Not checked</em></span></button></div>
+        <EmptyState v-else compact icon="credit" title="No borrowers yet"><button class="btn" @click="adding = 'borrower'">Add a borrower</button></EmptyState></div>
+      <EmptyState v-if="!data.loans.length" card icon="credit" title="No loans yet" text="Add a borrower, run a credit check, then book the loan. Schedules, repayments, arrears and covenants are tracked for you."><button class="btn" @click="adding = 'loan'">Book a loan</button></EmptyState>
       <table v-else class="table">
         <thead><tr><th>Borrower</th><th>Terms</th><th class="num">Outstanding</th><th>Next payment</th><th>Status</th></tr></thead>
         <tbody><tr v-for="l in rows" :key="l.id" :data-b="l.status === 'active' ? l.bucket : 'closed'">
@@ -87,6 +97,7 @@ void refresh
       </table>
       <label v-if="data.loans.some((l) => l.status !== 'active')" class="chk"><input v-model="showClosed" type="checkbox"> Show repaid, written-off and restructured loans</label>
     </template>
+    <AppModal :open="!!report" title="Credit report" wide @close="report = ''"><CreditReport v-if="report" :key="report" :borrower-id="report" @changed="refreshB()" /></AppModal>
   </section>
 </template>
 
@@ -111,4 +122,8 @@ tr[data-b="1-30"] .st { color: var(--c-warn); } tr[data-b="31-90"] .st, tr[data-
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--c-muted); margin-top: 10px; }
 .red { color: var(--c-danger) !important; } .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts, .frm { grid-template-columns: 1fr; } }
+.bw { margin: 14px 0; } .bwh { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; } .bwh h3 { margin: 0; } .mut { color: var(--c-muted); font-size: 12.5px; }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; } .bc { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; font: inherit; text-align: left; cursor: pointer; } .bc:hover { border-color: var(--c-navy); }
+.bn { display: flex; flex-direction: column; min-width: 0; } .bn em, .sc em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sc { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 4px 8px; } .sc b { font-size: 20px; font-weight: 700; }
+.sc.g b { color: var(--c-ok); } .sc.b b { color: var(--c-blue-deep); } .sc.a b { color: var(--c-warn); } .sc.r b { color: var(--c-danger); }
 </style>

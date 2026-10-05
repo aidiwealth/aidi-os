@@ -42,6 +42,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
     </template>
     <EmptyState v-else card icon="financials" title="Your numbers will show here" text="Upload your monthly P&amp;L or management accounts in Financials (we read the spreadsheet for you), and this dashboard fills with revenue, growth, burn, runway and charts."><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink></EmptyState>
 
+    <ClientOnly><BankFeeds compact class="feeds" /></ClientOnly>
     <div class="three">
       <div class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Where the money goes" total-label="Costs this month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>
       <div class="card"><h3>Investors</h3>
@@ -72,4 +73,5 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 .three { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; margin-top: 16px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
 .more { display: inline-block; margin-top: 10px; font-size: 13.5px; } .muted { color: var(--c-muted); font-size: 13.5px; }
 @media (max-width: 1000px) { .kpis { grid-template-columns: 1fr 1fr; } .charts, .three { grid-template-columns: 1fr; } }
+.feeds { margin-top: 16px; }
 </style>

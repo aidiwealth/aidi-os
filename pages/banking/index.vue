@@ -52,6 +52,7 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
     </form></AppModal>
 
+    <ClientOnly><BankFeeds class="feeds" /></ClientOnly>
     <div v-if="totals.length" class="kpis">
       <WalletCard v-for="[c, v] in totals" :key="c" title="Group cash" :label="'Total ' + c" :value="v" :currency="c" sub="latest tied-out statement per account" foot-label="Accounts" :foot-value="String(rows.filter((a) => a.currency === c).length)" />
     </div>
@@ -88,4 +89,5 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .amber { color: var(--c-warn) !important; } .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr; } }
 .mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
+.feeds { margin: 0 0 16px; }
 </style>
