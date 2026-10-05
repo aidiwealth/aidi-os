@@ -1,22 +1,25 @@
 <script setup lang="ts">
 // The update editor: 1. content (cover + blocks), 2. recipients, 3. preview & send.
+definePageMeta({ fullBleed: true })
 const id = useRoute().params.id as string
 interface Bl { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
 interface R { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
-interface D { update: { title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
+interface D { kind?: string; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
   label: string; metrics: { key: string; label: string }[]; lists: { id: string; name: string; n: number }[]; stages: { id: string; name: string; n: number }[]; contacts: { id: string; name: string; email: string }[]
   sends: { investor_id: string; name: string; email: string; sent_at: string; opened_at: string | null; opens: number }[]; page: { slug: string; published: boolean } | null; from: string[]; me: string; company: string }
 const { data, refresh } = await useFetch<D>('/api/updates/' + id)
 useHead({ title: () => data.value?.update.title ?? 'Update' })
 const step = ref(1)
-const f = reactive({ title: '', blocks: [] as Bl[], cover_id: null as string | null, from_name: '', recipients: { lists: [], stages: [], contacts: [], emails: [] } as R, highlights: '', challenges: '', asks: '' })
+const isVc = computed(() => !!data.value && data.value.kind !== 'company')
+const { data: subs } = await useFetch<{ entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string }[] }>('/api/financials/subjects', { key: 'fin-subjects', immediate: true })
+const f = reactive({ subject: null as string | null, title: '', blocks: [] as Bl[], cover_id: null as string | null, from_name: '', recipients: { lists: [], stages: [], contacts: [], emails: [] } as R, highlights: '', challenges: '', asks: '' })
 const loaded = ref(false)
-watch(data, (d) => { if (d && !loaded.value) { const u = d.update; Object.assign(f, { title: u.title, blocks: JSON.parse(JSON.stringify(u.blocks ?? [])), cover_id: u.cover_id, from_name: u.from_name || d.from[0] || '', recipients: Object.assign({ lists: [], stages: [], contacts: [], emails: [] }, u.recipients ?? {}) as R, highlights: u.highlights ?? '', challenges: u.challenges ?? '', asks: u.asks ?? '' }); loaded.value = true } }, { immediate: true })
+watch(data, (d) => { if (d && !loaded.value) { const u = d.update; Object.assign(f, { subject: u.subject ?? null, title: u.title, blocks: JSON.parse(JSON.stringify(u.blocks ?? [])), cover_id: u.cover_id, from_name: u.from_name || d.from[0] || '', recipients: Object.assign({ lists: [], stages: [], contacts: [], emails: [] }, u.recipients ?? {}) as R, highlights: u.highlights ?? '', challenges: u.challenges ?? '', asks: u.asks ?? '' }); loaded.value = true } }, { immediate: true })
 const saveState = ref<'saved' | 'saving' | 'dirty'>('saved'); let timer: ReturnType<typeof setTimeout> | undefined
 watch(() => JSON.stringify(f), () => { if (!loaded.value) return; saveState.value = 'dirty'; clearTimeout(timer); timer = setTimeout(save, 1200) })
 const msg = ref(''); const ok = ref('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
-async function save() { saveState.value = 'saving'; try { await $fetch('/api/updates/' + id, { method: 'POST', body: f }); saveState.value = 'saved' } catch (e) { saveState.value = 'dirty'; msg.value = err(e) } }
+async function save() { saveState.value = 'saving'; try { await $fetch('/api/updates/' + id, { method: 'POST', body: f }); if (isVc.value) await renderCharts(); saveState.value = 'saved' } catch (e) { saveState.value = 'dirty'; msg.value = err(e) } }
 // blocks
 const adding = ref<number | null>(null)
 const ADD = [['text', 'Text', 'Paragraphs, headings and bullets'], ['chart', 'Chart', 'A metric from your Financials'], ['two_charts', 'Two charts', 'Side by side'], ['metrics_table', 'Metrics table', 'Several metrics over time'], ['image', 'Image', 'Photo or graphic'], ['video', 'Video', 'Link to Loom, YouTube…'], ['file', 'File', 'Attach a PDF or document'], ['deck', 'Deck', 'Link to your deck']] as const
@@ -58,7 +61,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
 </script>
 <template>
   <section v-if="data" class="ed">
-    <aside class="steps"><NuxtLink to="/updates" class="back">← Updates</NuxtLink><b class="h">Investor update</b>
+    <aside class="steps"><NuxtLink to="/updates" class="back">← {{ isVc ? 'LP reports' : 'Updates' }}</NuxtLink><b class="h">{{ isVc ? 'LP report' : 'Investor update' }}</b>
       <button v-for="(s, i) in ['Update content', 'Recipients', 'Preview & send']" :key="s" :class="{ on: step === i + 1 }" @click="step = i + 1"><span>{{ i + 1 }}</span>{{ s }}</button>
       <div v-if="data.update.sent_at" class="sent"><b>Sent to {{ data.update.sent_count }}</b><span>{{ data.sends.filter((s) => s.opened_at).length }} opened</span></div></aside>
     <div class="main">
@@ -70,6 +73,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       <div v-if="step === 1" class="doc">
         <div class="from"><span class="lg">{{ data.company.slice(0, 2).toUpperCase() }}</span><span>{{ f.from_name }}</span></div>
         <input v-model="f.title" class="title" maxlength="200" aria-label="Title">
+        <label v-if="isVc" class="srcsel">Figures and charts from<select v-model="f.subject" @change="renderCharts"><option :value="null">Group (consolidated)</option><optgroup label="Funds and entities"><option v-for="e in subs?.entities ?? []" :key="e.id" :value="'entity:' + e.id">{{ e.name }}</option></optgroup><optgroup v-if="subs?.companies.length" label="Portfolio companies"><option v-for="c in subs.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}</option></optgroup></select></label>
         <div class="cover"><img v-if="coverUrl" :src="coverUrl" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.gif,.webp" :label="uploading ? 'Uploading…' : coverUrl ? 'Drop a new cover image' : 'Add a cover image: drop it here'" hint="or click to choose" @change="upload($event, (r) => (f.cover_id = r.id))" /><button v-if="coverUrl" class="lk" @click="f.cover_id = null">Remove</button></div>
         <div class="aibar"><button class="lk" @click="ai = !ai">✨ Write with AI from your numbers</button></div>
         <div v-if="ai" class="card aib"><label class="label">Highlights<textarea v-model="f.highlights" rows="2" /></label><label class="label">Challenges<textarea v-model="f.challenges" rows="2" /></label><label class="label">How investors can help<textarea v-model="f.asks" rows="2" /></label><button class="btn" :disabled="aiBusy" @click="writeAi">{{ aiBusy ? 'Writing…' : 'Write it' }}</button></div>
@@ -113,7 +117,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
   </section>
 </template>
 <style scoped>
-.ed { display: grid; grid-template-columns: 230px 1fr; gap: 0; min-height: calc(var(--vh100) - var(--topbar-h, 60px) - 60px); margin: -28px -36px -72px; align-items: start; background: linear-gradient(90deg, var(--c-paper-2) 0 229px, var(--c-rule) 229px 230px, transparent 230px); } .steps { position: sticky; top: var(--topbar-h, 60px); padding-top: 28px !important; } .steps { padding: 16px 10px; display: flex; flex-direction: column; gap: 4px; } .main { padding-top: 12px !important; padding-bottom: 72px !important; }
+.ed { display: grid; grid-template-columns: 240px 1fr; gap: 0; min-height: calc(var(--vh100) - var(--topbar-h, 60px)); align-items: stretch; } .steps { position: sticky; top: var(--topbar-h, 60px); height: calc(var(--vh100) - var(--topbar-h, 60px)); overflow-y: auto; padding-top: 22px !important; align-self: start; } .steps { padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--c-paper-2); border-right: 1px solid var(--c-rule); box-sizing: border-box; } .main { padding: 8px 32px 72px !important; max-width: 1180px; }
 .back { font-size: 13px; color: var(--c-muted); padding: 0 8px 8px; } .h { font-size: 17px; padding: 0 8px 10px; } .steps button { display: flex; gap: 10px; align-items: center; background: none; border: 0; padding: 10px 8px; font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; color: var(--c-ink-soft); }
 .steps button span { width: 22px; height: 22px; border: 1px solid var(--c-rule-strong); display: grid; place-items: center; font-size: 12px; } .steps button.on { background: #e6e4dd; color: var(--c-ink); font-weight: 500; } .steps button.on span { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }
 .sent { margin-top: 16px; padding: 10px 8px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; font-size: 13px; } .sent span { color: var(--c-muted); }
@@ -140,4 +144,5 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
 label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); } .cb { display: flex; gap: 6px; align-items: center; font-size: 13.5px; } .cb input { width: auto; }
 .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .ed { grid-template-columns: 1fr; } .steps { flex-direction: row; overflow-x: auto; } .drawer { width: 100%; } }
+.srcsel { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--c-muted); margin: 0 0 12px; } .srcsel select { font: inherit; font-size: 13.5px; padding: 6px 9px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 </style>

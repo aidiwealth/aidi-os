@@ -9,7 +9,9 @@ export default defineEventHandler(async (event) => {
     const email = raw.match(/[^\s<>,;"]+@[^\s<>,;"]+\.[^\s<>,;"]+/)?.[0]?.toLowerCase()
     if (!email) continue
     seen++
-    const rest = raw.replace(email, '').replace(/[<>"]/g, '').split(/[,;\t]/).map((s) => s.trim()).filter(Boolean)
+    const parts = raw.replace(/[<>"]/g, ' ').split(/[,;\t]/).map((s) => s.trim()), at = parts.findIndex((s) => s.toLowerCase().includes(email))
+    const cut = (x: string) => { const i = x.toLowerCase().indexOf(email); return (i < 0 ? x : x.slice(0, i) + x.slice(i + email.length)).replace(/\s+/g, ' ').trim() }
+    const rest = at >= 0 ? [cut(parts.slice(0, at + 1).join(' ')), parts[at + 1] ?? '', parts[at + 2] ?? ''] : ['', '', '']
     const r = await db().query<{ id: string; added: boolean }>('INSERT INTO crm.contacts (name, email, firm, title) VALUES ($1,$2,$3,$4) ON CONFLICT (organization_id, email) DO UPDATE SET firm = coalesce(crm.contacts.firm, EXCLUDED.firm) RETURNING id, (xmax = 0) AS added',
       [(rest[0] || email.split('@')[0]!).slice(0, 200), email, (rest[1] ?? '').slice(0, 200) || null, (rest[2] ?? '').slice(0, 120) || null])
     if (r.rows[0]?.added) added++

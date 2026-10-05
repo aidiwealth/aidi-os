@@ -3,7 +3,7 @@ import { z } from 'zod'
 const Block: z.ZodType<unknown> = z.lazy(() => z.object({ type: z.enum(['text', 'chart', 'two_charts', 'metrics_table', 'image', 'video', 'file', 'deck']), md: z.string().max(20000).optional(), title: z.string().max(200).optional(),
   metrics: z.array(z.string().max(40)).max(6).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(1).max(36).optional(), left: Block.optional(), right: Block.optional(),
   media_id: z.string().uuid().optional(), caption: z.string().max(300).optional(), url: z.string().max(500).optional(), name: z.string().max(200).optional() }))
-const Body = z.object({ title: z.string().trim().min(1).max(200), blocks: z.array(Block).max(80).optional(), cover_id: z.string().uuid().nullable().optional(), from_name: z.string().trim().max(120).optional(),
+const Body = z.object({ subject: z.string().regex(/^(group|entity:[0-9a-f-]{36}|company:[0-9a-f-]{36})$/).nullable().optional(), title: z.string().trim().min(1).max(200), blocks: z.array(Block).max(80).optional(), cover_id: z.string().uuid().nullable().optional(), from_name: z.string().trim().max(120).optional(),
   recipients: z.object({ lists: z.array(z.string().uuid()).max(50), stages: z.array(z.string().uuid()).max(100), contacts: z.array(z.string().uuid()).max(2000), emails: z.array(z.string().max(254)).max(500) }).optional(),
   highlights: z.string().max(4000).optional(), challenges: z.string().max(4000).optional(), asks: z.string().max(2000).optional(), status: z.enum(['draft', 'published']).optional() })
 export default defineEventHandler(async (event) => {
@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
       published_at = CASE WHEN $11 = 'published' THEN coalesce(published_at, now()) WHEN $11 = 'draft' THEN NULL ELSE published_at END, updated_at = now() WHERE id = $1`,
     [id.data, d.title, d.blocks ? JSON.stringify(d.blocks) : null, d.cover_id !== undefined, d.cover_id ?? null, d.from_name ?? null, d.recipients ? JSON.stringify(d.recipients) : null, d.highlights ?? null, d.challenges ?? null, d.asks ?? null, d.status ?? null])
   if (!r.rowCount) throw apiError('not_found', 'Not found', 404)
+  if (d.subject !== undefined && (await currentOrg())!.kind !== 'company') await db().query('UPDATE financials.updates SET subject = $2 WHERE id = $1', [id.data, d.subject])
   if (d.status) await audit({ event, actorUserId: user.userId, action: 'updates.' + d.status, objectType: 'update', objectId: id.data })
   return { ok: true }
 })

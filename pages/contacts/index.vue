@@ -7,6 +7,9 @@ const q = ref(''); const list = ref('')
 const qq = ref(''); let qt: ReturnType<typeof setTimeout> | undefined
 watch(q, (v) => { clearTimeout(qt); qt = setTimeout(() => (qq.value = v), 300) })
 const { data, refresh } = await useFetch<{ contacts: C[]; lists: { id: string; name: string; n: number }[]; fields: Fd[] }>('/api/crm/contacts', { query: { q: qq, list } })
+const { data: meK } = await useFetch<{ org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
+const isVc = computed(() => !!meK.value?.org && meK.value.org.kind !== 'company')
+async function importLps() { msg.value = ''; try { const r = await $fetch<{ total: number; added: number }>('/api/crm/contacts/import-lps', { method: 'POST' }); ok.value = r.total + ' LPs in the "LPs" list (' + r.added + ' new).'; await refresh() } catch (e) { msg.value = err(e) } }
 const sel = ref<string[]>([]); const all = computed({ get: () => !!data.value?.contacts.length && sel.value.length === data.value.contacts.length, set: (v: boolean) => { sel.value = v ? (data.value?.contacts ?? []).map((c) => c.id) : [] } })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
@@ -15,6 +18,11 @@ const day = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numer
 const nc = reactive({ open: false, name: '', email: '', firm: '', title: '', list_ids: [] as string[] })
 async function addContact() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/crm/contacts', { method: 'POST', body: nc }); nc.open = false; await navigateTo('/contacts/' + r.id) } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 const im = reactive({ open: false, lines: '', list_id: '' })
+const pz = reactive({ url: '', busy: false, note: '' })
+async function parseFile(ev: Event) { const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return; pz.busy = true; pz.note = ''; msg.value = ''; const fd = new FormData(); fd.append('file', f)
+  try { const r = await $fetch<{ lines: string; count: number }>('/api/crm/contacts/parse', { method: 'POST', body: fd }); im.lines = r.lines; pz.note = r.count ? r.count + ' contacts found. Check them, then Import.' : 'No email addresses found in that file.' } catch (e) { msg.value = err(e) } finally { pz.busy = false } }
+async function parseSheet() { pz.busy = true; pz.note = ''; msg.value = ''
+  try { const r = await $fetch<{ lines: string; count: number }>('/api/crm/contacts/parse', { method: 'POST', body: { url: pz.url } }); im.lines = r.lines; pz.note = r.count ? r.count + ' contacts found in the sheet. Check them, then Import.' : 'No email addresses found in that sheet.' } catch (e) { msg.value = err(e) } finally { pz.busy = false } }
 async function doImport() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ added: number; updated: number }>('/api/crm/contacts/import', { method: 'POST', body: { lines: im.lines, list_id: im.list_id || undefined } }); im.open = false; im.lines = ''; ok.value = r.added + ' added' + (r.updated ? ', ' + r.updated + ' already there' : '') + '.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 const nl = reactive({ open: false, name: '' })
 async function addList() { try { const r = await $fetch<{ id: string }>('/api/crm/lists', { method: 'POST', body: { name: nl.name } }); nl.open = false; nl.name = ''; await refresh(); if (sel.value.length) await bulk('add_list', r.id) } catch (e) { msg.value = err(e) } }
@@ -28,7 +36,7 @@ async function saveFields() { try { await $fetch('/api/crm/fields', { method: 'P
 <template>
   <section v-if="data">
     <p class="label">Investors</p>
-    <div class="hd"><h1>Contacts</h1><div class="row"><input v-model="q" class="search" placeholder="Search name, email or firm" aria-label="Search"><button class="btn secondary" @click="openFields">Custom properties</button><button class="btn secondary" @click="im.open = true">Import</button><button class="btn" @click="nc.open = true">New contact</button></div></div>
+    <div class="hd"><h1>Contacts</h1><div class="row"><input v-model="q" class="search" placeholder="Search name, email or firm" aria-label="Search"><button class="btn secondary" @click="openFields">Custom properties</button><button v-if="isVc" class="btn secondary" @click="importLps">Import LPs</button><button class="btn secondary" @click="im.open = true">Import</button><button class="btn" @click="nc.open = true">New contact</button></div></div>
     <div class="lists"><button :class="{ on: !list }" @click="list = ''">All contacts</button><button v-for="l in data.lists" :key="l.id" :class="{ on: list === l.id }" @click="list = l.id">{{ l.name }} <em>{{ l.n }}</em></button><button class="add" @click="nl.open = true">+ New list</button><DeleteButton v-if="list" type="crm_list" :id="list" :name="'the list ' + (data.lists.find((l) => l.id === list)?.name ?? '') + ' (contacts are kept)'" link @deleted="list = ''; refresh()" /></div>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <div v-if="sel.length" class="bulk"><b>{{ sel.length }} selected</b><select v-model="toList"><option value="">Add to list…</option><option v-for="l in data.lists" :key="l.id" :value="l.id">{{ l.name }}</option><option value="__new">+ New list</option></select>
@@ -47,7 +55,10 @@ async function saveFields() { try { await $fetch('/api/crm/fields', { method: 'P
       <template #foot><button class="btn secondary" @click="nc.open = false">Cancel</button><button class="btn" type="submit" form="ncf" :disabled="busy">Add contact</button></template>
     </AppModal>
     <AppModal :open="im.open" title="Import contacts" @close="im.open = false">
-      <div class="frm"><p class="mut">One per line: <code>Name &lt;email&gt;</code>, or <code>Name, email, firm, title</code>. You can paste straight from a spreadsheet. Existing contacts are kept.</p><textarea v-model="im.lines" rows="8" placeholder="Amara Obi, amara@vc.africa, Ventures Africa, Partner" />
+      <div class="frm"><DropZone accept=".csv,.tsv,.txt,.xlsx" :label="pz.busy ? 'Reading…' : 'Drop a CSV or Excel file'" hint="Columns like Name, Email, Company and Title are recognised · or click to choose" @change="parseFile" />
+        <div class="gs"><input v-model="pz.url" placeholder="Or paste a Google Sheets link" aria-label="Google Sheets link"><button type="button" class="btn secondary" :disabled="!pz.url.trim() || pz.busy" @click="parseSheet">Load sheet</button></div>
+        <p v-if="pz.note" class="ok">{{ pz.note }}</p>
+        <p class="mut">Review below, one per line: <code>Name &lt;email&gt;</code>, or <code>Name, email, firm, title</code>. You can also paste straight from a spreadsheet. Existing contacts are kept.</p><textarea v-model="im.lines" rows="8" placeholder="Amara Obi, amara@vc.africa, Ventures Africa, Partner" />
         <label class="label">Add them to a list<select v-model="im.list_id"><option value="">No list</option><option v-for="l in data.lists" :key="l.id" :value="l.id">{{ l.name }}</option></select></label></div>
       <template #foot><button class="btn secondary" @click="im.open = false">Cancel</button><button class="btn" :disabled="busy || !im.lines.trim()" @click="doImport">Import</button></template>
     </AppModal>
@@ -75,4 +86,5 @@ async function saveFields() { try { await $fetch('/api/crm/fields', { method: 'P
 .frm { display: flex; flex-direction: column; gap: 12px; } .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .w { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 6px; } .lb { font-size: 13px; color: var(--c-ink-soft); }
 input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; } .cb { display: flex; gap: 6px; align-items: center; font-size: 13.5px; } .cb input { width: auto; }
 .fr { display: flex; gap: 6px; } .fr input:first-child { flex: 1; } .x { background: none; border: 0; font-size: 20px; color: var(--c-muted); cursor: pointer; } code { font-size: 12px; background: var(--c-paper-2); padding: 1px 5px; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
+.gs { display: flex; gap: 8px; } .gs input { flex: 1; }
 </style>

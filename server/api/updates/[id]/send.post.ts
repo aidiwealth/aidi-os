@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ mode: z.enum(['test', 'email', 'email_publish', 'publish']) }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')
-  const u = (await db().query<{ title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; recipients: Recipients }>('SELECT title, blocks, cover_id, from_name, recipients FROM financials.updates WHERE id = $1', [id.data])).rows[0]
+  const u = (await db().query<{ title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; recipients: Recipients; subject: string | null }>('SELECT title, blocks, cover_id, from_name, recipients, subject FROM financials.updates WHERE id = $1', [id.data])).rows[0]
   if (!u) throw apiError('not_found', 'Not found', 404)
   if (!u.blocks?.length) throw apiError('invalid', 'Add some content before sending.')
   const org = (await currentOrg())!, base = brands().finvry.url, text = blocksText(u.blocks)

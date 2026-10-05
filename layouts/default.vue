@@ -115,7 +115,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           </ul>
         </div>
       </header>
-      <main id="main" class="content"><div class="inner"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
+      <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
     </div>
   </div>
 </template>
@@ -168,7 +168,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .ws-menu button span:last-child { display: flex; flex-direction: column; } .ws-menu em { font-style: normal; font-size: 11px; color: var(--c-muted); }
 .ws-menu button:hover { background: var(--c-paper-3); } .ws-menu button.cur { background: var(--c-signal-soft); }
 .content { flex: 1; min-width: 0; }
-.inner { max-width: 1200px; margin: 0 auto; padding: 28px 36px 72px; }
+.inner { max-width: 1200px; margin: 0 auto; padding: 28px 36px 72px; } .inner.bleed { max-width: none; padding: 0; }
 .overlay { display: none; }
 @media (max-width: 880px) {
   .sidebar { position: fixed; left: 0; top: 0; z-index: 60; background: var(--c-paper-2); width: var(--sidebar-w) !important; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-pop); }

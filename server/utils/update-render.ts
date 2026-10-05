@@ -11,11 +11,16 @@ type Series = { labels: string[]; series: { key: string; label: string; values: 
 const FLOWS = new Set(['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf', 'burn'])
 const COLORS = ['#1c3d63', '#5b8fd1', '#2f9a5f', '#d99a1e', '#7b5fd8', '#d04444']
 // Metric series from the company's statements: monthly, quarterly or yearly (flows summed, balances at period end).
-export async function metricSeries(metrics: string[], period: string, count: number): Promise<Series> {
+export async function updateSubject(subject?: string | null): Promise<string | null> {
   const org = (await currentOrg())!
-  const ent = await companyEntityId()
+  if (org.kind === 'company') { const ent = await companyEntityId(); return ent ? 'entity:' + ent : null }
+  return subject || 'group'
+}
+export async function metricSeries(metrics: string[], period: string, count: number, subject?: string | null): Promise<Series> {
+  const org = (await currentOrg())!
+  const subj = await updateSubject(subject)
   const cur = (org.settings.currency as string) || 'USD'
-  const rows = ent ? await loadStatements('entity:' + ent, 'month', cur) : []
+  const rows = subj ? await loadStatements(subj, 'month', cur) : []
   const groups = new Map<string, { label: string; rows: typeof rows }>()
   for (const r of rows) {
     const d = new Date(r.period_end + 'T00:00:00Z'); const y = d.getUTCFullYear(), m = d.getUTCMonth()
@@ -56,14 +61,14 @@ function tableHtml(b: Block, d: Series): string {
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>' + th('Metric', true) + d.labels.map((l) => th(l)).join('') + '</tr>' +
     d.series.map((s) => '<tr><td style="font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(s.label) + '</td>' + s.values.map((v) => '<td style="text-align:right;font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(fmt(s.key, v, d.currency, true)) + '</td>').join('') + '</tr>').join('') + '</table></div>'
 }
-export async function renderBlocks(blocks: Block[], base: string): Promise<string> {
+export async function renderBlocks(blocks: Block[], base: string, subject?: string | null): Promise<string> {
   const out: string[] = []
   for (const b of blocks.slice(0, 80)) {
     if (b.type === 'text') out.push(mdToHtml(b.md ?? ''))
-    else if (b.type === 'chart') out.push(chartHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 12)))
-    else if (b.type === 'metrics_table') out.push(tableHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 6)))
+    else if (b.type === 'chart') out.push(chartHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 12, subject)))
+    else if (b.type === 'metrics_table') out.push(tableHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 6, subject)))
     else if (b.type === 'two_charts') { const l = b.left ?? { type: 'chart' }, r = b.right ?? { type: 'chart' }
-      out.push('<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6)) + '</td></tr></table>') }
+      out.push('<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6, subject)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6, subject)) + '</td></tr></table>') }
     else if (b.type === 'image' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px"><img src="' + base + '/api/public/media/' + b.media_id + '" alt="' + esc(b.caption ?? '') + '" style="max-width:100%;display:block">' + (b.caption ? '<div style="font-size:12.5px;color:#6b6b6b;margin-top:6px">' + esc(b.caption) + '</div>' : '') + '</div>')
     else if (b.type === 'file' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:12px 14px"><a href="' + base + '/api/public/media/' + b.media_id + '" style="color:#1c4f9c;font-weight:600;text-decoration:none">📎 ' + esc(b.name || 'Attachment') + '</a></div>')
     else if ((b.type === 'video' || b.type === 'deck') && b.url && /^https?:\/\//i.test(b.url)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:14px 16px;background:#f7f9fc"><div style="font-size:12px;color:#6b6b6b;text-transform:uppercase;letter-spacing:.08em">' + (b.type === 'video' ? 'Video' : 'Deck') + '</div><a href="' + esc(b.url) + '" style="color:#1c4f9c;font-weight:600;text-decoration:none;font-size:15px">' + esc(b.title || (b.type === 'video' ? 'Watch the video' : 'View our deck')) + ' →</a></div>')
@@ -71,8 +76,8 @@ export async function renderBlocks(blocks: Block[], base: string): Promise<strin
   return out.join('')
 }
 // The full email (or web) document for one reader.
-export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
-  const body = await renderBlocks(u.blocks, o.base)
+export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; subject?: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
+  const body = await renderBlocks(u.blocks, o.base, u.subject)
   const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
   const cover = u.cover_id ? '<img src="' + o.base + '/api/public/media/' + u.cover_id + '" alt="" style="width:100%;display:block;margin:0 0 20px">' : ''
   const hi = o.greeting ? '<p style="margin:0 0 14px">Hi ' + esc(o.greeting) + ',</p>' : ''

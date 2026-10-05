@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Not found', 404)
-  const u = (await db().query<{ period_type: string; period_end: string }>("SELECT id, title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, highlights, challenges, asks, body, blocks, cover_id, from_name, recipients, status, published_at, sent_at, sent_count, sent_to, is_template, pinned FROM financials.updates WHERE id = $1", [id.data])).rows[0]
+  const u = (await db().query<{ period_type: string; period_end: string }>("SELECT id, title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, highlights, challenges, asks, body, blocks, cover_id, from_name, recipients, subject, status, published_at, sent_at, sent_count, sent_to, is_template, pinned FROM financials.updates WHERE id = $1", [id.data])).rows[0]
   if (!u) throw apiError('not_found', 'Not found', 404)
   const org = (await currentOrg())!
   const me = (await asPlatform(() => db().query<{ n: string | null }>('SELECT p.full_name AS n FROM core.users x LEFT JOIN core.people p ON p.id = x.person_id WHERE x.id = $1', [user.userId]))).rows[0]?.n
@@ -15,5 +15,5 @@ export default defineEventHandler(async (event) => {
   const sends = await db().query('SELECT i.id AS investor_id, i.name, i.email, s.sent_at, s.opened_at, s.opens FROM financials.update_sends s JOIN financials.investors i ON i.id = s.investor_id WHERE s.update_id = $1 ORDER BY s.opened_at DESC NULLS LAST, i.name', [id.data])
   const page = (await db().query<{ slug: string; published: boolean }>('SELECT slug, published FROM financials.public_pages LIMIT 1')).rows[0] ?? null
   return { update: u, label: updateLabel(u.period_type, u.period_end), metrics: Object.entries(METRIC_LABEL).map(([key, label]) => ({ key, label })), lists: lists.rows, stages: stages.rows, contacts: contacts.rows, sends: sends.rows, page,
-    from: [first + ' from ' + org.name, org.name, (me ?? first) + ', ' + org.name], me: user.email, company: org.name }
+    from: [first + ' from ' + org.name, org.name, (me ?? first) + ', ' + org.name], me: user.email, company: org.name, kind: org.kind }
 })
