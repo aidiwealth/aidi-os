@@ -37,6 +37,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
     <NuxtLink v-if="data.dealId" :to="'/pipeline/' + data.dealId" class="inpipe">In the pipeline →</NuxtLink>
     <p class="label">{{ STAGE[data.pitch.stage] }} · {{ data.pitch.sector ?? 'Sector not given' }} · {{ data.pitch.country ?? 'Country not given' }}</p>
     <div class="dh"><h1>{{ data.pitch.company }}</h1><DeleteButton type="pitch" :id="id" :name="data.pitch.company" to="/deals" /></div>
+    <DealLpPanel :pitch-id="id" />
     <p class="lead">{{ data.pitch.one_liner }}</p>
 
     <div class="grid">

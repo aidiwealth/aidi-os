@@ -17,12 +17,13 @@ async function run(fn: () => Promise<unknown>, done: string) { busy.value = true
 const save = () => run(() => $fetch('/api/funds/lps', { method: 'POST', body: { id, ...f } }), 'Saved.')
 const portal = () => run(() => $fetch('/api/funds/lps/' + id + '/portal', { method: 'POST' }), 'Portal link emailed to ' + f.email + '.')
 const KIND: Record<string, string> = { individual: 'Individual', entity: 'Company or trust', institution: 'Institution', gp: 'GP commitment' }
+async function viewPortal() { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/funds/lps/' + id + '/preview', { method: 'POST' }); if (w) w.location.href = r.url; else window.location.href = r.url } catch { w?.close(); alert('Could not open the portal preview.') } }
 </script>
 
 <template>
   <section v-if="data">
     <NuxtLink to="/funds/lps" class="back">← LP register</NuxtLink>
-    <div class="dh"><h1>{{ data.lp.name }}</h1><div class="acts"><button v-if="isGp" class="btn secondary" :disabled="busy || !data.lp.email" @click="portal">Email portal link</button><DeleteButton v-if="isGp" type="lp" :id="id" :name="data.lp.name" to="/funds/lps" /></div></div>
+    <div class="dh"><h1>{{ data.lp.name }}</h1><div class="acts"><button class="btn secondary" type="button" @click="viewPortal">View their portal</button><button v-if="isGp" class="btn secondary" :disabled="busy || !data.lp.email" @click="portal">Email portal link</button><DeleteButton v-if="isGp" type="lp" :id="id" :name="data.lp.name" to="/funds/lps" /></div></div>
     <p class="meta">{{ KIND[data.lp.kind] }} · KYC {{ data.lp.kyc_status }}<template v-if="data.lp.portal"> · portal link active until {{ day(data.lp.portal_expires) }}</template></p>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div v-for="p in data.positions" :key="p.fund_id" class="card pos">

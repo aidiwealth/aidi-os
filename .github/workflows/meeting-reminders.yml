@@ -12,3 +12,7 @@ jobs:
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/meetings \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+      - name: Record status checks
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/status \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

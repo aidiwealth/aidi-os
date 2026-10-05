@@ -31,7 +31,7 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleString('en-GB', { day
       <pre>curl -X POST {{ base }}/financials \
   -H "Authorization: Bearer fv_live_…" -H "Content-Type: application/json" \
   -d '{"period_type":"month","period_end":"2026-09-30","currency":"USD","lines":{"revenue":120000}}'</pre>
-      <p class="mut">Works with Zapier and Make (Webhooks / HTTP request), or any script. Limit: 600 requests a minute per key.</p></div>
+      <p class="mut">Works with Zapier and Make (Webhooks / HTTP request), or any script. Limit: 600 requests a minute per key. <a href="/developers" target="_blank">Full API reference →</a></p></div>
     </template>
   </div>
 </template>

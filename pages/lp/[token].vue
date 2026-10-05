@@ -3,7 +3,8 @@
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface M { dpi: number | null; rvpi: number | null; tvpi: number | null; irr: number | null }
-interface D { lp: { name: string }; workspace: { firm: string }
+interface Deal { id: string; company: string; one_liner: string; sector: string | null; stage: string; country: string | null; raising_usd: number | null; received_at: string; website: string | null; score: number | null; recommendation: string | null; interested: boolean }
+interface D { preview?: boolean; deals?: Deal[]; lp: { name: string }; workspace: { firm: string }
   positions: { fund: string; currency: string; vintage: number | null; navDate: string | null; admin: string | null; adminUrl: string | null; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M; fundM: M }[]
   history: { fund: string; currency: string; kind: string; number: number; purpose: string | null; due_date: string; amount: string; paid_amount: string; paid_on: string | null }[]
   financials?: { fund: string; period_end: string; period_type: string; currency: string; investments: number | null; cash: number | null; total_assets: number | null; net_income: number | null; opex_total: number | null }[] }
@@ -12,12 +13,16 @@ useHead({ titleTemplate: '%s', title: () => (data.value ? 'Investor statement ·
 const { money, x, pct, day } = useMoney()
 const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 const doPrint = () => window.print()
+const STAGE: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later stage' }
+const sent = ref<string[]>([]); const iErr = ref('')
+async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anything to add for the fund team? (optional)') ?? ''; try { await $fetch('/api/public/lp/' + token + '/interest', { method: 'POST', body: { pitch_id: d.id, note } }); sent.value.push(d.id) } catch (e) { iErr.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } }
 </script>
 
 <template>
   <section class="wrap">
     <div v-if="error" class="card"><h1>{{ error.statusCode === 410 ? 'This link has expired' : 'This link is not valid' }}</h1><p class="muted">Ask the fund team to send you a new link.</p></div>
     <template v-else-if="data">
+      <div v-if="data.preview" class="pvbar noprint">Preview: this is exactly what {{ data.lp.name }} sees. Read-only; the link expires in 30 minutes.</div>
       <div class="top"><div><p class="label">Investor statement · {{ today }}</p><h1>{{ data.lp.name }}</h1></div><button class="btn secondary noprint" type="button" @click="doPrint">Print or save as PDF</button></div>
       <div v-for="p in data.positions" :key="p.fund" class="card pos">
         <div class="ph"><h2>{{ p.fund }}</h2><span>{{ p.vintage ? 'Vintage ' + p.vintage : '' }}{{ p.navDate ? ' · valued at ' + day(p.navDate) : '' }}</span></div>
@@ -44,6 +49,10 @@ const doPrint = () => window.print()
             <td class="n">{{ f.opex_total == null ? '—' : money(f.opex_total, f.currency) }}</td><td class="n">{{ f.net_income == null ? '—' : money(f.net_income, f.currency) }}</td></tr></tbody></table>
       </div>
       <p class="fine">Unaudited summary for information only, based on the latest valuation the fund has recorded. It is not an official capital account statement. Prepared by {{ data.workspace.firm }}.</p>
+      <div v-if="data.deals?.length" class="card dflow noprint"><h2>Deal flow</h2><p class="muted">New companies the fund team has screened. Tell them if you would like to co-invest or hear more.</p>
+        <div v-for="d in data.deals" :key="d.id" class="dl"><div class="dli"><b>{{ d.company }}</b><span>{{ d.one_liner }}</span><em>{{ [STAGE[d.stage] ?? d.stage, d.sector, d.country, d.raising_usd ? 'raising $' + Math.round(d.raising_usd).toLocaleString('en-US') : ''].filter(Boolean).join(' · ') }}</em></div>
+          <button v-if="!d.interested && !sent.includes(d.id)" class="btn sm" type="button" :disabled="data.preview" @click="interested(d)">I'm interested</button><span v-else class="ok">Interest sent</span></div>
+        <p v-if="iErr" class="error">{{ iErr }}</p></div>
     </template>
   </section>
 </template>
@@ -58,4 +67,5 @@ td { padding: 9px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; ve
 .fine { font-size: 12px; color: var(--c-muted); margin-top: 16px; } .offi { font-size: 13px; background: var(--c-paper-2); padding: 8px 12px; margin: 0 0 12px; } .offi b { font-weight: 600; } .muted { color: var(--c-muted); }
 @media (max-width: 640px) { dl { grid-template-columns: 1fr 1fr; } }
 @media print { .noprint { display: none; } .card { break-inside: avoid; } }
+.pvbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 12px; margin-bottom: 12px; } .dflow { margin-top: 14px; } .dflow h2 { margin: 0 0 4px; } .dl { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--c-rule); } .dli { display: flex; flex-direction: column; gap: 2px; } .dli span { font-size: 13.5px; color: var(--c-ink-soft); } .dli em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; white-space: nowrap; } .ok { color: var(--c-ok); font-size: 13px; white-space: nowrap; }
 </style>

@@ -1,0 +1,62 @@
+<script setup lang="ts">
+// Public API reference for the Finvry Data API.
+definePageMeta({ layout: false })
+useHead({ title: 'API reference — Finvry' })
+const base = useRequestURL().origin + '/api/v1'
+const lang = ref<'curl' | 'js' | 'python'>('curl')
+interface P { name: string; type: string; req?: boolean; desc: string }
+interface E { id: string; method: 'GET' | 'POST'; path: string; title: string; desc: string; scope: 'read' | 'write'; query?: P[]; body?: P[]; example?: string; response: string }
+const EPS: E[] = [
+  { id: 'financials-list', method: 'GET', path: '/financials', title: 'List statements', scope: 'read', desc: 'Your monthly, quarterly or yearly statements in their original currency, with derived metrics (gross margin, EBITDA, burn, runway).', query: [{ name: 'period_type', type: 'string', desc: 'month (default), quarter or year' }],
+    response: '{\n  "data": [\n    {\n      "period_end": "2026-09-30",\n      "period_type": "month",\n      "currency": "USD",\n      "lines": { "revenue": 120000, "cogs": 40000, "cash": 900000 },\n      "kpis": { "customers": 412 },\n      "metrics": { "gross_margin": 0.667, "burn": 35000, "runway_months": 25.7 },\n      "source": "api"\n    }\n  ]\n}' },
+  { id: 'financials-push', method: 'POST', path: '/financials', title: 'Add or replace a period', scope: 'write', desc: 'Creates the statement for a period, or replaces it if it exists. Send only the lines you have.',
+    body: [{ name: 'period_type', type: 'string', req: true, desc: 'month, quarter or year' }, { name: 'period_end', type: 'date', req: true, desc: 'Last day of the period, YYYY-MM-DD' }, { name: 'currency', type: 'string', req: true, desc: 'ISO code, e.g. USD or NGN' }, { name: 'lines', type: 'object', desc: 'revenue, cogs, opex_payroll, opex_marketing, opex_rnd, opex_ga, opex_other, depreciation, interest, tax, net_income, cash, receivables, inventory, other_assets, total_assets, payables, debt, other_liabilities, equity …' }, { name: 'kpis', type: 'object', desc: 'Any numeric KPIs, e.g. { "customers": 412 }' }, { name: 'notes', type: 'string', desc: 'Optional note (max 1,000 characters)' }],
+    example: '{\n  "period_type": "month",\n  "period_end": "2026-09-30",\n  "currency": "USD",\n  "lines": { "revenue": 120000, "cogs": 40000, "cash": 900000 }\n}', response: '{ "ok": true, "id": "…", "replaced": false }' },
+  { id: 'metrics', method: 'GET', path: '/metrics', title: 'Latest metrics', scope: 'read', desc: 'Key metrics for the latest month, in your reporting currency.', response: '{\n  "data": {\n    "period_end": "2026-09-30",\n    "currency": "USD",\n    "metrics": { "revenue": 120000, "gross_margin": 0.667, "burn": 35000, "runway_months": 25.7 }\n  }\n}' },
+  { id: 'contacts-list', method: 'GET', path: '/contacts', title: 'List contacts', scope: 'read', desc: 'Your investor and partner contacts with their lists.', query: [{ name: 'updated_since', type: 'date', desc: 'Only contacts created on or after this date' }], response: '{\n  "data": [\n    { "id": "…", "name": "Amara Obi", "email": "amara@vc.africa", "firm": "Ventures Africa", "lists": ["Investors"], "subscribed": true }\n  ]\n}' },
+  { id: 'contacts-push', method: 'POST', path: '/contacts', title: 'Add or update contacts', scope: 'write', desc: 'Matched by email. Up to 1,000 per request. Lists are created if they do not exist.',
+    body: [{ name: 'contacts', type: 'array', req: true, desc: '[{ name, email, firm?, title?, lists? }]' }], example: '{\n  "contacts": [\n    { "name": "Amara Obi", "email": "amara@vc.africa", "firm": "Ventures Africa", "lists": ["Investors"] }\n  ]\n}', response: '{ "ok": true, "added": 1, "updated": 0 }' },
+  { id: 'compliance', method: 'GET', path: '/compliance', title: 'Compliance deadlines', scope: 'read', desc: 'Your filing and renewal deadlines, soonest first.', response: '{\n  "data": [\n    { "title": "Delaware franchise tax", "category": "franchise_tax", "next_due": "2027-03-01", "days_left": 147 }\n  ]\n}' },
+  { id: 'pipelines', method: 'GET', path: '/pipelines', title: 'Fundraising pipelines', scope: 'read', desc: 'Each pipeline with its investors, stages and amounts.', response: '{\n  "data": [\n    { "name": "Seed", "currency": "USD", "target": 1500000, "investors": [{ "investor": "Partech Africa", "stage": "Diligence", "amount": 500000 }] }\n  ]\n}' }]
+const code = (e: E) => {
+  const url = base + e.path + (e.query?.length ? '?' + e.query[0]!.name + '=…' : '')
+  if (lang.value === 'curl') return 'curl ' + (e.method === 'POST' ? '-X POST ' : '') + url + ' \\\n  -H "Authorization: Bearer fv_live_…"' + (e.method === 'POST' ? ' \\\n  -H "Content-Type: application/json" \\\n  -d \'' + (e.example ?? '{}').replace(/\n\s*/g, ' ') + "'" : '')
+  if (lang.value === 'js') return 'const res = await fetch("' + url + '", {\n  method: "' + e.method + '",\n  headers: { Authorization: "Bearer " + process.env.FINVRY_KEY' + (e.method === 'POST' ? ', "Content-Type": "application/json" },\n  body: JSON.stringify(' + (e.example ?? '{}').replace(/\n/g, '\n  ') + ')\n})' : ' }\n})') + '\nconst data = await res.json()'
+  return 'import os, requests\nres = requests.' + e.method.toLowerCase() + '(\n    "' + url + '",\n    headers={"Authorization": "Bearer " + os.environ["FINVRY_KEY"]}' + (e.method === 'POST' ? ',\n    json=' + (e.example ?? '{}').replace(/\n/g, '\n    ').replace(/true/g, 'True').replace(/false/g, 'False') : '') + ',\n)\nprint(res.json())'
+}
+const copied = ref('')
+async function copy(id: string, s: string) { await navigator.clipboard.writeText(s); copied.value = id; setTimeout(() => (copied.value = ''), 1500) }
+</script>
+<template>
+  <div class="dv">
+    <header><a href="/" class="brand">Finvry</a><span class="tag">API reference</span><nav><a href="/status">Status</a><a href="/settings?s=api">Get an API key</a></nav></header>
+    <div class="grid">
+      <aside><p class="sg">Getting started</p><a href="#intro">Introduction</a><a href="#auth">Authentication</a><a href="#limits">Rate limits</a><a href="#errors">Errors</a>
+        <p class="sg">Endpoints</p><a v-for="e in EPS" :key="e.id" :href="'#' + e.id"><span :class="'m ' + e.method">{{ e.method }}</span>{{ e.title }}</a></aside>
+      <main>
+        <section id="intro"><h1>Finvry Data API</h1><p>Push figures and contacts into Finvry as they change in your own systems (accounting, CRM, data warehouse, Zapier or Make), and pull your data out. Everything is JSON over HTTPS.</p><div class="kv"><span>Base URL</span><code>{{ base }}</code></div></section>
+        <section id="auth"><h2>Authentication</h2><p>Create a key in <b>Settings → Data API</b>. Read keys can only read; write keys can also add data. Send the key as a bearer token. Keys belong to one workspace and are shown once; revoke a key at any time.</p><pre>Authorization: Bearer fv_live_…</pre></section>
+        <section id="limits"><h2>Rate limits</h2><p>600 requests per minute per key. Above that you get <code>429</code>; wait a minute and retry.</p></section>
+        <section id="errors"><h2>Errors</h2><p>Errors return a status code and a JSON body with a code and a human-readable message.</p>
+          <table><tbody><tr><td><code>401</code></td><td>Missing, wrong or revoked key</td></tr><tr><td><code>403</code></td><td>The key lacks write access, or API access is switched off</td></tr><tr><td><code>422</code></td><td>The request body failed validation (the message says which field)</td></tr><tr><td><code>429</code></td><td>Rate limit reached</td></tr></tbody></table>
+          <pre>{ "statusCode": 422, "data": { "error": { "code": "invalid", "message": "Check period_type, period_end (YYYY-MM-DD), currency and the figures." } } }</pre></section>
+        <div class="langs"><button v-for="l in (['curl', 'js', 'python'] as const)" :key="l" :class="{ on: lang === l }" @click="lang = l">{{ l === 'js' ? 'JavaScript' : l === 'python' ? 'Python' : 'cURL' }}</button></div>
+        <section v-for="e in EPS" :id="e.id" :key="e.id" class="ep"><div class="eh"><span :class="'m ' + e.method">{{ e.method }}</span><code>{{ e.path }}</code><span class="scope">{{ e.scope }} key</span></div><h2>{{ e.title }}</h2><p>{{ e.desc }}</p>
+          <table v-if="e.query?.length || e.body?.length"><thead><tr><th>{{ e.query ? 'Query parameter' : 'Body field' }}</th><th>Type</th><th>Description</th></tr></thead><tbody><tr v-for="p in (e.query ?? e.body)" :key="p.name"><td><code>{{ p.name }}</code><em v-if="p.req">required</em></td><td>{{ p.type }}</td><td>{{ p.desc }}</td></tr></tbody></table>
+          <div class="code"><div class="ct"><span>Request</span><button @click="copy(e.id, code(e))">{{ copied === e.id ? 'Copied' : 'Copy' }}</button></div><pre>{{ code(e) }}</pre></div>
+          <div class="code"><div class="ct"><span>Response</span></div><pre>{{ e.response }}</pre></div></section>
+      </main>
+    </div>
+  </div>
+</template>
+<style scoped>
+.dv { min-height: 100vh; background: #fff; font-family: var(--font-body); color: var(--c-ink); } header { display: flex; align-items: center; gap: 12px; padding: 16px 28px; border-bottom: 1px solid var(--c-rule); position: sticky; top: 0; background: #fff; z-index: 2; } .brand { font-weight: 700; font-size: 19px; color: var(--c-ink); text-decoration: none; letter-spacing: -.02em; } .tag { color: var(--c-muted); font-size: 13px; border-left: 1px solid var(--c-rule-strong); padding-left: 12px; } header nav { margin-left: auto; display: flex; gap: 18px; font-size: 13.5px; } header nav a { color: var(--c-ink-soft); text-decoration: none; }
+.grid { display: grid; grid-template-columns: 250px 1fr; max-width: 1240px; margin: 0 auto; } aside { position: sticky; top: 60px; align-self: start; padding: 24px 16px; display: flex; flex-direction: column; gap: 2px; height: calc(100vh - 60px); overflow-y: auto; border-right: 1px solid var(--c-rule); } aside a { font-size: 13.5px; color: var(--c-ink-soft); text-decoration: none; padding: 6px 8px; display: flex; align-items: center; gap: 8px; } aside a:hover { background: var(--c-paper-2); } .sg { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--c-muted); margin: 14px 8px 6px; }
+main { padding: 28px 40px 80px; min-width: 0; } section { margin-bottom: 36px; scroll-margin-top: 80px; } h1 { font-size: 32px; margin: 0 0 10px; } h2 { font-size: 20px; margin: 6px 0 8px; } p { color: var(--c-ink-soft); line-height: 1.6; max-width: 760px; }
+.kv { display: flex; gap: 12px; align-items: center; font-size: 13.5px; } code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; background: var(--c-paper-2); padding: 2px 6px; } pre { background: #0c1a2e; color: #e6edf6; padding: 14px 16px; font-size: 12.5px; overflow-x: auto; margin: 0; line-height: 1.55; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 13.5px; } th { text-align: left; font-weight: 500; color: var(--c-muted); font-size: 12.5px; padding: 8px; border-bottom: 1px solid var(--c-rule); } td { padding: 9px 8px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } td em { font-style: normal; font-size: 11px; color: var(--c-warn); margin-left: 6px; }
+.m { font-size: 11px; font-weight: 700; padding: 2px 6px; font-family: ui-monospace, Menlo, monospace; } .m.GET { background: rgba(28,79,156,.1); color: #1c4f9c; } .m.POST { background: rgba(31,122,77,.12); color: #1f7a4d; } .eh { display: flex; gap: 10px; align-items: center; } .eh code { background: none; font-size: 15px; padding: 0; } .scope { font-size: 12px; color: var(--c-muted); margin-left: auto; }
+.ep { border-top: 1px solid var(--c-rule); padding-top: 26px; } .code { margin: 10px 0; border: 1px solid #0c1a2e; } .ct { display: flex; justify-content: space-between; background: #13243c; color: #9fb3cc; font-size: 12px; padding: 6px 12px; } .ct button { background: none; border: 0; color: #cfe0f5; cursor: pointer; font: inherit; font-size: 12px; }
+.langs { position: sticky; top: 64px; z-index: 1; display: flex; gap: 4px; background: #fff; padding: 8px 0; margin-bottom: 8px; } .langs button { background: var(--c-paper-2); border: 0; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; } .langs button.on { background: var(--c-navy); color: #fff; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } aside { display: none; } main { padding: 20px; } }
+</style>

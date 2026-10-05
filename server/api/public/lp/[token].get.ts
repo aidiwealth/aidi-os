@@ -4,8 +4,10 @@ export default defineEventHandler(async (event) => {
   const token = String(getRouterParam(event, 'token') ?? '')
   if (token.length < 20) throw apiError('invalid_link', 'This link is not valid.', 404)
   const hash = createHash('sha256').update(token).digest('hex')
+  const previewLp = token.startsWith('pv.') ? readLpPreview(token) : null
+  if (token.startsWith('pv.') && !previewLp) throw apiError('expired', 'This preview link has expired. Open the portal again from the LP page.', 410)
   const r = await asPlatform(() => db().query<{ id: string; name: string; organization_id: string; expired: boolean }>(
-    'SELECT id, name, organization_id, (portal_token_expires < now()) AS expired FROM funds.lps WHERE portal_token_hash = $1', [hash]))
+    previewLp ? 'SELECT id, name, organization_id, false AS expired FROM funds.lps WHERE id = $1' : 'SELECT id, name, organization_id, (portal_token_expires < now()) AS expired FROM funds.lps WHERE portal_token_hash = $1', [previewLp ?? hash]))
   const lp = r.rows[0]
   if (!lp) throw apiError('invalid_link', 'This link is not valid.', 404)
   if (lp.expired) throw apiError('expired', 'This link has expired. Ask the fund team for a new one.', 410)
@@ -27,5 +29,9 @@ export default defineEventHandler(async (event) => {
        JOIN funds.funds f ON f.entity_id = s.entity_id JOIN core.entities e ON e.id = f.entity_id JOIN funds.commitments c ON c.fund_id = f.id AND c.lp_id = $1
       WHERE s.show_to_lps ORDER BY e.name, s.period_end DESC LIMIT 24`, [lp.id]) : { rows: [] }
   const financials = fin.rows.map((x) => ({ fund: x.fund, period_end: x.period_end, period_type: x.period_type, currency: x.currency, ...derive(x.lines, x.period_type) }))
-  return { lp: { name: lp.name }, positions, history: history.rows, financials, workspace: await publicWorkspace() }
+  const deals = (await enabledModules()).has('pitches') ? (await db().query(`SELECT p.id, p.company, p.one_liner, p.sector, p.stage, p.country, p.raising_usd::float, to_char(p.received_at, 'YYYY-MM-DD') AS received_at, p.website,
+      s.score, s.recommendation, (SELECT count(*) > 0 FROM deals.lp_interest i WHERE i.pitch_id = p.id AND i.lp_id = $1) AS interested
+      FROM deals.pitches p LEFT JOIN LATERAL (SELECT score, recommendation FROM deals.screenings x WHERE x.pitch_id = p.id ORDER BY x.created_at DESC LIMIT 1) s ON true
+      WHERE p.lp_share = 'show' OR (p.lp_share = 'auto' AND p.status IN ('screened', 'advancing') AND s.score IS NOT NULL) ORDER BY p.received_at DESC LIMIT 30`, [lp.id])).rows : []
+  return { lp: { name: lp.name }, preview: !!previewLp, positions, history: history.rows, financials, deals, workspace: await publicWorkspace() }
 })
