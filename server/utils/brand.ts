@@ -13,10 +13,10 @@ export function brands(): Record<BrandKey, Brand> {
   const serif = "font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;"
   return {
     aidi: {
-      key: 'aidi', name: 'Aidi OS', url: c.public.appBaseUrl, from: c.emailFrom,
+      key: 'aidi', name: 'Aidi', url: c.public.appBaseUrl, from: 'Aidi <' + ((c.emailFrom as string).match(/<([^>]+)>/)?.[1] ?? c.emailFrom) + '>',
       logoHtml: `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle;"><img src="${c.public.appBaseUrl}/brand/aidi-wordmark.png" alt="Aidi" width="61" height="24" style="display:block;width:61px;height:24px;"></td><td style="vertical-align:middle;padding:0 12px;"><div style="width:1px;height:20px;background:${RULE};"></div></td><td style="vertical-align:middle;${serif}font-style:italic;font-size:19px;color:${NAVY};">OS</td></tr></table>`,
       footerHtml: `<p style="margin:0 0 4px;color:${SOFT};font-size:12.5px;line-height:1.5;">The Aidi Group · Internal back office</p><p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://theaidigroup.com" style="color:${BLUE};text-decoration:none;">theaidigroup.com</a></p>`,
-      smallprint: "You're receiving this because you have access to Aidi OS. © The Aidi Group"
+      smallprint: "You're receiving this because you have access to Aidi. © The Aidi Group"
     },
     finvry: {
       key: 'finvry', name: 'Finvry', url: c.public.finvryBaseUrl, from: c.emailFromFinvry || c.emailFrom,

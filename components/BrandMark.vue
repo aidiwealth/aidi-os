@@ -6,7 +6,7 @@ const brand = useBrand()
 
 <template>
   <span class="bm" :class="{ light }">
-    <template v-if="brand.key === 'aidi'"><span class="aw" aria-label="Aidi"><AidiWordmark /></span><span class="div" /><span class="arm">OS</span></template>
+    <template v-if="brand.key === 'aidi'"><span class="aw" aria-label="Aidi"><AidiWordmark /></span></template>
     <span v-else class="fv" aria-label="Finvry">Finvry<i>.</i></span>
   </span>
 </template>

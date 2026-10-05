@@ -25,7 +25,7 @@ async function delOrg() { const n = data.value?.org.name ?? ''; const typed = pr
 <template>
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
-    <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi OS' : 'Finvry' }}</p>
+    <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
     <div class="cuh"><h1>{{ data.org.name }}</h1><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="grid">

@@ -26,8 +26,8 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 <template>
   <section>
     <p class="label">Venture Capital</p>
-    <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select><button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add company' }}</button></div></div>
-    <form v-if="adding" class="card add" @submit.prevent="add">
+    <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select><button class="btn" type="button" @click="adding = true">Add company</button></div></div>
+    <AppModal :open="adding" title="Add a portfolio company" @close="adding = false"><form class="mfrm" @submit.prevent="add">
       <label v-if="candidates?.length" class="label">From an Invested deal<select v-model="form.deal_id"><option value="">— Add by hand —</option><option v-for="c in candidates" :key="c.id" :value="c.id">{{ c.company }}</option></select></label>
       <label class="label">Company<input v-model="form.name" required maxlength="200"></label>
       <label class="label">Founder name<input v-model="form.founder_name" required maxlength="200"></label>
@@ -36,10 +36,11 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
       <label class="label">Relationship<select v-model="form.relationship"><option value="investment">Investment (fund holds equity)</option><option value="subsidiary">Subsidiary (group owns)</option><option value="affiliate">Affiliate (strategic stake)</option><option value="managed">Managed</option></select></label>
       <button class="btn" type="submit">Add</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    </form>
+    </form></AppModal>
     <p v-if="error" class="error" role="alert">Could not load the portfolio.</p>
-    <EmptyState v-else-if="!data?.length" compact icon="portfolio" title="No portfolio companies yet. Add one, or mark a deal Invested in Pipeline first" />
-    <table v-else class="table">
+    <EmptyState v-else-if="!data?.length" card icon="portfolio" title="No portfolio companies yet" text="Add a company by hand, or mark a deal Invested in Pipeline and bring it across. Founders then send monthly figures through a secure link."><button class="btn" @click="adding = true">Add a company</button><NuxtLink to="/pipeline" class="btn secondary">Open pipeline</NuxtLink></EmptyState>
+    <template v-else><div class="dk"><div class="k"><em>Companies</em><b>{{ rows.length }}</b></div><div class="k"><em>Reporting figures</em><b>{{ rows.filter((r) => r.latest_period).length }}</b></div><div class="k"><em>Combined revenue (latest)</em><b>{{ usd(String(rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0))) }}</b></div><div class="k"><em>Requests pending</em><b>{{ rows.filter((r) => r.last_request_status && r.last_request_status !== 'submitted').length }}</b></div></div>
+    <div class="tw"><table class="table">
       <thead><tr><th>Company</th><th>Held by</th><th>Latest month</th><th>Revenue</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
@@ -49,7 +50,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
           <td class="muted">{{ r.last_request_status ? STATUS[r.last_request_status] + ' · ' + mon(r.last_request_period) : 'None yet' }}</td>
         </tr>
       </tbody>
-    </table>
+    </table></div></template>
   </section>
 </template>
 
@@ -65,4 +66,6 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); }
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; } .sub { display: block; color: var(--c-muted); font-size: 12px; }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr 1fr; } }
+.mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
+.dk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .tw { background: #fff; border: 1px solid var(--c-rule); overflow-x: auto; } @media (max-width: 900px) { .dk { grid-template-columns: 1fr 1fr; } }
 </style>

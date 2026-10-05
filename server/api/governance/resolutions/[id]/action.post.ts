@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
     if (act === 'circulate' && res.status !== 'draft') throw apiError('state', 'Only drafts can be circulated.')
     if (act === 'withdraw' && !['draft', 'circulating'].includes(res.status)) throw apiError('state', 'This has already been decided.')
     if (act === 'circulate' && res.required_approvals > signers.filter((s) => s.user_id).length)
-      throw apiError('accounts', 'Only ' + signers.filter((s) => s.user_id).length + ' signatories have Aidi OS accounts. Invite the others on Team first.')
+      throw apiError('accounts', 'Only ' + signers.filter((s) => s.user_id).length + ' signatories have Aidi accounts. Invite the others on Team first.')
     await db().query("UPDATE governance.resolutions SET status = $2, circulated_at = CASE WHEN $2 = 'circulating' THEN now() ELSE circulated_at END WHERE id = $1",
       [id.data, act === 'circulate' ? 'circulating' : 'withdrawn'])
     await db().query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, entity_id, ip) VALUES ($1,$2,$3,$4,$5,$6)', [user.userId, 'governance.' + act, 'resolution', id.data, res.entity_id, ip])

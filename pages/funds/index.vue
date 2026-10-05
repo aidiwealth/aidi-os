@@ -16,12 +16,14 @@ async function doSetup() {
 const pending = computed(() => (data.value ?? []).filter((f) => !f.fund_id))
 const STATUS: Record<string, string> = { raising: 'Raising', investing: 'Investing', harvesting: 'Harvesting', closed: 'Closed' }
 void refresh
+const setupOpen = ref(false)
 </script>
 
 <template>
   <section v-if="data">
-    <div class="head"><h1>Funds</h1><NuxtLink to="/funds/lps" class="btn secondary">LP register</NuxtLink></div>
-    <p v-if="!data.length" class="card muted">Add your first fund below to manage its LPs, capital calls and distributions.</p>
+    <p class="label">Venture Capital</p>
+    <div class="head"><h1>Funds &amp; LPs</h1><div class="tools"><NuxtLink to="/funds/lps" class="btn secondary">LP register</NuxtLink><button v-if="isGp" class="btn" type="button" @click="setupOpen = true">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</button></div></div>
+    <div v-if="data.some((x) => x.fund_id)" class="dk"><div class="k"><em>Funds</em><b>{{ data.filter((x) => x.fund_id).length }}</b></div><div class="k"><em>LPs</em><b>{{ data.reduce((a, f) => a + (f.lps ?? 0), 0) }}</b></div><div class="k"><em>Committed</em><b>{{ money(data.filter((x) => x.fund_id).reduce((a, f) => a + (f.totals?.committed ?? 0), 0), data.find((x) => x.fund_id)?.currency ?? 'USD') }}</b></div><div class="k"><em>Distributed</em><b>{{ money(data.filter((x) => x.fund_id).reduce((a, f) => a + (f.totals?.distributed ?? 0), 0), data.find((x) => x.fund_id)?.currency ?? 'USD') }}</b></div></div>
     <div class="grid">
       <NuxtLink v-for="f in data.filter((x) => x.fund_id)" :key="f.entity_id" :to="'/funds/' + f.fund_id" class="card fund">
         <div class="fh"><h2>{{ f.name }}</h2><span class="tag">{{ STATUS[f.status ?? ''] }}<template v-if="f.vintage"> · {{ f.vintage }}</template></span></div>
@@ -32,12 +34,8 @@ void refresh
           <div><dt>DPI</dt><dd>{{ x(f.m!.dpi) }}</dd></div><div><dt>TVPI</dt><dd>{{ x(f.m!.tvpi) }}</dd></div><div><dt>Net IRR</dt><dd>{{ pct(f.m!.irr) }}</dd></div></dl>
       </NuxtLink>
     </div>
-    <div v-if="!(data ?? []).some((f) => f.fund_id)" class="card intro">
-      <b>What Funds &amp; LPs is for</b>
-      <p>Track each fund's LPs and commitments, capital calls (with two-GP approval) and distributions, and NAV. You get DPI, TVPI and net IRR per fund and per LP, and each LP gets a private, read-only portal link. Your fund administrator (for example Sydecar or Carta) still handles KYC, money movement, official statements and tax documents.</p>
-      <p>Start by setting up a fund below, then add its LPs.</p>
-    </div>
-    <form v-if="isGp" class="card frm" @submit.prevent="doSetup">
+    <EmptyState v-if="!(data ?? []).some((f) => f.fund_id)" card icon="funds" title="Set up your first fund" text="Track each fund's LPs and commitments, capital calls (with two-GP approval), distributions and NAV, with DPI, TVPI and net IRR per fund and per LP. Every LP gets a private, read-only portal."><button v-if="isGp" class="btn" @click="setupOpen = true">Set up a fund</button></EmptyState>
+    <AppModal :open="setupOpen" :title="pending.length ? 'Set up a fund' : 'Add a fund'" @close="setupOpen = false"><form v-if="isGp" class="frm" @submit.prevent="doSetup">
       <h2 class="wide">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</h2>
       <label v-if="pending.length" class="label">Fund<select v-model="setup.entity_id" required><option value="" disabled>Choose</option><option v-for="f in pending" :key="f.entity_id" :value="f.entity_id">{{ f.name }}</option><option value="new">New fund…</option></select></label>
       <label v-if="!pending.length || setup.entity_id === 'new'" class="label">Fund name<input v-model="setup.name" required maxlength="200" placeholder="e.g. Acme Ventures Fund I"></label>
@@ -46,9 +44,9 @@ void refresh
       <label class="label">Vintage<input v-model="setup.vintage" inputmode="numeric"></label>
       <label class="label">Status<select v-model="setup.status"><option value="raising">Raising</option><option value="investing">Investing</option><option value="harvesting">Harvesting</option><option value="closed">Closed</option></select></label>
       <label class="label">Administrator<select v-model="setup.administrator"><option value="self">Self-administered</option><option value="sydecar">Sydecar</option><option value="carta">Carta</option><option value="angellist">AngelList</option><option value="other">Other</option></select></label>
-      <p class="hint">Finvry tracks your LPs, calls, distributions and performance. Formation, KYC, money movement, tax and filings stay with your administrator and lawyers; see <NuxtLink to="/directory">Fund services</NuxtLink>.</p>
+      <p class="hint">Finvry tracks your LPs, calls, distributions and performance. Formation, KYC, money movement, tax and filings stay with your administrator and lawyers;.</p>
       <div class="row"><button class="btn" type="submit">Set up fund</button><span v-if="msg" class="error">{{ msg }}</span></div>
-    </form>
+    </form></AppModal>
   </section>
 </template>
 
@@ -66,4 +64,5 @@ input, select { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px s
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr 1fr; } dl { grid-template-columns: repeat(3, 1fr); } }
 .intro { margin-bottom: 14px; border-left: 3px solid var(--c-blue-deep); } .intro p { margin: 6px 0 0; font-size: 14px; color: var(--c-ink-soft); max-width: 760px; }
+.dk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .tools { display: flex; gap: 8px; } .tools a { text-decoration: none; } @media (max-width: 900px) { .dk { grid-template-columns: 1fr 1fr; } }
 </style>

@@ -2,7 +2,7 @@
 // App shell (Telroi style): a light, collapsible sidebar on the soft shell background, and a white panel with a curved
 // corner holding the topbar (breadcrumb, workspace switcher) and the page. Aidi staff on the Aidi OS address can switch
 // between Aidi (their workspace) and Finvry (the platform console).
-interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean; locked?: boolean; pages?: string[] }
+interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean; locked?: boolean; pages?: string[]; navHidden?: boolean }
 interface Org { id: string; name: string; plan_code: string; kind: string }
 interface Me { email: string; roles: string[]; platform: boolean; org: Org | null; orgs: Org[] }
 const brand = useBrand()
@@ -28,10 +28,10 @@ onMounted(() => { loadBadges(); badgeTimer = setInterval(loadBadges, 60000) })
 onBeforeUnmount(() => clearInterval(badgeTimer))
 const badgeTotal = computed(() => Object.values(badges.value).reduce((a, b) => a + b, 0))
 useHead({ titleTemplate: (t?: string) => (badgeTotal.value ? '(' + badgeTotal.value + ') ' : '') + (t ?? '') })
-const desk = computed(() => (mods.value ?? []).filter((m) => m.usable && m.group === 'cs'))
+const desk = computed(() => (mods.value ?? []).filter((m) => !m.navHidden && m.usable && m.group === 'cs'))
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
-  for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !(canPlatform.value && x.group === 'cs'))) {
+  for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))) {
     let g = out.find((x) => x.label === m.groupLabel)
     if (!g) { g = { label: m.groupLabel, items: [] }; out.push(g) }
     g.items.push(m)

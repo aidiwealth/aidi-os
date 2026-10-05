@@ -51,13 +51,9 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
         <div class="kpi"><span class="label">Group companies</span><b>{{ data.groupCompanies.count }}</b><span class="sub">{{ data.groupCompanies.subsidiaries }} subsidiaries · {{ data.groupCompanies.affiliates }} affiliates</span></div>
         <div class="kpi"><span class="label">Group company revenue</span><b>{{ usd(data.groupCompanies.revenue) }}</b><span class="sub">latest month, combined</span></div>
         <div class="kpi"><span class="label">Group company cash</span><b>{{ usd(data.groupCompanies.cash) }}</b><span class="sub">latest reported, combined</span></div>
-        <div class="kpi"><span class="label">Documents</span><b>{{ data.documents.total }}</b><span class="sub">{{ data.documents.added }} added in {{ RANGE[range] }}</span></div>
-        <div class="kpi"><span class="label">Protected documents</span><b>{{ data.documents.restricted }}</b><span class="sub">family or restricted</span></div>
       </div>
       <div class="charts">
         <TrendChart title="Group company revenue" sub="Combined, per month" unit="usd" :points="pts(data.groupCompanies.revenueSeries, true)" foot="Subsidiaries and affiliates, as reported" />
-        <TrendChart title="Documents added" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.documents.series)" :foot="data.documents.added + ' in ' + RANGE[range]" />
-        <TrendChart title="Activity" :sub="data.bucket === 'week' ? 'Actions per week' : 'Actions per month'" :points="pts(data.activity)" foot="Uploads, decisions and changes" />
       </div>
       <div class="three">
         <div class="card"><DonutChart title="Entities by type" total-label="Entities" :segments="kinds.map(([k, c]) => ({ label: KIND[k] ?? k, value: c }))" /></div>
@@ -80,6 +76,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
   </section>
 </template>
 
+<style>.ovtab .head > h1, .ovtab section > p.label:first-child { display: none; } .ovtab .head { justify-content: flex-end; }</style>
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 10px; } .filters select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

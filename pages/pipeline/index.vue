@@ -35,11 +35,11 @@ async function add() {
       <h1>Pipeline</h1>
       <div class="tools">
         <select v-model="vehicle" aria-label="Filter by vehicle"><option value="">All funds</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select>
-        <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add deal' }}</button>
+        <button class="btn" type="button" @click="adding = true">Add deal</button>
       </div>
     </div>
 
-    <form v-if="adding" class="card add" @submit.prevent="add">
+    <AppModal :open="adding" title="Add a deal" @close="adding = false"><form class="mfrm" @submit.prevent="add">
       <label class="label">Company<input v-model="form.company" required maxlength="200"></label>
       <label class="label">One-liner<input v-model="form.one_liner" maxlength="300"></label>
       <label class="label">Website<input v-model="form.website" maxlength="500" placeholder="https://"></label>
@@ -50,10 +50,12 @@ async function add() {
       <label class="label">Start at<select v-model="form.stage"><option value="screening">Screening</option><option value="first_call">First call</option><option value="diligence">Diligence</option></select></label>
       <button class="btn" type="submit">Add to pipeline</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    </form>
+    </form></AppModal>
 
     <p v-if="error" class="error" role="alert">Could not load the pipeline.</p>
-    <div v-else class="board">
+    <EmptyState v-else-if="!COLS.some((c) => col(c.v).length) && !passed.length" card icon="pipeline" title="Your pipeline is empty" text="Add the companies you are looking at and move them from screening to IC and investment. Pitches from your pitch form can be moved here too."><button class="btn" @click="adding = true">Add a deal</button><NuxtLink to="/deals" class="btn secondary">See pitches</NuxtLink></EmptyState>
+    <template v-else><div class="dk"><div v-for="c in COLS" :key="c.v" class="k"><em>{{ c.label }}</em><b>{{ col(c.v).length }}</b></div></div>
+    <div class="board">
       <div v-for="c in COLS" :key="c.v" class="col">
         <h2>{{ c.label }} <span>{{ col(c.v).length }}</span></h2>
         <NuxtLink v-for="d in col(c.v)" :key="d.id" :to="'/pipeline/' + d.id" class="cardlet">
@@ -63,10 +65,11 @@ async function add() {
           <span class="meta">{{ d.owner ?? 'No owner' }} · {{ days(d.stage_since) }}d in stage</span>
           <span v-if="d.vehicle" class="veh">{{ d.vehicle }}</span>
         </NuxtLink>
-        <p v-if="!col(c.v).length" class="none">—</p>
+        <p v-if="!col(c.v).length" class="none">No deals</p>
       </div>
     </div>
 
+    </template>
     <button v-if="passed.length" type="button" class="link" @click="showPassed = !showPassed">{{ showPassed ? 'Hide' : 'Show' }} passed ({{ passed.length }})</button>
     <ul v-if="showPassed" class="passed">
       <li v-for="d in passed" :key="d.id"><NuxtLink :to="'/pipeline/' + d.id">{{ d.company }}</NuxtLink> <span>{{ d.one_liner }}</span></li>
@@ -95,4 +98,7 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr 1fr; } }
 .mng { font-size: 12px; text-transform: none; letter-spacing: 0; }
+.mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
+.dk { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; } .k { flex: 1; min-width: 120px; background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; } .k em { font-style: normal; font-size: 12px; color: var(--c-muted); } .k b { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+.cardlet { transition: border-color .12s, box-shadow .12s, transform .12s; } .cardlet:hover { border-color: var(--c-navy) !important; box-shadow: 0 6px 18px rgba(12,26,46,.08); transform: translateY(-1px); } .none { color: var(--c-muted); font-size: 12.5px; text-align: center; padding: 14px 0; }
 </style>

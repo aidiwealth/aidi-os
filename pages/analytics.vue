@@ -32,16 +32,11 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
       <div class="kpis">
         <div v-if="data.pitches" class="kpi"><span class="label">Pitches received</span><b>{{ data.pitches.received }}</b><span class="sub">{{ RANGE[range] }}</span></div>
         <div v-if="data.pitches" class="kpi"><span class="label">Advance rate</span><b>{{ data.pitches.advanceRate == null ? '—' : data.pitches.advanceRate + '%' }}</b><span class="sub">of {{ data.pitches.decided }} decided</span></div>
-        <div v-if="data.pitches" class="kpi"><span class="label">Time to decision</span><b>{{ data.pitches.medianDaysToDecision == null ? '—' : data.pitches.medianDaysToDecision + 'd' }}</b><span class="sub">median, pitch to first decision</span></div>
-        <div v-if="data.pitches" class="kpi"><span class="label">Avg AI score</span><b>{{ data.pitches.avgScore ?? '—' }}</b><span class="sub">screened pitches</span></div>
         <div v-if="data.pipeline" class="kpi"><span class="label">Active deals</span><b>{{ data.pipeline.active }}</b><span class="sub">screening to IC</span></div>
         <div v-if="data.pipeline" class="kpi"><span class="label">Capital deployed</span><b>{{ usd(data.pipeline.deployed) }}</b><span class="sub">{{ data.pipeline.invested }} {{ data.pipeline.invested === 1 ? 'investment' : 'investments' }}</span></div>
-        <div v-if="data.pipeline" class="kpi"><span class="label">Average check</span><b>{{ usd(data.pipeline.avgCheck) }}</b><span class="sub">median post-money {{ usd(data.pipeline.medianValuation) }}</span></div>
-        <div v-if="data.pipeline" class="kpi"><span class="label">Win rate</span><b>{{ data.pipeline.winRate == null ? '—' : data.pipeline.winRate + '%' }}</b><span class="sub">invested ÷ closed deals</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio companies</span><b>{{ data.portfolio.companies }}</b><span class="sub">active</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio revenue</span><b>{{ usd(data.portfolio.latestRevenue) }}</b><span class="sub">latest month, combined</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Median runway</span><b>{{ data.portfolio.medianRunway == null ? '—' : data.portfolio.medianRunway.toFixed(1) + ' mo' }}</b><span class="sub">{{ usd(data.portfolio.totalCash) }} cash across portfolio</span></div>
-        <div v-if="data.portfolio" class="kpi"><span class="label">Reporting</span><b>{{ data.portfolio.reporting.asked ? data.portfolio.reporting.submitted + '/' + data.portfolio.reporting.asked : '—' }}</b><span class="sub">submitted for {{ lbl(data.portfolio.reporting.month) }}</span></div>
       </div>
 
       <div class="charts">
@@ -65,6 +60,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
   </section>
 </template>
 
+<style>.ovtab .head > h1, .ovtab section > p.label:first-child { display: none; } .ovtab .head { justify-content: flex-end; }</style>
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 10px; } .filters select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

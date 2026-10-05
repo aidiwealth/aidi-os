@@ -14,15 +14,16 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
   <section>
     <p class="label">Venture Capital</p>
     <div class="head">
-      <h1>Deals</h1>
+      <h1>Pitches</h1>
       <div class="tabs" role="tablist">
         <button :class="{ on: filter === 'open' }" @click="filter = 'open'">Open</button>
         <button :class="{ on: filter === 'all' }" @click="filter = 'all'">All</button>
       </div>
     </div>
     <p v-if="error" class="error" role="alert">Could not load deals: {{ error.message }}</p>
-    <EmptyState v-else-if="!rows.length" compact icon="pitches" title="No pitches yet. They arrive here from your public pitch form (see Settings)" />
-    <table v-else class="table">
+    <template v-else-if="!rows.length"><EmptyState card icon="pitches" title="No pitches yet" text="Founders' pitches arrive here from your public pitch form, screened by AI with a score and recommendation. Share the form link from Settings."><NuxtLink to="/settings" class="btn secondary">Get the pitch form link</NuxtLink><NuxtLink to="/pipeline" class="btn">Open pipeline</NuxtLink></EmptyState></template>
+    <template v-else><div class="dk"><div class="k"><em>Pitches</em><b>{{ rows.length }}</b></div><div class="k"><em>Screened by AI</em><b>{{ rows.filter((r) => r.score !== null).length }}</b></div><div class="k"><em>Recommended to advance</em><b>{{ rows.filter((r) => r.recommendation === 'advance').length }}</b></div><div class="k"><em>Average score</em><b>{{ rows.some((r) => r.score !== null) ? Math.round(rows.filter((r) => r.score !== null).reduce((a, r) => a + (r.score ?? 0), 0) / rows.filter((r) => r.score !== null).length) : '—' }}</b></div></div>
+    <div class="tw"><table class="table">
       <thead><tr><th>Received</th><th>Company</th><th>Stage</th><th>AI screening</th><th>Status</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
@@ -33,7 +34,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
           <td>{{ STATUS[r.status] ?? r.status }}</td>
         </tr>
       </tbody>
-    </table>
+    </table></div></template>
   </section>
 </template>
 
@@ -52,4 +53,5 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .score[data-rec="likely_pass"] { color: var(--c-muted); }
 .empty { color: var(--c-muted); }
 .error { color: var(--c-danger); }
+.dk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .tw { background: #fff; border: 1px solid var(--c-rule); overflow-x: auto; } @media (max-width: 900px) { .dk { grid-template-columns: 1fr 1fr; } }
 </style>

@@ -13,6 +13,7 @@ export async function requireApiKey(event: Parameters<typeof getRequestHeader>[0
     'SELECT k.id, k.organization_id, k.scopes, o.kind, o.status FROM core.api_keys k JOIN core.organizations o ON o.id = k.organization_id WHERE k.key_hash = $1 AND k.revoked_at IS NULL', [createHash('sha256').update(key).digest('hex')]))).rows[0]
   if (!k || ['suspended', 'closed'].includes(k.status)) throw apiError('unauthorized', 'This API key is not valid.', 401)
   if (!k.scopes.includes(scope)) throw apiError('forbidden', 'This API key does not have ' + scope + ' access.', 403)
+  if (k.kind !== 'company') { const on = (await asPlatform(() => db().query<{ v: string | null }>("SELECT settings->>'api_enabled' AS v FROM core.organizations WHERE id = $1", [k.organization_id]))).rows[0]?.v; if (on !== 'true') throw apiError('forbidden', 'API access is switched off for this workspace.', 403) }
   setOrgContext(k.organization_id)
   await asPlatform(() => db().query('UPDATE core.api_keys SET last_used_at = now() WHERE id = $1', [k.id])).catch(() => {}) // awaited: the platform switch must end before workspace queries run
   return { orgId: k.organization_id, kind: k.kind, keyId: k.id }

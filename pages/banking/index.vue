@@ -35,12 +35,12 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
       <h1>Bank &amp; cash</h1>
       <div class="tools">
         <select v-model="entity" aria-label="Entity"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
-        <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add account' }}</button>
+        <button class="btn" type="button" @click="adding = true">Add account</button>
       </div>
     </div>
     <p class="lead">Balances come only from imported statements that tie out: opening balance plus money in, minus money out, must equal the closing balance.</p>
 
-    <form v-if="adding" class="card add" @submit.prevent="add">
+    <AppModal :open="adding" title="Add a bank account" @close="adding = false"><form class="mfrm" @submit.prevent="add">
       <label class="label">Entity<select v-model="form.entity_id" required><option value="" disabled>Choose</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <label class="label">Bank<input v-model="form.bank_name" required maxlength="120" placeholder="e.g. Mercury, GTBank"></label>
       <label class="label">Account name<input v-model="form.account_name" required maxlength="160" placeholder="e.g. Operating"></label>
@@ -50,14 +50,14 @@ const KIND: Record<string, string> = { current: 'Current', savings: 'Savings', m
       <p class="hint">Only the last 4 digits of the account number are stored, never the full number.</p>
       <button class="btn" type="submit">Add account</button>
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    </form>
+    </form></AppModal>
 
     <div v-if="totals.length" class="kpis">
       <WalletCard v-for="[c, v] in totals" :key="c" title="Group cash" :label="'Total ' + c" :value="v" :currency="c" sub="latest tied-out statement per account" foot-label="Accounts" :foot-value="String(rows.filter((a) => a.currency === c).length)" />
     </div>
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Bank & cash is limited to GPs and family.' : 'Could not load accounts.' }}</p>
-    <EmptyState v-else-if="!rows.length" compact icon="banking" title="No accounts yet. Add one, then import its statements" />
+    <EmptyState v-else-if="!rows.length" card icon="banking" title="No bank accounts yet" text="Add each account, then import its statements. Balances only count once a statement ties out: opening balance plus money in, minus money out, equals the closing balance."><button class="btn" @click="adding = true">Add account</button></EmptyState>
     <div v-for="[name, accts] in byEntity" :key="name" class="grp">
       <h2>{{ name }}</h2>
       <table class="table"><tbody>
@@ -87,4 +87,5 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .co { color: var(--c-navy); font-weight: 500; text-decoration: none; } .sub { display: block; font-size: 12px; color: var(--c-muted); }
 .amber { color: var(--c-warn) !important; } .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr; } }
+.mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
 </style>

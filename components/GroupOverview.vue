@@ -1,5 +1,12 @@
 <script setup lang="ts">
+import VcInsights from '~/pages/analytics.vue'
+import FoInsights from '~/pages/family-office/analytics.vue'
+import CsInsights from '~/pages/client-services/analytics.vue'
 useHead({ title: 'Overview' })
+const { data: modsO } = await useFetch<{ code: string; usable: boolean }[]>('/api/modules', { key: 'modules' })
+const has = (c: string) => !!modsO.value?.some((m) => m.code === c && m.usable)
+const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') ? [['cs', 'Client services']] : [])] as [string, string][])
+const otab = ref(String(useRoute().query.tab ?? 'overview'))
 type Pt = { period: string; value: number }
 interface O {
   name: string; org: string; today: string
@@ -53,6 +60,11 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <div v-if="data.quick.length" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink></div>
     </div>
 
+    <nav v-if="TABS.length > 1" class="otabs" role="tablist"><button v-for="[k, l] in TABS" :key="k" role="tab" :aria-selected="otab === k" :class="{ on: otab === k }" @click="otab = k">{{ l }}</button></nav>
+    <div v-if="otab === 'vc'" class="ovtab"><VcInsights /></div>
+    <div v-else-if="otab === 'fo'" class="ovtab"><FoInsights /></div>
+    <div v-else-if="otab === 'cs'" class="ovtab"><CsInsights /></div>
+    <template v-else>
     <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
 
     <div v-if="kpis.length" class="kpis" :class="'n' + Math.min(4, kpis.length)">
@@ -79,6 +91,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
         <EmptyState v-else compact icon="home" title="No activity yet" />
       </div>
     </div>
+    </template>
   </section>
 </template>
 
@@ -114,4 +127,5 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 @media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpis, .kpis.n2, .kpis.n3 { grid-template-columns: 1fr; } }
 .wic { width: 64px; height: 64px; border-radius: 50%; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; margin: 0 auto 12px; } .wic :deep(svg) { width: 28px; height: 28px; } .card.none { text-align: center; padding: 44px 24px; }
+.otabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 4px 0 18px; width: fit-content; max-width: 100%; overflow-x: auto; } .otabs button { background: none; border: 0; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .otabs button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
 </style>

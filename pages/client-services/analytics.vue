@@ -29,13 +29,9 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
         <div class="kpi"><span class="label">Overdue</span><b :class="{ red: data.kpis.overdue }">{{ data.kpis.overdue }}</b><span class="sub">past their due date</span></div>
         <div class="kpi"><span class="label">Waiting on clients</span><b>{{ data.kpis.waiting }}</b><span class="sub">blocked on the client</span></div>
         <div class="kpi"><span class="label">Turnaround</span><b>{{ data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd' }}</b><span class="sub">average, open to completed</span></div>
-        <div class="kpi"><span class="label">New jobs</span><b>{{ data.kpis.created }}</b><span class="sub">{{ RANGE[range] }}</span></div>
-        <div class="kpi"><span class="label">Completed</span><b>{{ data.kpis.completed }}</b><span class="sub">{{ RANGE[range] }}</span></div>
         <div class="kpi"><span class="label">Fees earned</span><b>{{ usd(data.kpis.fees) }}</b><span class="sub">on jobs completed, {{ RANGE[range] }}</span></div>
-        <div class="kpi"><span class="label">Fees in progress</span><b>{{ usd(data.kpis.pipelineFees) }}</b><span class="sub">on open jobs</span></div>
       </div>
       <div class="charts">
-        <TrendChart title="New jobs" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.createdSeries)" :foot="data.kpis.created + ' in ' + RANGE[range]" />
         <TrendChart title="Completed" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.completedSeries)" :foot="data.kpis.completed + ' in ' + RANGE[range]" />
         <TrendChart title="Fees earned" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" unit="usd" :points="pts(data.feeSeries)" foot="On completion" />
       </div>
@@ -55,6 +51,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
   </section>
 </template>
 
+<style>.ovtab .head > h1, .ovtab section > p.label:first-child { display: none; } .ovtab .head { justify-content: flex-end; }</style>
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 10px; } .filters select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
