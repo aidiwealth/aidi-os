@@ -15,6 +15,19 @@ const platformMode = computed(() => route.path === '/platform' || route.path.sta
 const lockRouter = useRouter()
 const nowPath = computed(() => lockRouter.currentRoute.value.path)
 const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => nowPath.value === p || nowPath.value.startsWith(p + '/'))) ?? null)
+const badges = ref<Record<string, number>>({})
+async function loadBadges() { try { badges.value = await $fetch<Record<string, number>>('/api/notifications') } catch { /* signed out */ } }
+const AREA: [string, string][] = [['/client', 'client'], ['/fundraising', 'fundraising']]
+watch(nowPath, async (pth) => {
+  const a = pth === '/services' ? 'jobs' : AREA.find(([pre]) => pth === pre || pth.startsWith(pre + '/'))?.[1]
+  if (a) await $fetch('/api/notifications/seen', { method: 'POST', body: { area: a } }).catch(() => {})
+  setTimeout(loadBadges, 600)
+}, { immediate: false })
+let badgeTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { loadBadges(); badgeTimer = setInterval(loadBadges, 60000) })
+onBeforeUnmount(() => clearInterval(badgeTimer))
+const badgeTotal = computed(() => Object.values(badges.value).reduce((a, b) => a + b, 0))
+useHead({ titleTemplate: (t?: string) => (badgeTotal.value ? '(' + badgeTotal.value + ') ' : '') + (t ?? '') })
 const desk = computed(() => (mods.value ?? []).filter((m) => m.usable && m.group === 'cs'))
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
@@ -31,7 +44,7 @@ const collapsed = useState('sb-collapsed', () => false)
 const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
-const isOn = (to: string, exact = false) => (exact ? route.path === to : route.path === to || route.path.startsWith(to + '/'))
+const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || nowPath.value.startsWith(to + '/'))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
@@ -68,14 +81,14 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
-            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
+            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>
         </template>
         <template v-else>
           <p class="sb-group">Finvry platform</p>
           <NuxtLink v-for="n in PLATFORM_NAV" :key="n.to" :to="n.to" class="sb-link" :class="{ on: isOn(n.to, n.exact) }" :title="n.label"><AppIcon :name="n.icon" class="sb-icon" /><span class="sb-label">{{ n.label }}</span></NuxtLink>
           <template v-if="desk.length"><p class="sb-group">Services desk</p>
-            <NuxtLink v-for="m in desk" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to) }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span></NuxtLink></template>
+            <NuxtLink v-for="m in desk" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to, m.to === '/services') }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span></NuxtLink></template>
           <p v-if="!collapsed && !deskPath" class="sb-note">Commercial data only. Customer data is never shown here.</p>
         </template>
       </nav>
@@ -125,6 +138,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-link:hover { background: rgba(15,17,21,.05); color: var(--c-ink); }
 .sb-link.on { background: var(--c-signal-soft); color: var(--c-signal); }
 .sb-icon { width: 18px; height: 18px; flex: none; }
+.sb-badge { margin-left: auto; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 10px; background: #d93a3a; color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; line-height: 1; } .collapsed .sb-badge { position: absolute; margin: 0; transform: translate(14px, -10px); min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
 .sb-lock { width: 13px; height: 13px; margin-left: auto; color: var(--c-muted); flex: none; } .sb-link.lockd .sb-label { opacity: .75; }
 .sb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .sb-label, .collapsed .sb-note { display: none; } .collapsed .sb-link { justify-content: center; padding: 9px 0; }

@@ -24,6 +24,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'governance', group: 'fo', label: 'Trusts & governance', to: '/governance', roles: ['family', 'gp'], api: ['/api/governance'], pages: ['/governance'], switchable: true },
   { code: 'banking', group: 'fo', label: 'Bank & cash', to: '/banking', roles: ['gp', 'family'], api: ['/api/banking'], pages: ['/banking'], switchable: true },
   { code: 'fo_analytics', group: 'fo', label: 'Analytics', to: '/family-office/analytics', roles: ['gp', 'team', 'family'], api: ['/api/fo-analytics'], pages: ['/family-office'], switchable: true },
+  { code: 'cs_inbox', group: 'cs', label: 'Inbox', to: '/services/inbox', roles: ['team', 'gp', 'services'], api: ['/api/services/inbox'], pages: ['/services/inbox'], switchable: true },
   { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp', 'services'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },
   { code: 'cs_analytics', group: 'cs', label: 'Analytics', to: '/client-services/analytics', roles: ['team', 'gp', 'services'], api: ['/api/cs-analytics'], pages: ['/client-services'], switchable: true },
   { code: 'team', group: 'admin', label: 'Team', to: '/team', roles: ['admin'], api: ['/api/admin/users'], pages: ['/team'], switchable: false },
