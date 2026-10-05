@@ -1,7 +1,7 @@
 // Reply in a conversation (reopens it if closed). The client gets the reply by email.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'team', 'gp', 'services')
+  const user = await requireOperator(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ body: z.string().trim().max(5000).default(''), document_id: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!id.success || !b.success || (!b.data.body && !b.data.document_id)) throw apiError('invalid', 'Write a message or attach a file.')

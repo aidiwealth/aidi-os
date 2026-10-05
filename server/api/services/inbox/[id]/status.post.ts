@@ -1,7 +1,7 @@
 // Close or reopen a conversation.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'team', 'gp', 'services')
+  const user = await requireOperator(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ status: z.enum(['open', 'closed']) }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')

@@ -4,6 +4,8 @@ const id = useRoute().params.id as string
 interface St { id: string; name: string; color: string; kind: string; sort: number; total: number; n: number }
 interface Dl { id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
 const calOpen = ref(false)
+const sugg = ref<string[]>([]); let sgT: ReturnType<typeof setTimeout> | undefined
+function suggest() { clearTimeout(sgT); const q = dl.investor; sgT = setTimeout(async () => { if (q.trim().length < 2) { sugg.value = []; return } try { sugg.value = await $fetch<string[]>('/api/crm/investors/suggest', { query: { q } }) } catch { sugg.value = [] } }, 200) }
 interface D { pipeline: { id: string; name: string; currency: string; target: number | null; instrument: string; valuation_cap: number | null; discount: number | null; pre_money: number | null; status: string; target_close: string | null }; stages: St[]; deals: Dl[]; contacts: { id: string; name: string; email: string; firm: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/crm/pipelines/' + id)
 useHead({ title: () => data.value?.pipeline.name ?? 'Pipeline' })
@@ -36,7 +38,7 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
 </script>
 <template>
   <section v-if="data" class="pl">
-    <aside class="side"><NuxtLink to="/fundraising?t=round" class="back">← Pipelines</NuxtLink><h1>{{ data.pipeline.name }}</h1><span class="tg">{{ money(data.pipeline.target) }} target · <button class="lk" @click="editPipeline">Edit</button></span>
+    <aside class="side"><NuxtLink to="/fundraising?t=round" class="back">← Pipelines</NuxtLink><h1>{{ data.pipeline.name }}</h1><span class="tg">{{ money(data.pipeline.target) }} target · <button class="lk" @click="editPipeline">Edit</button> · <DeleteButton type="crm_pipeline" :id="id" :name="'the pipeline ' + data.pipeline.name + ' and its investors'" link @deleted="navigateTo('/fundraising?t=round')" /></span>
       <button class="sr" :class="{ on: !stage }" @click="stage = ''"><span>All stages</span><em>{{ data.deals.length }}</em></button>
       <button v-for="s in data.stages" :key="s.id" class="sr" :class="{ on: stage === s.id }" @click="stage = s.id"><span><i class="dot" :class="s.color" />{{ s.name }}</span><em>{{ short(s.total) }} ({{ s.n }})</em></button>
       <button class="lk ed" @click="editStages">Edit stages</button></aside>
@@ -53,7 +55,7 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
         <EmptyState v-else icon="pipeline" :title="data.deals.length ? 'No investors in this stage' : 'No investors yet'" :text="data.deals.length ? 'Pick another stage on the left.' : 'Add the funds and angels you are talking to, with their primary contact.'"><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></EmptyState></div>
     </div>
     <AppModal :open="dl.open" :title="dl.id ? dl.investor : 'New investor'" @close="dl.open = false">
-      <form id="dlf" class="frm g2" @submit.prevent="saveDeal"><label class="label w">Investor (fund or angel)<input v-model="dl.investor" required maxlength="200"></label>
+      <form id="dlf" class="frm g2" @submit.prevent="saveDeal"><label class="label w">Investor (fund or angel)<input v-model="dl.investor" required maxlength="200" list="inv-sugg" autocomplete="off" placeholder="Start typing, e.g. Partech" @input="suggest"><datalist id="inv-sugg"><option v-for="s in sugg" :key="s" :value="s" /></datalist></label>
         <label class="label">Stage<select v-model="dl.stage_id" required><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></label><label class="label">Amount ({{ data.pipeline.currency }})<input v-model="dl.amount" inputmode="decimal"></label>
         <label class="label w">Primary contact<select v-model="dl.contact_id"><option value="">None</option><option value="__new">+ New contact</option><option v-for="c in data.contacts" :key="c.id" :value="c.id">{{ contactLabel(c) }}</option></select></label>
         <template v-if="dl.contact_id === '__new'"><label class="label">Contact name<input v-model="dl.contact_name" maxlength="200"></label><label class="label">Contact email<input v-model="dl.contact_email" type="email" maxlength="254"></label></template>

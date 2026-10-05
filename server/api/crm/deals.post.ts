@@ -14,5 +14,6 @@ export default defineEventHandler(async (event) => {
   const args = [d.stage_id, d.investor, contact, d.amount ?? null, d.notes || null]
   if (d.id) await db().query('UPDATE crm.deals SET stage_id = $2, investor = $3, contact_id = $4, amount = $5, notes = $6, updated_at = now() WHERE id = $1', [d.id, ...args])
   else await db().query('INSERT INTO crm.deals (pipeline_id, stage_id, investor, contact_id, amount, notes) VALUES ($1,$2,$3,$4,$5,$6)', [d.pipeline_id, ...args])
+  await noteInvestor((await currentOrg())!.id, d.investor)
   return { ok: true }
 })

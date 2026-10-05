@@ -1,7 +1,7 @@
 // One conversation with its messages and attachments; the client's earlier conversations. Marks client messages read.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'team', 'gp', 'services')
+  await requireOperator(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Not found', 404)
   const t = (await db().query<{ client_id: string }>('SELECT t.id, t.subject, t.status, t.opened_at, t.closed_at, t.closed_by, t.client_id, c.name AS client, c.email AS client_email FROM services.threads t JOIN services.clients c ON c.id = t.client_id WHERE t.id = $1', [id.data])).rows[0]

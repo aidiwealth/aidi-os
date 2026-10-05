@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const c = (await db().query<{ name: string; email: string }>('SELECT name, email FROM services.clients WHERE id = $1', [u.clientId])).rows[0]!
   const title = ('Order: ' + items.map((i) => i.name).join(', ')).slice(0, 200)
   const desc = ['Ordered in Finvry by ' + u.name + ' (' + u.email + ')', ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), b.data.notes ? '\nNotes: ' + b.data.notes : ''].join('\n').slice(0, 5000)
-  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status) VALUES ($1,$2,$3,$4,$5,'new') RETURNING id", [u.clientId, b.data.company_id ?? null, SERVICE[items[0]!.code] ?? 'other', title, desc])
+  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [u.clientId, b.data.company_id ?? null, SERVICE[items[0]!.code] ?? 'other', title, desc, items.map((i) => i.code)])
   let invoice: string | null = null, invoiceId: string | null = null
   if (priced.length) {
     const settings = await csBilling()
@@ -29,6 +29,7 @@ export default defineEventHandler(async (event) => {
       [settings.prefix, u.clientId, b.data.company_id ?? null, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom })])
     invoice = await billUrl(inv.id); invoiceId = inv.id
   }
+  await filingsOrdered(u.clientId, items.map((i) => i.code)).catch((e) => console.error('[order] compliance', e))
   sendJobClientActivity(null, job.id, c.name, title, u.name + ' placed an order in Finvry', desc).catch((e) => console.error('[order] alert failed', e))
   return { ok: true, job_id: job.id, pay_url: invoice, invoice_id: invoiceId, quoted: quoted.map((i) => i.name) }
 })

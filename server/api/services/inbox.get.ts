@@ -1,6 +1,6 @@
 // The services desk inbox: conversations with clients, open or closed, newest first, with unread counts.
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'team', 'gp', 'services')
+  await requireOperator(event)
   const st = getQuery(event).status === 'closed' ? 'closed' : 'open'
   return (await db().query(`SELECT t.id, t.subject, t.status, t.opened_at, t.closed_at, t.closed_by, t.last_message_at, c.id AS client_id, c.name AS client,
       (SELECT coalesce(m.body, 'Shared a document') FROM services.messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last,
