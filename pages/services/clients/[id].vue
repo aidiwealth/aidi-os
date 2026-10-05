@@ -66,7 +66,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <label class="label">Type<select v-model="co.entity_type"><option v-for="(l, k) in TYPES" :key="k" :value="k">{{ l }}</option></select></label>
         <label class="label">Status<select v-model="co.status"><option value="forming">Forming</option><option value="active">Active</option><option value="dissolved">Dissolved</option></select></label>
         <label class="label">State or jurisdiction<input v-model="co.jurisdiction" maxlength="100" placeholder="Delaware"></label>
-        <label class="label">Country<input v-model="co.country" maxlength="100"></label>
+        <label class="label">Country<CountrySelect v-model="co.country" /></label>
         <label class="label">EIN<input v-model="co.ein" maxlength="10" placeholder="12-3456789"></label>
         <label class="label">Registration or file number<input v-model="co.registration_number" maxlength="60"></label>
         <label class="label">Formation date<input v-model="co.formation_date" type="date"></label>
@@ -125,7 +125,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
       <label class="label">Main contact<input v-model="cl.contact_name" required maxlength="200"></label>
       <label class="label">Email<input v-model="cl.email" type="email" required maxlength="254"></label>
       <label class="label">Phone<input v-model="cl.phone" maxlength="40"></label>
-      <label class="label">Country<input v-model="cl.country" maxlength="100"></label>
+      <label class="label">Country<CountrySelect v-model="cl.country" /></label>
       <label class="label wide">Address<input v-model="cl.address" maxlength="500"></label>
       <label class="label wide">Notes<textarea v-model="cl.notes" rows="3" maxlength="3000" /></label>
       <div class="wide row"><button class="btn" type="submit">Save</button></div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currencyForCountry, isNigeria } from '~/shared/countries'
 // Company settings with a side menu: Company, Notifications, Plan & billing, Team.
 interface P { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null; ai_s?: number | null; ai_w?: number | null }
 interface D { name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
@@ -8,8 +9,9 @@ const route = useRoute(); const router = useRouter()
 const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
-const COUNTRIES = ['Nigeria', 'United States', 'United Kingdom', 'Ghana', 'Kenya', 'South Africa', 'Rwanda', 'Egypt', 'Canada', 'Other']
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', entity_type: '', state: 'Delaware', seed: true })
+const ngCo = computed(() => isNigeria(f.country))
+watch(() => f.country, (c, old) => { if (old !== undefined && old !== '' && c) { f.currency = currencyForCountry(c); if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' } })
 const emails = ref<string[]>([]); const newEmail = ref('')
 watchEffect(() => { const d = data.value; if (d) { Object.assign(f, { name: d.name, website: d.website, country: d.country, currency: d.currency, entity_type: d.entity_type, state: d.state || 'Delaware' }); emails.value = [...d.notify_emails] } })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
@@ -34,9 +36,9 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <h2>Company</h2>
           <label class="label wide">Company name<input v-model="f.name" required maxlength="200"></label>
           <label class="label wide">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label>
-          <label class="label">Country<select v-model="f.country"><option value="" disabled>Choose</option><option v-for="c in COUNTRIES" :key="c">{{ c }}</option></select></label>
+          <label class="label">Country<CountrySelect v-model="f.country" required /></label>
           <label class="label">Reporting currency<select v-model="f.currency"><option value="USD">US dollar (USD)</option><option value="NGN">Nigerian naira (NGN)</option></select></label>
-          <label class="label">Legal form<select v-model="f.entity_type"><option value="">Not set</option><option v-for="(l, k) in data.types" :key="k" :value="k">{{ l }}</option></select></label>
+          <label class="label">Legal form<select v-model="f.entity_type"><option value="">Not set</option><option v-for="(l, k) in data.types" v-show="k !== 'ng_ltd' || ngCo" :key="k" :value="k">{{ l }}</option></select></label>
           <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option v-for="s in data.states" :key="s">{{ s }}</option></select></label>
           <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders for this legal form to Compliance</label>
           <div class="wide"><button class="btn" type="submit" :disabled="busy">Save changes</button></div>

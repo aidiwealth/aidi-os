@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
   let added = 0
   if (b.data.section === 'profile') {
     const d = b.data
+    if (!/^\s*nigeria\s*$/i.test(d.country) && d.entity_type === 'ng_ltd') throw apiError('invalid', 'A Nigerian limited company needs Nigeria as the country.')
     await asPlatform(() => db().query("UPDATE core.organizations SET name = $2, settings = settings || jsonb_build_object('website', $3::text, 'country', $4::text, 'currency', $5::text, 'entity_type', $6::text, 'state', $7::text, 'public_name', $2::text) WHERE id = $1",
       [org.id, d.name, d.website, d.country, d.currency, d.entity_type, d.state]))
     await asPlatform(() => db().query('UPDATE wallet.wallets SET currency = $2 WHERE organization_id = $1 AND balance_minor = 0', [org.id, d.currency]))

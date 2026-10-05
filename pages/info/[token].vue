@@ -63,7 +63,7 @@ async function removeFile(id: string) { try { await $fetch('/api/public/info/' +
             <div v-else-if="q.type === 'shareholders'" class="rep">
               <div v-for="(r, i) in a[q.id]" :key="i" class="row6">
                 <input v-model="r.name" placeholder="Full name" maxlength="200"><input v-model="r.ownership" placeholder="Ownership %" inputmode="decimal"><input v-model="r.contact" placeholder="Email or phone" maxlength="200">
-                <input v-model="r.country" placeholder="Citizenship / tax residence" maxlength="100"><input v-model="r.tax_id" placeholder="Foreign tax ID (if not US)" maxlength="60"><input v-model="r.address" class="wide" placeholder="Official address" maxlength="500">
+                <CountrySelect v-model="r.country" /><input v-model="r.tax_id" placeholder="Foreign tax ID (if not US)" maxlength="60"><input v-model="r.address" class="wide" placeholder="Official address" maxlength="500">
                 <button v-if="a[q.id].length > 1" type="button" class="link x" @click="a[q.id].splice(i, 1)">Remove</button>
               </div>
               <button type="button" class="btn secondary" @click="a[q.id].push({ name: '', address: '', contact: '', country: '', ownership: '', tax_id: '' })">Add shareholder</button>

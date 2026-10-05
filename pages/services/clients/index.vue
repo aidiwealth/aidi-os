@@ -36,7 +36,7 @@ async function move(dry: boolean) {
       <label class="label">Main contact<input v-model="f.contact_name" required maxlength="200"></label>
       <label class="label">Email<input v-model="f.email" type="email" required maxlength="254"></label>
       <label class="label">Phone<input v-model="f.phone" maxlength="40"></label>
-      <label class="label">Country<input v-model="f.country" maxlength="100"></label>
+      <label class="label">Country<CountrySelect v-model="f.country" /></label>
       <label class="label wide">Address<input v-model="f.address" maxlength="500"></label>
       <div class="wide row"><button class="btn" type="submit">Add client</button><span v-if="msg" class="error">{{ msg }}</span></div>
     </form>

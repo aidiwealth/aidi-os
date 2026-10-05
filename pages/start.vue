@@ -1,19 +1,20 @@
 <script setup lang="ts">
+import { isNigeria } from '~/shared/countries'
 // Finvry sign-up: you, your company and country, a plan (naira for Nigeria, dollars elsewhere), then the emailed code.
 definePageMeta({ layout: 'plain' })
 useHead({ title: 'Create your Finvry account' })
 const brand = useBrand()
 interface Plan { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null }
 const { data } = await useFetch<{ plans: Plan[] }>('/api/public/signup')
-const COUNTRIES = ['Nigeria', 'United States', 'United Kingdom', 'Ghana', 'Kenya', 'South Africa', 'Canada', 'Other']
 const step = ref(1)
-const f = reactive({ website: '', name: '', email: '', company: '', country: 'Nigeria', entity_type: '', state: 'Delaware', plan: 'company_free', code: '' })
+const f = reactive({ website: '', name: '', email: '', company: '', country: 'United States', entity_type: '', state: 'Delaware', plan: 'company_free', code: '' })
 const TYPES: Record<string, string> = { us_llc: 'LLC (United States)', us_corp: 'C-Corp / Inc (United States)', ng_ltd: 'Limited company (Nigeria)', other: 'Other / not formed yet' }
-const ngn = computed(() => f.country === 'Nigeria')
+const ngn = computed(() => isNigeria(f.country))
 const price = (p: Plan) => { const v = ngn.value ? p.ngn : p.usd; return v === null ? 'Contact us' : v === 0 ? 'Free' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') + ' / month' }
 const msg = ref(''); const busy = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' }
 function next() { msg.value = ''; if (step.value === 1 && (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))) { msg.value = 'Add your name and a valid email.'; return } if (step.value === 2 && !f.company.trim()) { msg.value = 'Add your company name.'; return } step.value++ }
+watch(() => f.country, (c) => { if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' })
 async function create() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type || undefined, state: f.state, plan: f.plan } }); if (!r.emailed) msg.value = 'Your account is ready, but we could not send the code. Go to Sign in and request one.'; step.value = 4 } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function verify() { busy.value = true; msg.value = ''; try { await $fetch('/api/auth/verify-otp', { method: 'POST', body: { email: f.email, code: f.code } }); await navigateTo('/') } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 </script>
@@ -30,8 +31,8 @@ async function verify() { busy.value = true; msg.value = ''; try { await $fetch(
         <button class="btn" type="submit">Continue</button></form>
       <form v-else-if="step === 2" @submit.prevent="next"><h1>Your company</h1>
         <label class="label">Company name<input v-model="f.company" required maxlength="200" autocomplete="organization"></label>
-        <label class="label">Country<select v-model="f.country"><option v-for="c in COUNTRIES" :key="c">{{ c }}</option></select></label>
-        <label class="label">Company type<select v-model="f.entity_type"><option value="">Choose (optional)</option><option v-for="(l, k) in TYPES" :key="k" :value="k">{{ l }}</option></select></label>
+        <label class="label">Country<CountrySelect v-model="f.country" required /></label>
+        <label class="label">Company type<select v-model="f.entity_type"><option value="">Choose (optional)</option><option v-for="(l, k) in TYPES" v-show="k !== 'ng_ltd' || ngn" :key="k" :value="k">{{ l }}</option></select></label>
         <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option>Delaware</option><option>Wyoming</option><option>Other US state</option></select></label>
         <p v-if="f.entity_type && f.entity_type !== 'other'" class="hint sm">We'll add your usual filing deadlines to your compliance calendar, with reminders.</p>
         <p class="hint sm">{{ ngn ? 'You will be billed in naira.' : 'You will be billed in US dollars.' }}</p>

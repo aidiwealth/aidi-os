@@ -12,6 +12,7 @@ const AIDI_ROLES = [
 const CO_ROLES = [{ v: 'admin', label: 'Admin · billing, plan and team' }, { v: 'gp', label: 'Founder · every company feature' }, { v: 'team', label: 'Team member · day-to-day work' }]
 const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 'Team member' }
 const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES))
+async function removeUser(u: { id: string; email: string }) { if (!confirm('Remove ' + u.email + ' from this workspace? They lose access immediately.')) return; try { await $fetch('/api/admin/users/' + u.id, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove.') } }
 const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
 const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', send_email: true })
 const busy = ref(false)
@@ -79,7 +80,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
           </td>
           <td class="muted">{{ when(u.last_login_at) }}</td>
           <td>
-            <button v-if="u.status === 'active'" type="button" class="btn secondary sm" :disabled="busy || u.email === me?.email" @click="setStatus(u, 'disabled')">Disable</button>
+            <button v-if="u.status === 'active'" type="button" class="btn secondary sm" :disabled="busy || u.email === me?.email" @click="setStatus(u, 'disabled')">Disable</button><button v-if="u.email !== me?.email" type="button" class="btn secondary sm danger" :disabled="busy" @click="removeUser(u)">Remove</button>
             <button v-else type="button" class="btn sm" :disabled="busy" @click="setStatus(u, 'active')">Re-enable</button>
           </td>
         </tr>
@@ -109,4 +110,5 @@ b { color: var(--c-navy); font-weight: 500; }
 .btn.sm { padding: 5px 10px; font-size: 13px; }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+.danger { color: var(--c-danger); margin-left: 6px; }
 </style>

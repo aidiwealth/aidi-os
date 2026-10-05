@@ -43,7 +43,7 @@ const KIND: Record<string, string> = { individual: 'Individual', entity: 'Compan
         <label class="label">Type<select v-model="f.kind" :disabled="!isGp"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
         <label class="label">Contact<input v-model="f.contact_name" maxlength="200" :disabled="!isGp"></label>
         <label class="label">Email<input v-model="f.email" type="email" maxlength="254" :disabled="!isGp"></label>
-        <label class="label">Country<input v-model="f.country" maxlength="100" :disabled="!isGp"></label>
+        <label class="label">Country<CountrySelect v-model="f.country" :disabled="!isGp" /></label>
         <label class="label">KYC (as confirmed by your administrator)<select v-model="f.kyc_status" :disabled="!isGp"><option value="pending">Pending</option><option value="approved">Approved</option><option value="expired">Expired</option></select></label>
         <label class="label">Notes<textarea v-model="f.notes" rows="3" maxlength="3000" :disabled="!isGp" /></label>
         <button v-if="isGp" class="btn" type="submit" :disabled="busy">Save</button>

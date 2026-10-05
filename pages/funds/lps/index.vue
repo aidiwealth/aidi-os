@@ -26,7 +26,7 @@ void refresh
       <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label">Contact<input v-model="f.contact_name" maxlength="200"></label>
       <label class="label">Email<input v-model="f.email" type="email" maxlength="254"></label>
-      <label class="label">Country<input v-model="f.country" maxlength="100"></label>
+      <label class="label">Country<CountrySelect v-model="f.country" /></label>
       <label class="label">KYC (as confirmed by your administrator)<select v-model="f.kyc_status"><option value="pending">Pending</option><option value="approved">Approved</option><option value="expired">Expired</option></select></label>
       <div class="row"><button class="btn" type="submit">Add LP</button><span v-if="msg" class="error">{{ msg }}</span></div>
     </form>

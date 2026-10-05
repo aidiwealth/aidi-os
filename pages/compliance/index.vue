@@ -5,6 +5,8 @@ useHead({ title: 'Compliance' })
 const { data, refresh } = await useFetch<ObligationRow[]>('/api/compliance')
 const { data: me } = await useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
 const company = computed(() => me.value?.org?.kind === 'company')
+const { data: coProf } = await useFetch<{ country?: string; currency?: string }>('/api/company/profile', { key: 'company-profile', immediate: true })
+const showNg = computed(() => !company.value || /nigeria/i.test(coProf.value?.country ?? '') || coProf.value?.currency === 'NGN')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'gp', 'team'].includes(r)))
 const CAT: Record<string, string> = { tax: 'Tax', annual_return: 'Annual return', franchise_tax: 'Franchise tax', registered_agent: 'Registered agent', licence: 'Licence', regulatory: 'Regulatory', insurance: 'Insurance', banking: 'Banking', other: 'Other' }
@@ -101,11 +103,11 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 
     <AppModal :open="adding" title="Add a reminder" @close="adding = false">
       <form id="addf" class="frm" @submit.prevent="add">
-        <label class="label wide">Start from a common filing<select v-model="tpl"><option value="">— Blank —</option><option v-for="(t, i) in TEMPLATES" :key="i" :value="String(i)">{{ t.label }}</option></select></label>
+        <label class="label wide">Start from a common filing<select v-model="tpl"><option value="">— Blank —</option><option v-for="(t, i) in TEMPLATES" v-show="showNg || !t.jurisdiction.startsWith('NG')" :key="i" :value="String(i)">{{ t.label }}</option></select></label>
         <label v-if="!company" class="label wide">Entity<select v-model="form.entity_id" required><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label class="label wide">Title<input v-model="form.title" required maxlength="200"></label>
         <label class="label">Type<select v-model="form.category"><option v-for="(l, k) in CAT" :key="k" :value="k">{{ l }}</option></select></label>
-        <label class="label">Where<select v-model="form.jurisdiction"><option v-for="[k, l] in JUR" :key="k" :value="k">{{ l }}</option></select></label>
+        <label class="label">Where<select v-model="form.jurisdiction"><option v-for="[k, l] in JUR" v-show="showNg || !k.startsWith('NG')" :key="k" :value="k">{{ l }}</option></select></label>
         <label class="label">How often<select v-model="form.recurrence"><option v-for="(l, k) in REC" :key="k" :value="k">{{ l }}</option></select></label>
         <label class="label">Next due<input v-model="form.next_due" type="date" required></label>
         <label class="label wide">Remind me<select v-model.number="form.reminder_days"><option :value="3">3 days before</option><option :value="7">1 week before</option><option :value="14">2 weeks before</option><option :value="30">1 month before</option><option :value="60">2 months before</option></select></label>

@@ -7,7 +7,9 @@ export default defineEventHandler(async (event) => {
   rateLimit('portal_order', u.userId ?? u.clientId, 10, 60 * 60 * 1000)
   const b = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).min(1).max(15), company_id: z.string().uuid().optional(), notes: z.string().trim().max(2000).default('') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose at least one service.')
-  const items = (await db().query<{ code: string; name: string; price: string | null; currency: string; billing: string }>('SELECT code, name, price::text, currency, billing FROM services.catalog WHERE active AND code = ANY($1)', [b.data.codes])).rows
+  const ng = await clientIsNigerian(u.clientId)
+  const items = (await db().query<{ code: string; name: string; price: string | null; price_ngn: string | null; currency: string; billing: string; region: string }>('SELECT code, name, price::text, price_ngn::text, currency, billing, region FROM services.catalog WHERE active AND code = ANY($1)', [b.data.codes])).rows
+    .filter((i) => i.region !== 'ng' || ng).map((i) => { const p = priceFor(i, ng); return { ...i, price: p.price == null ? null : String(p.price), currency: p.currency } })
   if (!items.length) throw apiError('invalid', 'Those services are not available.')
   if (b.data.company_id && !(await db().query('SELECT 1 FROM services.companies WHERE id = $1 AND client_id = $2', [b.data.company_id, u.clientId])).rowCount) throw apiError('invalid', 'Choose one of your companies.')
   const priced = items.filter((i) => i.price !== null && i.billing !== 'quoted')

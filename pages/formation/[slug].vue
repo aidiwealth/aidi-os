@@ -70,7 +70,7 @@ async function pay() {
               <label class="label">Address<input v-model="f.address.line1" maxlength="200"></label>
               <label class="label">Address line 2<input v-model="f.address.line2" maxlength="200"></label>
               <div class="two"><label class="label">City<input v-model="f.address.city" maxlength="100"></label><label class="label">State or region<input v-model="f.address.region" maxlength="100"></label></div>
-              <div class="two"><label class="label">Postal code<input v-model="f.address.postal" maxlength="20"></label><label class="label">Country<input v-model="f.address.country" maxlength="100"></label></div>
+              <div class="two"><label class="label">Postal code<input v-model="f.address.postal" maxlength="20"></label><label class="label">Country<CountrySelect v-model="f.address.country" /></label></div>
             </template>
           </template>
           <template v-else-if="step === 3">
@@ -84,7 +84,7 @@ async function pay() {
             <label v-if="f.entity_type === 'llc'" class="label">How will it be managed?<select v-model="f.management"><option value="member">By its members (owners)</option><option value="manager">By a manager</option></select></label>
             <div v-for="(m, i) in f.members" :key="i" class="member">
               <div class="two"><label class="label">Full name<input v-model="m.name" maxlength="200"></label><label class="label">Ownership %<input v-model="m.ownership" inputmode="decimal"></label></div>
-              <div class="two"><label class="label">Email<input v-model="m.email" type="email" maxlength="254"></label><label class="label">Country of residence<input v-model="m.country" maxlength="100"></label></div>
+              <div class="two"><label class="label">Email<input v-model="m.email" type="email" maxlength="254"></label><label class="label">Country of residence<CountrySelect v-model="m.country" /></label></div>
               <label class="label">Address<input v-model="m.address" maxlength="500"></label>
               <button v-if="f.members.length > 1" type="button" class="link" @click="f.members.splice(i, 1)">Remove owner</button>
             </div>
@@ -98,7 +98,7 @@ async function pay() {
           <template v-else-if="step === 6">
             <h2>Your details</h2>
             <div class="two"><label class="label">Full name<input v-model="f.contact.name" maxlength="200"></label><label class="label">Email<input v-model="f.contact.email" type="email" maxlength="254"></label></div>
-            <div class="two"><label class="label">Phone<input v-model="f.contact.phone" maxlength="40"></label><label class="label">Country<input v-model="f.contact.country" maxlength="100"></label></div>
+            <div class="two"><label class="label">Phone<input v-model="f.contact.phone" maxlength="40"></label><label class="label">Country<CountrySelect v-model="f.contact.country" /></label></div>
             <input v-model="f.website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
           </template>
           <template v-else>

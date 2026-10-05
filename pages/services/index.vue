@@ -41,7 +41,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
         <label class="label">Contact name<input v-model="form.contact_name" required maxlength="200"></label>
         <label class="label">Contact email<input v-model="form.email" type="email" required maxlength="254"></label>
         <label class="label">Phone<input v-model="form.phone" maxlength="40"></label>
-        <label class="label">Country<input v-model="form.country" maxlength="100"></label>
+        <label class="label">Country<CountrySelect v-model="form.country" /></label>
       </template>
       <label class="label">Service<select v-model="form.service"><option v-for="(l, k) in SERVICES" :key="k" :value="k">{{ l }}</option></select></label>
       <label class="label wide">Title<input v-model="form.title" required maxlength="200" placeholder="e.g. Delaware C-Corp formation for Acme"></label>

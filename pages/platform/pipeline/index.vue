@@ -38,7 +38,7 @@ void refresh
       <label class="label">Contact<input v-model="f.contact_name" maxlength="200"></label>
       <label class="label">Contact email<input v-model="f.contact_email" type="email" maxlength="254"></label>
       <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>
-      <label class="label">Country<input v-model="f.country" maxlength="100"></label>
+      <label class="label">Country<CountrySelect v-model="f.country" /></label>
       <label class="label">Source<select v-model="f.source"><option v-for="s in ['inbound', 'website', 'referral', 'event', 'outbound', 'partner', 'other']" :key="s" :value="s">{{ s }}</option></select></label>
       <label class="label">Plan<select v-model="f.plan_code"><option value="">Not decided</option><option v-for="p in (plans?.plans ?? []).filter((x) => x.active && (x.code.startsWith('company_')))" :key="p.code" :value="p.code">{{ p.name }}</option></select></label>
       <label class="label">Expected MRR (USD)<input v-model="f.value_monthly_usd" inputmode="decimal"></label>

@@ -37,7 +37,7 @@ void refresh
 
     <form v-if="adding === 'borrower'" class="card frm" @submit.prevent="addBorrower">
       <label class="label">Borrower<input v-model="bf.name" required maxlength="200"></label>
-      <label class="label">Country<input v-model="bf.country" maxlength="100"></label>
+      <label class="label">Country<CountrySelect v-model="bf.country" /></label>
       <label class="label">Sector<input v-model="bf.sector" maxlength="100" placeholder="e.g. Logistics, Fintech"></label>
       <label class="label">Contact<input v-model="bf.contact_name" maxlength="200"></label>
       <label class="label">Contact email<input v-model="bf.contact_email" type="email" maxlength="254"></label>

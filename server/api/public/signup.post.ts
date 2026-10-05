@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   const base = d.company.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'company'
   const slug = (base.length < 2 ? base + '-co' : base) + '-' + Math.random().toString(36).slice(2, 6)
   const nigeria = /^nigeria$/i.test(d.country)
+  if (!nigeria && d.entity_type === 'ng_ltd') throw apiError('invalid', 'A Nigerian limited company needs Nigeria as the country.')
   const ws = await createWorkspace(event, null, { name: d.company, slug, kind: 'company', plan_code: d.plan, status: d.plan === 'company_free' ? 'active' : 'trial', trial_days: 14, admin_name: d.name, admin_email: email },
     { invite: false, settings: { country: d.country, currency: nigeria ? 'NGN' : 'USD', public_name: d.company, entity_type: d.entity_type ?? '', state: d.state, ...(d.plan === 'company_free' ? {} : { trial_used: 'true' }) } })
   if (d.entity_type && d.entity_type !== 'other') { setOrgContext(ws.id); try { await seedCompanyCompliance(d.entity_type, d.state) } catch (err) { console.error('[signup] compliance seed failed', err) } finally { setOrgContext(null) } }

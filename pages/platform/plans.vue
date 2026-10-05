@@ -18,6 +18,8 @@ async function save() {
 const label = (code: string) => data.value?.modules.find((m) => m.code === code)?.label ?? code
 const groups = computed(() => { const g: Record<string, { code: string; label: string }[]> = {}; for (const m of data.value?.modules ?? []) (g[m.group] ??= []).push(m); return Object.entries(g) })
 const lim = (v: number | null, unit = '') => (v === null ? 'Unlimited' : v.toLocaleString() + unit)
+async function toggle(p: { code: string; name: string; active: boolean }) { try { await $fetch('/api/platform/plans/' + p.code, { method: 'POST', body: { active: !p.active } }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not update.') } }
+async function removePlan(p: { code: string; name: string }) { if (!confirm('Delete the plan ' + p.name + '? This cannot be undone.')) return; try { await $fetch('/api/platform/plans/' + p.code, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 </script>
 
 <template>
@@ -51,7 +53,7 @@ const lim = (v: number | null, unit = '') => (v === null ? 'Unlimited' : v.toLoc
         <p class="muted">{{ p.description }}</p>
         <ul class="lims"><li>{{ lim(p.seat_limit) }} seats</li><li>{{ lim(p.storage_gb, ' GB') }} storage</li><li>{{ lim(p.ai_runs_month) }} AI runs / month</li></ul>
         <p class="mods-l">{{ p.modules.map(label).join(' · ') }}</p>
-        <div class="pf"><span>{{ p.customers }} customer{{ p.customers === 1 ? '' : 's' }}</span><button type="button" class="link" @click="edit(p)">Edit</button></div>
+        <div class="pf"><span>{{ p.customers }} customer{{ p.customers === 1 ? '' : 's' }}</span><span class="pa"><button type="button" class="link" @click="edit(p)">Edit</button><button v-if="p.code !== 'internal'" type="button" class="link" @click="toggle(p)">{{ p.active ? 'Deactivate' : 'Activate' }}</button><button v-if="!['internal', 'company_free'].includes(p.code)" type="button" class="link del" @click="removePlan(p)">Delete</button></span></div>
       </div>
     </div>
   </section>
@@ -76,4 +78,5 @@ input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: 
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .frm, .mods { grid-template-columns: 1fr; } }
+.pa { display: flex; gap: 12px; } .del { color: var(--c-danger) !important; }
 </style>

@@ -14,12 +14,14 @@ async function openForm(id: string) { try { const r = await $fetch<{ url: string
 async function openDoc(id: string) { try { const r = await $fetch<{ url: string }>('/api/portal/documents/' + id); window.location.href = r.url } catch (e) { msg.value = portalErr(e) } }
 const day = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 const TYPES: Record<string, string> = { llc: 'LLC', c_corp: 'C-Corp (Inc)', s_corp: 'S-Corp', ltd: 'Limited', plc: 'PLC', other: 'Company' }
+const { data: coP } = await useFetch<{ country?: string; currency?: string }>('/api/company/profile', { key: 'company-profile' })
+const ngCo = computed(() => /nigeria/i.test(coP.value?.country ?? '') || coP.value?.currency === 'NGN')
 </script>
 <template>
   <section v-if="data && me">
     <ClientTabs />
     <ServiceNotice />
-    <div class="hero"><div><p class="label">Services by Aidi</p><h1>Company admin, done for you</h1><p>Virtual office, registered agent, tax filings and business registration in the US and Nigeria, handled by our team. Order here, pay online, and follow every step.</p></div>
+    <div class="hero"><div><p class="label">Services by Aidi</p><h1>Company admin, done for you</h1><p>Virtual office, registered agent, tax filings and business registration in the US{{ ngCo ? ' and Nigeria' : '' }}, handled by our team. Order here, pay online, and follow every step.</p></div>
       <button class="btn big" type="button" @click="open()">Order a service</button></div>
     <div class="tiles"><button v-for="(t, i) in TILES" :key="t.code" type="button" class="tile" @click="open(t.code)"><span class="ti"><AppIcon :name="['customers', 'professionals', 'compliance', 'entities'][i] ?? 'company_services'" /></span><b>{{ t.t }}</b><span class="td">{{ t.d }}</span><em>Get started <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10h11m-4-4 4 4-4 4" /></svg></em></button></div>
     <p v-if="msg" class="error">{{ msg }}</p>

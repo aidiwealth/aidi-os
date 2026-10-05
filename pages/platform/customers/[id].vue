@@ -19,13 +19,14 @@ const gb = (b: number) => (b / 1024 ** 3).toFixed(2)
 const pct = (v: number, max: number | null) => (max ? Math.min(100, (v / max) * 100) : 0)
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'never')
 const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace created', 'platform.workspace_update': 'Workspace updated', 'platform.plan_save': 'Plan saved' }
+async function delOrg() { const n = data.value?.org.name ?? ''; const typed = prompt('This permanently deletes ' + n + ' and all its data. Type the workspace name to confirm:'); if (typed === null) return; try { await $fetch('/api/platform/orgs/' + id, { method: 'DELETE', body: { confirm: typed } }); await navigateTo('/platform/customers') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 </script>
 
 <template>
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi OS' : 'Finvry' }}</p>
-    <h1>{{ data.org.name }}</h1>
+    <div class="cuh"><h1>{{ data.org.name }}</h1><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="grid">
       <div class="col">
@@ -76,4 +77,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .log { list-style: none; padding: 0; margin: 0; } .log li { padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .log b { display: block; font-weight: 500; color: var(--c-navy); font-size: 14px; } .log span { font-size: 12px; color: var(--c-muted); }
 .hint { font-size: 12px; color: var(--c-muted); margin: 8px 0 0; } .mt2 { margin-top: 18px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+.cuh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .danger { color: var(--c-danger); }
 </style>
