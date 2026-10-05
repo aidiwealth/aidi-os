@@ -6,7 +6,7 @@ useHead({ title: () => data.value?.title ?? 'Deal memo' })
 const FIELDS = [['problem', 'The problem you solve'], ['solution', 'Your product'], ['market', 'Market and customers'], ['traction', 'Traction beyond the numbers (customers, pilots, partners)'], ['team', 'Team'], ['competition', 'Competition and why you win'], ['use_of_funds', 'Use of funds']] as const
 const f = reactive({ title: '', body: '', notes: {} as Record<string, string> })
 watchEffect(() => { if (data.value) Object.assign(f, { title: data.value.title, body: data.value.body ?? '', notes: { ...data.value.notes } }) })
-const view = ref<'edit' | 'preview'>('preview'); const msg = ref(''); const ok = ref(''); const busy = ref('')
+const view = ref<'edit' | 'preview'>('edit'); const msg = ref(''); const ok = ref(''); const busy = ref('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function save() { busy.value = 'save'; msg.value = ''; ok.value = ''; try { await $fetch('/api/fundraising/memo', { method: 'POST', body: { id, ...f } }); ok.value = 'Saved.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function generate() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ body: string }>('/api/fundraising/memo/generate', { method: 'POST', body: { notes: f.notes } }); f.body = r.body; view.value = 'preview'; await save(); ok.value = 'Draft ready. Fill any [add: …] gaps and edit before sharing.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
@@ -23,7 +23,7 @@ const doPrint = () => window.print()
         <label v-for="[k, l] in FIELDS" :key="k" class="label">{{ l }}<textarea v-model="f.notes[k]" rows="2" maxlength="3000" /></label>
         <button class="btn" :disabled="!!busy" @click="generate">{{ busy === 'ai' ? 'Writing…' : f.body ? 'Rewrite with AI' : 'Write the memo with AI' }}</button></div>
       <div class="card doc"><div class="vt noprint"><button :class="{ on: view === 'preview' }" @click="view = 'preview'">Preview</button><button :class="{ on: view === 'edit' }" @click="view = 'edit'">Edit</button></div>
-        <textarea v-if="view === 'edit'" v-model="f.body" rows="30" class="body" maxlength="40000" />
+        <ClientOnly v-if="view === 'edit'"><RichEditor v-model="f.body" :min-height="560" :max-length="40000" placeholder="Write your memo…" /></ClientOnly>
         <article v-else><h1 class="pt">{{ f.title }}</h1><div v-if="f.body" class="md" v-html="html" /><p v-else class="mut">Add your notes and press "Write the memo with AI", or write it yourself in Edit.</p></article></div>
     </div>
   </section>

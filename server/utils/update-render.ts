@@ -1,19 +1,10 @@
+import { mdPlain, mdRender } from '../../shared/markdown'
 // Turning an update (cover + blocks) into HTML for email and the web. All user text is escaped first; charts are drawn
 // with plain HTML (bars and tables) so they show in every email client.
 const esc = (s: string): string => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 export function mdToHtml(src: string): string {
-  const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<em>$2</em>')
-  const out: string[] = []; let list = false
-  for (const raw of String(src ?? '').split(/\r?\n/)) {
-    const l = raw.trim()
-    if (/^[-*] /.test(l)) { if (!list) { out.push('<ul style="margin:0 0 14px;padding-left:22px">'); list = true } out.push('<li style="margin:0 0 6px">' + inline(l.slice(2)) + '</li>'); continue }
-    if (list) { out.push('</ul>'); list = false }
-    if (!l) continue
-    const h = l.match(/^(#{1,3}) (.*)$/)
-    out.push(h ? '<h3 style="font-family:Georgia,serif;font-weight:500;font-size:' + (h[1]!.length === 1 ? 26 : 21) + 'px;color:#0c1a2e;margin:22px 0 8px">' + inline(h[2]!) + '</h3>' : '<p style="margin:0 0 14px">' + inline(l) + '</p>')
-  }
-  if (list) out.push('</ul>')
-  return out.join('')
+  return mdRender(src, { p: 'margin:0 0 14px', h1: 'font-family:Georgia,serif;font-weight:500;font-size:26px;color:#0c1a2e;margin:22px 0 8px', h2: 'font-family:Georgia,serif;font-weight:500;font-size:21px;color:#0c1a2e;margin:22px 0 8px', h3: 'font-weight:600;font-size:17px;color:#0c1a2e;margin:18px 0 6px',
+    ul: 'margin:0 0 14px;padding-left:22px', ol: 'margin:0 0 14px;padding-left:22px', li: 'margin:0 0 6px', quote: 'margin:0 0 14px;padding:4px 0 4px 16px;border-left:3px solid #c9c5ba;color:#4a4a4a', hr: 'border:none;border-top:1px solid #e6e4dd;margin:20px 0', a: 'color:#1c4f9c', code: 'font-family:Menlo,monospace;font-size:13px;background:#f4f3ef;padding:1px 5px' })
 }
 export interface Block { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
 type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string }
@@ -93,7 +84,7 @@ export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover
     '<div style="max-width:640px;font-size:11.5px;color:#8a8a8a;margin:14px 0 0;font-family:Helvetica,Arial,sans-serif">Sent by ' + esc(o.company) + (o.hideFinvry ? '.' : ' with Finvry.') + (o.unsubUrl ? ' <a href="' + o.unsubUrl + '" style="color:#8a8a8a">Unsubscribe</a>' : '') + '</div>' +
     (o.pixelUrl ? '<img src="' + o.pixelUrl + '" width="1" height="1" alt="" style="display:block">' : '') + '</td></tr></table></body></html>'
 }
-export function blocksText(blocks: Block[]): string { return blocks.filter((b) => b.type === 'text').map((b) => (b.md ?? '').replace(/[#*_>`]/g, '')).join('\n\n').slice(0, 4000) }
+export function blocksText(blocks: Block[]): string { return blocks.filter((b) => b.type === 'text').map((b) => mdPlain(b.md ?? '').replace(/^#+\s|^>\s?/gm, '')).join('\n\n').slice(0, 4000) }
 export interface Recipients { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
 // Everyone an update goes to (unique emails), leaving out unsubscribed contacts.
 export async function resolveRecipients(r: Recipients): Promise<{ email: string; name: string }[]> {

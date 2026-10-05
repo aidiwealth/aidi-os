@@ -63,8 +63,8 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
           <div class="card"><h3>Recent activity</h3><div v-for="a in data.activity" :key="a.id" class="act"><span class="kd" :class="a.kind">{{ KIND[a.kind] ?? a.kind }}</span><span class="al">{{ a.label }}</span><span class="mut">{{ when(a.created_at) }}</span></div><p v-if="!data.activity.length" class="mut">No activity yet. It appears when they open an update or view your deck or data room.</p></div>
         </template>
         <div v-else-if="tab === 'shared'" class="card"><h3>Updates sent</h3><div v-for="s in data.shared" :key="s.id + s.sent_at" class="act"><NuxtLink :to="'/updates/' + s.id" class="al">{{ s.title }}</NuxtLink><span class="mut">Sent {{ when(s.sent_at) }}</span><span :class="s.opened_at ? 'okk' : 'mut'">{{ s.opened_at ? 'Opened' + (s.opens > 1 ? ' ' + s.opens + '×' : '') : 'Not opened' }}</span></div><p v-if="!data.shared.length" class="mut">No updates sent to this contact yet.</p></div>
-        <div v-else class="card"><form class="nf" @submit.prevent="addNote"><textarea v-model="note" rows="3" maxlength="5000" placeholder="Add a note: a call summary, their interests, next steps" /><button class="btn" type="submit" :disabled="!note.trim()">Add note</button></form>
-          <div v-for="n in data.notes" :key="n.id" class="note"><p>{{ n.body }}</p><span class="mut">{{ n.by ?? 'Someone' }} · {{ when(n.created_at) }} · <DeleteButton type="crm_note" :id="n.id" name="this note" link @deleted="refresh()" /></span></div><p v-if="!data.notes.length" class="mut">No notes yet.</p></div>
+        <div v-else class="card"><form class="nf" @submit.prevent="addNote"><ClientOnly><RichEditor v-model="note" compact :min-height="90" :max-length="5000" placeholder="Add a note: a call summary, their interests, next steps" /></ClientOnly><button class="btn" type="submit" :disabled="!note.trim()">Add note</button></form>
+          <div v-for="n in data.notes" :key="n.id" class="note"><div class="nb" v-html="renderMarkdown(n.body)" /><span class="mut">{{ n.by ?? 'Someone' }} · {{ when(n.created_at) }} · <DeleteButton type="crm_note" :id="n.id" name="this note" link @deleted="refresh()" /></span></div><p v-if="!data.notes.length" class="mut">No notes yet.</p></div>
       </div>
     </div>
   </section>
@@ -86,4 +86,5 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
 .nf { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; } .note { border-top: 1px solid var(--c-rule); padding: 10px 0; } .note p { margin: 0 0 4px; white-space: pre-wrap; } .mut { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1000px) { .lay { grid-template-columns: 1fr; } }
 .sv { display: flex; gap: 8px; align-items: center; }
+.nb :deep(p) { margin: 0 0 6px; } .nb :deep(ul), .nb :deep(ol) { margin: 0 0 6px; padding-left: 20px; }
 </style>

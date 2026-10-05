@@ -6,11 +6,11 @@ const { data: types } = await useFetch<T[]>('/api/docgen/types')
 const step = ref(1); const type = ref(''); const answers = reactive<Record<string, string>>({})
 const t = computed(() => types.value?.find((x) => x.key === type.value))
 const groups = computed(() => { const m = new Map<string, T[]>(); for (const x of types.value ?? []) m.set(x.group, [...(m.get(x.group) ?? []), x]); return [...m.entries()] })
-const doc = reactive({ title: '', body: '' }); const view = ref<'preview' | 'edit'>('preview')
+const doc = reactive({ title: '', body: '' }); const view = ref<'preview' | 'edit'>('edit')
 const msg = ref(''); const ok = ref(''); const busy = ref('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 function choose(k: string) { type.value = k; for (const key of Object.keys(answers)) delete answers[key]; step.value = 2 }
-async function draft() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ title: string; body: string }>('/api/docgen/draft', { method: 'POST', body: { type: type.value, answers } }); Object.assign(doc, r); step.value = 3; view.value = 'preview' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
+async function draft() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ title: string; body: string }>('/api/docgen/draft', { method: 'POST', body: { type: type.value, answers } }); Object.assign(doc, r); step.value = 3; view.value = 'edit' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function save() { busy.value = 'save'; msg.value = ''; try { await $fetch('/api/docgen/save', { method: 'POST', body: { ...doc } }); ok.value = 'Saved to Documents as a PDF.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function download() { busy.value = 'dl'; try { const blob = await $fetch<Blob>('/api/docgen/save', { method: 'POST', body: { ...doc, download: true }, responseType: 'blob' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (doc.title || 'Document') + '.pdf'; a.click() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 const html = computed(() => renderMarkdown(doc.body))
@@ -33,7 +33,7 @@ const blanks = computed(() => (doc.body.match(/\[[A-Z][A-Z0-9 _/-]{1,40}\]/g) ??
       <div class="bar"><input v-model="doc.title" class="title" maxlength="200" aria-label="Title"><div class="row"><button class="btn secondary" @click="step = 2">Change answers</button><button class="btn secondary" :disabled="!!busy" @click="download">{{ busy === 'dl' ? 'Preparing…' : 'Download PDF' }}</button><button class="btn" :disabled="!!busy" @click="save">{{ busy === 'save' ? 'Saving…' : 'Save to Documents' }}</button></div></div>
       <p v-if="blanks.length" class="warn">Fill in before signing: {{ blanks.join(', ') }}</p>
       <div class="card doc"><div class="vt"><button :class="{ on: view === 'preview' }" @click="view = 'preview'">Preview</button><button :class="{ on: view === 'edit' }" @click="view = 'edit'">Edit</button></div>
-        <textarea v-if="view === 'edit'" v-model="doc.body" class="body" rows="32" maxlength="60000" /><article v-else class="md" v-html="html" /></div>
+        <ClientOnly v-if="view === 'edit'"><RichEditor v-model="doc.body" :min-height="600" placeholder="Your document…" /></ClientOnly><article v-else class="md" v-html="html" /></div>
     </template>
   </section>
 </template>

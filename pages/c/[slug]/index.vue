@@ -28,7 +28,7 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
       <div class="charts"><TrendChart v-for="m in data.metrics.filter((x) => x.points.filter((p) => p.value !== null).length > 1)" :key="m.key" :title="m.label" :unit="pct(m.key) || m.key === 'runway' ? 'count' : 'usd'" :symbol="SYM[data.currency] ?? data.currency + ' '"
         :points="m.points.filter((p) => p.value !== null).map((p) => ({ label: lbl(p.period), value: p.value as number }))" :foot="data.period_type === 'month' ? 'Monthly' : data.period_type === 'quarter' ? 'Quarterly' : 'Yearly'" /></div>
       <div v-if="data.updates.length" class="card ups"><h2>Updates</h2><NuxtLink v-for="u in data.updates" :key="u.id" :to="updLink(u.id)" class="up"><span>{{ u.title }}</span><em>{{ new Date(u.published_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) }}</em></NuxtLink></div>
-      <div v-if="data.about" class="card about"><h2>About {{ data.company }}</h2><p>{{ data.about }}</p></div>
+      <div v-if="data.about" class="card about"><h2>About {{ data.company }}</h2><div class="md" v-html="renderMarkdown(data.about)" /></div>
       <p class="fine">Figures are reported by {{ data.company }} and are unaudited unless stated.</p>
     </template>
   </section>
@@ -38,6 +38,6 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
 .links { display: flex; gap: 8px; flex-wrap: wrap; } .links a { text-decoration: none; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; } .k { display: flex; flex-direction: column; gap: 6px; } .l { font-size: 13px; color: var(--c-muted); } .k b { font-size: 30px; font-weight: 600; } .s { font-size: 12.5px; color: var(--c-muted); } .s.up { color: var(--c-ok); } .s.dn { color: var(--c-danger); }
 .charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; } .ups { margin-bottom: 14px; } .ups h2, .about h2 { margin: 0 0 8px; } .up { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); text-decoration: none; color: var(--c-ink); } .up em { font-style: normal; color: var(--c-muted); font-size: 13px; }
-.about p { white-space: pre-line; color: var(--c-ink-soft); line-height: 1.6; margin: 0; } .fine { font-size: 12px; opacity: .65; margin-top: 18px; }
+.about .md { color: var(--c-ink-soft); line-height: 1.6; } .about .md :deep(p) { margin: 0 0 10px; } .about .md :deep(ul), .about .md :deep(ol) { padding-left: 20px; } .fine { font-size: 12px; opacity: .65; margin-top: 18px; }
 @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
 </style>

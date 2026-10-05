@@ -24,7 +24,7 @@ async function logo(ev: Event) { const file = (ev.target as HTMLInputElement).fi
       <label class="tg"><input v-model="f.nda_enabled" type="checkbox"><span class="sw" /><span><b>Require an NDA before viewing</b><em>Visitors read your NDA and sign by typing their name. You see every signature under Fundraising → NDAs ({{ data.signatures.length }} so far).</em></span></label>
       <div v-if="f.nda_enabled" class="scopes"><span class="mut">Ask for it on:</span><label v-for="[k, l] in [['room', 'Data room and deck links'], ['page', 'Investor page'], ['updates', 'Investor updates']]" :key="k" class="cb"><input v-model="f.nda_scopes" type="checkbox" :value="k"> {{ l }}</label>
         <button type="button" class="lk" @click="showNda = !showNda">{{ showNda ? 'Hide NDA text' : 'Edit NDA text' }}</button>
-        <textarea v-if="showNda" v-model="f.nda_text" rows="14" maxlength="20000" /><p v-if="showNda" class="mut">A standard mutual NDA is filled in for you. Have your lawyer review it if you change it. Signers are shown the exact text, and it is kept with their signature.</p></div></div>
+        <ClientOnly v-if="showNda"><RichEditor v-model="f.nda_text" compact :min-height="280" :max-length="20000" /></ClientOnly><p v-if="showNda" class="mut">A standard mutual NDA is filled in for you. Have your lawyer review it if you change it. Signers are shown the exact text, and it is kept with their signature.</p></div></div>
     <div class="act"><button class="btn" type="submit" :disabled="busy">Save</button><p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p></div>
   </form>
 </template>

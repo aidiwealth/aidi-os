@@ -16,12 +16,18 @@
   "dependencies": {
     "@fontsource/cormorant-garamond": "^5.1.0",
     "@fontsource/instrument-sans": "^5.1.0",
+    "@tiptap/extension-link": "^2.27.3",
+    "@tiptap/extension-placeholder": "^2.27.3",
+    "@tiptap/pm": "^2.27.3",
+    "@tiptap/starter-kit": "^2.27.3",
+    "@tiptap/vue-3": "^2.27.3",
     "aws4fetch": "^1.0.20",
     "exceljs": "^4.4.0",
     "jose": "^5.10.0",
     "nuxt": "^3.21.0",
     "pdf-lib": "^1.17.1",
     "pg": "^8.13.0",
+    "tiptap-markdown": "^0.8.10",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0",
     "zod": "^4.0.0"

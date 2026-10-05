@@ -25,7 +25,7 @@ async function save(publish?: boolean) {
       <div class="card frm">
         <label class="label">Page address<span class="addr"><span>{{ data.base }}</span><input v-model="f.slug" required maxlength="41"></span></label>
         <label class="label">Headline<input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></label>
-        <label class="label">About the company<textarea v-model="f.about" rows="6" maxlength="3000" placeholder="What you do, who you serve, traction, team." /></label>
+        <div class="label">About the company<ClientOnly><RichEditor v-model="f.about" compact :min-height="160" :max-length="3000" placeholder="What you do, who you serve, traction, team." /></ClientOnly></div>
         <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
       </div>
