@@ -40,7 +40,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
         <TrendChart title="Cash" unit="usd" :symbol="SYM[data.currency] ?? data.currency + ' '" :points="pts('cash')" foot="Month end" />
       </div>
     </template>
-    <div v-else class="card empty"><b>Your numbers will show here.</b><p>Upload your monthly P&amp;L or management accounts in Financials (we read the spreadsheet for you), and this dashboard fills with revenue, growth, burn, runway and charts you can share with investors.</p><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink></div>
+    <EmptyState v-else card icon="financials" title="Your numbers will show here" text="Upload your monthly P&amp;L or management accounts in Financials (we read the spreadsheet for you), and this dashboard fills with revenue, growth, burn, runway and charts."><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink></EmptyState>
 
     <div class="three">
       <div class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Where the money goes" total-label="Costs this month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>

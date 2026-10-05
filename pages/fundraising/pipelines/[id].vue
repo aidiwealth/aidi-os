@@ -49,7 +49,7 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
           <td @click.stop><select class="stsel" :class="st(d.stage_id)?.color" :value="d.stage_id" @change="move(($event.target as HTMLSelectElement).value, [d.id])"><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></td>
           <td class="n">{{ d.amount != null ? money(d.amount) : '—' }}</td>
           <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">—</span></td></tr></tbody></table>
-        <div v-else class="none"><b>{{ data.deals.length ? 'No investors here.' : 'No investors yet' }}</b><p v-if="!data.deals.length">Add the funds and angels you are talking to, with their primary contact.</p><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></div></div>
+        <EmptyState v-else icon="pipeline" :title="data.deals.length ? 'No investors in this stage' : 'No investors yet'" :text="data.deals.length ? 'Pick another stage on the left.' : 'Add the funds and angels you are talking to, with their primary contact.'"><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></EmptyState></div>
     </div>
     <AppModal :open="dl.open" :title="dl.id ? dl.investor : 'New investor'" @close="dl.open = false">
       <form id="dlf" class="frm g2" @submit.prevent="saveDeal"><label class="label w">Investor (fund or angel)<input v-model="dl.investor" required maxlength="200"></label>

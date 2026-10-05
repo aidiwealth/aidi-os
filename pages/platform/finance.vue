@@ -38,7 +38,7 @@ function csv() { const rows = data.value?.ledger ?? []; const esc = (s: string) 
     <div class="box"><table v-if="data.ledger.length"><thead><tr><th>When</th><th>Workspace</th><th>Category</th><th>Description</th><th class="n">Amount</th><th class="n">Balance after</th></tr></thead>
       <tbody><tr v-for="e in data.ledger" :key="e.id"><td class="dim">{{ when(e.created_at) }}</td><td><button class="lk" @click="openAdj(e.organization_id)">{{ e.workspace }}</button></td><td><span class="cat" :class="e.category">{{ CAT[e.category] ?? e.category }}</span></td><td>{{ e.reason }}<span v-if="e.by" class="dim"> · {{ e.by }}</span></td>
         <td class="n" :class="e.kind === 'credit' ? 'pos' : 'neg'">{{ e.kind === 'credit' ? '+' : '−' }}{{ m(e.amount_minor, e.currency) }}</td><td class="n dim">{{ m(e.balance_after_minor, e.currency) }}</td></tr></tbody></table>
-      <p v-else class="none">No wallet activity yet.</p></div>
+      <EmptyState v-else icon="wallet" title="No wallet activity yet" /></div>
     </template>
     <h2>Wallets</h2>
     <div class="box"><table><tbody><tr v-for="w in data.workspaces" :key="w.id"><td>{{ w.name }}</td><td class="n"><b>{{ m(w.balance_minor, w.currency) }}</b></td><td class="n"><button class="lk" @click="openAdj(w.id)">Credit / debit</button></td></tr></tbody></table></div>

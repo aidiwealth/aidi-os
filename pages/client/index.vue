@@ -32,7 +32,7 @@ const TYPES: Record<string, string> = { llc: 'LLC', c_corp: 'C-Corp (Inc)', s_co
     <div class="two">
       <div><div class="sh"><h2>Your requests</h2><button type="button" class="link" @click="open()">+ New request</button></div>
         <NuxtLink v-for="j in data.jobs" :key="j.id" :to="'/client/jobs/' + j.id" class="card job"><div class="jt"><b>{{ j.title }}</b><span class="pill" :class="j.status">{{ ST[j.status]?.[0] ?? j.status }}</span></div><span class="mut">{{ j.company ?? 'General' }}{{ j.due_date ? ' · due ' + day(j.due_date) : '' }}</span><div class="pb"><i :style="{ width: (ST[j.status]?.[1] ?? 10) + '%' }" :class="j.status" /></div></NuxtLink>
-        <div v-if="!data.jobs.length" class="card empty"><b>No requests yet</b><p>Order a service and it will show here, with every update from our team.</p><button class="btn" type="button" @click="open()">Order a service</button></div></div>
+        <EmptyState v-if="!data.jobs.length" card icon="company_services" title="No requests yet" text="Order a service and it will show here, with every update from our team."><button class="btn" type="button" @click="open()">Order a service</button></EmptyState></div>
       <div><h2>Your companies</h2>
         <div v-for="c in me.companies" :key="c.id" class="card co"><div class="jt"><b class="cn">{{ c.name }}</b><span class="pill" :class="c.status">{{ c.status }}</span></div><span class="mut">{{ TYPES[c.entity_type] }} · {{ [c.jurisdiction, c.country].filter(Boolean).join(', ') }}{{ c.ein ? ' · EIN ' + c.ein : '' }}</span>
           <div v-if="c.address" class="addr"><span>{{ c.virtual_office || c.mailbox ? 'Virtual office address' : 'Registered address' }}</span><p>{{ c.address }}</p></div>

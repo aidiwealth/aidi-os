@@ -22,7 +22,7 @@ function exportCsv() {
           <td class="n amt" :class="{ pos: Number(r.amount) > 0 }"><Money :value="r.amount" :currency="currency" :sign="Number(r.amount) > 0 ? 'always' : 'auto'" /></td>
           <td class="n"><Money :value="r.balance" :currency="currency" muted /></td>
         </tr></tbody></table>
-      <p v-else class="none"><slot name="empty">No transactions yet.</slot></p>
+      <EmptyState v-else icon="wallet" title="No transactions yet"><slot name="empty" /></EmptyState>
     </div>
   </div>
 </template>

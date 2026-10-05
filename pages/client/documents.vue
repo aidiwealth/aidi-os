@@ -14,7 +14,7 @@ const ext = (t: string) => (t.split('.').pop() ?? 'file').slice(0, 4).toUpperCas
     <div class="hd"><h1>Documents</h1><div class="tools"><input v-model="q" placeholder="Search documents" aria-label="Search"><div class="seg"><button v-for="[k, l] in [['all', 'All'], ['team', 'From Aidi'], ['you', 'Sent by you']]" :key="k" :class="{ on: who === k }" @click="who = k as 'all'">{{ l }}</button></div></div></div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div class="grid"><button v-for="d in list" :key="d.id + d.created_at" type="button" class="card dc" @click="openDoc(d.id)"><span class="ic">{{ ext(d.title) }}</span><span class="dt"><b>{{ d.title.split(' — ').pop() }}</b><em>{{ d.reason || 'No note' }}</em><span class="mt">{{ d.kind === 'client_document' ? 'Sent by you' : 'From Aidi' }} · {{ day(d.created_at) }} · {{ size(d.size_bytes) }}</span></span><span class="dl">Download</span></button></div>
-    <div v-if="!list.length" class="card none">{{ data.length ? 'No documents match.' : 'Documents we share with you, and files you send us, appear here.' }}</div>
+    <EmptyState v-if="!list.length" card icon="documents" :title="data.length ? 'No documents match' : 'No documents yet'" :text="data.length ? 'Try another filter.' : 'Documents we share with you, and files you send us in messages or requests, appear here.'" />
   </section>
 </template>
 <style scoped>

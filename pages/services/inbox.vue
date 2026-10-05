@@ -24,7 +24,7 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value) rconv() },
       <aside class="ls"><div class="lt"><button :class="{ on: status === 'open' }" @click="status = 'open'; cur = ''">Open</button><button :class="{ on: status === 'closed' }" @click="status = 'closed'; cur = ''">Closed</button></div>
         <input v-model="q" placeholder="Search client or subject" aria-label="Search">
         <button v-for="t in shown" :key="t.id" class="it" :class="{ on: cur === t.id, un: t.unread }" @click="cur = t.id"><span class="r1"><b>{{ t.client }}</b><em>{{ ago(t.last_message_at) }}</em></span><span class="sj">{{ t.subject }}</span><span class="lm">{{ t.last }}</span><i v-if="t.unread" class="dot">{{ t.unread }}</i></button>
-        <p v-if="!shown.length" class="mut">{{ status === 'open' ? 'No open conversations. You are all caught up.' : 'No closed conversations.' }}</p></aside>
+        <EmptyState v-if="!shown.length" icon="cs_inbox" :title="status === 'open' ? 'All caught up' : 'No closed conversations'" :text="status === 'open' ? 'New client messages land here.' : ''" /></aside>
       <div v-if="conv && cur" class="cv">
         <header><div><b>{{ conv.thread.subject }}</b><span>{{ conv.thread.client }}{{ conv.thread.client_email ? ' · ' + conv.thread.client_email : '' }} · <NuxtLink :to="'/services/clients/' + conv.thread.client_id">Client file</NuxtLink></span></div>
           <button v-if="conv.thread.status === 'open'" class="btn secondary" @click="setStatus('closed')">Close conversation</button><button v-else class="btn secondary" @click="setStatus('open')">Reopen</button></header>
@@ -32,7 +32,7 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value) rconv() },
         <p v-if="msg" class="error">{{ msg }}</p>
         <div v-if="conv.others.length" class="oth"><span>Earlier conversations:</span><button v-for="o in conv.others" :key="o.id" class="lk" @click="status = o.status as 'open'; cur = o.id">{{ o.subject }} ({{ o.status }})</button></div>
       </div>
-      <div v-else class="cv empty"><p>Select a conversation.</p></div>
+      <div v-else class="cv empty"><EmptyState icon="cs_inbox" title="Select a conversation" /></div>
     </div>
   </section>
 </template>

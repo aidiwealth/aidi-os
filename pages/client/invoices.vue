@@ -17,12 +17,12 @@ async function payWallet(id: string) { paying.value = id; pmsg.value = ''; try {
     <h2>To pay</h2><p v-if="wal" class="wb">Wallet balance: <b><Money :value="wal.balance_minor / 100" :currency="wal.currency" /></b> · <NuxtLink to="/wallet">Top up</NuxtLink></p><p v-if="pmsg" class="error">{{ pmsg }}</p>
     <div class="box"><table v-if="unpaid.length"><tbody><tr v-for="i in unpaid" :key="i.id"><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}{{ i.company ? ' · ' + i.company : '' }}</span></td>
       <td><span class="chip" :class="{ over: i.overdue }">{{ i.overdue ? 'Overdue · ' : 'Due ' }}{{ day(i.due_date) }}</span></td><td class="n"><b><Money :value="i.amount" :currency="i.currency" /></b></td><td class="n"><button v-if="wal && wal.currency === i.currency && wal.balance_minor >= Number(i.amount) * 100" class="btn" type="button" :disabled="!!paying" @click="payWallet(i.id)">{{ paying === i.id ? 'Paying…' : 'Pay from wallet' }}</button> <a :href="i.link" class="btn secondary">View &amp; pay</a></td></tr></tbody></table>
-      <p v-else class="none">Nothing to pay. Thank you.</p></div>
+      <EmptyState v-else icon="billing" title="Nothing to pay" text="You are all settled. Thank you." /></div>
     <h2>Payments made</h2>
     <div class="box"><table v-if="paid.length"><thead><tr><th>Date</th><th>Invoice</th><th>Paid by</th><th class="n">Amount</th><th /></tr></thead>
       <tbody><tr v-for="i in paid" :key="i.id"><td class="dt">{{ i.paid_at ? day(i.paid_at) : '—' }}</td><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}</span></td><td>{{ VIA[i.paid_via ?? ''] ?? '—' }}</td>
         <td class="n pos"><Money :value="i.amount" :currency="i.currency" /></td><td class="n"><a :href="i.link" class="link">Receipt</a></td></tr></tbody></table>
-      <p v-else class="none">No payments yet.</p></div>
+      <EmptyState v-else icon="wallet" title="No payments yet" /></div>
   </section>
 </template>
 <style scoped>
