@@ -2,7 +2,7 @@
 // App shell (Telroi style): a light, collapsible sidebar on the soft shell background, and a white panel with a curved
 // corner holding the topbar (breadcrumb, workspace switcher) and the page. Aidi staff on the Aidi OS address can switch
 // between Aidi (their workspace) and Finvry (the platform console).
-interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean }
+interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean; locked?: boolean; pages?: string[] }
 interface Org { id: string; name: string; plan_code: string; kind: string }
 interface Me { email: string; roles: string[]; platform: boolean; org: Org | null; orgs: Org[] }
 const brand = useBrand()
@@ -12,10 +12,11 @@ const { data: mods } = await useFetch<Mod[]>('/api/modules', { key: 'modules' })
 const canPlatform = computed(() => !!me.value?.platform && brand.key === 'aidi')
 const deskPath = computed(() => route.path === '/services' || route.path.startsWith('/services/') || route.path.startsWith('/client-services'))
 const platformMode = computed(() => route.path === '/platform' || route.path.startsWith('/platform/') || (canPlatform.value && deskPath.value))
+const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => route.path === p || route.path.startsWith(p + '/'))) ?? null)
 const desk = computed(() => (mods.value ?? []).filter((m) => m.usable && m.group === 'cs'))
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
-  for (const m of (mods.value ?? []).filter((x) => x.usable && !(canPlatform.value && x.group === 'cs'))) {
+  for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !(canPlatform.value && x.group === 'cs'))) {
     let g = out.find((x) => x.label === m.groupLabel)
     if (!g) { g = { label: m.groupLabel, items: [] }; out.push(g) }
     g.items.push(m)
@@ -65,7 +66,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
-            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to) }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span></NuxtLink>
+            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>
         </template>
         <template v-else>
@@ -99,7 +100,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           </ul>
         </div>
       </header>
-      <main id="main" class="content"><div class="inner"><slot /></div></main>
+      <main id="main" class="content"><div class="inner"><Paywall v-if="lockedHere" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
     </div>
   </div>
 </template>
@@ -122,6 +123,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-link:hover { background: rgba(15,17,21,.05); color: var(--c-ink); }
 .sb-link.on { background: var(--c-signal-soft); color: var(--c-signal); }
 .sb-icon { width: 18px; height: 18px; flex: none; }
+.sb-lock { width: 13px; height: 13px; margin-left: auto; color: var(--c-muted); flex: none; } .sb-link.lockd .sb-label { opacity: .75; }
 .sb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .sb-label, .collapsed .sb-note { display: none; } .collapsed .sb-link { justify-content: center; padding: 9px 0; }
 .sb-note { margin: 12px; font-size: 11.5px; line-height: 1.45; color: var(--c-muted); }

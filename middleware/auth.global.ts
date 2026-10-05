@@ -14,8 +14,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!me.org) return me.platform && useBrand().key === 'aidi' ? navigateTo('/platform') : undefined
   if (to.path === '/') return
   try {
-    const mods = await $fetch<{ pages: string[]; usable: boolean }[]>('/api/modules', { headers })
+    const mods = await $fetch<{ pages: string[]; usable: boolean; locked?: boolean }[]>('/api/modules', { headers })
     const m = mods.find((x) => x.pages.some((p) => to.path === p || to.path.startsWith(p + '/')))
-    if (m && !m.usable) return navigateTo('/')
+    if (m && !m.usable && !m.locked) return navigateTo('/')
   } catch { /* if the module list cannot load, the APIs still enforce access */ }
 })

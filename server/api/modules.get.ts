@@ -5,9 +5,11 @@ export default defineEventHandler(async (event) => {
   const plan = await planModules()
   const isAdmin = user.roles.includes('admin')
   const company = (await currentOrg())?.kind === 'company'
+  const paid = company ? new Set((await asPlatform(() => db().query<{ modules: string[] }>("SELECT modules FROM core.plans WHERE code = 'company_scale'"))).rows[0]?.modules ?? []) : new Set<string>()
   return MODULES.map((m) => ({
     code: m.code, group: m.group, groupLabel: company ? (m.group === 'fin' ? 'Investors' : m.group === 'fo' ? 'Company' : GROUP_LABEL[m.group]) : GROUP_LABEL[m.group], label: company && m.code === 'directory' ? 'Trusted partners' : m.label, to: m.to, pages: m.pages,
     switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles) && (m.code !== 'modules' || user.platform) && !(company && m.code === 'directory'),
+    locked: company && !on.has(m.code) && paid.has(m.code) && canUse(m, user.roles),
     roles: isAdmin ? m.roles : undefined
   }))
 })

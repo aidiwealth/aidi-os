@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     }
     await asPlatform(async () => {
       await db().query("UPDATE wallet.subscriptions SET status = 'suspended', last_error = $2, updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)])
-      if (s.kind === 'plan') await db().query("UPDATE core.organizations SET plan_code = 'company_free', status = 'active', trial_ends_at = NULL WHERE id = $1", [s.organization_id])
+      if (s.kind === 'plan') await db().query("UPDATE core.organizations SET plan_code = 'company_free', status = 'active', trial_ends_at = NULL, settings = settings || '{\"trial_used\": \"true\"}'::jsonb WHERE id = $1", [s.organization_id])
       else if (s.client_id) await db().query("INSERT INTO services.jobs (organization_id, client_id, service, title, description, status, priority) SELECT organization_id, id, 'other', $2, $3, 'new', 'high' FROM services.clients WHERE id = $1", [s.client_id, ('Paused for non-payment: ' + s.name).slice(0, 200), 'Automatic renewal failed twice (' + why + '). The service is paused until the customer pays.'])
     })
     await notify(s.organization_id, s.kind === 'plan' ? 'Your plan moved to Free' : s.name + ' is paused', s.kind === 'plan' ? 'Your workspace is now on the Free plan' : s.name + ' has been paused',
