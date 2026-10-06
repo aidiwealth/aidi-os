@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
-interface D { org: { raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
+interface D { storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
@@ -31,6 +31,9 @@ async function supportSignIn() { if (!confirm('Sign in to ' + (data.value?.org.n
 const raiseFee = ref(4)
 watchEffect(() => { if (data.value?.org.raise_fee_pct != null) raiseFee.value = data.value.org.raise_fee_pct })
 async function setRaise(enabled: boolean) { await $fetch('/api/platform/orgs/' + id + '/raise', { method: 'POST', body: { enabled, fee_pct: raiseFee.value } }); await refresh() }
+const extraGb = ref(0)
+watchEffect(() => { if (data.value?.storage) extraGb.value = data.value.storage.extra_gb })
+async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage', { method: 'POST', body: { extra_gb: Number(extraGb.value) || 0 } }); await refresh() }
 </script>
 
 <template>
@@ -74,7 +77,8 @@ async function setRaise(enabled: boolean) { await $fetch('/api/platform/orgs/' +
         <div class="card">
           <h2>Usage</h2>
           <div class="u"><span>Seats</span><b>{{ data.usage.seats }}{{ data.org.seat_limit ? ' of ' + data.org.seat_limit : '' }}</b><i><s :style="{ width: pct(data.usage.seats, data.org.seat_limit) + '%' }" /></i></div>
-          <div class="u"><span>Storage</span><b>{{ gb(data.usage.storage) }} GB{{ data.org.storage_gb ? ' of ' + data.org.storage_gb : '' }}</b><i><s :style="{ width: pct(data.usage.storage / 1024 ** 3, data.org.storage_gb) + '%' }" /></i></div>
+          <div class="u"><span>Storage</span><b>{{ gb(data.usage.storage) }} GB{{ data.storage?.limit_gb != null ? ' of ' + data.storage.limit_gb : '' }}</b><i><s :style="{ width: pct(data.usage.storage / 1024 ** 3, data.storage?.limit_gb ?? data.org.storage_gb) + '%' }" /></i></div>
+          <p v-if="data.storage" class="meta">Plan {{ data.storage.plan_gb ?? 'unlimited' }}{{ data.storage.plan_gb != null ? ' GB' : '' }}<template v-if="data.storage.addon_gb"> · packs +{{ data.storage.addon_gb }} GB</template> · extra <input v-model.number="extraGb" type="number" min="0" class="xg"> GB <button class="lk" type="button" @click="saveExtra">Save</button></p>
           <div class="u"><span>AI runs this month</span><b>{{ data.usage.ai }}{{ data.org.ai_runs_month ? ' of ' + data.org.ai_runs_month : '' }}</b><i><s :style="{ width: pct(data.usage.ai, data.org.ai_runs_month) + '%' }" /></i></div>
           <p class="meta">Last activity {{ when(data.usage.last_activity) }} · created {{ when(data.org.created_at) }}<template v-if="data.usage.modules_off"> · {{ data.usage.modules_off }} module{{ data.usage.modules_off === 1 ? '' : 's' }} switched off</template></p>
         </div>
@@ -105,4 +109,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .cuh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .danger { color: var(--c-danger); }
 .cua { display: flex; gap: 8px; } .invf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .invf .w { grid-column: 1 / -1; } .invf label.label { display: flex; flex-direction: column; gap: 6px; } .invf input, .invf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .invf .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .invf .cb input { width: auto; } .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
 .raisec { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; } .raisec p { margin: 4px 0 0; font-size: 13px; color: var(--c-muted); max-width: 560px; } .rr { display: flex; gap: 14px; align-items: center; } .sw { display: flex; gap: 6px; align-items: center; font-weight: 600; } .sw input { width: 18px; height: 18px; } .fee { display: flex; gap: 6px; align-items: center; font-size: 13px; } .fee input { width: 64px; font: inherit; padding: 5px 7px; border: 1px solid var(--c-rule-strong); } .lk { color: var(--c-blue-deep); text-decoration: none; font-size: 13px; }
+.xg { width: 64px; font: inherit; font-size: 12.5px; padding: 2px 6px; border: 1px solid var(--c-rule-strong); } .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 12.5px; }
 </style>

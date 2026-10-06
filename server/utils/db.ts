@@ -30,9 +30,10 @@ async function checkout(): Promise<pg.PoolClient> {
   const e = requestEvent()
   const org = (e?.context.orgId as string | undefined) ?? ''
   const bypass = e?.context.dbBypass === true ? 'on' : 'off'
+  const scope = (e?.context.entityScope as string | undefined) ?? ''
   const client = await getPool().connect()
   try {
-    await client.query("SELECT set_config('app.org_id', $1, false), set_config('app.bypass', $2, false)", [org, bypass])
+    await client.query("SELECT set_config('app.org_id', $1, false), set_config('app.bypass', $2, false), set_config('app.entity_scope', $3, false)", [org, bypass, scope])
   } catch (err) { client.release(err as Error); throw err }
   return client
 }

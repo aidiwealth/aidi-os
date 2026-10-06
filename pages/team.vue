@@ -59,6 +59,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Only admins can manage the team.' : 'Could not load the team.' }}</p>
     <table v-else-if="users?.length" class="table">
+      <caption class="scopehint">A role given for one entity (for example GP · Aidi Haven LLC) means the person only sees that entity and its subsidiaries: its documents, financials, bank accounts, compliance, funds, governance, investments and loans. Roles without an entity, and admins, see the whole group.</caption>
       <thead><tr><th>Person</th><th>Roles</th><th>Last sign-in</th><th>Access</th></tr></thead>
       <tbody>
         <tr v-for="u in users" :key="u.id" :class="{ off: u.status === 'disabled' }">
@@ -111,4 +112,5 @@ b { color: var(--c-navy); font-weight: 500; }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
 .danger { color: var(--c-danger); margin-left: 6px; }
+.scopehint { caption-side: top; text-align: left; font-size: 12.5px; color: var(--c-muted); padding: 0 0 10px; }
 </style>

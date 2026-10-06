@@ -16,3 +16,7 @@ jobs:
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/status \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+      - name: Renew storage packs
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/storage \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

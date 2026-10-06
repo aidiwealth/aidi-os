@@ -12,6 +12,7 @@ function r2(): { aws: AwsClient; base: string } {
 const keyPath = (key: string): string => key.split('/').map(encodeURIComponent).join('/')
 
 export async function putObject(input: { key: string; body: Uint8Array; contentType: string }): Promise<void> {
+  await assertStorage(input.body.length)
   const { aws, base } = r2()
   const res = await aws.fetch(base + '/' + keyPath(input.key), { method: 'PUT', body: Uint8Array.from(input.body), headers: { 'content-type': input.contentType } })
   if (!res.ok) throw new Error('R2 upload failed: ' + res.status + ' ' + (await res.text()).slice(0, 300))
