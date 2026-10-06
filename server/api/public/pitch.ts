@@ -2,6 +2,7 @@
 // Turnstile, a honeypot field, rate limits and strict validation. Screening runs after the reply is sent.
 import { z } from 'zod'
 
+const blank = (v: unknown) => (v === '' || v === null ? undefined : v)
 const opt = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : null))
 const Body = z.object({
   founder_name: z.string().trim().min(1).max(200),
@@ -18,6 +19,9 @@ const Body = z.object({
   traction: opt(3000),
   team: opt(3000),
   female_founder: z.boolean().optional(),
+  funding_type: z.enum(['equity', 'loan']).default('equity'),
+  loan_amount: z.preprocess(blank, z.coerce.number().min(0).max(10_000_000_000).optional()), loan_currency: z.preprocess(blank, z.string().regex(/^[A-Z]{3}$/).optional()), loan_tenor_months: z.preprocess(blank, z.coerce.number().int().min(1).max(120).optional()),
+  loan_purpose: opt(2000), monthly_revenue: z.preprocess(blank, z.coerce.number().min(0).max(10_000_000_000).optional()), rc_number: opt(20), bvn: z.string().trim().regex(/^(\d{11})?$/).optional(), nin: z.string().trim().regex(/^(\d{11})?$/).optional(), dob: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(), phone: opt(30),
   website_url_confirm: z.string().max(0).optional(),
   turnstile_token: z.string().max(4000).optional()
 })
@@ -40,13 +44,26 @@ export default defineEventHandler(async (event) => {
   if (b.website_url_confirm) return { ok: true } // honeypot: bots fill hidden fields; humans never see it
   await verifyTurnstile(b.turnstile_token, ip)
   const email = b.email.toLowerCase()
+  const loan = b.funding_type === 'loan'
+  if (loan && !b.loan_amount) throw apiError('invalid', 'Please enter the loan amount you need.', 400)
+  if (loan && /nigeria/i.test(b.country ?? '') && !b.bvn) throw apiError('invalid', 'Please enter your 11-digit BVN so we can assess the loan.', 400)
   rateLimit('pitch_email', email, 3, 24 * 60 * 60 * 1000)
   const row = await one<{ id: string }>(
     `INSERT INTO deals.pitches (founder_name, email, company, website, deck_url, country, stage, sector, raising_usd, one_liner, description, traction, team, female_founder, ip)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
     [b.founder_name, email, b.company, b.website, b.deck_url, b.country, b.stage, b.sector, b.raising_usd ?? null,
      b.one_liner, b.description, b.traction, b.team, b.female_founder ?? null, ip === 'unknown' ? null : ip])
-  await audit({ event, actorUserId: null, action: 'deal.pitch_received', objectType: 'pitch', objectId: row.id, detail: { company: b.company } })
+  await audit({ event, actorUserId: null, action: 'deal.pitch_received', objectType: 'pitch', objectId: row.id, detail: { company: b.company, funding: b.funding_type } })
+  if (loan) {
+    await db().query("UPDATE deals.pitches SET funding_type = 'loan' WHERE id = $1", [row.id])
+    const appId = await createApplication(row.id, { company: b.company, founder_name: b.founder_name, email, phone: b.phone, country: b.country, sector: b.sector, amount: b.loan_amount!, currency: b.loan_currency ?? (/nigeria/i.test(b.country ?? '') ? 'NGN' : 'USD'), tenor_months: b.loan_tenor_months ?? null, purpose: b.loan_purpose, monthly_revenue: b.monthly_revenue ?? null, rc_number: b.rc_number, bvn: b.bvn || null, nin: b.nin || null, dob: b.dob || null })
+    void (async () => {
+      try { await checkApplication(appId) } catch (err) { console.error('[loan] checks failed for ' + appId, err) }
+      await sendPitchAlert({ pitchId: row.id, company: b.company, oneLiner: 'Loan request: ' + (b.loan_currency ?? '') + ' ' + Number(b.loan_amount).toLocaleString('en-US') + ' — ' + b.one_liner, score: null, recommendation: null, summary: ['Venture debt / loan request. Review it in Credit → Loan applications.'] }).catch(() => {})
+      await sendPitchReceipt(email, b.founder_name, b.company).catch(() => {})
+    })()
+    return { ok: true }
+  }
   // After the reply: screen, alert partners, thank the founder. Each failure is logged; the pitch is already saved.
   void (async () => {
     try {

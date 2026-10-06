@@ -28,6 +28,11 @@ const BUCKET: Record<string, string> = { current: 'Current', '1-30': '1–30 day
 const CLOSED: Record<string, string> = { repaid: 'Repaid', written_off: 'Written off', restructured: 'Restructured' }
 const RT: Record<string, string> = { amortising: 'Amortising', interest_only: 'Interest only', bullet: 'Bullet' }
 void refresh
+const { data: scores } = await useFetch<{ rows: { who: string; name: string; score: number | null; band: string | null; status: string | null }[] }>('/api/credit/scores', { key: 'credit-scores' })
+const scoreMix = computed(() => ['Excellent', 'Good', 'Fair', 'Poor'].map((b) => ({ label: b, value: (scores.value?.rows ?? []).filter((r) => r.band === b).length })).concat([{ label: 'No bureau history', value: (scores.value?.rows ?? []).filter((r) => r.status === 'no_data').length }]))
+const unchecked = computed(() => (scores.value?.rows ?? []).filter((r) => !r.status).length)
+const { data: apps } = await useFetch<{ id: string; status: string; amount: number; currency: string; tenor_months: number | null; company: string; country: string | null; business_score: number | null; guarantor_score: number | null }[]>('/api/credit/applications', { key: 'credit-apps' })
+const APP_ST: Record<string, string> = { new: 'New', checking: 'Checking', review: 'In review', approved: 'Approved', declined: 'Declined', disbursed: 'Disbursed', withdrawn: 'Withdrawn' }
 </script>
 
 <template>
@@ -80,6 +85,11 @@ void refresh
         <div class="card"><h3>Exposure by sector</h3><div v-for="e in data.bySector" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div><p v-if="!data.bySector.length" class="muted">No exposure.</p>
           <h3 class="mt">By country</h3><div v-for="e in data.byCountry" :key="e.name" class="ex"><span>{{ e.name }}</span><b>{{ Object.entries(e.totals).map(([c, v]) => money(v, c)).join(' · ') }}</b></div></div>
       </div>
+      <div class="cgrid"><div class="card"><DonutChart title="Credit scores" total-label="Checked" :segments="scoreMix" /><p class="mut sm">Businesses and their guarantors (founders), latest check each. {{ unchecked }} not checked yet.</p></div>
+        <div class="card apps"><div class="bwh"><h3>Loan applications</h3><span class="mut">From the pitch form · approved separately from equity pitches</span></div>
+          <NuxtLink v-for="a in (apps ?? []).slice(0, 6)" :key="a.id" :to="'/credit/applications/' + a.id" class="ap"><span><b>{{ a.company }}</b><em>{{ money(a.amount, a.currency) }}{{ a.tenor_months ? ' · ' + a.tenor_months + ' months' : '' }} · {{ a.country ?? '' }}</em></span>
+            <span class="scs"><i v-if="a.business_score" title="Business score">B {{ a.business_score }}</i><i v-if="a.guarantor_score" title="Lowest guarantor score">G {{ a.guarantor_score }}</i><span class="ast" :class="a.status">{{ APP_ST[a.status] }}</span></span></NuxtLink>
+          <p v-if="!apps?.length" class="mut sm">No loan applications yet. Founders choose “Venture debt / loan” on the pitch form.</p></div></div>
       <div class="card bw"><div class="bwh"><h3>Borrowers</h3><span class="mut">Credit checks: Nigeria through CreditChek (all three bureaus); other countries by manual review.</span></div>
         <div v-if="borrowers?.length" class="bgrid"><button v-for="b in borrowers" :key="b.id" type="button" class="bc" @click="report = b.id"><span class="bn"><b>{{ b.name }}</b><em>{{ b.country ?? 'Country not set' }} · {{ b.kind === 'individual' ? 'Individual' : 'Business' }}{{ b.monitor ? ' · monitored' : '' }}</em></span>
           <span v-if="b.last_check?.score" class="sc" :class="BAND[b.last_check.band ?? '']"><b>{{ b.last_check.score }}</b><em>{{ b.last_check.band }}</em></span><span v-else-if="b.last_check?.status === 'manual'" class="sc m"><em>Manual review</em></span><span v-else class="sc n"><em>Not checked</em></span></button></div>
@@ -97,7 +107,7 @@ void refresh
       </table>
       <label v-if="data.loans.some((l) => l.status !== 'active')" class="chk"><input v-model="showClosed" type="checkbox"> Show repaid, written-off and restructured loans</label>
     </template>
-    <AppModal :open="!!report" title="Credit report" wide @close="report = ''"><CreditReport v-if="report" :key="report" :borrower-id="report" @changed="refreshB()" /></AppModal>
+    <AppModal :open="!!report" title="Credit report" wide @close="report = ''"><CreditReport v-if="report" :key="report" :borrower-id="report" @changed="refreshB()" /><GuarantorsPanel v-if="report" :key="'g' + report" :borrower-id="report" /></AppModal>
   </section>
 </template>
 
@@ -127,4 +137,8 @@ tr[data-b="1-30"] .st { color: var(--c-warn); } tr[data-b="31-90"] .st, tr[data-
 .bn { display: flex; flex-direction: column; min-width: 0; } .bn em, .sc em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sc { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 4px 8px; } .sc b { font-size: 20px; font-weight: 700; }
 .sc.g b { color: var(--c-ok); } .sc.b b { color: var(--c-blue-deep); } .sc.a b { color: var(--c-warn); } .sc.r b { color: var(--c-danger); }
 .frm.mfx { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 14px 16px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; align-items: start; } .frm.mfx label { display: flex !important; flex-direction: column; gap: 6px; font-size: 13px; } .frm.mfx input, .frm.mfx select { width: 100%; box-sizing: border-box; } .frm.mfx .hint, .frm.mfx .actions { grid-column: 1 / -1; }
+.cgrid { display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 12px; margin: 12px 0; } .sm { font-size: 12.5px; margin: 6px 0 0; } .apps { display: flex; flex-direction: column; gap: 2px; }
+.ap { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--c-rule); text-decoration: none; color: inherit; } .ap em { display: block; font-style: normal; font-size: 12.5px; color: var(--c-muted); } .scs { display: flex; gap: 6px; align-items: center; } .scs i { font-style: normal; font-size: 12px; background: var(--c-paper-2); padding: 2px 7px; }
+.ast { font-size: 12px; padding: 2px 8px; background: var(--c-paper-2); } .ast.review, .ast.checking { background: var(--c-signal-soft); color: var(--c-blue-deep); } .ast.approved, .ast.disbursed { background: rgba(31,122,77,.1); color: var(--c-ok); } .ast.declined { background: rgba(180,35,24,.07); color: var(--c-danger); }
+@media (max-width: 900px) { .cgrid { grid-template-columns: 1fr; } }
 </style>
