@@ -70,13 +70,14 @@ export default defineEventHandler(async (event) => {
       const cash = await db().query<{ currency: string; v: string }>(
         `SELECT a.currency, sum(s.closing_balance)::text AS v FROM banking.accounts a
            JOIN LATERAL (SELECT closing_balance FROM banking.statements WHERE account_id = a.id ORDER BY period_end DESC LIMIT 1) s ON true WHERE a.active GROUP BY a.currency ORDER BY sum(s.closing_balance) DESC`)
-      const main = cash.rows[0]?.currency ?? 'USD'
+      const main = cash.rows.some((r) => r.currency === 'USD') ? 'USD' : cash.rows[0]?.currency ?? 'USD'
       const s = await db().query<{ b: string; v: string }>(
         `WITH months AS (SELECT (date_trunc('month', current_date) - (g || ' months')::interval + interval '1 month - 1 day')::date AS m FROM generate_series(0, 11) g)
          SELECT to_char(date_trunc('month', mo.m), 'YYYY-MM-DD') AS b, coalesce(sum(s.closing_balance), 0)::text AS v FROM months mo
            CROSS JOIN banking.accounts a JOIN LATERAL (SELECT closing_balance FROM banking.statements WHERE account_id = a.id AND period_end <= mo.m ORDER BY period_end DESC LIMIT 1) s ON true
           WHERE a.active AND a.currency = $1 GROUP BY 1`, [main])
-      fo.cash = { byCurrency: cash.rows.map((r) => ({ currency: r.currency, value: n(r.v) })), main, series: fillSeries(s.rows, keys) }
+      let usd = 0; for (const r of cash.rows) { const k = await fxRate(r.currency, 'USD'); if (k) usd += n(r.v) * k }
+      fo.cash = { byCurrency: cash.rows.map((r) => ({ currency: r.currency, value: n(r.v) })), main, series: fillSeries(s.rows, keys), totalUsd: Math.round(usd * 100) / 100 }
     }
     if (can('governance')) {
       const g = await one<{ n: number }>("SELECT count(*)::int AS n FROM governance.resolutions WHERE status = 'circulating'")

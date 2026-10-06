@@ -16,7 +16,12 @@ const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].
 useHead({ title: () => data.value?.fund.name ?? 'Fund' })
 const { money, x, pct, day } = useMoney()
 const cur = computed(() => data.value?.fund.currency ?? 'USD')
-const tab = ref<'lps' | 'calls' | 'nav' | 'terms'>('lps')
+const tab = ref<string>('overview')
+const TABS = computed(() => (data.value?.rolling ? [['overview', 'Overview'], ['deals', 'Investments'], ['lps', 'Co-investors']] : [['overview', 'Overview'], ['lps', 'LPs & commitments'], ['calls', 'Calls & distributions'], ['nav', 'NAV'], ['terms', 'Terms']]))
+const coInv = computed(() => { const m = new Map<string, { name: string; email: string; invested: number; deals: string[]; value: number; realized: number }>()
+  for (const d of data.value?.deals ?? []) for (const c of d.co) { const k = (c.email || c.name).toLowerCase(); const e = m.get(k) ?? { name: c.name, email: c.email, invested: 0, deals: [], value: 0, realized: 0 }
+    e.invested += c.amount; e.deals.push(d.name); if (d.cost > 0) { e.value += (c.amount / d.cost) * d.value; e.realized += (c.amount / d.cost) * d.realized }; m.set(k, e) }
+  return [...m.values()].sort((a, b) => b.invested - a.invested) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function run(fn: () => Promise<unknown>, done: string) { busy.value = true; msg.value = ''; ok.value = ''; try { await fn(); ok.value = done; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
@@ -41,21 +46,23 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <h1>{{ data.fund.name }}</h1>
     <p class="meta">{{ data.fund.status }}<template v-if="data.fund.vintage"> · vintage {{ data.fund.vintage }}</template><template v-if="data.fund.target_size"> · target {{ money(data.fund.target_size, cur) }}</template><template v-if="data.navDate"> · NAV at {{ day(data.navDate) }}</template></p>
     <p class="adm" :class="{ self: data.fund.administrator === 'self' }"><template v-if="data.fund.administrator !== 'self'">Administered by <b>{{ adminLabel }}</b><a v-if="data.fund.admin_portal_url" :href="data.fund.admin_portal_url" target="_blank" rel="noopener">Open {{ adminLabel }} →</a><span>Formation, KYC, money movement, official statements and tax sit with them. Finvry tracks and reports.</span></template><template v-else>Self-administered.</template></p>
+    <nav class="subnav" role="tablist"><button v-for="[k, l] in TABS" :key="k" role="tab" :aria-selected="tab === k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
     <template v-if="data.rolling">
-    <p class="rollnote">Rolling fund: investors join deal by deal, and the terms (instrument, valuation cap, amounts) are set for each startup. There is no fund-level target, fee or term.</p>
-    <div class="kpis">
+    <p v-if="tab === 'overview'" class="rollnote">Rolling fund: investors join deal by deal, and the terms (instrument, valuation cap, amounts) are set for each startup. There is no fund-level target, fee or term.</p>
+    <div v-if="tab === 'overview'" class="kpis">
       <div class="kpi"><span>Deals</span><b>{{ data.deals?.length ?? 0 }}</b><em>{{ data.deals?.filter((d) => ['active', 'at_cost'].includes(d.status)).length }} active · {{ data.deals?.filter((d) => d.status === 'written_off').length }} written off</em></div>
       <div class="kpi"><span>Invested</span><b>{{ money(data.deals?.reduce((a, d) => a + d.cost, 0) ?? 0, cur) }}</b><em>Aidi {{ money(data.deals?.reduce((a, d) => a + (d.aidi ?? 0), 0) ?? 0, cur) }} on deals with terms on file</em></div>
       <div class="kpi"><span>Current value</span><b>{{ money(data.deals?.reduce((a, d) => a + d.value, 0) ?? 0, cur) }}</b><em>Realized {{ money(data.deals?.reduce((a, d) => a + d.realized, 0) ?? 0, cur) }}</em></div>
       <div class="kpi"><span>Multiple</span><b>{{ x(((data.deals?.reduce((a, d) => a + d.value + d.realized, 0) ?? 0) / Math.max(1, data.deals?.reduce((a, d) => a + d.cost, 0) ?? 1))) }}</b><em>value plus realized over invested</em></div>
       <div class="kpi"><span>Co-investors</span><b>{{ data.lps.length }}</b><em>{{ money(data.deals?.reduce((a, d) => a + d.co.reduce((s, c) => s + c.amount, 0), 0) ?? 0, cur) }} invested alongside</em></div>
     </div>
-    <div class="card rdeals"><h2>Investments (deal by deal)</h2><table class="mini"><thead><tr><th>Company</th><th>Terms</th><th class="n">Aidi Angel Fund</th><th>Co-investors</th><th class="n">Value</th><th>Status</th></tr></thead><tbody>
+    <div v-if="tab === 'overview'" class="card donut"><DonutChart title="Current value by company" total-label="Value" :currency="cur" :segments="(data.deals ?? []).filter((d) => d.value > 0).map((d) => ({ label: d.name, value: Math.round(d.value) }))" /></div>
+    <div v-if="tab === 'deals'" class="card rdeals"><h2>Investments (deal by deal)</h2><table class="mini"><thead><tr><th>Company</th><th>Terms</th><th class="n">Aidi Angel Fund</th><th>Co-investors</th><th class="n">Value</th><th>Status</th></tr></thead><tbody>
       <tr v-for="d in data.deals" :key="d.id"><td><b>{{ d.name }}</b><span v-if="d.legal" class="sub">{{ d.legal }}</span></td><td>{{ d.instrument ?? '—' }}<span v-if="d.cap" class="sub">{{ d.instrument === 'SPV' ? 'valuation' : 'cap' }} {{ money(d.cap, cur) }}</span></td><td class="n">{{ d.aidi !== null ? money(d.aidi, cur) : '—' }}</td>
         <td><template v-if="d.co.length">{{ d.co.map((c) => c.name + ' ' + money(c.amount, cur)).join(', ') }}</template><span v-else class="sub">—</span></td><td class="n">{{ money(d.value, cur) }}<span v-if="d.realized" class="sub">+ {{ money(d.realized, cur) }} realized</span></td><td>{{ { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off', sold: 'Sold', nil: 'Nil' }[d.status] ?? d.status }}</td></tr></tbody></table>
       <p class="sub">Positions and terms are kept in Investments &amp; AUM; edit them there.</p></div>
     </template>
-    <div v-else class="kpis">
+    <div v-else-if="tab === 'overview'" class="kpis">
       <div class="kpi"><span>Committed</span><b>{{ money(data.totals.committed, cur) }}</b><em>{{ data.lps.length }} LPs</em></div>
       <div class="kpi"><span>Called</span><b>{{ money(data.totals.called, cur) }}</b><em>{{ pct(data.totals.calledPct) }} · {{ money(data.totals.unfunded, cur) }} unfunded</em></div>
       <div class="kpi"><span>Paid in</span><b>{{ money(data.totals.paidIn, cur) }}</b><em>{{ money(data.totals.deployed) }} invested in {{ data.investments.length }} deals</em></div>
@@ -64,9 +71,14 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
       <div class="kpi"><span>TVPI</span><b>{{ x(data.m.tvpi) }}</b><em>Net IRR {{ pct(data.m.irr) }}</em></div>
     </div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    <div class="tabs"><button :class="{ on: tab === 'lps' }" @click="tab = 'lps'">LPs &amp; commitments</button><button :class="{ on: tab === 'calls' }" @click="tab = 'calls'">Calls &amp; distributions</button><button :class="{ on: tab === 'nav' }" @click="tab = 'nav'">NAV</button><button :class="{ on: tab === 'terms' }" @click="tab = 'terms'">Terms</button></div>
 
-    <template v-if="tab === 'lps'">
+    <template v-if="tab === 'lps' && data.rolling">
+      <div v-if="coInv.length" class="card donut"><DonutChart title="Invested by co-investor" total-label="Invested" :currency="cur" :segments="coInv.map((c) => ({ label: c.name, value: c.invested }))" /></div>
+      <div class="card rdeals"><h2>Co-investors</h2><table class="mini"><thead><tr><th>Co-investor</th><th>Deals</th><th class="n">Invested</th><th class="n">Est. value</th><th class="n">Multiple</th></tr></thead><tbody>
+        <tr v-for="c in coInv" :key="c.email || c.name"><td><b>{{ c.name }}</b><span class="sub">{{ c.email }}</span></td><td>{{ c.deals.join(', ') }}</td><td class="n">{{ money(c.invested, cur) }}</td><td class="n">{{ money(c.value, cur) }}<span v-if="c.realized" class="sub">+ {{ money(c.realized, cur) }} realized</span></td><td class="n">{{ x((c.value + c.realized) / Math.max(1, c.invested)) }}</td></tr></tbody></table>
+        <p class="sub">In a rolling fund each co-investor pays in full when they join a deal, so there are no capital calls. Estimated value is their share of each company's current mark. Add or change co-investors on the deal in Investments &amp; AUM.</p></div>
+    </template>
+    <template v-else-if="tab === 'lps'">
       <div v-if="data.lps.length" class="card donut"><DonutChart title="Commitments by LP" total-label="Committed" :currency="cur" :segments="data.lps.map((l) => ({ label: l.name, value: l.commitment }))" /></div>
       <table class="table">
         <thead><tr><th>LP</th><th class="n">Commitment</th><th class="n">Called</th><th class="n">Paid in</th><th class="n">Unfunded</th><th class="n">Distributed</th><th class="n">TVPI</th><th /></tr></thead>
@@ -121,8 +133,8 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
       </form>
     </template>
 
-    <p v-else-if="data.rolling" class="card rollnote">This is a rolling fund, so it has no fund-level terms. Each investment's terms are recorded on the deal (see above, and Investments &amp; AUM).</p>
-    <form v-else class="card frm" @submit.prevent="saveTerms">
+    <p v-else-if="tab === 'terms' && data.rolling" class="card rollnote">This is a rolling fund, so it has no fund-level terms. Each investment's terms are recorded on the deal (see above, and Investments &amp; AUM).</p>
+    <form v-else-if="tab === 'terms'" class="card frm" @submit.prevent="saveTerms">
       <label class="label">Currency<select v-model="tm.currency" :disabled="!isGp"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
       <label class="label">Target size<input v-model="tm.target_size" inputmode="decimal" :disabled="!isGp"></label>
       <label class="label">Vintage<input v-model="tm.vintage" inputmode="numeric" :disabled="!isGp"></label>
@@ -160,4 +172,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } .frm { grid-template-columns: 1fr; } }
 .rollnote { font-size: 13.5px; color: var(--c-ink-soft); background: var(--c-signal-soft); padding: 10px 14px; margin: 8px 0 14px; } .rdeals { margin: 14px 0; overflow-x: auto; } .rdeals h2 { margin: 0 0 8px; } .rdeals td { vertical-align: top; font-size: 13.5px; } .rdeals .sub { display: block; font-size: 12px; color: var(--c-muted); } .rdeals .n { text-align: right; white-space: nowrap; }
+.subnav { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0 16px; width: fit-content; max-width: 100%; overflow-x: auto; } .subnav button { background: none; border: 0; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .subnav button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
 </style>
