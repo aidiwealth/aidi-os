@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
   }
   await db().query('INSERT INTO fundraise.deck_versions (deck_id, document_id, filename) VALUES ($1,$2,$3)', [id, docId, filename])
   await db().query('UPDATE fundraise.decks SET updated_at = now() WHERE id = $1', [id])
+  await db().query('UPDATE fundraise.files SET document_id = $2 WHERE deck_id = $1', [id, docId])
   await audit({ event, actorUserId: user.userId, action: deckId ? 'deck.version' : 'deck.create', objectType: 'deck', objectId: id })
   return { ok: true, id }
 })

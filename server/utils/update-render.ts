@@ -76,6 +76,7 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
   return out.join('')
 }
 // The full email (or web) document for one reader.
+export const REACTIONS: [string, string][] = [['up', '👍'], ['love', '❤️'], ['party', '🎉'], ['rocket', '🚀'], ['clap', '👏'], ['think', '🤔']]
 export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; subject?: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
   const body = await renderBlocks(u.blocks, o.base, u.subject)
   const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
@@ -86,6 +87,7 @@ export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover
   return '<!doctype html><html><body style="margin:0;background:#f4f3ef"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">' +
     (o.viewUrl ? '<div style="max-width:640px;font-size:12px;color:#8a8a8a;text-align:right;margin:0 0 8px;font-family:Helvetica,Arial,sans-serif"><a href="' + o.viewUrl + '" style="color:#8a8a8a">View in browser</a></div>' : '') +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff"><tr><td style="padding:32px 36px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</td></tr></table>' +
+    (o.viewUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;margin:14px 0 0"><tr><td style="font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#555;padding:0 0 6px">React to this update</td></tr><tr><td>' + REACTIONS.map(([k, e]) => '<a href="' + o.viewUrl + '?react=' + k + '" style="display:inline-block;text-decoration:none;font-size:22px;line-height:1;padding:8px 10px;margin:0 6px 6px 0;background:#ffffff;border:1px solid #e6e4dd;border-radius:20px">' + e + '</a>').join('') + '<a href="' + o.viewUrl + '?reply=1" style="display:inline-block;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#1c4f9c;padding:10px 6px">Leave a note</a></td></tr></table>' : '') +
     '<div style="max-width:640px;font-size:11.5px;color:#8a8a8a;margin:14px 0 0;font-family:Helvetica,Arial,sans-serif">Sent by ' + esc(o.company) + (o.hideFinvry ? '.' : ' with Finvry.') + (o.unsubUrl ? ' <a href="' + o.unsubUrl + '" style="color:#8a8a8a">Unsubscribe</a>' : '') + '</div>' +
     (o.pixelUrl ? '<img src="' + o.pixelUrl + '" width="1" height="1" alt="" style="display:block">' : '') + '</td></tr></table></body></html>'
 }

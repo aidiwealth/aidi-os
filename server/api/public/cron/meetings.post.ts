@@ -16,12 +16,13 @@ export default defineEventHandler(async (event) => {
   }
   // Managed fundraising meetings: email the client 1 day and 1 hour before.
   const rm = (await asPlatform(() => db().query<{ id: string; title: string; starts_at: string; minutes: number; location: string | null; agenda: string | null; investor: string | null; client: string; email: string | null; day: boolean }>(
-    `SELECT m.id, m.title, m.starts_at, m.minutes, m.location, m.agenda, i.name AS investor, c.name AS client, c.email, (m.starts_at > now() + interval '75 minutes') AS day
+    `SELECT m.id, m.title, m.starts_at, m.minutes, m.location, m.agenda, i.name AS investor, c.name AS client, c.email, (m.starts_at > now() + interval '75 minutes') AS day, CASE WHEN i.notify THEN i.email END AS inv_email
        FROM services.raise_meetings m JOIN services.raise_programs p ON p.id = m.program_id JOIN services.clients c ON c.id = p.client_id LEFT JOIN services.raise_investors i ON i.id = m.investor_id
       WHERE m.starts_at > now() AND ((m.reminded_day IS NULL AND m.starts_at <= now() + interval '24 hours' AND m.starts_at > now() + interval '75 minutes') OR (m.reminded_hour IS NULL AND m.starts_at <= now() + interval '75 minutes')) LIMIT 200`))).rows
   for (const m of rm) {
     await asPlatform(() => db().query('UPDATE services.raise_meetings SET ' + (m.day ? 'reminded_day' : 'reminded_hour') + ' = now() WHERE id = $1', [m.id]))
     if (m.email) { try { await emailRaiseMeeting(m.email, m.client, m, m.day ? 'day' : 'hour'); sent++ } catch (err) { console.error('[raise] reminder', err) } }
+    if ((m as unknown as { inv_email?: string | null }).inv_email) { try { await emailRaiseMeeting((m as unknown as { inv_email: string }).inv_email, m.client, { ...m, investor: m.client }, m.day ? 'day' : 'hour', true); sent++ } catch (err) { console.error('[raise] investor reminder', err) } }
   }
   return { due: due.length + rm.length, sent }
 })

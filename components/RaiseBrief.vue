@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Desk: the founder's fundraising brief, laid out for reading, with a link to the fundraising workspace.
-const props = defineProps<{ jobId: string }>()
+const props = defineProps<{ jobId: string; inWorkspace?: boolean }>()
 const { data } = await useFetch<{ id: string; status: string; currency: string; target: number | null; round: string | null; instrument: string | null; valuation: number | null; fee_pct: number; intake: Record<string, string | number | null>; intake_at: string | null } | null>(() => '/api/services/raise/by-job/' + props.jobId)
 const money = (v: unknown) => (v == null || v === '' ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.currency ?? 'USD', maximumFractionDigits: 0 }).format(Number(v)))
 const lines = (s: unknown) => String(s ?? '').split(/\n+/).map((x) => x.replace(/^\s*(\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean)
@@ -9,7 +9,7 @@ const chips = (s: unknown) => String(s ?? '').split(/[\n,;]+/).map((x) => x.trim
 <template>
   <div v-if="data" class="card rb">
     <div class="rh"><div><span class="eb">Managed fundraising brief</span><h2>{{ data.round }} · {{ money(data.target) }}</h2><p class="mut">{{ data.instrument }}{{ data.valuation ? ' · valuation or cap ' + money(data.valuation) : '' }} · success fee {{ data.fee_pct }}%{{ data.intake_at ? ' · received ' + new Date(data.intake_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '' }}</p></div>
-      <NuxtLink :to="'/services/raise/' + data.id" class="btn">Open fundraising workspace →</NuxtLink></div>
+      <NuxtLink v-if="!inWorkspace" :to="'/services/raise/' + data.id" class="btn">Open fundraising workspace →</NuxtLink></div>
     <div class="facts"><div><span>Target</span><b>{{ money(data.target) }}</b></div><div><span>Raised so far</span><b>{{ money(data.intake.raised_so_far) }}</b></div><div><span>Timeline</span><b>{{ data.intake.timeline || '—' }}</b></div><div><span>Currency</span><b>{{ data.currency }}</b></div></div>
     <div class="secs">
       <div v-if="data.intake.use_of_funds"><h3>Use of funds</h3><ul><li v-for="(l, i) in lines(data.intake.use_of_funds)" :key="i">{{ l }}</li></ul></div>
@@ -25,4 +25,5 @@ const chips = (s: unknown) => String(s ?? '').split(/[\n,;]+/).map((x) => x.trim
 .secs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; } h3 { font-size: 13px; margin: 0 0 6px; color: var(--c-ink-soft); } ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; } .pre { white-space: pre-wrap; font-size: 13.5px; margin: 0; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips span { background: var(--c-signal-soft); color: var(--c-blue-deep); font-size: 12.5px; padding: 3px 10px; } .deck { color: var(--c-blue-deep); font-size: 13.5px; }
 @media (max-width: 900px) { .facts, .secs { grid-template-columns: 1fr 1fr; } }
+.rb, .rb * { overflow-wrap: anywhere; }
 </style>

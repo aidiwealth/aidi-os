@@ -104,6 +104,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
         <div class="pvbar"><label class="cb"><input v-model="pmode" type="checkbox"> Email preview</label><label class="va">View as<select v-model="asName"><option value="">A recipient</option><option v-for="c in data.contacts.slice(0, 200)" :key="c.id" :value="c.name">{{ c.name }}</option></select></label></div>
         <p class="note">This is how the email will look. It may appear slightly differently across email apps, so send yourself a test.</p>
         <iframe v-if="pmode" ref="frame" :srcdoc="emailHtml" title="Email preview" class="frame" scrolling="no" :style="{ height: frameH + 'px' }" @load="fit" />
+        <UpdateReactions :update-id="id" />
         <div v-if="data.sends.length" class="card opens"><h3>Opens ({{ data.sends.filter((s) => s.opened_at).length }} of {{ data.sends.length }})</h3><div v-for="s in data.sends" :key="s.investor_id" class="li"><span>{{ s.name }} <em>{{ s.email }}</em></span><b :class="{ okk: s.opened_at }">{{ s.opened_at ? 'Opened ' + when(s.opened_at) + (s.opens > 1 ? ' · ' + s.opens + '×' : '') : 'Not opened' }}</b></div></div>
       </div>
     </div>

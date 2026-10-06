@@ -2,7 +2,7 @@
 // Your public investor page: what investors see at finvry.com/c/your-company. Metrics come from Financials.
 useHead({ title: 'Investor page' })
 interface Pg { deck_id?: string | null; board_id?: string | null; logo_id?: string | null; cover_id?: string | null; slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
-const { data, refresh } = await useFetch<{ page: Pg; exists: boolean; base: string; metrics: { key: string; label: string }[]; company: string }>('/api/investor-page')
+const { data, refresh } = await useFetch<{ room?: { available: boolean; files?: number; on?: boolean; views?: number }; page: Pg; exists: boolean; base: string; metrics: { key: string; label: string }[]; company: string }>('/api/investor-page')
 const f = reactive({ deck_id: null as string | null, board_id: null as string | null, logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
 watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { deck_id: p.deck_id ?? null, board_id: p.board_id ?? null, logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
@@ -16,6 +16,7 @@ async function save(publish?: boolean) {
   try { const r = await $fetch<{ url: string }>('/api/investor-page', { method: 'POST', body: f }); ok.value = f.published ? 'Live at ' + r.url : 'Saved (not published).'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
+async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { await $fetch('/api/investor-page', { method: 'POST', body: { ...f, room: on } }); await refresh(); ok.value = on ? 'Data room button added.' : 'Data room button removed.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false } }
 </script>
 
 <template>
@@ -36,6 +37,8 @@ async function save(publish?: boolean) {
           <span class="muted">Shown with viewer analytics. <NuxtLink to="/decks">Upload or manage decks</NuxtLink>{{ deckList?.decks.length ? '' : ' (none yet)' }}.</span></label>
         <label v-if="!deckList?.decks.length" class="label">Or a deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
+        <div v-if="data.room?.available" class="room"><label class="chk"><input type="checkbox" :checked="data.room.on" :disabled="busy" @change="setRoom(($event.target as HTMLInputElement).checked)"> Show an “Open data room” button</label>
+          <span class="muted">{{ data.room.files ? data.room.files + ' file' + (data.room.files === 1 ? '' : 's') + ' in your data room.' : 'Your data room is empty.' }} Investors give their email to open it; your NDA applies and you are notified, like any data room link.{{ data.room.on ? ' ' + data.room.views + ' views so far.' : '' }} <NuxtLink to="/fundraising">Manage the data room</NuxtLink></span></div>
       </div>
       <div class="card frm">
         <b>Numbers to show</b>
@@ -58,4 +61,5 @@ input, textarea, select { font: inherit; font-size: 14px; padding: 8px 10px; bor
 .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; } .chk input { width: auto; } .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .grid, .two { grid-template-columns: 1fr; } }
 .imgs { display: grid; grid-template-columns: 1fr 1.6fr; gap: 14px; } .lg { display: flex; gap: 12px; align-items: center; } .lg img, .ph { width: 64px; height: 64px; object-fit: contain; border: 1px solid var(--c-rule); background: #fff; flex: none; } .ph { display: grid; place-items: center; font-size: 26px; font-weight: 600; color: var(--c-muted); } .cv { display: flex; flex-direction: column; gap: 6px; } .cv img { width: 100%; height: 110px; object-fit: cover; } .lk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; align-self: flex-start; } @media (max-width: 900px) { .imgs { grid-template-columns: 1fr; } }
+.room { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--c-signal-soft); }
 </style>

@@ -29,6 +29,9 @@ const msg = ref(''); const ok = ref(''); const busy = ref(false)
 
 // data room: upload
 const up = reactive({ open: false, folder: 'General', is_deck: false })
+const fromDeck = reactive({ open: false, deck_id: '', is_deck: true, busy: false, msg: '' })
+const { data: myDecks } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; versions: number; stats: { total: number } }[] }>('/api/documents/decks', { key: 'room-decks', default: () => ({ decks: [] }) })
+async function addDeck() { fromDeck.busy = true; fromDeck.msg = ''; try { await $fetch('/api/fundraising/files/deck', { method: 'POST', body: { deck_id: fromDeck.deck_id, is_deck: fromDeck.is_deck } }); fromDeck.open = false; await refresh() } catch (e) { fromDeck.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the deck.' } finally { fromDeck.busy = false } }
 async function upload(ev: Event) { const files = Array.from((ev.target as HTMLInputElement).files ?? []); busy.value = true; msg.value = ''
   for (const f of files) { const fd = new FormData(); fd.append('file', f); fd.append('folder', up.folder); fd.append('is_deck', String(up.is_deck && files.length === 1)); try { await $fetch('/api/fundraising/files', { method: 'POST', body: fd }) } catch (e) { msg.value = f.name + ': ' + err(e) } }
   busy.value = false; up.open = false; await refresh() }
@@ -75,7 +78,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     </template>
 
     <template v-else-if="tab === 'room'">
-      <div class="bar2"><span class="mut">{{ data.files.length }} file{{ data.files.length === 1 ? '' : 's' }} · investors only see what each link shares</span><div class="row"><button class="btn secondary" @click="up.open = true">Upload files</button><button class="btn" :disabled="!data.files.length" @click="newLink()">Create tracked link</button></div></div>
+      <div class="bar2"><span class="mut">{{ data.files.length }} file{{ data.files.length === 1 ? '' : 's' }} · investors only see what each link shares</span><div class="row"><button class="btn secondary" @click="fromDeck.open = true; fromDeck.deck_id = myDecks?.decks.find((d) => d.primary_deck)?.id ?? myDecks?.decks[0]?.id ?? ''">Add from Decks</button><button class="btn secondary" @click="up.open = true">Upload files</button><button class="btn" :disabled="!data.files.length" @click="newLink()">Create tracked link</button></div></div>
       <div class="two"><div><h3>Files</h3><div v-for="[fo, list] in folders" :key="fo" class="card fold"><span class="fl">{{ fo }}</span><div v-for="f in list" :key="f.id" class="fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
           <EmptyState v-if="!data.files.length" card icon="upload" title="Your data room is empty" text="Upload your deck, financials, cap table and legal documents. Drag and drop works too."><button class="btn" @click="up.open = true">Upload files</button></EmptyState></div>
         <div><h3>Tracked links</h3><div v-for="l in data.links" :key="l.id" class="card lnk" :class="{ dead: l.revoked }"><div class="lh"><b>{{ l.name }}</b><span class="pill" :class="{ off: l.revoked }">{{ l.revoked ? 'Off' : 'Live' }}</span></div>
@@ -155,6 +158,13 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
         <p class="hint">This creates a SAFE term sheet and signature page based on the post-money SAFE. It is not legal advice; have a lawyer review it, and sign the official form.</p></div>
       <template #foot><button v-if="sf.step > 1" class="btn secondary" @click="sf.step--">Back</button><span class="sp" /><button v-if="sf.step < 4" class="btn" :disabled="(sf.step === 1 && (!sf.investor_name || !sf.amount)) || (sf.step === 3 && (!sf.company_name || !sf.signatory_name))" @click="sf.step++">Continue</button><button v-else class="btn" :disabled="busy" @click="saveSafe">Create SAFE</button></template>
     </AppModal>
+    <AppModal :open="fromDeck.open" title="Add a deck to the data room" @close="fromDeck.open = false">
+      <div v-if="myDecks?.decks.length" class="adk"><label class="label">Deck<select v-model="fromDeck.deck_id"><option v-for="d in myDecks.decks" :key="d.id" :value="d.id">{{ d.title }}{{ d.primary_deck ? ' ★' : '' }}</option></select></label>
+        <label class="chk"><input v-model="fromDeck.is_deck" type="checkbox"> This is our pitch deck (shown first)</label>
+        <p class="mut">The latest version is used, and the data room copy updates when you upload a new version in Decks.</p><p v-if="fromDeck.msg" class="error">{{ fromDeck.msg }}</p></div>
+      <p v-else class="mut">You have no decks yet. <NuxtLink to="/decks">Upload one in Decks</NuxtLink> first.</p>
+      <template #foot><button class="btn secondary" @click="fromDeck.open = false">Cancel</button><button class="btn" :disabled="!fromDeck.deck_id || fromDeck.busy" @click="addDeck">Add to data room</button></template>
+    </AppModal>
   </section>
 </template>
 
@@ -186,4 +196,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; bor
 .rv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; font-size: 14px; } .rv span { color: var(--c-muted); } .rv b { font-weight: 500; } .hint { font-size: 13px; color: var(--c-ink-soft); background: var(--c-paper-2); padding: 10px 12px; margin: 0; } .sp { flex: 1; }
 .mut { color: var(--c-muted); font-size: 13px; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .two, .kp, .g2 { grid-template-columns: 1fr; } }
+.adk { display: flex; flex-direction: column; gap: 10px; } .adk select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 </style>
