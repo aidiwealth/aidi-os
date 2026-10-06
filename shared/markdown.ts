@@ -9,6 +9,7 @@ export function mdRender(src: string, st: MdStyles = {}): string {
     let s = raw.replace(/\\([\\`*_{}\[\]()#+\-.!>~|])/g, (_, c: string) => { keep.push(c); return '\u0000' + (keep.length - 1) + '\u0000' })
     s = esc(s.replace(/&(lt|gt|amp|quot|#39|nbsp);/g, (_, e: string) => ({ lt: '<', gt: '>', amp: '&', quot: '"', '#39': "'", nbsp: ' ' } as Record<string, string>)[e] ?? ''))
     s = s.replace(/`([^`]+)`/g, (_, c: string) => '<code' + sa('code') + '>' + c + '</code>')
+    s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (_, a: string, u: string) => '<img src="' + u + '" alt="' + a.replace(/"/g, '') + '" style="max-width:100%;height:auto">')
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (_, t: string, u: string) => '<a href="' + u + '" target="_blank" rel="noopener"' + sa('a') + '>' + t + '</a>')
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/__(.+?)__/g, '<strong>$1</strong>')
     s = s.replace(/(^|[^*\w])\*(?!\s)(.+?)\*(?!\w)/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?!\s)(.+?)_(?!\w)/g, '$1<em>$2</em>')

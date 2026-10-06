@@ -26,6 +26,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'banking', group: 'fo', label: 'Bank & cash', to: '/banking', roles: ['gp', 'family'], api: ['/api/banking'], pages: ['/banking'], switchable: true },
   { code: 'fo_analytics', group: 'fo', label: 'Analytics', to: '/family-office/analytics', roles: ['gp', 'team', 'family'], api: ['/api/fo-analytics'], pages: ['/family-office'], switchable: true },
   { code: 'wealth', group: 'fo', label: 'Investments & AUM', to: '/wealth', roles: ['gp', 'family'], api: ['/api/wealth'], pages: ['/wealth'], switchable: true },
+  { code: 'blog', group: 'admin', label: 'Blog', to: '/blog', roles: ['admin', 'gp', 'team'], api: ['/api/blog'], pages: ['/blog'], switchable: true },
   { code: 'cs_tracker', group: 'cs', label: 'Tracker', to: '/services/tracker', roles: ['team', 'gp', 'services'], api: ['/api/services/tracker'], pages: ['/services/tracker'], switchable: true },
   { code: 'cs_inbox', group: 'cs', label: 'Inbox', to: '/services/inbox', roles: ['team', 'gp', 'services'], api: ['/api/services/inbox'], pages: ['/services/inbox'], switchable: true },
   { code: 'services', group: 'cs', label: 'Jobs', to: '/services', roles: ['team', 'gp', 'services'], api: ['/api/services', '/api/public/job'], pages: ['/services', '/job'], switchable: true },

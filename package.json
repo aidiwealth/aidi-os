@@ -2,7 +2,7 @@
   "name": "aidi-os",
   "private": true,
   "type": "module",
-  "description": "Aidi OS \u2014 internal back office for The Aidi Group",
+  "description": "Aidi OS — internal back office for The Aidi Group",
   "engines": {
     "node": "20.x"
   },
@@ -16,6 +16,7 @@
   "dependencies": {
     "@fontsource/cormorant-garamond": "^5.1.0",
     "@fontsource/instrument-sans": "^5.1.0",
+    "@tiptap/extension-image": "^2.27.3",
     "@tiptap/extension-link": "^2.27.3",
     "@tiptap/extension-placeholder": "^2.27.3",
     "@tiptap/pm": "^2.27.3",

@@ -4,14 +4,15 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
+import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
-const props = withDefaults(defineProps<{ modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; maxLength?: number }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000 })
+const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; maxLength?: number }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000 })
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 let last = props.modelValue ?? ''
 const md = (e: { storage: Record<string, unknown> }) => (e.storage.markdown as { getMarkdown: () => string }).getMarkdown()
 const editor = useEditor({
   content: last,
-  extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] }, codeBlock: false }), Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener', target: '_blank' } }), Placeholder.configure({ placeholder: props.placeholder }),
+  extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] }, codeBlock: false }), Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener', target: '_blank' } }), Placeholder.configure({ placeholder: props.placeholder }), Image.configure({ inline: false, HTMLAttributes: { style: 'max-width:100%;height:auto' } }),
     Markdown.configure({ html: false, tightLists: true, linkify: true, breaks: false, transformPastedText: true })],
   onUpdate: ({ editor: e }) => { let v = md(e); if (v.length > props.maxLength) v = v.slice(0, props.maxLength); last = v; emit('update:modelValue', v) }
 })
@@ -21,12 +22,14 @@ const block = computed({ get: () => { const e = editor.value; if (!e) return 'p'
   set: (v: string) => { const c = editor.value?.chain().focus(); if (!c) return; if (v === 'p') c.setParagraph().run(); else c.toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run() } })
 function link() { const e = editor.value; if (!e) return; const prev = e.getAttributes('link').href as string | undefined; const url = window.prompt('Link address', prev ?? 'https://'); if (url === null) return; if (!url || url === 'https://') { e.chain().focus().unsetLink().run(); return } if (!/^(https?:\/\/|mailto:)/i.test(url)) return; e.chain().focus().extendMarkRange('link').setLink({ href: url }).run() }
 const on = (n: string, a?: Record<string, unknown>) => !!editor.value?.isActive(n, a)
+async function addImage(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file || !props.imageUpload || !editor.value) return; try { const src = await props.imageUpload(file); editor.value.chain().focus().setImage({ src, alt: file.name.replace(/\.[a-z]+$/i, '') }).run() } catch { /* the caller shows the error */ } finally { (ev.target as HTMLInputElement).value = '' } }
 </script>
 <template>
   <div class="re" :class="{ compact }">
     <div v-if="editor" class="tb" role="toolbar" aria-label="Formatting">
       <select v-model="block" aria-label="Text style"><option value="p">Paragraph</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option></select>
       <span class="sep" />
+      <label v-if="imageUpload" class="imgbtn" title="Insert image"><input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" @change="addImage">Image</label>
       <button type="button" :class="{ on: on('bold') }" title="Bold (Ctrl+B)" @click="editor.chain().focus().toggleBold().run()"><b>B</b></button>
       <button type="button" :class="{ on: on('italic') }" title="Italic (Ctrl+I)" @click="editor.chain().focus().toggleItalic().run()"><i>I</i></button>
       <button type="button" :class="{ on: on('strike') }" title="Strikethrough" @click="editor.chain().focus().toggleStrike().run()"><s>S</s></button>
@@ -56,4 +59,5 @@ const on = (n: string, a?: Record<string, unknown>) => !!editor.value?.isActive(
 .ec :deep(.ProseMirror a) { color: var(--c-blue-deep); } .ec :deep(.ProseMirror code) { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--c-paper-2); padding: 1px 5px; }
 .ec :deep(.ProseMirror p.is-editor-empty:first-child::before) { content: attr(data-placeholder); color: var(--c-muted); float: left; height: 0; pointer-events: none; }
 .compact .ec :deep(.ProseMirror) { font-size: 14px; } .compact .tb { padding: 4px 6px; } .compact .tb button { min-width: 26px; height: 26px; }
+.imgbtn { font-size: 12.5px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--c-rule); background: #fff; } .imgbtn input { display: none; } :deep(.ProseMirror img) { max-width: 100%; height: auto; display: block; margin: 12px 0; }
 </style>
