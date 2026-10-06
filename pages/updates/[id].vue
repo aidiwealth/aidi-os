@@ -68,6 +68,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
     <div class="main">
       <div class="top"><span class="crumb">{{ data.update.is_template ? 'Template' : data.label }} · {{ data.update.sent_at ? 'Sent' : data.update.status === 'published' ? 'Published' : 'Draft' }}</span><span class="sv">{{ saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes' }}</span>
         <button v-if="step < 3" class="btn secondary" @click="step++">Next →</button><template v-else><button class="btn secondary" :disabled="!!sending" @click="send('test')">{{ sending === 'test' ? 'Sending…' : 'Send a test' }}</button>
+          <AddToRoom kind="update" :id="id" />
           <span class="pw"><button class="btn" :disabled="!!sending" @click="pubMenu = !pubMenu">{{ sending ? 'Working…' : 'Publish ▾' }}</button><span v-if="pubMenu" class="pm"><button @click="send('email')"><b>Send by email</b><em>To {{ count?.count ?? 0 }} recipients</em></button><button @click="send('email_publish')"><b>Send and publish</b><em>Email, and show on your investor page</em></button><button @click="send('publish')"><b>Publish only</b><em>Investor page, no email</em></button></span></span></template></div>
       <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
 

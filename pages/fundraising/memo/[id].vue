@@ -11,12 +11,12 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function save() { busy.value = 'save'; msg.value = ''; ok.value = ''; try { await $fetch('/api/fundraising/memo', { method: 'POST', body: { id, ...f } }); ok.value = 'Saved.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function generate() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ body: string }>('/api/fundraising/memo/generate', { method: 'POST', body: { notes: f.notes } }); f.body = r.body; view.value = 'preview'; await save(); ok.value = 'Draft ready. Fill any [add: …] gaps and edit before sharing.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 const html = computed(() => renderMarkdown(f.body))
-const doPrint = () => window.print()
+const doPrint = () => downloadPdf({ kind: 'doc', title: f.title || 'Deal memo', company: f.title || 'Deal memo', md: f.body || '' })
 </script>
 <template>
   <section v-if="data">
     <NuxtLink to="/fundraising?t=memo" class="back noprint">← Fundraising</NuxtLink>
-    <div class="hd noprint"><input v-model="f.title" class="title" maxlength="200"><div class="row"><button class="btn secondary" :disabled="!!busy" @click="save">Save</button><button class="btn secondary" @click="doPrint">Download PDF</button><DeleteButton type="memo" :id="id" :name="f.title || 'this memo'" to="/fundraising?t=memo" /></div></div>
+    <div class="hd noprint"><input v-model="f.title" class="title" maxlength="200"><div class="row"><button class="btn secondary" :disabled="!!busy" @click="save">Save</button><button class="btn secondary" @click="doPrint">Download PDF</button><AddToRoom kind="memo" :id="id" /><DeleteButton type="memo" :id="id" :name="f.title || 'this memo'" to="/fundraising?t=memo" /></div></div>
     <p v-if="msg" class="error noprint">{{ msg }}</p><p v-if="ok" class="ok noprint">{{ ok }}</p>
     <div class="grid">
       <div class="card notes noprint"><h3>Your notes</h3><p class="mut">A sentence or two each. Your financials are added automatically.</p>

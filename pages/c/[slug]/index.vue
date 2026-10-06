@@ -5,10 +5,11 @@ definePageMeta({ layout: 'public' })
 const route = useRoute()
 const slug = String(route.params.slug ?? route.params.handle ?? '')
 interface D { room_url?: string | null; board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
-const nda = ref('')
-const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + nda.value : ''), { key: 'pub-c-' + slug })
-onMounted(() => { const k = data.value?.nda?.key; if (data.value?.gated && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s) { nda.value = s; refresh() } } })
-function signed(id: string) { nda.value = id; refresh() }
+const nda = ref(String(useRoute().query.nda ?? ''))
+const goNda = (id: string) => { const u = new URL(window.location.href); u.searchParams.set('nda', id); window.location.replace(u.toString()) }
+const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-c-' + slug + (nda.value ? '-' + nda.value : '') })
+onMounted(() => { const k = data.value?.nda?.key; if (data.value?.gated && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s && s !== nda.value) goNda(s) } })
+function signed(id: string) { goNda(id) }
 useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · Investor relations' : 'Investor relations'), meta: [{ name: 'description', content: () => data.value?.headline ?? '' }] })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const pct = (k: string) => k === 'gross_margin'

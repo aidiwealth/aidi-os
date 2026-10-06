@@ -12,7 +12,16 @@ const { data, error } = await useFetch<D>('/api/public/lp/' + token, { key: 'pub
 useHead({ titleTemplate: '%s', title: () => (data.value ? 'Investor statement · ' + data.value.lp.name + ' — ' + data.value.workspace.firm : 'Investor portal'), meta: [{ name: 'robots', content: 'noindex' }] })
 const { money, x, pct, day } = useMoney()
 const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-const doPrint = () => window.print()
+const doPrint = () => {
+  const d = data.value; if (!d) return
+  const mm = (v: number | null | undefined, c: string) => (v == null ? '-' : money(v, c))
+  const md: string[] = ['## Investor statement', '', '**' + d.lp.name + '**', '', today, '']
+  for (const p of d.positions) md.push('## ' + p.fund, '', '| Committed | Called | Paid in | Unfunded | Distributed | Share of NAV |', '|---|---|---|---|---|---|', '| ' + [p.commitment, p.called, p.paidIn, p.unfunded, p.distributed, p.navShare].map((v) => mm(v, p.currency)).join(' | ') + ' |', '')
+  for (const pt of d.participations ?? []) { md.push('## ' + pt.fund + ' (deal by deal)', '', '| Company | Terms | Invested | Estimated value | Status |', '|---|---|---|---|---|'); for (const x of pt.deals) md.push('| ' + [x.company, (x.instrument ?? '-') + (x.cap ? ' cap ' + mm(x.cap, pt.currency) : ''), mm(x.amount, pt.currency), mm(x.value, pt.currency) + (x.realized ? ' + ' + mm(x.realized, pt.currency) + ' realized' : ''), x.status].join(' | ') + ' |'); md.push('') }
+  if (d.history.length) { md.push('## Capital calls and distributions', '', '| Fund | Type | Due | Amount | Paid |', '|---|---|---|---|---|'); for (const h of d.history) md.push('| ' + [h.fund, h.kind + ' #' + h.number, h.due_date, mm(Number(h.amount), h.currency), h.paid_on ? mm(Number(h.paid_amount), h.currency) + ' on ' + h.paid_on : '-'].join(' | ') + ' |'); md.push('') }
+  md.push('', 'Figures as reported by ' + d.workspace.firm + '. This statement is for information only.')
+  downloadPdf({ kind: 'doc', title: 'Investor statement - ' + d.lp.name, company: d.workspace.firm, md: md.join('\n') }, true)
+}
 const STAGE: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later stage' }
 const sent = ref<string[]>([]); const iErr = ref('')
 async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anything to add for the fund team? (optional)') ?? ''; try { await $fetch('/api/public/lp/' + token + '/interest', { method: 'POST', body: { pitch_id: d.id, note } }); sent.value.push(d.id) } catch (e) { iErr.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } }
@@ -23,7 +32,7 @@ async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anyth
     <div v-if="error" class="card"><h1>{{ error.statusCode === 410 ? 'This link has expired' : 'This link is not valid' }}</h1><p class="muted">Ask the fund team to send you a new link.</p></div>
     <template v-else-if="data">
       <div v-if="data.preview" class="pvbar noprint">Preview: this is exactly what {{ data.lp.name }} sees. Read-only; the link expires in 30 minutes.</div>
-      <div class="top"><div><p class="label">Investor statement · {{ today }}</p><h1>{{ data.lp.name }}</h1></div><button class="btn secondary noprint" type="button" @click="doPrint">Print or save as PDF</button></div>
+      <div class="top"><div><p class="label">Investor statement · {{ today }}</p><h1>{{ data.lp.name }}</h1></div><button class="btn secondary noprint" type="button" @click="doPrint">Download PDF</button></div>
       <div v-for="pt in data.participations ?? []" :key="pt.fund" class="card pos"><div class="ph"><h2>{{ pt.fund }}</h2><span>Deal by deal</span></div>
         <table><thead><tr><th>Company</th><th>Terms</th><th>Invested</th><th>Estimated value</th><th>Status</th></tr></thead><tbody><tr v-for="d in pt.deals" :key="d.company"><td>{{ d.company }}</td><td>{{ d.instrument ?? '—' }}{{ d.cap ? ' · cap ' + money(d.cap, pt.currency) : '' }}</td><td>{{ money(d.amount, pt.currency) }}</td><td>{{ d.value !== null ? money(d.value, pt.currency) : '—' }}{{ d.realized ? ' + ' + money(d.realized, pt.currency) + ' realized' : '' }}</td><td>{{ { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off' }[d.status] ?? d.status }}</td></tr></tbody></table>
         <p class="muted">Total invested {{ money(pt.deals.reduce((a, d) => a + d.amount, 0), pt.currency) }}. Estimated value is your share of each company's current mark, as reported by the fund team.</p></div>

@@ -29,6 +29,10 @@ const msg = ref(''); const ok = ref(''); const busy = ref(false)
 
 // data room: upload
 const up = reactive({ open: false, folder: 'General', is_deck: false })
+const genDoc = reactive({ open: false, kind: 'safe' as 'safe' | 'memo' | 'nda' | 'update', id: '', busy: false, msg: '' })
+const { data: gens, refresh: refreshGens } = await useFetch<{ safes: { id: string; title: string }[]; memos: { id: string; title: string }[]; updates: { id: string; title: string }[]; nda: boolean }>('/api/fundraising/generated', { key: 'room-gens', default: () => ({ safes: [], memos: [], updates: [], nda: false }) })
+const genList = computed(() => (genDoc.kind === 'safe' ? gens.value?.safes : genDoc.kind === 'memo' ? gens.value?.memos : genDoc.kind === 'update' ? gens.value?.updates : []) ?? [])
+async function addGen() { genDoc.busy = true; genDoc.msg = ''; try { await $fetch('/api/fundraising/files/generated', { method: 'POST', body: { kind: genDoc.kind, id: genDoc.kind === 'nda' ? undefined : genDoc.id } }); genDoc.open = false; await refresh() } catch (e) { genDoc.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.' } finally { genDoc.busy = false } }
 const fromDeck = reactive({ open: false, deck_id: '', is_deck: true, busy: false, msg: '' })
 const { data: myDecks } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; versions: number; stats: { total: number } }[] }>('/api/documents/decks', { key: 'room-decks', default: () => ({ decks: [] }) })
 async function addDeck() { fromDeck.busy = true; fromDeck.msg = ''; try { await $fetch('/api/fundraising/files/deck', { method: 'POST', body: { deck_id: fromDeck.deck_id, is_deck: fromDeck.is_deck } }); fromDeck.open = false; await refresh() } catch (e) { fromDeck.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the deck.' } finally { fromDeck.busy = false } }
@@ -78,7 +82,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     </template>
 
     <template v-else-if="tab === 'room'">
-      <div class="bar2"><span class="mut">{{ data.files.length }} file{{ data.files.length === 1 ? '' : 's' }} · investors only see what each link shares</span><div class="row"><button class="btn secondary" @click="fromDeck.open = true; fromDeck.deck_id = myDecks?.decks.find((d) => d.primary_deck)?.id ?? myDecks?.decks[0]?.id ?? ''">Add from Decks</button><button class="btn secondary" @click="up.open = true">Upload files</button><button class="btn" :disabled="!data.files.length" @click="newLink()">Create tracked link</button></div></div>
+      <div class="bar2"><span class="mut">{{ data.files.length }} file{{ data.files.length === 1 ? '' : 's' }} · investors only see what each link shares</span><div class="row"><button class="btn secondary" @click="genDoc.open = true; genDoc.msg = ''; refreshGens()">Add a Finvry document</button><button class="btn secondary" @click="fromDeck.open = true; fromDeck.deck_id = myDecks?.decks.find((d) => d.primary_deck)?.id ?? myDecks?.decks[0]?.id ?? ''">Add from Decks</button><button class="btn secondary" @click="up.open = true">Upload files</button><button class="btn" :disabled="!data.files.length" @click="newLink()">Create tracked link</button></div></div>
       <div class="two"><div><h3>Files</h3><div v-for="[fo, list] in folders" :key="fo" class="card fold"><span class="fl">{{ fo }}</span><div v-for="f in list" :key="f.id" class="fi"><span class="ic">{{ f.title.split('.').pop()?.toUpperCase().slice(0, 4) }}</span><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
           <EmptyState v-if="!data.files.length" card icon="upload" title="Your data room is empty" text="Upload your deck, financials, cap table and legal documents. Drag and drop works too."><button class="btn" @click="up.open = true">Upload files</button></EmptyState></div>
         <div><h3>Tracked links</h3><div v-for="l in data.links" :key="l.id" class="card lnk" :class="{ dead: l.revoked }"><div class="lh"><b>{{ l.name }}</b><span class="pill" :class="{ off: l.revoked }">{{ l.revoked ? 'Off' : 'Live' }}</span></div>
@@ -102,6 +106,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     </template>
 
     <template v-else-if="tab === 'nda'">
+      <div class="ndaroom"><AddToRoom kind="nda" label="Add our NDA to the data room" /></div>
       <div class="bar2"><span class="mut">Everyone who signed your NDA before viewing your page, data room or updates. Turn the NDA on or off in Settings → Sharing &amp; branding.</span><NuxtLink to="/settings?s=sharing" class="btn secondary">NDA settings</NuxtLink></div>
       <div class="box"><table v-if="data.ndas.length"><thead><tr><th style="text-align:left;padding:10px 14px;font-weight:400;color:var(--c-muted);font-size:12.5px">Signed by</th><th style="text-align:left;font-weight:400;color:var(--c-muted);font-size:12.5px">For</th><th style="text-align:left;font-weight:400;color:var(--c-muted);font-size:12.5px">Signed</th><th /></tr></thead><tbody><tr v-for="n in data.ndas" :key="n.id"><td><b>{{ n.name }}</b><span class="mut" style="display:block">{{ n.email }}{{ n.company ? ' · ' + n.company : '' }}</span></td><td class="mut">{{ n.scope === 'room' ? 'Data room' : n.scope === 'page' ? 'Investor page' : 'Updates' }}</td><td class="mut">{{ when(n.signed_at) }}</td><td class="n"><button class="link" @click="ndaView = n">View signed NDA</button> · <DeleteButton type="nda_sig" :id="n.id" :name="'the NDA signed by ' + n.name" link @deleted="refresh()" /></td></tr></tbody></table>
         <EmptyState v-else icon="sign" title="No NDAs signed yet" text="Turn on the NDA in Settings → Sharing &amp; branding, and every signature appears here." /></div>
@@ -165,6 +170,13 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <p v-else class="mut">You have no decks yet. <NuxtLink to="/decks">Upload one in Decks</NuxtLink> first.</p>
       <template #foot><button class="btn secondary" @click="fromDeck.open = false">Cancel</button><button class="btn" :disabled="!fromDeck.deck_id || fromDeck.busy" @click="addDeck">Add to data room</button></template>
     </AppModal>
+    <AppModal :open="genDoc.open" title="Add a document made in Finvry" @close="genDoc.open = false">
+      <div class="adk"><label class="label">Type<select v-model="genDoc.kind" @change="genDoc.id = ''"><option value="safe">SAFE (with side letters)</option><option value="memo">Deal memo</option><option value="nda">Our NDA</option><option value="update">Investor update or report</option></select></label>
+        <label v-if="genDoc.kind !== 'nda'" class="label">Document<select v-model="genDoc.id"><option value="" disabled>{{ genList.length ? 'Choose' : 'None yet' }}</option><option v-for="g in genList" :key="g.id" :value="g.id">{{ g.title }}</option></select></label>
+        <p v-else class="mut">{{ gens?.nda ? 'Adds your NDA text as a PDF ready to sign.' : 'Set up your NDA in the NDAs tab first.' }}</p>
+        <p class="mut">It is added as a PDF. Re-add it after you make changes.</p><p v-if="genDoc.msg" class="error">{{ genDoc.msg }}</p></div>
+      <template #foot><button class="btn secondary" @click="genDoc.open = false">Cancel</button><button class="btn" :disabled="genDoc.busy || (genDoc.kind !== 'nda' && !genDoc.id) || (genDoc.kind === 'nda' && !gens?.nda)" @click="addGen">{{ genDoc.busy ? 'Adding…' : 'Add to data room' }}</button></template>
+    </AppModal>
   </section>
 </template>
 
@@ -197,4 +209,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; bor
 .mut { color: var(--c-muted); font-size: 13px; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .two, .kp, .g2 { grid-template-columns: 1fr; } }
 .adk { display: flex; flex-direction: column; gap: 10px; } .adk select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
+.ndaroom { margin: 0 0 12px; }
 </style>

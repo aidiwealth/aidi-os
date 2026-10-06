@@ -8,7 +8,7 @@ useHead({ titleTemplate: '%s', title: () => (data.value ? 'Invoice ' + data.valu
 const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.invoice.currency ?? 'USD' }).format(Number(v))
 const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '')
 const short = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '')
-const doPrint = () => window.print()
+const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invoiceForPdf(data.value.invoice, data.value.issuer) })
 const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'))
 </script>
 

@@ -10,7 +10,7 @@ async function act(action: string) {
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = false }
 }
 async function copy() { await navigator.clipboard.writeText(data.value!.link); ok.value = 'Pay link copied.' }
-const doPrint = () => window.print()
+const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invoiceForPdf(data.value.invoice) })
 </script>
 
 <template>

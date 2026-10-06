@@ -4,7 +4,7 @@ const props = defineProps<{ company: string; text: string; kind: 'page' | 'room'
 const emit = defineEmits<{ signed: [id: string] }>()
 const f = reactive({ name: '', email: '', company: '', signature: '', agree: false })
 const msg = ref(''); const busy = ref(false)
-async function sign() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/public/nda', { method: 'POST', body: { kind: props.kind, ref: props.refKey, ...f } }); try { localStorage.setItem('finvry-nda-' + props.orgKey, r.id) } catch { /* private mode */ } emit('signed', r.id) }
+async function sign() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/public/nda', { method: 'POST', body: { kind: props.kind, ref: props.refKey, ...f } }); try { localStorage.setItem('finvry-nda-' + props.orgKey, r.id); if (f.email) localStorage.setItem('finvry-dr-email', f.email) } catch { /* private mode */ } emit('signed', r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not sign.' } finally { busy.value = false } }
 </script>
 <template>
