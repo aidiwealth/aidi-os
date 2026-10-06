@@ -6,6 +6,7 @@ const { data, refresh } = await useFetch<{ page: Pg; exists: boolean; base: stri
 const f = reactive({ logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
 watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
+const { data: mainDeck } = await useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })
 async function upImg(kind: 'logo_id' | 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
   busy.value = true; msg.value = ''; ok.value = ''
@@ -29,7 +30,7 @@ async function save(publish?: boolean) {
         <label class="label">Page address<span class="addr"><span>{{ data.base }}</span><input v-model="f.slug" required maxlength="41"></span></label>
         <label class="label">Headline<input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></label>
         <div class="label">About the company<ClientOnly><RichEditor v-model="f.about" compact :min-height="160" :max-length="3000" placeholder="What you do, who you serve, traction, team." /></ClientOnly></div>
-        <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
+        <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" :placeholder="mainDeck?.url ? 'Using your main deck (tracked)' : 'https://'"><span v-if="mainDeck?.url && !f.deck_url" class="muted">Your main deck “{{ mainDeck.title }}” is shown, with viewer analytics in <NuxtLink to="/documents/decks">Decks</NuxtLink>.</span></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
       </div>
       <div class="card frm">

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 // Upload a blog image (cover or inline).
 import { randomUUID } from 'node:crypto'
 const TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }
@@ -12,6 +13,6 @@ export default defineEventHandler(async (event) => {
   const id = randomUUID(), key = 'documents/' + id + '.' + ext
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
   const name = (file.filename ?? 'image').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200) || 'image'
-  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes) VALUES ($1,$2,'other','normal',$3,$4,$5)", [id, 'Blog media — ' + name, key, mime, file.data.length])
+  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Blog media — ' + name, key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   return { ok: true, id, url: brands().aidi.url + '/api/public/media/' + id }
 })

@@ -69,7 +69,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 <template>
   <section>
     <p class="label">Records</p>
-    <div class="dh"><h1>Documents</h1><NuxtLink v-if="meD?.org?.kind === 'company'" to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div>
+    <div class="dh"><h1>Documents</h1><div class="dha"><NuxtLink to="/documents/decks" class="btn secondary">Decks &amp; analytics</NuxtLink><NuxtLink v-if="meD?.org?.kind === 'company'" to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div></div>
     <p class="lead">Stored privately. Links last 60 seconds, and every view is logged.</p>
 
     <form class="card up" @submit.prevent="upload">
@@ -132,4 +132,5 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); margin: 0; } .ok { color: var(--c-ok); margin: 0; }
 @media (max-width: 900px) { .up { grid-template-columns: 1fr; } }
 .dh { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .dh h1 { margin: 0; } .dh a { text-decoration: none; }
+.dha { display: flex; gap: 8px; } .dha a { text-decoration: none; }
 </style>

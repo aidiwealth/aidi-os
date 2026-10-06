@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 // Upload the investor page logo or cover image (served publicly).
 import { randomUUID } from 'node:crypto'
 const TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml', gif: 'image/gif' }
@@ -10,6 +11,6 @@ export default defineEventHandler(async (event) => {
   if (!mime) throw apiError('bad_type', 'Upload a PNG, JPG, WebP, GIF or SVG image.')
   const id = randomUUID(), key = 'documents/' + id + '.' + ext
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
-  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes) VALUES ($1,$2,'other','normal',$3,$4,$5)", [id, 'Update media — ' + (file.filename ?? 'image').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200), key, mime, file.data.length])
+  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Update media — ' + (file.filename ?? 'image').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200), key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   return { ok: true, id }
 })

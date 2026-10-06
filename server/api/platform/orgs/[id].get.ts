@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!id.success) throw apiError('not_found', 'Not found', 404)
   return await asPlatform(async () => {
     const o = await db().query(
-      `SELECT o.id, o.name, o.slug, o.kind, o.status, o.plan_code, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, o.created_at, coalesce(o.settings->>'brand', 'finvry') AS brand,
+      `SELECT o.id, o.name, o.slug, o.kind, o.status, o.plan_code, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, o.created_at, coalesce(o.settings->>'brand', 'finvry') AS brand, coalesce((o.settings->>'raise_enabled')::boolean, false) AS raise_enabled, coalesce((o.settings->>'raise_fee_pct')::numeric, 4)::float AS raise_fee_pct,
               p.name AS plan, p.seat_limit, p.storage_gb, p.ai_runs_month, p.price_monthly_usd::text AS price
          FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = $1`, [id.data])
     if (!o.rows[0]) throw apiError('not_found', 'Not found', 404)

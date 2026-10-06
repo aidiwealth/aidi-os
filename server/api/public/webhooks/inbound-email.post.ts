@@ -1,6 +1,6 @@
 // Inbound email (Postmark Inbound JSON, or a generic { from, to, subject, text, html, attachments }). Saved as a notice
 // in the Aidi workspace; AI adds a summary, any deadline and the action needed. Protected by ?token= (NUXT_INBOUND_EMAIL_TOKEN).
-import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 const TYPES = /^(application\/pdf|image\/(png|jpe?g|gif|webp)|text\/(plain|csv)|application\/(vnd\.openxmlformats-officedocument\.[a-z.]+|msword|vnd\.ms-excel))$/
 export default defineEventHandler(async (event) => {
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     if (!TYPES.test(mime) || !b64) continue
     const buf = Buffer.from(b64, 'base64'); if (!buf.length || buf.length > 20 * 1024 * 1024) continue
     const id = randomUUID(), key = 'documents/' + id + '.' + (name.split('.').pop() || 'bin').toLowerCase().slice(0, 8)
-    try { await putObject({ key, body: new Uint8Array(buf), contentType: mime }); await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes) VALUES ($1,$2,'other','normal',$3,$4,$5)", [id, 'Notice — ' + name, key, mime, buf.length]); files.push({ doc_id: id, name, mime, size: buf.length }) } catch (err) { console.error('[inbound] attachment', err) }
+    try { await putObject({ key, body: new Uint8Array(buf), contentType: mime }); await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Notice — ' + name, key, mime, buf.length, createHash('sha256').update(buf).digest('hex')]); files.push({ doc_id: id, name, mime, size: buf.length }) } catch (err) { console.error('[inbound] attachment', err) }
   }
   const row = await one<{ id: string }>('INSERT INTO inbox.notices (message_id, from_name, from_email, to_email, subject, text_body, html_body, attachments) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
     [m.message_id, m.from_name || null, m.from_email || null, m.to_email || null, m.subject, m.text || null, m.html || null, JSON.stringify(files)])

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
-interface D { org: { id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
+interface D { org: { raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
@@ -28,6 +28,9 @@ function openInvite() {
 }
 async function sendInvite() { inv.busy = true; inv.msg = ''; try { const r = await $fetch<{ emailed: boolean }>('/api/platform/orgs/' + id + '/invite', { method: 'POST', body: { full_name: inv.full_name, email: inv.email, subject: inv.subject, message: inv.message, send: inv.send } }); inv.ok = true; inv.msg = inv.send ? (r.emailed ? 'Access given and invitation sent.' : 'Access given, but the email could not be sent. Try again later.') : 'Access given. Send the invitation whenever you are ready.' } catch (e) { inv.ok = false; inv.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not invite.' } finally { inv.busy = false } }
 async function supportSignIn() { if (!confirm('Sign in to ' + (data.value?.org.name ?? 'this workspace') + ' as its owner? You will act as them until you return to the console. This is recorded.')) return; try { await $fetch('/api/platform/orgs/' + id + '/impersonate', { method: 'POST' }); window.location.href = '/' } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not sign in.') } }
+const raiseFee = ref(4)
+watchEffect(() => { if (data.value?.org.raise_fee_pct != null) raiseFee.value = data.value.org.raise_fee_pct })
+async function setRaise(enabled: boolean) { await $fetch('/api/platform/orgs/' + id + '/raise', { method: 'POST', body: { enabled, fee_pct: raiseFee.value } }); await refresh() }
 </script>
 
 <template>
@@ -35,6 +38,8 @@ async function supportSignIn() { if (!confirm('Sign in to ' + (data.value?.org.n
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
     <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.org.kind === 'company'" type="button" class="btn secondary" @click="supportSignIn">Sign in as owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
+    <div v-if="data.org.kind === 'company'" class="card raisec"><div><b>Managed fundraising</b><p>We run the raise for this company: investor list, outreach, meetings and closing. The founder sees progress in Finvry. Success fee on money closed.</p></div>
+      <div class="rr"><label class="sw"><input type="checkbox" :checked="data.org.raise_enabled" @change="setRaise(($event.target as HTMLInputElement).checked)"> {{ data.org.raise_enabled ? 'On' : 'Off' }}</label><label class="fee">Fee %<input v-model.number="raiseFee" type="number" min="0" max="30" step="0.5" @change="data.org.raise_enabled && setRaise(true)"></label><NuxtLink v-if="data.org.raise_enabled" to="/services/raise" class="lk">Open in the desk →</NuxtLink></div></div>
     <AppModal :open="inv.open" title="Invite the owner" wide @close="inv.open = false">
       <form id="invf" class="invf" @submit.prevent="sendInvite">
         <label class="label">Name<input v-model="inv.full_name" required maxlength="200"></label>
@@ -99,4 +104,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .cuh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .danger { color: var(--c-danger); }
 .cua { display: flex; gap: 8px; } .invf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .invf .w { grid-column: 1 / -1; } .invf label.label { display: flex; flex-direction: column; gap: 6px; } .invf input, .invf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .invf .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .invf .cb input { width: auto; } .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
+.raisec { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; } .raisec p { margin: 4px 0 0; font-size: 13px; color: var(--c-muted); max-width: 560px; } .rr { display: flex; gap: 14px; align-items: center; } .sw { display: flex; gap: 6px; align-items: center; font-weight: 600; } .sw input { width: 18px; height: 18px; } .fee { display: flex; gap: 6px; align-items: center; font-size: 13px; } .fee input { width: 64px; font: inherit; padding: 5px 7px; border: 1px solid var(--c-rule-strong); } .lk { color: var(--c-blue-deep); text-decoration: none; font-size: 13px; }
 </style>

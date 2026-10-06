@@ -17,7 +17,8 @@ export default defineEventHandler(async (event) => {
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
   const updates = (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows
+  const mainDeck = p.deck_url ? null : (await db().query<{ token: string }>('SELECT token FROM fundraise.decks WHERE active ORDER BY primary_deck DESC, updated_at DESC LIMIT 1').catch(() => ({ rows: [] as { token: string }[] }))).rows[0]
   const mediaUrl = (x: string | null) => (x ? brands().finvry.url + '/api/public/media/' + x : null)
-  return { logo: mediaUrl((p as unknown as { logo_id: string | null }).logo_id) ?? branding.logo_url ?? null, cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url, contact_email: p.contact_email, period_type: p.period_type,
+  return { logo: mediaUrl((p as unknown as { logo_id: string | null }).logo_id) ?? branding.logo_url ?? null, cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: p.deck_url || (mainDeck ? brands().finvry.url + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? ((org.settings.currency as string) || 'USD'), metrics, workspace: await publicWorkspace() }
 })

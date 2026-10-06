@@ -17,6 +17,8 @@ export const MODULES: ModuleDef[] = [
   { code: 'updates', group: 'fin', label: 'Investor updates', to: '/updates', roles: ['gp', 'team'], api: ['/api/updates', '/api/investors'], pages: ['/updates'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
+  { code: 'client_raise', group: 'fin', label: 'Fundraise with us', to: '/client/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },
+  { code: 'cs_raise', group: 'cs', label: 'Fundraising clients', to: '/services/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },
   { code: 'client_inbox', group: 'fo', label: 'Inbox', to: '/client/messages', roles: ['admin', 'gp', 'team', 'family'], api: [], pages: [], switchable: true },
   { code: 'company_services', group: 'fo', label: 'Services', to: '/client', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/portal'], pages: ['/client'], switchable: true },
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
