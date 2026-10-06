@@ -1,4 +1,4 @@
-// Aidi OS — internal back office for The Aidi Group. Never indexed; separate from Aidi Wealth (joinaidi.com).
+// Aidi OS — internal back office for The Aidi Group. Never indexed; separate from Aidi Wealth (aidiwealth.com).
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: false },
