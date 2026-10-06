@@ -13,5 +13,7 @@ export default defineEventHandler(async (event) => {
   const navs = await db().query("SELECT id, to_char(as_of, 'YYYY-MM-DD') AS as_of, nav::text, note FROM funds.navs WHERE fund_id = $1 ORDER BY as_of DESC", [id.data])
   const inv = await db().query("SELECT id, company, check_usd::text, to_char(closed_at, 'YYYY-MM-DD') AS closed_at FROM deals.deals WHERE vehicle_entity_id = $1 AND stage = 'invested' ORDER BY closed_at DESC NULLS LAST", [p.fund.entity_id])
   const lps = await db().query('SELECT id, name FROM funds.lps ORDER BY name')
-  return { ...p, calls: calls.rows, navs: navs.rows, investments: inv.rows, allLps: lps.rows, required: await requiredApprovals() }
+  const st = (await db().query<{ structure: string; entity_id: string }>('SELECT structure, entity_id FROM funds.funds WHERE id = $1', [id.data])).rows[0]
+  const rolling = st?.structure === 'rolling'
+  return { rolling, deals: rolling ? await rollingDeals(st!.entity_id) : [], ...p, calls: calls.rows, navs: navs.rows, investments: inv.rows, allLps: lps.rows, required: await requiredApprovals() }
 })

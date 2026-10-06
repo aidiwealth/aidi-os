@@ -17,5 +17,8 @@ export default defineEventHandler(async (event) => {
     `SELECT c.id, e.name AS fund, f.currency, c.kind, c.number, to_char(c.due_date, 'YYYY-MM-DD') AS due_date, c.status, l.amount::text, l.paid_amount::text, to_char(l.paid_on, 'YYYY-MM-DD') AS paid_on
        FROM funds.call_lines l JOIN funds.calls c ON c.id = l.call_id JOIN funds.funds f ON f.id = c.fund_id JOIN core.entities e ON e.id = f.entity_id
       WHERE l.lp_id = $1 AND c.status IN ('sent','completed') ORDER BY c.due_date DESC`, [id.data])
-  return { lp: lp.rows[0], positions, history: history.rows }
+  const rolls = await db().query<{ id: string; entity_id: string; name: string; currency: string }>("SELECT f.id, f.entity_id, e.name, f.currency FROM funds.funds f JOIN core.entities e ON e.id = f.entity_id WHERE f.structure = 'rolling'")
+  const participations = []
+  for (const f of rolls.rows) { const ps = await lpParticipations(f.entity_id, (lp.rows[0] as { email: string | null }).email); if (ps.length) participations.push({ fund: f.name, fund_id: f.id, currency: f.currency, deals: ps }) }
+  return { lp: lp.rows[0], positions: positions.filter((x) => !rolls.rows.some((f) => f.id === (x as { fund_id: string }).fund_id)), participations, history: history.rows }
 })

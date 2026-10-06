@@ -3,6 +3,7 @@ const id = useRoute().params.id as string
 interface M { paidIn: number; distributed: number; nav: number; dpi: number | null; rvpi: number | null; tvpi: number | null; irr: number | null }
 interface Lp { lp_id: string; name: string; email: string | null; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M }
 interface D {
+  rolling?: boolean; deals?: { id: string; name: string; status: string; cost: number; value: number; realized: number; instrument: string | null; cap: number | null; aidi: number | null; legal: string | null; co: { name: string; email: string; amount: number }[] }[]
   fund: { id: string; entity_id: string; name: string; currency: string; target_size: string | null; vintage: number | null; first_close: string | null; final_close: string | null; term_years: number | null; mgmt_fee_pct: string | null; carry_pct: string | null; hurdle_pct: string | null; status: string; administrator: string; administrator_name: string | null; admin_portal_url: string | null; notify_lps: boolean }
   commitments: { id: string; lp_id: string; name: string; amount: string; committed_on: string }[]; lps: Lp[]; navDate: string | null
   totals: { committed: number; called: number; paidIn: number; unfunded: number; distributed: number; nav: number; deployed: number; calledPct: number }; m: M
@@ -39,8 +40,22 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <NuxtLink to="/funds" class="back">← Funds</NuxtLink>
     <h1>{{ data.fund.name }}</h1>
     <p class="meta">{{ data.fund.status }}<template v-if="data.fund.vintage"> · vintage {{ data.fund.vintage }}</template><template v-if="data.fund.target_size"> · target {{ money(data.fund.target_size, cur) }}</template><template v-if="data.navDate"> · NAV at {{ day(data.navDate) }}</template></p>
-    <p class="adm" :class="{ self: data.fund.administrator === 'self' }"><template v-if="data.fund.administrator !== 'self'">Administered by <b>{{ adminLabel }}</b><a v-if="data.fund.admin_portal_url" :href="data.fund.admin_portal_url" target="_blank" rel="noopener">Open {{ adminLabel }} →</a><span>Formation, KYC, money movement, official statements and tax sit with them. Finvry tracks and reports.</span></template><template v-else>Self-administered. Use <NuxtLink to="/directory">Fund services</NuxtLink> to find administrators, fund lawyers and auditors.</template></p>
+    <p class="adm" :class="{ self: data.fund.administrator === 'self' }"><template v-if="data.fund.administrator !== 'self'">Administered by <b>{{ adminLabel }}</b><a v-if="data.fund.admin_portal_url" :href="data.fund.admin_portal_url" target="_blank" rel="noopener">Open {{ adminLabel }} →</a><span>Formation, KYC, money movement, official statements and tax sit with them. Finvry tracks and reports.</span></template><template v-else>Self-administered.</template></p>
+    <template v-if="data.rolling">
+    <p class="rollnote">Rolling fund: investors join deal by deal, and the terms (instrument, valuation cap, amounts) are set for each startup. There is no fund-level target, fee or term.</p>
     <div class="kpis">
+      <div class="kpi"><span>Deals</span><b>{{ data.deals?.length ?? 0 }}</b><em>{{ data.deals?.filter((d) => ['active', 'at_cost'].includes(d.status)).length }} active · {{ data.deals?.filter((d) => d.status === 'written_off').length }} written off</em></div>
+      <div class="kpi"><span>Invested</span><b>{{ money(data.deals?.reduce((a, d) => a + d.cost, 0) ?? 0, cur) }}</b><em>Aidi {{ money(data.deals?.reduce((a, d) => a + (d.aidi ?? 0), 0) ?? 0, cur) }} on deals with terms on file</em></div>
+      <div class="kpi"><span>Current value</span><b>{{ money(data.deals?.reduce((a, d) => a + d.value, 0) ?? 0, cur) }}</b><em>Realized {{ money(data.deals?.reduce((a, d) => a + d.realized, 0) ?? 0, cur) }}</em></div>
+      <div class="kpi"><span>Multiple</span><b>{{ x(((data.deals?.reduce((a, d) => a + d.value + d.realized, 0) ?? 0) / Math.max(1, data.deals?.reduce((a, d) => a + d.cost, 0) ?? 1))) }}</b><em>value plus realized over invested</em></div>
+      <div class="kpi"><span>Co-investors</span><b>{{ data.lps.length }}</b><em>{{ money(data.deals?.reduce((a, d) => a + d.co.reduce((s, c) => s + c.amount, 0), 0) ?? 0, cur) }} invested alongside</em></div>
+    </div>
+    <div class="card rdeals"><h2>Investments (deal by deal)</h2><table class="mini"><thead><tr><th>Company</th><th>Terms</th><th class="n">Aidi Angel Fund</th><th>Co-investors</th><th class="n">Value</th><th>Status</th></tr></thead><tbody>
+      <tr v-for="d in data.deals" :key="d.id"><td><b>{{ d.name }}</b><span v-if="d.legal" class="sub">{{ d.legal }}</span></td><td>{{ d.instrument ?? '—' }}<span v-if="d.cap" class="sub">{{ d.instrument === 'SPV' ? 'valuation' : 'cap' }} {{ money(d.cap, cur) }}</span></td><td class="n">{{ d.aidi !== null ? money(d.aidi, cur) : '—' }}</td>
+        <td><template v-if="d.co.length">{{ d.co.map((c) => c.name + ' ' + money(c.amount, cur)).join(', ') }}</template><span v-else class="sub">—</span></td><td class="n">{{ money(d.value, cur) }}<span v-if="d.realized" class="sub">+ {{ money(d.realized, cur) }} realized</span></td><td>{{ { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off', sold: 'Sold', nil: 'Nil' }[d.status] ?? d.status }}</td></tr></tbody></table>
+      <p class="sub">Positions and terms are kept in Investments &amp; AUM; edit them there.</p></div>
+    </template>
+    <div v-else class="kpis">
       <div class="kpi"><span>Committed</span><b>{{ money(data.totals.committed, cur) }}</b><em>{{ data.lps.length }} LPs</em></div>
       <div class="kpi"><span>Called</span><b>{{ money(data.totals.called, cur) }}</b><em>{{ pct(data.totals.calledPct) }} · {{ money(data.totals.unfunded, cur) }} unfunded</em></div>
       <div class="kpi"><span>Paid in</span><b>{{ money(data.totals.paidIn, cur) }}</b><em>{{ money(data.totals.deployed) }} invested in {{ data.investments.length }} deals</em></div>
@@ -106,6 +121,7 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
       </form>
     </template>
 
+    <p v-else-if="data.rolling" class="card rollnote">This is a rolling fund, so it has no fund-level terms. Each investment's terms are recorded on the deal (see above, and Investments &amp; AUM).</p>
     <form v-else class="card frm" @submit.prevent="saveTerms">
       <label class="label">Currency<select v-model="tm.currency" :disabled="!isGp"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
       <label class="label">Target size<input v-model="tm.target_size" inputmode="decimal" :disabled="!isGp"></label>
@@ -143,4 +159,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .chk { display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; font-size: 13px; } .chk input { width: auto; }
 .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } .frm { grid-template-columns: 1fr; } }
+.rollnote { font-size: 13.5px; color: var(--c-ink-soft); background: var(--c-signal-soft); padding: 10px 14px; margin: 8px 0 14px; } .rdeals { margin: 14px 0; overflow-x: auto; } .rdeals h2 { margin: 0 0 8px; } .rdeals td { vertical-align: top; font-size: 13.5px; } .rdeals .sub { display: block; font-size: 12px; color: var(--c-muted); } .rdeals .n { text-align: right; white-space: nowrap; }
 </style>

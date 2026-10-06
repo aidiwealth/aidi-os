@@ -6,7 +6,7 @@ const { data, refresh } = await useFetch<F[]>('/api/funds')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const { money, x, pct } = useMoney()
-const setup = reactive({ entity_id: '', name: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })
+const setup = reactive({ structure: 'closed_end', entity_id: '', name: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })
 const msg = ref('')
 async function doSetup() {
   msg.value = ''
@@ -42,7 +42,7 @@ const setupOpen = ref(false)
       <label class="label">Currency<select v-model="setup.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
       <label class="label">Target size<input v-model="setup.target_size" inputmode="decimal"></label>
       <label class="label">Vintage<input v-model="setup.vintage" inputmode="numeric"></label>
-      <label class="label">Status<select v-model="setup.status"><option value="raising">Raising</option><option value="investing">Investing</option><option value="harvesting">Harvesting</option><option value="closed">Closed</option></select></label>
+      <label class="label">Structure<select v-model="setup.structure"><option value="closed_end">Closed-end (fund terms)</option><option value="rolling">Rolling (terms per deal)</option></select></label><label class="label">Status<select v-model="setup.status"><option value="raising">Raising</option><option value="investing">Investing</option><option value="harvesting">Harvesting</option><option value="closed">Closed</option></select></label>
       <label class="label">Administrator<select v-model="setup.administrator"><option value="self">Self-administered</option><option value="sydecar">Sydecar</option><option value="carta">Carta</option><option value="angellist">AngelList</option><option value="other">Other</option></select></label>
       <p class="hint">Aidi tracks your LPs, calls, distributions and performance. Formation, KYC, money movement, tax and filings stay with your administrator and lawyers.</p>
       <div class="row"><button class="btn" type="submit">Set up fund</button><span v-if="msg" class="error">{{ msg }}</span></div>

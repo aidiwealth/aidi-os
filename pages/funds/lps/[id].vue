@@ -1,7 +1,8 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
 interface M { dpi: number | null; tvpi: number | null; irr: number | null }
-interface D { lp: { id: string; name: string; kind: string; contact_name: string | null; email: string | null; country: string | null; kyc_status: string; notes: string | null; portal: boolean | null; portal_expires: string | null }
+interface Part { fund: string; fund_id: string; currency: string; deals: { company: string; legal: string | null; instrument: string | null; cap: number | null; amount: number; status: string; value: number | null; realized: number | null }[] }
+interface D { participations?: Part[]; lp: { id: string; name: string; kind: string; contact_name: string | null; email: string | null; country: string | null; kyc_status: string; notes: string | null; portal: boolean | null; portal_expires: string | null }
   positions: { fund_id: string; fund: string; currency: string; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M }[]
   history: { id: string; fund: string; currency: string; kind: string; number: number; due_date: string; status: string; amount: string; paid_amount: string; paid_on: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/funds/lps/' + id)
@@ -26,6 +27,9 @@ async function viewPortal() { const w = window.open('', '_blank'); try { const r
     <div class="dh"><h1>{{ data.lp.name }}</h1><div class="acts"><button class="btn secondary" type="button" @click="viewPortal">View their portal</button><button v-if="isGp" class="btn secondary" :disabled="busy || !data.lp.email" @click="portal">Email portal link</button><DeleteButton v-if="isGp" type="lp" :id="id" :name="data.lp.name" to="/funds/lps" /></div></div>
     <p class="meta">{{ KIND[data.lp.kind] }} · KYC {{ data.lp.kyc_status }}<template v-if="data.lp.portal"> · portal link active until {{ day(data.lp.portal_expires) }}</template></p>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
+    <div v-for="pt in data.participations ?? []" :key="pt.fund_id" class="card pos"><div class="ph"><NuxtLink :to="'/funds/' + pt.fund_id"><h2>{{ pt.fund }}</h2></NuxtLink><span>Rolling fund · deal by deal</span></div>
+      <table class="mini"><thead><tr><th>Company</th><th>Terms</th><th>Invested</th><th>Est. value</th><th>Status</th></tr></thead><tbody><tr v-for="d in pt.deals" :key="d.company"><td>{{ d.company }}</td><td>{{ d.instrument ?? '—' }}{{ d.cap ? ' · cap ' + money(d.cap, pt.currency) : '' }}</td><td>{{ money(d.amount, pt.currency) }}</td><td>{{ d.value !== null ? money(d.value, pt.currency) : '—' }}{{ d.realized ? ' + ' + money(d.realized, pt.currency) + ' realized' : '' }}</td><td>{{ { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off' }[d.status] ?? d.status }}</td></tr></tbody></table>
+      <p class="meta">Total invested {{ money(pt.deals.reduce((a, d) => a + d.amount, 0), pt.currency) }} across {{ pt.deals.length }} deal{{ pt.deals.length === 1 ? '' : 's' }}. Estimated value is the LP's share of each position's current mark.</p></div>
     <div v-for="p in data.positions" :key="p.fund_id" class="card pos">
       <div class="ph"><NuxtLink :to="'/funds/' + p.fund_id"><h2>{{ p.fund }}</h2></NuxtLink><span>TVPI {{ x(p.m.tvpi) }} · DPI {{ x(p.m.dpi) }} · IRR {{ pct(p.m.irr) }}</span></div>
       <dl><div><dt>Commitment</dt><dd>{{ money(p.commitment, p.currency) }}</dd></div><div><dt>Called</dt><dd>{{ money(p.called, p.currency) }}</dd></div><div><dt>Paid in</dt><dd>{{ money(p.paidIn, p.currency) }}</dd></div>

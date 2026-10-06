@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   if (lp.expired) throw apiError('expired', 'This link has expired. Ask the fund team for a new one.', 410)
   setOrgContext(lp.organization_id)
   if (!(await enabledModules()).has('funds')) throw apiError('invalid_link', 'This link is not valid.', 404)
-  const funds = await db().query<{ fund_id: string }>('SELECT fund_id FROM funds.commitments WHERE lp_id = $1', [lp.id])
+  const funds = await db().query<{ fund_id: string }>("SELECT c.fund_id FROM funds.commitments c JOIN funds.funds f ON f.id = c.fund_id WHERE c.lp_id = $1 AND f.structure <> 'rolling'", [lp.id])
   const positions = []
   for (const f of funds.rows) {
     const p = await fundPosition(f.fund_id)
@@ -33,5 +33,10 @@ export default defineEventHandler(async (event) => {
       s.score, s.recommendation, (SELECT count(*) > 0 FROM deals.lp_interest i WHERE i.pitch_id = p.id AND i.lp_id = $1) AS interested
       FROM deals.pitches p LEFT JOIN LATERAL (SELECT score, recommendation FROM deals.screenings x WHERE x.pitch_id = p.id ORDER BY x.created_at DESC LIMIT 1) s ON true
       WHERE p.lp_share = 'show' OR (p.lp_share = 'auto' AND p.status IN ('screened', 'advancing') AND s.score IS NOT NULL) ORDER BY p.received_at DESC LIMIT 30`, [lp.id])).rows : []
-  return { lp: { name: lp.name }, preview: !!previewLp, positions, history: history.rows, financials, deals, workspace: await publicWorkspace() }
+  const lpEmail = (await db().query<{ email: string | null }>('SELECT email FROM funds.lps WHERE id = $1', [lp.id])).rows[0]?.email ?? null
+  const participations = []
+  for (const f of (await db().query<{ entity_id: string; name: string; currency: string }>("SELECT f.entity_id, e.name, f.currency FROM funds.funds f JOIN core.entities e ON e.id = f.entity_id JOIN funds.commitments c ON c.fund_id = f.id AND c.lp_id = $1 WHERE f.structure = 'rolling'", [lp.id])).rows) {
+    const ps = await lpParticipations(f.entity_id, lpEmail); if (ps.length) participations.push({ fund: f.name, currency: f.currency, deals: ps })
+  }
+  return { participations, lp: { name: lp.name }, preview: !!previewLp, positions, history: history.rows, financials, deals, workspace: await publicWorkspace() }
 })

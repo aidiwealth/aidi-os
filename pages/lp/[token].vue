@@ -4,7 +4,7 @@ definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface M { dpi: number | null; rvpi: number | null; tvpi: number | null; irr: number | null }
 interface Deal { id: string; company: string; one_liner: string; sector: string | null; stage: string; country: string | null; raising_usd: number | null; received_at: string; website: string | null; score: number | null; recommendation: string | null; interested: boolean }
-interface D { preview?: boolean; deals?: Deal[]; lp: { name: string }; workspace: { firm: string }
+interface D { participations?: { fund: string; currency: string; deals: { company: string; instrument: string | null; cap: number | null; amount: number; status: string; value: number | null; realized: number | null }[] }[]; preview?: boolean; deals?: Deal[]; lp: { name: string }; workspace: { firm: string }
   positions: { fund: string; currency: string; vintage: number | null; navDate: string | null; admin: string | null; adminUrl: string | null; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M; fundM: M }[]
   history: { fund: string; currency: string; kind: string; number: number; purpose: string | null; due_date: string; amount: string; paid_amount: string; paid_on: string | null }[]
   financials?: { fund: string; period_end: string; period_type: string; currency: string; investments: number | null; cash: number | null; total_assets: number | null; net_income: number | null; opex_total: number | null }[] }
@@ -24,6 +24,9 @@ async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anyth
     <template v-else-if="data">
       <div v-if="data.preview" class="pvbar noprint">Preview: this is exactly what {{ data.lp.name }} sees. Read-only; the link expires in 30 minutes.</div>
       <div class="top"><div><p class="label">Investor statement · {{ today }}</p><h1>{{ data.lp.name }}</h1></div><button class="btn secondary noprint" type="button" @click="doPrint">Print or save as PDF</button></div>
+      <div v-for="pt in data.participations ?? []" :key="pt.fund" class="card pos"><div class="ph"><h2>{{ pt.fund }}</h2><span>Deal by deal</span></div>
+        <table><thead><tr><th>Company</th><th>Terms</th><th>Invested</th><th>Estimated value</th><th>Status</th></tr></thead><tbody><tr v-for="d in pt.deals" :key="d.company"><td>{{ d.company }}</td><td>{{ d.instrument ?? '—' }}{{ d.cap ? ' · cap ' + money(d.cap, pt.currency) : '' }}</td><td>{{ money(d.amount, pt.currency) }}</td><td>{{ d.value !== null ? money(d.value, pt.currency) : '—' }}{{ d.realized ? ' + ' + money(d.realized, pt.currency) + ' realized' : '' }}</td><td>{{ { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off' }[d.status] ?? d.status }}</td></tr></tbody></table>
+        <p class="muted">Total invested {{ money(pt.deals.reduce((a, d) => a + d.amount, 0), pt.currency) }}. Estimated value is your share of each company's current mark, as reported by the fund team.</p></div>
       <div v-for="p in data.positions" :key="p.fund" class="card pos">
         <div class="ph"><h2>{{ p.fund }}</h2><span>{{ p.vintage ? 'Vintage ' + p.vintage : '' }}{{ p.navDate ? ' · valued at ' + day(p.navDate) : '' }}</span></div>
         <dl>
@@ -34,7 +37,7 @@ async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anyth
         <p v-if="p.admin" class="offi">Official capital account statements, tax documents and payments come from <b>{{ p.admin }}</b><a v-if="p.adminUrl" :href="p.adminUrl" target="_blank" rel="noopener"> (open {{ p.admin }})</a>.</p>
         <div class="mult"><span>Your DPI <b>{{ x(p.m.dpi) }}</b></span><span>TVPI <b>{{ x(p.m.tvpi) }}</b></span><span>Net IRR <b>{{ pct(p.m.irr) }}</b></span><span class="fm">Fund TVPI {{ x(p.fundM.tvpi) }} · IRR {{ pct(p.fundM.irr) }}</span></div>
       </div>
-      <p v-if="!data.positions.length" class="card muted">You have no commitments recorded yet.</p>
+      <p v-if="!data.positions.length && !data.participations?.length" class="card muted">You have no commitments recorded yet.</p>
       <div v-if="data.history.length" class="card">
         <h2>Capital calls and distributions</h2>
         <table><thead><tr><th>Notice</th><th>Date</th><th class="n">Amount</th><th class="n">Settled</th></tr></thead>
