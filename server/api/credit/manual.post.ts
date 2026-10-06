@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
     await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6)", [docId, name, key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   }
-  const band = bandOf(score)
+  const band = await bandOfOrg(score)
   await db().query("INSERT INTO credit.checks (borrower_id, guarantor_id, provider, kind, status, score, band, summary, note, source, document_id, created_by) VALUES ($1,$2,'manual',$3,'manual',$4,$5,'{}'::jsonb,$6,$7,$8,$9)",
     [borrowerId, guarantorId, guarantorId ? 'individual' : 'business', score, band, note || (source ? source + ' report' : 'Manual review'), source || null, docId, user.userId])
   await audit({ event, actorUserId: user.userId, action: 'credit.manual_score', objectType: guarantorId ? 'guarantor' : 'borrower', objectId: guarantorId ?? borrowerId })

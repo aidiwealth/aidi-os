@@ -45,8 +45,13 @@ export default defineEventHandler(async (event) => {
   await verifyTurnstile(b.turnstile_token, ip)
   const email = b.email.toLowerCase()
   const loan = b.funding_type === 'loan'
+  const cc = await loanSettings()
+  if (loan && !cc.loans_enabled) throw apiError('loans_off', 'We are not taking loan requests right now. Please apply for equity instead, or check back soon.', 400)
+  if (loan && cc.countries.length && !cc.countries.some((c) => c.toLowerCase() === (b.country ?? '').toLowerCase())) throw apiError('loans_country', 'Loans are not yet available for companies operating in ' + (b.country || 'your country') + '.', 400)
+  const cap = cc.max_amount[b.loan_currency ?? (/nigeria/i.test(b.country ?? '') ? 'NGN' : 'USD')]
+  if (loan && cap && Number(b.loan_amount) > cap) throw apiError('loans_max', 'The most we can lend at the moment is ' + cap.toLocaleString('en-US') + ' ' + (b.loan_currency ?? '') + '.', 400)
   if (loan && !b.loan_amount) throw apiError('invalid', 'Please enter the loan amount you need.', 400)
-  if (loan && /nigeria/i.test(b.country ?? '') && !b.bvn) throw apiError('invalid', 'Please enter your 11-digit BVN so we can assess the loan.', 400)
+  if (loan && cc.require_bvn && /nigeria/i.test(b.country ?? '') && !b.bvn) throw apiError('invalid', 'Please enter your 11-digit BVN so we can assess the loan.', 400)
   rateLimit('pitch_email', email, 3, 24 * 60 * 60 * 1000)
   const row = await one<{ id: string }>(
     `INSERT INTO deals.pitches (founder_name, email, company, website, deck_url, country, stage, sector, raising_usd, one_liner, description, traction, team, female_founder, ip)
@@ -58,7 +63,7 @@ export default defineEventHandler(async (event) => {
     await db().query("UPDATE deals.pitches SET funding_type = 'loan' WHERE id = $1", [row.id])
     const appId = await createApplication(row.id, { company: b.company, founder_name: b.founder_name, email, phone: b.phone, country: b.country, sector: b.sector, amount: b.loan_amount!, currency: b.loan_currency ?? (/nigeria/i.test(b.country ?? '') ? 'NGN' : 'USD'), tenor_months: b.loan_tenor_months ?? null, purpose: b.loan_purpose, monthly_revenue: b.monthly_revenue ?? null, rc_number: b.rc_number, bvn: b.bvn || null, nin: b.nin || null, dob: b.dob || null })
     void (async () => {
-      try { await checkApplication(appId) } catch (err) { console.error('[loan] checks failed for ' + appId, err) }
+      if (cc.auto_checks) { try { await checkApplication(appId) } catch (err) { console.error('[loan] checks failed for ' + appId, err) } }
       await sendPitchAlert({ pitchId: row.id, company: b.company, oneLiner: 'Loan request: ' + (b.loan_currency ?? '') + ' ' + Number(b.loan_amount).toLocaleString('en-US') + ' — ' + b.one_liner, score: null, recommendation: null, summary: ['Venture debt / loan request. Review it in Credit → Loan applications.'] }).catch(() => {})
       await sendPitchReceipt(email, b.founder_name, b.company).catch(() => {})
     })()

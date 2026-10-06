@@ -19,6 +19,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
+  { code: 'expenses', group: 'fin', label: 'Payments & expenses', to: '/expenses', roles: ['admin', 'gp'], api: ['/api/expenses'], pages: ['/expenses'], switchable: true },
   { code: 'deployments', group: 'fo', label: 'Deployments & books', to: '/deployments', roles: ['admin', 'gp'], api: ['/api/deployments'], pages: ['/deployments'], switchable: true },
   { code: 'client_raise', group: 'fin', label: 'Fundraise with us', to: '/client/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },
   { code: 'cs_raise', group: 'cs', label: 'Fundraising clients', to: '/services/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },

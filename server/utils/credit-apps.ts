@@ -1,10 +1,12 @@
 // Loan applications from the pitch form, guarantors (founders) and credit checks for business and guarantors.
 export const bandOf = (score: number | null) => (score == null ? null : score >= 750 ? 'Excellent' : score >= 680 ? 'Good' : score >= 600 ? 'Fair' : 'Poor')
+export async function bandOfOrg(score: number | null) { return bandFor(score, (await loanSettings()).bands) }
 // Run a CreditChek check for a business (RC) or a guarantor (BVN) and store it; quietly records an error if unavailable.
 export async function runCheck(borrowerId: string, guarantorId: string | null, kind: 'individual' | 'business', ident: string, by: string | null = null): Promise<{ status: string; score: number | null; band: string | null }> {
   try {
     const r = await creditchek(kind, ident)
-    const sc = r.summary ? scoreOf(r.summary) : null
+    const sc0 = r.summary ? scoreOf(r.summary) : null
+    const sc = sc0 ? { score: sc0.score, band: (await bandOfOrg(sc0.score)) ?? sc0.band } : null
     await db().query('INSERT INTO credit.checks (borrower_id, guarantor_id, provider, kind, status, score, band, summary, note, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [borrowerId, guarantorId, 'creditchek', kind, r.status, sc?.score ?? null, sc?.band ?? null, JSON.stringify(r.summary ?? {}), r.status === 'no_data' ? 'No credit history found at the bureaus.' : null, by])
     return { status: r.status, score: sc?.score ?? null, band: sc?.band ?? null }
   } catch (err) {

@@ -33,6 +33,7 @@ const scoreMix = computed(() => ['Excellent', 'Good', 'Fair', 'Poor'].map((b) =>
 const unchecked = computed(() => (scores.value?.rows ?? []).filter((r) => !r.status).length)
 const { data: apps } = await useFetch<{ id: string; status: string; amount: number; currency: string; tenor_months: number | null; company: string; country: string | null; business_score: number | null; guarantor_score: number | null }[]>('/api/credit/applications', { key: 'credit-apps' })
 const APP_ST: Record<string, string> = { new: 'New', checking: 'Checking', review: 'In review', approved: 'Approved', declined: 'Declined', disbursed: 'Disbursed', withdrawn: 'Withdrawn' }
+const { data: meC } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 </script>
 
 <template>
@@ -40,7 +41,7 @@ const APP_ST: Record<string, string> = { new: 'New', checking: 'Checking', revie
     <p class="label">Venture Capital</p>
     <div class="head">
       <h1>Credit</h1>
-      <div class="tools"><button class="btn secondary" type="button" @click="adding = 'borrower'">New borrower</button><button class="btn" type="button" @click="adding = 'loan'">Book a loan</button></div>
+      <div class="tools"><NuxtLink v-if="meC?.roles.includes('admin')" to="/credit/settings" class="btn secondary">Settings</NuxtLink><button class="btn secondary" type="button" @click="adding = 'borrower'">New borrower</button><button class="btn" type="button" @click="adding = 'loan'">Book a loan</button></div>
     </div>
     <p v-if="msg" class="error" role="alert">{{ msg }}</p>
 
