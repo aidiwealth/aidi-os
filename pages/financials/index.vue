@@ -92,6 +92,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="seg" role="group" aria-label="Period"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly']]" :key="k" :class="{ on: periodType === k }" @click="periodType = k">{{ l }}</button></div>
         <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
+        <NuxtLink to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
         <button v-if="canEdit" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
@@ -190,4 +191,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 @media (max-width: 1000px) { .kpis, .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
 .feeds { margin: 12px 0; }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
+.bdl { text-decoration: none; }
 </style>

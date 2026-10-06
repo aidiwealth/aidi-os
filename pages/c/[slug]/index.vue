@@ -3,7 +3,7 @@
 definePageMeta({ layout: 'public' })
 const route = useRoute()
 const slug = String(route.params.slug ?? route.params.handle ?? '')
-interface D { gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
+interface D { logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
 const nda = ref('')
 const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + nda.value : ''), { key: 'pub-c-' + slug })
 onMounted(() => { const k = data.value?.nda?.key; if (data.value?.gated && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s) { nda.value = s; refresh() } } })
@@ -22,7 +22,8 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
     <div v-if="error" class="card"><h1>This page does not exist</h1></div>
     <NdaGate v-else-if="data && data.gated && data.nda" :company="data.company" :text="data.nda.text" kind="page" :ref-key="slug" :org-key="data.nda.key" @signed="signed" />
     <template v-else-if="data">
-      <header class="hero"><p class="label">Investor relations</p><h1>{{ data.company }}</h1><p v-if="data.headline" class="hl">{{ data.headline }}</p>
+      <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
+      <header class="hero"><img v-if="data.logo" :src="data.logo" :alt="data.company" class="clogo"><p class="label">Investor relations</p><h1>{{ data.company }}</h1><p v-if="data.headline" class="hl">{{ data.headline }}</p>
         <div class="links"><a v-if="data.deck_url" :href="data.deck_url" target="_blank" rel="noopener" class="btn">View our deck</a><a v-if="data.website" :href="data.website" target="_blank" rel="noopener" class="btn secondary">Website</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="btn secondary">Contact us</a></div></header>
       <div class="cards"><div v-for="m in data.metrics" :key="m.key" class="card k"><span class="l">{{ m.label }}</span><b>{{ fmt(m.key, last(m).cur?.value) }}</b><span class="s" :class="{ up: (chg(m) ?? 0) > 0, dn: (chg(m) ?? 0) < 0 }">{{ chg(m) == null ? (last(m).cur ? lbl(last(m).cur!.period) : 'Not reported yet') : (chg(m)! > 0 ? '+' : '') + chg(m) + '% vs previous' }}</span></div></div>
       <div class="charts"><TrendChart v-for="m in data.metrics.filter((x) => x.points.filter((p) => p.value !== null).length > 1)" :key="m.key" :title="m.label" :unit="pct(m.key) || m.key === 'runway' ? 'count' : 'usd'" :symbol="SYM[data.currency] ?? data.currency + ' '"
@@ -40,4 +41,5 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
 .charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; } .ups { margin-bottom: 14px; } .ups h2, .about h2 { margin: 0 0 8px; } .up { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); text-decoration: none; color: var(--c-ink); } .up em { font-style: normal; color: var(--c-muted); font-size: 13px; }
 .about .md { color: var(--c-ink-soft); line-height: 1.6; } .about .md :deep(p) { margin: 0 0 10px; } .about .md :deep(ul), .about .md :deep(ol) { padding-left: 20px; } .fine { font-size: 12px; opacity: .65; margin-top: 18px; }
 @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
+.covr { margin: -8px 0 18px; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; } .clogo { width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--c-rule); padding: 6px; margin-bottom: 12px; display: block; }
 </style>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Your public investor page: what investors see at finvry.com/c/your-company. Metrics come from Financials.
 useHead({ title: 'Investor page' })
-interface Pg { slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
+interface Pg { logo_id?: string | null; cover_id?: string | null; slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
 const { data, refresh } = await useFetch<{ page: Pg; exists: boolean; base: string; metrics: { key: string; label: string }[]; company: string }>('/api/investor-page')
-const f = reactive({ slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
-watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
+const f = reactive({ logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
+watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
+async function upImg(kind: 'logo_id' | 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
   busy.value = true; msg.value = ''; ok.value = ''
   if (publish !== undefined) f.published = publish
@@ -23,6 +24,8 @@ async function save(publish?: boolean) {
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <form class="grid" @submit.prevent="save()">
       <div class="card frm">
+        <div class="imgs"><div class="label">Logo<div class="lg"><img v-if="f.logo_id" :src="'/api/public/media/' + f.logo_id" alt=""><span v-else class="ph">{{ data.company.slice(0, 1) }}</span><div><DropZone compact accept=".png,.jpg,.jpeg,.webp,.svg,.gif" label="Upload logo" hint="Square works best" @change="upImg('logo_id', $event)" /><button v-if="f.logo_id" type="button" class="lk" @click="f.logo_id = null; save()">Remove</button></div></div></div>
+          <div class="label">Cover image<div class="cv"><img v-if="f.cover_id" :src="'/api/public/media/' + f.cover_id" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.webp" :label="f.cover_id ? 'Replace cover image' : 'Upload a cover image'" hint="Wide image, e.g. 1600 × 600" @change="upImg('cover_id', $event)" /><button v-if="f.cover_id" type="button" class="lk" @click="f.cover_id = null; save()">Remove</button></div></div></div>
         <label class="label">Page address<span class="addr"><span>{{ data.base }}</span><input v-model="f.slug" required maxlength="41"></span></label>
         <label class="label">Headline<input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></label>
         <div class="label">About the company<ClientOnly><RichEditor v-model="f.about" compact :min-height="160" :max-length="3000" placeholder="What you do, who you serve, traction, team." /></ClientOnly></div>
@@ -46,4 +49,5 @@ input, textarea, select { font: inherit; font-size: 14px; padding: 8px 10px; bor
 .addr { display: flex; align-items: center; border: 1px solid var(--c-rule-strong); } .addr span { padding: 0 8px; font-size: 13px; color: var(--c-muted); background: var(--c-paper-2); align-self: stretch; display: flex; align-items: center; } .addr input { border: 0; flex: 1; }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; } .chk input { width: auto; } .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .grid, .two { grid-template-columns: 1fr; } }
+.imgs { display: grid; grid-template-columns: 1fr 1.6fr; gap: 14px; } .lg { display: flex; gap: 12px; align-items: center; } .lg img, .ph { width: 64px; height: 64px; object-fit: contain; border: 1px solid var(--c-rule); background: #fff; flex: none; } .ph { display: grid; place-items: center; font-size: 26px; font-weight: 600; color: var(--c-muted); } .cv { display: flex; flex-direction: column; gap: 6px; } .cv img { width: 100%; height: 110px; object-fit: cover; } .lk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; align-self: flex-start; } @media (max-width: 900px) { .imgs { grid-template-columns: 1fr; } }
 </style>

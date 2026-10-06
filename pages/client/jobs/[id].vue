@@ -21,6 +21,7 @@ const label = (e: D['events'][number]) => e.kind === 'status' ? 'Status: ' + (ST
     <ServiceNotice compact />
     <NuxtLink to="/client" class="back">← Home</NuxtLink>
     <div class="hd"><div><h1>{{ data.job.title }}</h1><p class="mut">{{ data.job.company }}{{ data.job.due_date ? ' · due ' + data.job.due_date : '' }}</p></div><span class="tag" :class="data.job.status">{{ ST[data.job.status] }}</span></div>
+    <IntakeForm :job-id="data.job.id" />
     <p v-if="data.job.status === 'waiting_client'" class="card need">We are waiting on you. Please read the latest message below and upload what is needed.</p>
     <div class="grid">
       <div class="card tl"><h2>Updates</h2>

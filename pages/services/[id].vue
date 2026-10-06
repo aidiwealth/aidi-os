@@ -44,6 +44,7 @@ const KIND: Record<string, string> = { note: 'Internal note', message: 'Message 
     <p class="label">{{ SERVICES[data.job.service] }} · {{ data.job.client }}</p>
     <div class="dh"><h1>{{ data.job.title }}</h1><DeleteButton type="job" :id="id" :name="data.job.title" to="/services" /></div>
     <p v-if="data.job.description" class="lead">{{ data.job.description }}</p>
+    <IntakeView v-if="['company_formation', 'annual_compliance', 'tax_filing'].includes(data.job.service)" :job-id="id" />
 
     <div class="stages" role="group" aria-label="Status">
       <button v-for="[k, l] in STATUSES" :key="k" type="button" :class="{ on: data.job.status === k }" :disabled="busy || data.job.status === k" @click="setStatus(k)">{{ l }}</button>
