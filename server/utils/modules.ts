@@ -15,6 +15,8 @@ export const MODULES: ModuleDef[] = [
   { code: 'contacts', group: 'fin', label: 'Contacts', to: '/contacts', roles: ['gp', 'team'], api: ['/api/crm/contacts', '/api/crm/lists', '/api/crm/fields', '/api/crm/notes'], pages: ['/contacts'], switchable: true },
   { code: 'fundraising', group: 'fin', label: 'Fundraising', to: '/fundraising', roles: ['gp', 'team'], api: ['/api/fundraising', '/api/crm/pipelines', '/api/crm/deals', '/api/crm/stages', '/api/crm/meetings', '/api/crm/calendar', '/api/crm/investors'], pages: ['/fundraising'], switchable: true },
   { code: 'updates', group: 'fin', label: 'Investor updates', to: '/updates', roles: ['gp', 'team'], api: ['/api/updates', '/api/investors'], pages: ['/updates'], switchable: true },
+  { code: 'boards', group: 'fin', label: 'Boards', to: '/financials/boards', roles: ['admin', 'gp', 'team', 'family'], api: [], pages: [], switchable: true },
+  { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
   { code: 'client_raise', group: 'fin', label: 'Fundraise with us', to: '/client/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },

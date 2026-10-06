@@ -6,12 +6,13 @@ export default defineEventHandler(async (event) => {
   if (!/^[0-9a-f-]{36}$/.test(id)) throw apiError('not_found', 'Not found', 404)
   const money = z.union([z.coerce.number().min(0).max(1e12), z.literal('').transform(() => null), z.null()]).optional()
   const b = z.object({
-    program: z.object({ status: z.enum(['intake', 'active', 'paused', 'closed']).optional(), target: money, fee_pct: z.coerce.number().min(0).max(30).optional() }).optional(),
+    program: z.object({ delete: z.boolean().optional(), status: z.enum(['intake', 'active', 'paused', 'closed']).optional(), target: money, fee_pct: z.coerce.number().min(0).max(30).optional() }).optional(),
     investor: z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), firm: z.string().trim().max(200).optional(), email: z.string().trim().max(254).optional(),
       ticket: money, committed: money, status: z.enum(['target', 'contacted', 'meeting', 'diligence', 'term_sheet', 'committed', 'closed', 'passed']).optional(), next_step: z.string().max(500).optional(), notes: z.string().max(5000).optional(), terms: z.string().max(5000).optional(), visible: z.boolean().optional() }).optional(),
     meeting: z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), investor_id: z.string().uuid().nullable().optional(), title: z.string().trim().min(1).max(200).optional(), starts_at: z.string().optional(), minutes: z.number().int().min(15).max(480).optional(), location: z.string().max(500).optional(), agenda: z.string().max(3000).optional() }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the details.')
   const d = b.data
+  if ((d.program as { delete?: boolean } | undefined)?.delete) { await db().query('DELETE FROM services.raise_programs WHERE id = $1', [id]); await audit({ event, actorUserId: user.userId, action: 'services.raise_delete', objectType: 'raise_program', objectId: id }); return { ok: true, deleted: true } }
   if (d.program) await db().query('UPDATE services.raise_programs SET status = coalesce($2, status), target = CASE WHEN $3 THEN $4 ELSE target END, fee_pct = coalesce($5, fee_pct), updated_at = now() WHERE id = $1', [id, d.program.status ?? null, d.program.target !== undefined, d.program.target ?? null, d.program.fee_pct ?? null])
   if (d.investor) {
     const i = d.investor

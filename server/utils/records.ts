@@ -61,7 +61,7 @@ export const RECORDS: Record<string, RecordType> = {
     guard: { sql: "SELECT 1 FROM services.invoices WHERE id = $1 AND status IN ('sent','paid')", message: 'Sent and paid invoices are kept as a record. Void it instead.' } },
   info_request: { table: 'services.info_requests', module: 'services', roles: ['admin'], name: "tax_year || ' tax information request'" },
   catalog: { table: 'services.catalog', module: 'services', roles: ['admin'], name: 'name' },
-  job: { table: 'services.jobs', module: 'services', roles: ['admin'], name: 'title', children: ['DELETE FROM services.job_events WHERE job_id = $1'] },
+  job: { table: 'services.jobs', module: 'services', roles: ['admin', 'gp'], name: 'title', children: ['DELETE FROM services.job_events WHERE job_id = $1'] },
   company: { table: 'portfolio.companies', module: 'portfolio', roles: VC, name: 'name', children: [
     'DELETE FROM portfolio.metric_values WHERE company_id = $1', 'DELETE FROM portfolio.updates WHERE company_id = $1', 'DELETE FROM portfolio.requests WHERE company_id = $1'] },
   deal: { table: 'deals.deals', module: 'pipeline', roles: VC, name: 'company', blockers: [['SELECT count(*) FROM portfolio.companies WHERE deal_id = $1', 'portfolio company']],

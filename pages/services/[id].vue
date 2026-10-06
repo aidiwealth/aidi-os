@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
-interface Job { id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
+interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
 const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[] }>('/api/services/' + id)
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
@@ -36,6 +36,7 @@ const save = () => run(() => $fetch('/api/services/' + id, { method: 'PATCH', bo
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + docId + '/download'); window.location.href = r.url } catch (e) { msg.value = errText(e) } }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const KIND: Record<string, string> = { note: 'Internal note', message: 'Message to client', status: 'Status', document: 'Document', client_message: 'Client replied', client_document: 'Client uploaded' }
+const linkify = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/(https?:\/\/[^\s<]+)/g, (u) => '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 60 ? u.slice(0, 57) + '…' : u) + '</a>')
 </script>
 
 <template>
@@ -43,7 +44,8 @@ const KIND: Record<string, string> = { note: 'Internal note', message: 'Message 
     <NuxtLink to="/services" class="back">← Jobs</NuxtLink>
     <p class="label">{{ SERVICES[data.job.service] }} · {{ data.job.client }}</p>
     <div class="dh"><h1>{{ data.job.title }}</h1><DeleteButton type="job" :id="id" :name="data.job.title" to="/services" /></div>
-    <p v-if="data.job.description" class="lead">{{ data.job.description }}</p>
+    <RaiseBrief v-if="data.job.codes?.includes('fundraising')" :job-id="id" />
+    <p v-else-if="data.job.description" class="lead desc" v-html="linkify(data.job.description)" />
     <IntakeView v-if="['company_formation', 'annual_compliance', 'tax_filing'].includes(data.job.service)" :job-id="id" />
 
     <div class="stages" role="group" aria-label="Status">
@@ -123,4 +125,5 @@ textarea { resize: vertical; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 10px 0 0; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+.desc { white-space: pre-wrap; } .desc :deep(a) { color: var(--c-blue-deep); word-break: break-all; }
 </style>

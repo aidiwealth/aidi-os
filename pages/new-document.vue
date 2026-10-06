@@ -4,14 +4,18 @@ useHead({ title: 'Create a document' })
 interface T { key: string; name: string; blurb: string; group: string; fields: { key: string; label: string; type?: string; options?: string[]; placeholder?: string; required?: boolean }[] }
 const { data: types } = await useFetch<T[]>('/api/docgen/types')
 const step = ref(1); const type = ref(''); const answers = reactive<Record<string, string>>({})
+const { data: meN } = await useFetch<{ org: { kind: string; name: string } | null }>('/api/auth/me', { key: 'me' })
+const isCo = computed(() => meN.value?.org?.kind === 'company')
+const { data: ents } = await useFetch<{ id: string; name: string }[]>('/api/entities', { key: 'docgen-ents', immediate: true, default: () => [] })
+const entityId = ref('')
 const t = computed(() => types.value?.find((x) => x.key === type.value))
 const groups = computed(() => { const m = new Map<string, T[]>(); for (const x of types.value ?? []) m.set(x.group, [...(m.get(x.group) ?? []), x]); return [...m.entries()] })
 const doc = reactive({ title: '', body: '' }); const view = ref<'preview' | 'edit'>('edit')
 const msg = ref(''); const ok = ref(''); const busy = ref('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 function choose(k: string) { type.value = k; for (const key of Object.keys(answers)) delete answers[key]; step.value = 2 }
-async function draft() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ title: string; body: string }>('/api/docgen/draft', { method: 'POST', body: { type: type.value, answers } }); Object.assign(doc, r); step.value = 3; view.value = 'edit' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
-async function save() { busy.value = 'save'; msg.value = ''; try { await $fetch('/api/docgen/save', { method: 'POST', body: { ...doc } }); ok.value = 'Saved to Documents as a PDF.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
+async function draft() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ title: string; body: string }>('/api/docgen/draft', { method: 'POST', body: { type: type.value, answers, entity_id: !isCo.value && entityId.value ? entityId.value : undefined } }); Object.assign(doc, r); step.value = 3; view.value = 'edit' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
+async function save() { busy.value = 'save'; msg.value = ''; try { await $fetch('/api/docgen/save', { method: 'POST', body: { ...doc, entity_id: !isCo.value && entityId.value ? entityId.value : undefined } }); ok.value = 'Saved to Documents as a PDF.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function download() { busy.value = 'dl'; try { const blob = await $fetch<Blob>('/api/docgen/save', { method: 'POST', body: { ...doc, download: true }, responseType: 'blob' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (doc.title || 'Document') + '.pdf'; a.click() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 const html = computed(() => renderMarkdown(doc.body))
 const blanks = computed(() => (doc.body.match(/\[[A-Z][A-Z0-9 _/-]{1,40}\]/g) ?? []).filter((v, i, a) => a.indexOf(v) === i))
@@ -24,6 +28,7 @@ const blanks = computed(() => (doc.body.match(/\[[A-Z][A-Z0-9 _/-]{1,40}\]/g) ??
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }} <NuxtLink to="/documents">Open Documents →</NuxtLink></p>
     <template v-if="step === 1"><div v-for="[g, list] in groups" :key="g" class="grp"><h2>{{ g }}</h2><div class="cards"><button v-for="x in list" :key="x.key" type="button" class="tc" @click="choose(x.key)"><b>{{ x.name }}</b><span>{{ x.blurb }}</span><em>Start →</em></button></div></div></template>
     <form v-else-if="step === 2 && t" class="card frm" @submit.prevent="draft"><h2>{{ t.name }}</h2>
+      <label v-if="!isCo" class="label">Which entity is this for?<select v-model="entityId" required><option value="" disabled>Choose an entity</option><option v-for="e in ents ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
       <label v-for="f in t.fields" :key="f.key" class="label">{{ f.label }}{{ f.required ? '' : '' }}
         <textarea v-if="f.type === 'textarea'" v-model="answers[f.key]" rows="4" :placeholder="f.placeholder" :required="f.required" maxlength="4000" />
         <select v-else-if="f.type === 'select'" v-model="answers[f.key]"><option value="">Choose</option><option v-for="o in f.options" :key="o">{{ o }}</option></select>

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  const b = z.object({ title: z.string().trim().min(1).max(200), body: z.string().min(1).max(60000), download: z.boolean().default(false) }).safeParse(await readBody(event))
+  const b = z.object({ title: z.string().trim().min(1).max(200), body: z.string().min(1).max(60000), download: z.boolean().default(false), entity_id: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'The document is empty.')
   const org = (await currentOrg())!
   const bytes = await markdownPdf(b.data.title, b.data.body, org.name)
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const id = randomUUID(), key = 'documents/' + id + '.pdf'
   await putObject({ key, body: bytes, contentType: 'application/pdf' })
   await db().query("INSERT INTO core.documents (id, entity_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, uploaded_by) VALUES ($1,$2,$3,'other','normal',$4,'application/pdf',$5,$6,$7)",
-    [id, await companyEntityId(), name + '.pdf', key, bytes.length, createHash('sha256').update(bytes).digest('hex'), user.userId])
+    [id, b.data.entity_id && (await db().query('SELECT 1 FROM core.entities WHERE id = $1', [b.data.entity_id])).rowCount ? b.data.entity_id : await companyEntityId(), name + '.pdf', key, bytes.length, createHash('sha256').update(bytes).digest('hex'), user.userId])
   await audit({ event, actorUserId: user.userId, action: 'docgen.save', objectType: 'document', objectId: id })
   return { ok: true, id }
 })

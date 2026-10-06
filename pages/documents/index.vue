@@ -11,7 +11,13 @@ const LEVELS = [
   { v: 'family', label: 'Family only', roles: ['admin', 'family'] },
   { v: 'restricted', label: 'Restricted: admins only', roles: ['admin'] }
 ]
-const levels = computed(() => LEVELS.filter((l) => l.roles.some((r) => me.value?.roles.includes(r))))
+const COMPANY_LEVELS = [
+  { v: 'normal', label: 'Everyone in the company (founders and team)', roles: ['admin', 'gp', 'team'] },
+  { v: 'restricted', label: 'Admins only', roles: ['admin'] }
+]
+const isCompany = computed(() => meD.value?.org?.kind === 'company')
+const levels = computed(() => (isCompany.value ? COMPANY_LEVELS : LEVELS).filter((l) => l.roles.some((r) => me.value?.roles.includes(r))))
+const levelName = (v: string) => (isCompany.value ? { normal: 'Everyone', family: 'Admins only', restricted: 'Admins only' }[v] : { normal: 'Normal', family: 'Family only', restricted: 'Admins only' }[v]) ?? v
 const entityFilter = ref('')
 const shown = computed(() => (docs.value ?? []).filter((d) => !entityFilter.value || d.entity_name === entityFilter.value))
 const KINDS = ['agreement', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']
@@ -69,7 +75,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 <template>
   <section>
     <p class="label">Records</p>
-    <div class="dh"><h1>Documents</h1><div class="dha"><NuxtLink to="/documents/decks" class="btn secondary">Decks &amp; analytics</NuxtLink><NuxtLink v-if="meD?.org?.kind === 'company'" to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div></div>
+    <div class="dh"><h1>Documents</h1><div class="dha"><NuxtLink to="/decks" class="btn secondary">Decks &amp; analytics</NuxtLink><NuxtLink to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div></div>
     <p class="lead">Stored privately. Links last 60 seconds, and every view is logged.</p>
 
     <form class="card up" @submit.prevent="upload">
@@ -100,7 +106,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       <tbody>
         <tr v-for="d in shown" :key="d.id">
           <td><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></td>
-          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ d.sensitivity }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
+          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ levelName(d.sensitivity) }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
         </tr>
       </tbody>
     </table>

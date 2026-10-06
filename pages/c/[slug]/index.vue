@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import BoardViewT from '~/components/BoardView.vue'
 // A company's public investor page (also at /<handle>): NDA gate when required, branded.
 definePageMeta({ layout: 'public' })
 const route = useRoute()
 const slug = String(route.params.slug ?? route.params.handle ?? '')
-interface D { logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
+interface D { board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
 const nda = ref('')
 const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + nda.value : ''), { key: 'pub-c-' + slug })
 onMounted(() => { const k = data.value?.nda?.key; if (data.value?.gated && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s) { nda.value = s; refresh() } } })
@@ -25,9 +26,12 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
       <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
       <header class="hero"><img v-if="data.logo" :src="data.logo" :alt="data.company" class="clogo"><p class="label">Investor relations</p><h1>{{ data.company }}</h1><p v-if="data.headline" class="hl">{{ data.headline }}</p>
         <div class="links"><a v-if="data.deck_url" :href="data.deck_url" target="_blank" rel="noopener" class="btn">View our deck</a><a v-if="data.website" :href="data.website" target="_blank" rel="noopener" class="btn secondary">Website</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="btn secondary">Contact us</a></div></header>
+      <BoardView v-if="data.board" :data="data.board.data" :metrics="data.board.metrics" class="pboard" />
+      <template v-else>
       <div class="cards"><div v-for="m in data.metrics" :key="m.key" class="card k"><span class="l">{{ m.label }}</span><b>{{ fmt(m.key, last(m).cur?.value) }}</b><span class="s" :class="{ up: (chg(m) ?? 0) > 0, dn: (chg(m) ?? 0) < 0 }">{{ chg(m) == null ? (last(m).cur ? lbl(last(m).cur!.period) : 'Not reported yet') : (chg(m)! > 0 ? '+' : '') + chg(m) + '% vs previous' }}</span></div></div>
       <div class="charts"><TrendChart v-for="m in data.metrics.filter((x) => x.points.filter((p) => p.value !== null).length > 1)" :key="m.key" :title="m.label" :unit="pct(m.key) || m.key === 'runway' ? 'count' : 'usd'" :symbol="SYM[data.currency] ?? data.currency + ' '"
         :points="m.points.filter((p) => p.value !== null).map((p) => ({ label: lbl(p.period), value: p.value as number }))" :foot="data.period_type === 'month' ? 'Monthly' : data.period_type === 'quarter' ? 'Quarterly' : 'Yearly'" /></div>
+      </template>
       <div v-if="data.updates.length" class="card ups"><h2>Updates</h2><NuxtLink v-for="u in data.updates" :key="u.id" :to="updLink(u.id)" class="up"><span>{{ u.title }}</span><em>{{ new Date(u.published_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) }}</em></NuxtLink></div>
       <div v-if="data.about" class="card about"><h2>About {{ data.company }}</h2><div class="md" v-html="renderMarkdown(data.about)" /></div>
       <p class="fine">Figures are reported by {{ data.company }} and are unaudited unless stated.</p>

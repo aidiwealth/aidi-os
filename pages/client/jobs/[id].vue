@@ -14,13 +14,14 @@ async function upload(ev: Event) {
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/portal/documents/' + docId); window.location.href = r.url } catch (e) { msg.value = portalErr(e) } }
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const label = (e: D['events'][number]) => e.kind === 'status' ? 'Status: ' + (ST[e.to_status ?? ''] ?? e.to_status) : e.kind === 'document' ? 'Document shared with you' : e.kind === 'client_document' ? 'You uploaded a document' : e.from_client ? 'You wrote' : 'Message from our team'
+async function delJob() { if (!data.value || !confirm('Delete "' + data.value.job.title + '"? This removes the request and its messages.')) return; try { await $fetch('/api/portal/jobs/' + data.value.job.id, { method: 'DELETE' }); await navigateTo('/client') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 </script>
 
 <template>
   <section v-if="data">
     <ServiceNotice compact />
     <NuxtLink to="/client" class="back">← Home</NuxtLink>
-    <div class="hd"><div><h1>{{ data.job.title }}</h1><p class="mut">{{ data.job.company }}{{ data.job.due_date ? ' · due ' + data.job.due_date : '' }}</p></div><span class="tag" :class="data.job.status">{{ ST[data.job.status] }}</span></div>
+    <div class="hd"><div><h1>{{ data.job.title }}</h1><p class="mut">{{ data.job.company }}{{ data.job.due_date ? ' · due ' + data.job.due_date : '' }}</p></div><div class="ja"><span class="tag" :class="data.job.status">{{ ST[data.job.status] }}</span><button v-if="data.job.status !== 'completed'" type="button" class="del" @click="delJob">Delete request</button></div></div>
     <IntakeForm :job-id="data.job.id" />
     <p v-if="data.job.status === 'waiting_client'" class="card need">We are waiting on you. Please read the latest message below and upload what is needed.</p>
     <div class="grid">
@@ -48,4 +49,5 @@ input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px
 .tag { font-size: 13px; padding: 4px 10px; background: var(--c-paper-2); } .tag.completed { color: var(--c-ok); background: rgba(31,122,77,.1); } .tag.waiting_client { color: var(--c-warn); background: rgba(183,121,31,.1); }
 .ok { color: var(--c-ok); margin: 0; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+.ja { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } .del { background: none; border: 0; color: var(--c-danger); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0; }
 </style>

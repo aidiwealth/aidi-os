@@ -23,7 +23,7 @@ async function archive() { if (confirm('Archive this deck? Its link stops workin
 </script>
 <template>
   <section v-if="data">
-    <NuxtLink to="/documents" class="back">← Documents</NuxtLink>
+    <p class="label">Investors</p>
     <div class="head"><div><h1>Decks</h1><p class="lead">Share your deck with a private link and see who opened it, how long they spent and which slides they read. Your main deck is used on your investor page and in investor updates.</p></div>
       <label class="btn">{{ busy ? 'Uploading…' : '+ New deck' }}<input type="file" accept=".pdf" hidden @change="upload($event)"></label></div>
     <p v-if="msg" class="error">{{ msg }}</p>

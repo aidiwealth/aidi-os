@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // Your public investor page: what investors see at finvry.com/c/your-company. Metrics come from Financials.
 useHead({ title: 'Investor page' })
-interface Pg { logo_id?: string | null; cover_id?: string | null; slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
+interface Pg { deck_id?: string | null; board_id?: string | null; logo_id?: string | null; cover_id?: string | null; slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
 const { data, refresh } = await useFetch<{ page: Pg; exists: boolean; base: string; metrics: { key: string; label: string }[]; company: string }>('/api/investor-page')
-const f = reactive({ logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
-watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
+const f = reactive({ deck_id: null as string | null, board_id: null as string | null, logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month' })
+watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { deck_id: p.deck_id ?? null, board_id: p.board_id ?? null, logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
+const { data: deckList } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; stats: { total: number } }[] }>('/api/documents/decks', { key: 'page-decks' })
+const { data: boards } = await useFetch<{ boards: { id: string; name: string; audience: string }[] }>('/api/financials/boards', { key: 'page-boards' })
 const { data: mainDeck } = await useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })
 async function upImg(kind: 'logo_id' | 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
@@ -30,13 +32,18 @@ async function save(publish?: boolean) {
         <label class="label">Page address<span class="addr"><span>{{ data.base }}</span><input v-model="f.slug" required maxlength="41"></span></label>
         <label class="label">Headline<input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></label>
         <div class="label">About the company<ClientOnly><RichEditor v-model="f.about" compact :min-height="160" :max-length="3000" placeholder="What you do, who you serve, traction, team." /></ClientOnly></div>
-        <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" :placeholder="mainDeck?.url ? 'Using your main deck (tracked)' : 'https://'"><span v-if="mainDeck?.url && !f.deck_url" class="muted">Your main deck “{{ mainDeck.title }}” is shown, with viewer analytics in <NuxtLink to="/documents/decks">Decks</NuxtLink>.</span></label></div>
+        <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck<select v-model="f.deck_id"><option :value="null">{{ deckList?.decks.length ? 'Main deck (★ in Decks)' : 'No deck yet' }}</option><option v-for="d in deckList?.decks ?? []" :key="d.id" :value="d.id">{{ d.title }}{{ d.primary_deck ? ' ★' : '' }} · {{ d.stats.total }} views</option></select>
+          <span class="muted">Shown with viewer analytics. <NuxtLink to="/decks">Upload or manage decks</NuxtLink>{{ deckList?.decks.length ? '' : ' (none yet)' }}.</span></label>
+        <label v-if="!deckList?.decks.length" class="label">Or a deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
       </div>
       <div class="card frm">
-        <b>Numbers to show</b><p class="muted">Pick up to 8. Investors see the latest value, the change and a trend chart.</p>
+        <b>Numbers to show</b>
+        <label class="label">Source<select v-model="f.board_id"><option :value="null">Choose metrics here</option><option v-for="b in boards?.boards ?? []" :key="b.id" :value="b.id">{{ b.name }} board (same figures and charts)</option></select></label>
+        <p v-if="f.board_id" class="muted">The page shows this board exactly as in <NuxtLink to="/financials/boards">Boards</NuxtLink>. Change its figures and charts there.</p>
+        <template v-else><p class="muted">Pick up to 8. Investors see the latest value, the change and a trend chart.</p>
         <label v-for="m in data.metrics" :key="m.key" class="chk"><input v-model="f.metrics" type="checkbox" :value="m.key" :disabled="!f.metrics.includes(m.key) && f.metrics.length >= 8"> {{ m.label }}</label>
-        <label class="label">Show figures<select v-model="f.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label>
+        <label class="label">Show figures<select v-model="f.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label></template>
         <button class="btn" type="submit" :disabled="busy">Save</button>
       </div>
     </form>
