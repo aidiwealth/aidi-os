@@ -101,7 +101,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
     <template v-if="rows.length && latest">
-      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button></nav>
+      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="kpis">
           <div class="kpi"><span class="l">Revenue · {{ lbl(latest.period_end) }}</span><b><Money :value="latest.derived.revenue" :currency="cur" /></b><span class="s" :class="{ up: (change('revenue') ?? 0) > 0, dn: (change('revenue') ?? 0) < 0 }">{{ change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous' }}</span></div>
@@ -189,4 +189,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 @media (max-width: 1000px) { .kpis, .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
 .feeds { margin: 12px 0; }
+.tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
 </style>

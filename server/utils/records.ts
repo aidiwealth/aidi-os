@@ -35,6 +35,7 @@ export const RECORDS: Record<string, RecordType> = {
   crm_pipeline: { table: 'crm.pipelines', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   crm_note: { table: 'crm.notes', module: 'contacts', roles: ['admin', 'gp', 'team'], name: 'body' },
   nda_sig: { table: 'fundraise.nda_signatures', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
+  board: { table: 'financials.boards', module: 'financials', roles: ['admin', 'gp'], name: 'name' },
   post: { table: 'content.posts', module: 'blog', roles: ['admin', 'gp', 'team'], name: 'title' },
   holding: { table: 'wealth.holdings', module: 'wealth', roles: ['admin', 'gp'], name: 'name' },
   crm_meeting: { table: 'crm.meetings', module: 'fundraising', roles: ['admin', 'gp', 'team'], name: 'title' },

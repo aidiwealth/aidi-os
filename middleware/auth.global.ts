@@ -2,7 +2,7 @@
 // the Finvry console is only for Aidi platform staff on the Aidi OS address.
 export default defineNuxtRouteMiddleware(async (to) => {
   if (String(to.name ?? '').startsWith('handle')) return
-  if (to.path === '/login' || to.path === '/start' || to.path.startsWith('/c/') || to.path.startsWith('/u/') || to.path.startsWith('/d/') || to.path.startsWith('/unsub/') || to.path.startsWith('/report/') || to.path.startsWith('/job/') || to.path.startsWith('/pay/') || to.path.startsWith('/lp/') || to.path === '/developers' || to.path === '/status' || to.path.startsWith('/bill/') || to.path.startsWith('/info/') || to.path.startsWith('/formation/') || to.path.startsWith('/share/')) return
+  if (to.path === '/login' || to.path === '/start' || to.path.startsWith('/c/') || to.path.startsWith('/u/') || to.path.startsWith('/d/') || to.path.startsWith('/unsub/') || to.path.startsWith('/report/') || to.path.startsWith('/job/') || to.path.startsWith('/pay/') || to.path.startsWith('/lp/') || to.path === '/developers' || to.path.startsWith('/b/') || to.path === '/status' || to.path.startsWith('/bill/') || to.path.startsWith('/info/') || to.path.startsWith('/formation/') || to.path.startsWith('/share/')) return
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
   let me: { platform: boolean; org: { id: string } | null }
   try {
