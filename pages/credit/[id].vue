@@ -102,6 +102,7 @@ const RS: Record<string, string> = { paid: 'Paid', partial: 'Part paid', overdue
       <label class="label span2">Note<input v-model="st.note" required minlength="3" maxlength="1000"></label>
       <button class="btn secondary" type="submit" :disabled="busy">Update status</button>
     </form>
+    <div v-if="data.loan.borrower_id" class="card crd"><h2>Credit report · {{ data.loan.borrower }}</h2><p class="mut">The business's credit check and its founders and guarantors.</p><BorrowerCredit :borrower-id="data.loan.borrower_id" /></div>
   </section>
   <p v-else-if="error" class="error" role="alert">{{ error.statusCode === 404 ? 'Loan not found.' : 'Could not load this loan.' }}</p>
 </template>
@@ -134,4 +135,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .btn.sm { padding: 6px 12px; font-size: 13px; }
 .red { color: var(--c-danger) !important; } .muted { color: var(--c-muted); } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .grid, .frm4, .covf { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
+.crd { margin-top: 16px; } .crd h2 { margin: 0 0 4px; } .crd .mut { color: var(--c-muted); font-size: 13px; margin: 0 0 12px; }
 </style>

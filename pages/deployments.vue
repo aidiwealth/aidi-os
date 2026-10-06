@@ -32,13 +32,13 @@ const bal = computed(() => { const m = new Map<string, { entity: string; rows: {
 <template>
   <section v-if="data">
     <div class="hd"><div><p class="label">Family office</p><h1>Deployments &amp; books</h1><p class="lead">Every payment out of Credit, the Angel Fund and the venture fund: who paid, which company and founder received it, how it was funded, and the matching book entries.</p></div><button class="btn" @click="open">Log a deployment</button></div>
-    <div class="kp"><div v-for="(v, s) in totals" :key="s" class="k"><span>{{ SRC[s] }}</span><b>{{ Object.entries(v).map(([c, a]) => money(a, c)).join(' · ') }}</b></div><div v-if="!data.rows.length" class="k"><span>Deployed</span><b>—</b></div></div>
+    <div class="kp"><div v-for="s in ['credit', 'angel_fund', 'venture_fund']" :key="s" class="k"><span>{{ SRC[s] }}</span><b>{{ totals[s] ? Object.entries(totals[s]!).map(([c, a]) => money(a, c)).join(' · ') : '—' }}</b><em>{{ (data.rows.filter((r) => r.source === s).length) }} payment{{ data.rows.filter((r) => r.source === s).length === 1 ? '' : 's' }}</em></div></div>
     <nav class="tabs"><button :class="{ on: tab === 'deployments' }" @click="tab = 'deployments'">Deployments</button><button :class="{ on: tab === 'books' }" @click="tab = 'books'">Books</button></nav>
-    <div v-if="tab === 'deployments'" class="card"><table class="table"><thead><tr><th>Date</th><th>Company · founder</th><th>From</th><th>Funded by</th><th class="n">Amount</th><th /></tr></thead><tbody>
+    <div v-if="tab === 'deployments'" class="card tc"><table v-if="data.rows.length" class="table"><thead><tr><th>Date</th><th>Company · founder</th><th>From</th><th>Funded by</th><th class="n">Amount</th><th /></tr></thead><tbody>
       <tr v-for="r in data.rows" :key="r.id"><td>{{ r.paid_on }}</td><td><b>{{ r.company }}</b><span class="s">{{ [r.founder_name, r.instrument, r.reference].filter(Boolean).join(' · ') }}</span></td>
         <td>{{ SRC[r.source] }}<span class="s">{{ [r.fund, r.entity, r.loan_ref && 'loan ' + r.loan_ref].filter(Boolean).join(' · ') }}</span></td>
         <td><span v-for="(x, i) in r.funded_by" :key="i" class="fb">{{ x.type === 'aidi' ? 'Aidi' : x.name }} {{ money(x.amount, r.currency) }}</span></td><td class="n"><b>{{ money(r.amount, r.currency) }}</b></td><td><button class="lk" @click="del(r)">Delete</button></td></tr>
-      <tr v-if="!data.rows.length"><td colspan="6" class="s">Nothing logged yet.</td></tr></tbody></table></div>
+      </tbody></table><EmptyState v-if="!data.rows.length" compact icon="banking" title="No deployments yet" text="Log each payment to a company from Credit, the Angel Fund or the venture fund. It is tied to the company, founder and fund, and posted to the books."><button class="btn" @click="open">Log a deployment</button></EmptyState></div>
     <template v-else>
       <div class="bal"><div v-for="g in bal" :key="g.entity" class="card"><h3>{{ g.entity }}</h3><div v-for="r in g.rows" :key="r.account + r.currency" class="br"><span>{{ r.account }}</span><b :class="{ neg: r.balance < 0 }">{{ money(r.balance, r.currency) }}</b></div></div><p v-if="!bal.length" class="s">No entries yet.</p></div>
       <div class="card"><h3>Journal</h3><table class="table"><thead><tr><th>Date</th><th>Entity</th><th>Account</th><th class="n">Debit</th><th class="n">Credit</th><th>Memo</th></tr></thead><tbody>
@@ -71,4 +71,12 @@ const bal = computed(() => { const m = new Map<string, { entity: string; rows: {
 .fm { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; } input, select, textarea { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .fbx { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--c-paper-2); } .fr { display: flex; gap: 8px; align-items: center; } .fr input { width: 140px; } .add { align-self: flex-start; } .error { color: var(--c-danger); }
 @media (max-width: 900px) { .g3 { grid-template-columns: 1fr; } }
+/* layout v2 */
+.k em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); margin-top: 2px; }
+.tc { padding: 0; overflow-x: auto; } .tc .table { margin: 0; } .tc :deep(.empty), .tc > div { margin: 0; }
+.table { width: 100%; border-collapse: collapse; font-size: 13.5px; } .table th { text-align: left; padding: 10px 14px; white-space: nowrap; } .table td { padding: 12px 14px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .table .n { text-align: right; }
+.card > .table { margin-top: 6px; }
+.fm, .fm * { box-sizing: border-box; } .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } .fm input, .fm select, .fm textarea { width: 100%; min-width: 0; }
+.fr select { width: auto; flex: 0 0 auto; min-width: 170px; } .fr input { width: 160px !important; flex: 0 0 160px; }
+@media (max-width: 900px) { .g3 { grid-template-columns: 1fr !important; } }
 </style>

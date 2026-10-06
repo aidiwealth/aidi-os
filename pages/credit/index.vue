@@ -107,7 +107,7 @@ const APP_ST: Record<string, string> = { new: 'New', checking: 'Checking', revie
       </table>
       <label v-if="data.loans.some((l) => l.status !== 'active')" class="chk"><input v-model="showClosed" type="checkbox"> Show repaid, written-off and restructured loans</label>
     </template>
-    <AppModal :open="!!report" title="Credit report" wide @close="report = ''"><CreditReport v-if="report" :key="report" :borrower-id="report" @changed="refreshB()" /><GuarantorsPanel v-if="report" :key="'g' + report" :borrower-id="report" /></AppModal>
+    <AppModal :open="!!report" title="Credit report" wide @close="report = ''"><BorrowerCredit v-if="report" :key="report" :borrower-id="report" /></AppModal>
   </section>
 </template>
 

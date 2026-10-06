@@ -30,9 +30,13 @@ export default defineEventHandler(async (event) => {
       WHERE s.show_to_lps ORDER BY e.name, s.period_end DESC LIMIT 24`, [lp.id]) : { rows: [] }
   const financials = fin.rows.map((x) => ({ fund: x.fund, period_end: x.period_end, period_type: x.period_type, currency: x.currency, ...derive(x.lines, x.period_type) }))
   const deals = (await enabledModules()).has('pitches') ? (await db().query(`SELECT p.id, p.company, p.one_liner, p.sector, p.stage, p.country, p.raising_usd::float, to_char(p.received_at, 'YYYY-MM-DD') AS received_at, p.website,
-      s.score, s.recommendation, (SELECT count(*) > 0 FROM deals.lp_interest i WHERE i.pitch_id = p.id AND i.lp_id = $1) AS interested
+      s.score, s.recommendation, (SELECT count(*) > 0 FROM deals.lp_interest i WHERE i.pitch_id = p.id AND i.lp_id = $1) AS interested, p.funding_type,
+      (SELECT json_build_object('amount', a.amount, 'currency', a.currency, 'tenor', a.tenor_months, 'status', a.status,
+        'business', (SELECT json_build_object('score', c.score, 'band', c.band, 'source', coalesce(c.source, c.provider)) FROM credit.checks c WHERE c.borrower_id = a.borrower_id AND c.guarantor_id IS NULL AND c.score IS NOT NULL ORDER BY c.created_at DESC LIMIT 1),
+        'founders', (SELECT json_agg(json_build_object('name', x.name, 'score', x.score, 'band', x.band)) FROM (SELECT DISTINCT ON (g.id) g.name, c.score, c.band FROM credit.guarantors g JOIN credit.checks c ON c.guarantor_id = g.id AND c.score IS NOT NULL WHERE g.borrower_id = a.borrower_id ORDER BY g.id, c.created_at DESC) x))
+      FROM credit.applications a WHERE a.pitch_id = p.id) AS credit
       FROM deals.pitches p LEFT JOIN LATERAL (SELECT score, recommendation FROM deals.screenings x WHERE x.pitch_id = p.id ORDER BY x.created_at DESC LIMIT 1) s ON true
-      WHERE p.lp_share = 'show' OR (p.lp_share = 'auto' AND p.status IN ('screened', 'advancing') AND s.score IS NOT NULL) ORDER BY p.received_at DESC LIMIT 30`, [lp.id])).rows : []
+      WHERE p.lp_share = 'show' OR (p.lp_share = 'auto' AND p.status IN ('screened', 'advancing') AND (s.score IS NOT NULL OR p.funding_type = 'loan')) ORDER BY p.received_at DESC LIMIT 30`, [lp.id])).rows : []
   const lpEmail = (await db().query<{ email: string | null }>('SELECT email FROM funds.lps WHERE id = $1', [lp.id])).rows[0]?.email ?? null
   const participations = []
   for (const f of (await db().query<{ entity_id: string; name: string; currency: string }>("SELECT f.entity_id, e.name, f.currency FROM funds.funds f JOIN core.entities e ON e.id = f.entity_id JOIN funds.commitments c ON c.fund_id = f.id AND c.lp_id = $1 WHERE f.structure = 'rolling'", [lp.id])).rows) {

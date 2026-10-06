@@ -55,7 +55,7 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
 </template>
 <style scoped>
 .hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; } h1 { margin: 0 0 6px; } .lead { color: var(--c-ink-soft); max-width: 780px; } .frm { display: flex; flex-direction: column; gap: 12px; max-width: 900px; } .frm h2 { margin: 0; }
-.g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; } .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
+.g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .g2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .agree { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .agree input { width: auto; } .row { display: flex; gap: 8px; } .error { color: var(--c-danger); }
 .rtabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 10px 0; width: fit-content; max-width: 100%; overflow-x: auto; } .rtabs button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .rtabs .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
 .sub { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .pst { font-size: 12.5px; font-weight: 600; padding: 3px 9px; background: var(--c-paper-2); } .pst.active { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pst.closed { background: rgba(31,122,77,.1); color: var(--c-ok); }
@@ -63,4 +63,6 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; } .cols h2 { margin: 0 0 8px; font-size: 16px; } .mt { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .mt a { color: var(--c-blue-deep); font-size: 13px; } .s { font-size: 12.5px; color: var(--c-muted); } .past { opacity: .7; }
 @media (max-width: 1000px) { .cols, .g3, .g2 { grid-template-columns: 1fr; } }
 div.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+/* fields fit */
+input, select, textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
 </style>

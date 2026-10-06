@@ -55,9 +55,11 @@ async function delProgram() { if (!confirm('Delete this fundraising program, its
 .kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 14px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; } .k span { display: block; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 22px; font-weight: 600; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; } .cols h2 { margin: 0 0 8px; font-size: 16px; } aside { display: flex; flex-direction: column; gap: 12px; } .mt { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .s { font-size: 12.5px; color: var(--c-muted); }
 .lk { background: none; border: 0; cursor: pointer; font: inherit; font-size: 12.5px; padding: 0; text-align: left; color: var(--c-blue-deep); } .lk.red { color: var(--c-danger); } .brief dl { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; margin: 0; font-size: 13px; } .brief dt { color: var(--c-muted); text-transform: capitalize; } .brief dd { margin: 0; white-space: pre-wrap; }
-.ef { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .cb input { width: auto; } .error { color: var(--c-danger); }
+.ef { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .cb input { width: auto; } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .cols, .g3 { grid-template-columns: 1fr; } }
 .pst { font-size: 12.5px; font-weight: 600; padding: 6px 10px; align-self: center; background: var(--c-paper-2); } .pst.active { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pst.closed { background: rgba(31,122,77,.1); color: var(--c-ok); } .pst.paused { background: rgba(181,71,8,.09); color: var(--c-warn); }
 .bfull { margin-top: 14px; }
 div.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+/* fields fit */
+input, select, textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
 </style>

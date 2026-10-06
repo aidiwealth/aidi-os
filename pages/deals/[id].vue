@@ -29,7 +29,7 @@ async function rescreen() {
 }
 const money = (v: string | null) => (v ? '$' + Number(v).toLocaleString('en-US') : '—')
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const { data: loanApp } = await useFetch<{ id: string; status: string; amount: number; currency: string } | null>('/api/credit/applications/by-pitch/' + id, { key: 'loan-app-' + id })
+const { data: loanApp } = await useFetch<{ id: string; status: string; amount: number; currency: string; business: { score: number; band: string } | null; founders: { name: string; score: number; band: string }[] | null } | null>('/api/credit/applications/by-pitch/' + id, { key: 'loan-app-' + id })
 </script>
 
 <template>
@@ -37,7 +37,8 @@ const { data: loanApp } = await useFetch<{ id: string; status: string; amount: n
     <NuxtLink to="/deals" class="back">← Pitches</NuxtLink>
     <NuxtLink v-if="data.dealId" :to="'/pipeline/' + data.dealId" class="inpipe">In the pipeline →</NuxtLink>
     <p class="label">{{ STAGE[data.pitch.stage] }} · {{ data.pitch.sector ?? 'Sector not given' }} · {{ data.pitch.country ?? 'Country not given' }}</p>
-    <div v-if="loanApp" class="loanb">This is a <b>venture debt / loan</b> request ({{ new Intl.NumberFormat('en-US', { style: 'currency', currency: loanApp.currency, maximumFractionDigits: 0 }).format(loanApp.amount) }}). It is assessed and approved in Credit, not as an equity pitch. <NuxtLink :to="'/credit/applications/' + loanApp.id">Open the loan application →</NuxtLink></div>
+    <div v-if="loanApp" class="loanb">This is a <b>venture debt / loan</b> request ({{ new Intl.NumberFormat('en-US', { style: 'currency', currency: loanApp.currency, maximumFractionDigits: 0 }).format(loanApp.amount) }}). It is assessed and approved in Credit, not as an equity pitch. <NuxtLink :to="'/credit/applications/' + loanApp.id">Open the loan application →</NuxtLink>
+      <span class="crs">Credit rating: <template v-if="loanApp.business">business <b>{{ loanApp.business.score }}</b> {{ loanApp.business.band }}</template><template v-for="f in loanApp.founders ?? []" :key="f.name"> · {{ f.name }} <b>{{ f.score }}</b> {{ f.band }}</template><template v-if="!loanApp.business && !loanApp.founders?.length">checks pending</template></span></div>
     <div class="dh"><h1>{{ data.pitch.company }}</h1><DeleteButton type="pitch" :id="id" :name="data.pitch.company" to="/deals" /></div>
     <DealLpPanel :pitch-id="id" />
     <p class="lead">{{ data.pitch.one_liner }}</p>
@@ -127,4 +128,5 @@ textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--c-
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .loanb { background: #fff7ea; border-left: 3px solid #e3a008; padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .loanb a { color: var(--c-blue-deep); }
+.crs { display: block; margin-top: 4px; }
 </style>
