@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp')
   const metric = z.string().refine((m) => m in BOARD_METRICS, 'Unknown metric')
   const b = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(80).optional(), note: z.string().max(1000).optional(), kpis: z.array(metric).max(12).optional(),
-    charts: z.array(z.object({ title: z.string().trim().min(1).max(80), metrics: z.array(metric).min(1).max(3) })).max(10).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(2).max(36).optional(),
+    charts: z.array(z.object({ title: z.string().trim().min(1).max(80), metrics: z.array(metric).min(1).max(3), type: z.enum(['line', 'bar', 'area', 'pie', 'table']).default('line') })).max(10).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(2).max(36).optional(),
     share: z.object({ enabled: z.boolean(), expires_days: z.number().int().min(0).max(365).default(0), reset: z.boolean().default(false) }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the board settings.')
   const d = b.data

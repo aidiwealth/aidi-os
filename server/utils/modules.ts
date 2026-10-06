@@ -64,7 +64,9 @@ export async function enabledModules(): Promise<Set<string>> { return (await loa
 export async function planModules(): Promise<Set<string>> { return (await load()).plan }
 export const clearModuleCache = (): void => { cache.clear() }
 export const moduleForApi = (path: string): ModuleDef | undefined => MODULES.find((m) => m.api.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/')))
-export const canUse = (m: ModuleDef, roles: string[]): boolean => roles.includes('admin') || m.roles.some((r) => roles.includes(r))
+export const canUse = (m: ModuleDef, roles: string[], ov?: Record<string, string[]> | null): boolean => roles.includes('admin') || (ov?.[m.code] ?? m.roles).some((r) => roles.includes(r))
+// Per-workspace overrides of which roles may use a module (set by admins on the Modules page).
+export async function moduleRoleOverrides(): Promise<Record<string, string[]>> { const s = (await currentOrg())?.settings as Record<string, unknown> | undefined; const v = s?.module_roles; return v && typeof v === 'object' ? v as Record<string, string[]> : {} }
 
 export async function requireModule(event: H3Event, code: string): Promise<void> {
   if (!(await enabledModules()).has(code)) throw apiError('module_off', 'This module is switched off.', 404)

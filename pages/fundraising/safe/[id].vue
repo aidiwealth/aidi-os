@@ -21,7 +21,7 @@ async function saveDocs() { saving.value = true; saved.value = ''; try { await $
     <p v-if="saved" class="okm noprint">{{ saved }}</p>
     <nav class="dtabs noprint"><button :class="{ on: tab === 'terms' }" @click="tab = 'terms'">Term sheet</button><button v-for="d in docsData?.docs ?? []" :key="d.key" :class="{ on: tab === d.key }" @click="tab = d.key">{{ TAB_NAME[d.key] }}</button></nav>
     <article v-if="tab !== 'terms' && cur" class="doc legal" v-html="mdRender(cur.md)" />
-    <p class="note noprint">This is a term sheet and signature page based on the structure of the post-money SAFE (Simple Agreement for Future Equity). It is not legal advice. The SAFE and side letters below are drafted from these terms in Finvry's own wording, following the standard post-money SAFE structure. Have a lawyer review them before signing. You can also use the official forms, which Y Combinator publishes for free at ycombinator.com/documents.</p>
+    <p v-if="tab === 'terms'" class="note noprint">Prepared with Finvry from the terms agreed between the parties, following the standard post-money SAFE structure. This is not legal advice. Each party should have the documents reviewed by its own counsel before signing. Y Combinator also publishes its official SAFE forms for free at <a href="https://www.ycombinator.com/documents" target="_blank" rel="noopener">ycombinator.com/documents</a>.</p>
     <article v-if="tab === 'terms'" class="doc">
       <p class="lb">Term sheet</p><h1>Simple Agreement for Future Equity</h1><p class="sub">{{ data.company_name }}, a {{ data.company_state }} {{ data.company_state === 'Delaware' || data.company_state === 'Other' ? 'corporation' : 'corporation' }} · {{ day(data.safe_date) }}</p>
       <table><tbody>

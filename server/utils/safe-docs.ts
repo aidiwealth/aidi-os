@@ -12,13 +12,12 @@ export function safeDocs(s: SafeRow): SafeDoc[] {
   const rate = s.discount ? (100 - s.discount) + '%' : null
   const variant = cap && rate ? 'Valuation Cap and Discount' : cap ? 'Valuation Cap, no Discount' : rate ? 'Discount, no Valuation Cap' : 'MFN Only, no Valuation Cap, no Discount'
   const mfnOnly = !cap && !rate
-  const note = '> Prepared with Finvry from the terms agreed between the parties, following the standard post-money SAFE structure. This is not legal advice. Each party should have the documents reviewed by its own counsel before signing.'
   const sigs = (left: string, right: string) => [
     '## Signatures', '',
     '**' + left + '**', '', s.company_name, '', 'By: ______________________________', '', 'Name: ' + s.signatory_name, '', 'Title: ' + s.signatory_title, '', 'Date: ______________________________', '',
     '**' + right + '**', '', s.investor_name, '', 'By: ______________________________', '', 'Name: ______________________________', '', 'Title: ______________________________', '', 'Email: ' + (s.investor_email || '______________________________'), '', 'Date: ______________________________']
   const safe: string[] = [
-    '# SAFE (Simple Agreement for Future Equity)', '', '**' + variant + '**', '', note, '',
+    '# SAFE (Simple Agreement for Future Equity)', '', '**' + variant + '**', '',
     'THIS INSTRUMENT AND ANY SECURITIES ISSUABLE UNDER IT HAVE NOT BEEN REGISTERED UNDER THE SECURITIES ACT OF 1933, AS AMENDED, OR THE SECURITIES LAWS OF ANY STATE OR OTHER JURISDICTION. THEY MAY NOT BE SOLD, PLEDGED OR OTHERWISE TRANSFERRED EXCEPT AS ALLOWED UNDER THAT ACT AND THOSE LAWS.', '',
     'In return for **' + s.investor_name + '** (the "Investor") paying **' + money(s.amount) + '** (the "Purchase Amount") on or about **' + date + '**, **' + s.company_name + '**, a ' + s.company_state + ' ' + kind + ' (the "Company"), grants the Investor the right to receive shares of the Company\'s Capital Stock on the terms set out in this agreement (this "Safe").', '',
     ...(cap ? ['**Post-Money Valuation Cap:** ' + cap, ''] : []),
@@ -75,7 +74,7 @@ export function safeDocs(s: SafeRow): SafeDoc[] {
     ...sigs('Company', 'Investor')]
   const docs: SafeDoc[] = [{ key: 'safe', title: 'SAFE: ' + s.investor_name, md: safe.join('\n') }]
   if (s.mfn && !mfnOnly) docs.push({ key: 'mfn', title: 'MFN Side Letter: ' + s.investor_name, md: [
-    '# Most Favored Nation Side Letter', '', note, '', date, '',
+    '# Most Favored Nation Side Letter', '', date, '',
     'To: **' + s.investor_name + '**' + (s.investor_email ? ' (' + s.investor_email + ')' : ''), '',
     'This letter is given in connection with the SAFE dated ' + date + ' between **' + s.company_name + '** (the "Company") and you (the "Investor") for a purchase amount of ' + money(s.amount) + ' (the "Safe"). Terms defined in the Safe have the same meaning here.', '',
     '**1. Most Favored Nation right.** If, after the Safe is issued and before it ends, the Company issues any Subsequent Convertible Securities on terms more favourable to the holder than the terms of the Safe (for example a lower valuation cap, a larger discount, or more favourable conversion or payment terms), the Company will promptly tell the Investor in writing and provide the terms and documents.', '',
@@ -84,7 +83,7 @@ export function safeDocs(s: SafeRow): SafeDoc[] {
     '**4. Term.** This letter ends when the Safe ends. It is part of the Safe and is governed by the same law. It may be amended only in writing signed by both parties.', '',
     ...sigs('Agreed: Company', 'Accepted: Investor')].join('\n') })
   if (s.pro_rata) docs.push({ key: 'pro_rata', title: 'Pro Rata Side Letter: ' + s.investor_name, md: [
-    '# Pro Rata Rights Side Letter', '', note, '', date, '',
+    '# Pro Rata Rights Side Letter', '', date, '',
     'To: **' + s.investor_name + '**' + (s.investor_email ? ' (' + s.investor_email + ')' : ''), '',
     'This letter is given in connection with the SAFE dated ' + date + ' between **' + s.company_name + '** (the "Company") and you (the "Investor") for a purchase amount of ' + money(s.amount) + ' (the "Safe"). Terms defined in the Safe have the same meaning here.', '',
     '**1. Pro rata right.** In the Equity Financing in which the Safe converts, the Investor may buy, on the same terms as the other investors in that Equity Financing, up to its Pro Rata Portion of the Standard Preferred Stock offered in that financing.', '',

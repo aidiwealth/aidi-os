@@ -3,7 +3,7 @@ export const BOARD_METRICS: Record<string, { label: string; unit: 'money' | 'pct
   revenue: { label: 'Revenue', unit: 'money' }, growth: { label: 'Revenue growth', unit: 'pct' }, gross_profit: { label: 'Gross profit', unit: 'money' }, gross_margin: { label: 'Gross margin', unit: 'pct' },
   opex_total: { label: 'Operating costs', unit: 'money' }, ebitda: { label: 'EBITDA', unit: 'money' }, net_income: { label: 'Net income', unit: 'money' }, cash: { label: 'Cash', unit: 'money' },
   burn: { label: 'Monthly burn', unit: 'money' }, runway: { label: 'Runway', unit: 'months' }, total_assets: { label: 'Total assets', unit: 'money' }, equity: { label: 'Equity', unit: 'money' } }
-export interface BoardChart { title: string; metrics: string[] }
+export interface BoardChart { title: string; metrics: string[]; type?: 'line' | 'bar' | 'area' | 'pie' | 'table' }
 export const DEFAULT_BOARDS: { audience: string; name: string; sort: number; kpis: string[]; charts: BoardChart[]; note: string }[] = [
   { audience: 'cfo', name: 'CFO', sort: 0, kpis: ['cash', 'burn', 'runway', 'gross_margin', 'ebitda', 'net_income'], note: 'Cash, spend and margins for running the numbers.',
     charts: [{ title: 'Revenue and operating costs', metrics: ['revenue', 'opex_total'] }, { title: 'Cash', metrics: ['cash'] }, { title: 'Monthly burn', metrics: ['burn'] }, { title: 'Gross margin', metrics: ['gross_margin'] }] },

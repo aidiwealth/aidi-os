@@ -20,6 +20,7 @@ async function copy() { if (det.value) { await navigator.clipboard.writeText(det
 const pick = ref('')
 async function newLink() { if (confirm('Make a new link? The old link stops working.')) await patch({ new_link: true }) }
 async function archive() { if (confirm('Archive this deck? Its link stops working.')) { await patch({ archive: true }); sel.value = null } }
+async function delDeck() { if (!confirm('Delete this deck, its versions history and all viewer analytics? Its link stops working. The PDF files stay in Documents.')) return; await $fetch('/api/documents/decks/' + sel.value, { method: 'POST', body: { delete: true } }); sel.value = null; det.value = null; await refresh() }
 </script>
 <template>
   <section v-if="data">
@@ -46,7 +47,7 @@ async function archive() { if (confirm('Archive this deck? Its link stops workin
         </div>
         <aside><div class="card"><b>Upload history</b><div v-for="(v, i) in det.versions" :key="v.id" class="ver"><span>{{ v.filename }}</span><em>{{ ago(v.created_at) }}<template v-if="v.pages"> · {{ v.pages }} slides</template></em><span v-if="i === 0" class="cur">Current version</span></div></div>
           <div class="card set"><b>Link settings</b><label><input type="checkbox" :checked="det.deck.require_email" @change="patch({ require_email: ($event.target as HTMLInputElement).checked })"> Ask viewers for their email</label><label><input type="checkbox" :checked="det.deck.allow_download" @change="patch({ allow_download: ($event.target as HTMLInputElement).checked })"> Allow download</label>
-            <button class="lk" @click="newLink">Make a new link</button><button class="lk red" @click="archive">Archive deck</button></div></aside></div>
+            <button class="lk" @click="newLink">Make a new link</button><button class="lk red" @click="archive">Archive deck</button><button class="lk red" @click="delDeck">Delete deck</button></div></aside></div>
       </div>
     </template>
   </section>
