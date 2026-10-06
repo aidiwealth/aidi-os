@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mdRender } from '~/shared/markdown'
 // Founder: managed fundraising — one or more raises; each shows progress (investors, meetings, totals). Briefs can be
 // edited and raises deleted (before money is committed).
 useHead({ title: 'Fundraise with us' })
@@ -33,10 +34,10 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
         <div class="g3"><label class="label">Amount you are raising *<input v-model="f.target" inputmode="decimal" required placeholder="e.g. 500000"></label><label class="label">Currency<select v-model="f.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
           <label class="label">Round *<select v-model="f.round"><option>Pre-seed</option><option>Seed</option><option>Series A</option><option>Bridge</option><option>Debt</option></select></label>
           <label class="label">Instrument *<select v-model="f.instrument"><option>SAFE</option><option>Priced equity</option><option>Convertible note</option><option>Debt</option></select></label><label class="label">Valuation or cap<input v-model="f.valuation" inputmode="decimal"></label><label class="label">Raised so far<input v-model="f.raised_so_far" inputmode="decimal"></label></div>
-        <label class="label">How you will use the money *<textarea v-model="f.use_of_funds" rows="3" required maxlength="3000" /></label>
-        <label class="label">Traction (revenue, users, growth)<textarea v-model="f.traction" rows="3" maxlength="3000" /></label>
+        <div class="label">How you will use the money *<ClientOnly><RichEditor v-model="f.use_of_funds" compact :min-height="110" :max-length="3000" placeholder="e.g. a list of where the money goes" /></ClientOnly></div>
+        <div class="label">Traction (revenue, users, growth)<ClientOnly><RichEditor v-model="f.traction" compact :min-height="110" :max-length="3000" placeholder="Revenue, growth, customers, retention…" /></ClientOnly></div>
         <div class="g2"><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="Leave blank to use your deck in Decks"></label><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div>
-        <label class="label">Investors you would like us to approach<textarea v-model="f.target_investors" rows="2" maxlength="3000" /></label>
+        <div class="label">Investors you would like us to approach<ClientOnly><RichEditor v-model="f.target_investors" compact :min-height="80" :max-length="3000" placeholder="One per line, or a short note" /></ClientOnly></div>
         <label class="agree"><input v-model="f.agree_fee" type="checkbox"> I agree to a success fee of {{ data.fee_pct }}% of the money closed through this service.</label>
         <div class="row"><button class="btn" :disabled="busy || !f.agree_fee">{{ busy ? 'Saving…' : f.id ? 'Save changes' : 'Start my raise' }}</button><button v-if="editing && data.programs?.length" type="button" class="btn secondary" @click="editing = false">Cancel</button></div></form>
     </template>
@@ -46,7 +47,7 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
         <div class="row"><button v-if="cur.program.status !== 'closed'" class="btn secondary" @click="edit">Edit brief</button><button class="btn secondary danger" @click="del">Delete raise</button></div></div>
       <div class="kp"><div class="k"><span>Target</span><b>{{ money(cur.totals.target) }}</b></div><div class="k"><span>Committed</span><b>{{ money(cur.totals.committed) }}</b><div class="bar"><i :style="{ width: pct + '%' }" /></div><em>{{ pct }}% of target</em></div><div class="k"><span>Closed</span><b>{{ money(cur.totals.closed) }}</b></div><div class="k"><span>Investors in play</span><b>{{ cur.totals.active }}</b><em>{{ cur.totals.count }} on the list</em></div><div class="k"><span>Success fee ({{ cur.totals.fee_pct }}%)</span><b>{{ money(cur.totals.fee) }}</b><em>on money closed</em></div></div>
       <div class="cols"><div class="card"><h2>Investors</h2><RaiseTable :investors="cur.investors" :labels="data.labels ?? {}" :currency="cur.program.currency" /></div>
-        <aside class="card"><h2>Meetings</h2><div v-for="m in upcoming" :key="m.id" class="mt"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }} ({{ m.minutes }} min)</span><a v-if="m.location && /^https?:/.test(m.location)" :href="m.location" target="_blank">Join link</a><span v-else-if="m.location" class="s">{{ m.location }}</span><span v-if="m.agenda" class="s">{{ m.agenda }}</span></div>
+        <aside class="card"><h2>Meetings</h2><div v-for="m in upcoming" :key="m.id" class="mt"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }} ({{ m.minutes }} min)</span><a v-if="m.location && /^https?:/.test(m.location)" :href="m.location" target="_blank">Join link</a><span v-else-if="m.location" class="s">{{ m.location }}</span><div v-if="m.agenda" class="s ag" v-html="mdRender(m.agenda)" /></div>
           <p v-if="!upcoming.length" class="s">No meetings scheduled yet. You get an email when we book one, and reminders a day and an hour before.</p>
           <details v-if="past.length"><summary>Past meetings ({{ past.length }})</summary><div v-for="m in past" :key="m.id" class="mt past"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }}</span></div></details></aside></div>
     </template>
@@ -61,4 +62,5 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
 .kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px; display: flex; flex-direction: column; gap: 4px; } .k span { font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; } .k em { font-style: normal; font-size: 12px; color: var(--c-muted); } .bar { height: 6px; background: var(--c-paper-2); } .bar i { display: block; height: 100%; background: var(--c-ok); }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; } .cols h2 { margin: 0 0 8px; font-size: 16px; } .mt { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .mt a { color: var(--c-blue-deep); font-size: 13px; } .s { font-size: 12.5px; color: var(--c-muted); } .past { opacity: .7; }
 @media (max-width: 1000px) { .cols, .g3, .g2 { grid-template-columns: 1fr; } }
+div.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 </style>

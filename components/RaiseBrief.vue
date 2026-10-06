@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mdRender } from '~/shared/markdown'
 // Desk: the founder's fundraising brief, laid out for reading, with a link to the fundraising workspace.
 const props = defineProps<{ jobId: string; inWorkspace?: boolean }>()
 const { data } = await useFetch<{ id: string; status: string; currency: string; target: number | null; round: string | null; instrument: string | null; valuation: number | null; fee_pct: number; intake: Record<string, string | number | null>; intake_at: string | null } | null>(() => '/api/services/raise/by-job/' + props.jobId)
@@ -12,9 +13,9 @@ const chips = (s: unknown) => String(s ?? '').split(/[\n,;]+/).map((x) => x.trim
       <NuxtLink v-if="!inWorkspace" :to="'/services/raise/' + data.id" class="btn">Open fundraising workspace →</NuxtLink></div>
     <div class="facts"><div><span>Target</span><b>{{ money(data.target) }}</b></div><div><span>Raised so far</span><b>{{ money(data.intake.raised_so_far) }}</b></div><div><span>Timeline</span><b>{{ data.intake.timeline || '—' }}</b></div><div><span>Currency</span><b>{{ data.currency }}</b></div></div>
     <div class="secs">
-      <div v-if="data.intake.use_of_funds"><h3>Use of funds</h3><ul><li v-for="(l, i) in lines(data.intake.use_of_funds)" :key="i">{{ l }}</li></ul></div>
-      <div v-if="data.intake.traction"><h3>Traction</h3><p class="pre">{{ data.intake.traction }}</p></div>
-      <div v-if="data.intake.target_investors"><h3>Investors they suggest</h3><div class="chips"><span v-for="c in chips(data.intake.target_investors)" :key="c">{{ c }}</span></div></div>
+      <div v-if="data.intake.use_of_funds"><h3>Use of funds</h3><div class="md" v-html="mdRender(String(data.intake.use_of_funds))" /></div>
+      <div v-if="data.intake.traction"><h3>Traction</h3><div class="md" v-html="mdRender(String(data.intake.traction))" /></div>
+      <div v-if="data.intake.target_investors"><h3>Investors they suggest</h3><div class="md" v-html="mdRender(String(data.intake.target_investors))" /></div>
       <div v-if="data.intake.deck_url"><h3>Deck</h3><a :href="String(data.intake.deck_url)" target="_blank" rel="noopener" class="deck">Open the deck ↗</a></div></div>
   </div>
 </template>
@@ -26,4 +27,5 @@ const chips = (s: unknown) => String(s ?? '').split(/[\n,;]+/).map((x) => x.trim
 .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips span { background: var(--c-signal-soft); color: var(--c-blue-deep); font-size: 12.5px; padding: 3px 10px; } .deck { color: var(--c-blue-deep); font-size: 13.5px; }
 @media (max-width: 900px) { .facts, .secs { grid-template-columns: 1fr 1fr; } }
 .rb, .rb * { overflow-wrap: anywhere; }
+.md { font-size: 13.5px; line-height: 1.55; } .md :deep(p) { margin: 0 0 6px; } .md :deep(ul), .md :deep(ol) { margin: 0 0 6px; padding-left: 18px; }
 </style>

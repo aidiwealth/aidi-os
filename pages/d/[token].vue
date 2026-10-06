@@ -13,12 +13,12 @@ const email = ref(''); const entered = ref(false); const msg = ref('')
 onMounted(() => { const e = localStorage.getItem('finvry-dr-email'); if (e) { email.value = e; entered.value = true } const k = data.value?.nda?.key; if (data.value?.nda?.required && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s) { nda.value = s; refresh() } } })
 function signed(id: string) { nda.value = id; entered.value = true; refresh() }
 function enter() { if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) { localStorage.setItem('finvry-dr-email', email.value); entered.value = true } else msg.value = 'Enter a valid email.' }
-const viewing = ref<{ title: string; url: string; mark: string | null } | null>(null); let viewId = ''; let timer: ReturnType<typeof setInterval> | undefined
+const viewing = ref<{ title: string; url: string; mark: string | null; mime?: string } | null>(null); let viewId = ''; let timer: ReturnType<typeof setInterval> | undefined
 async function open(f: Fi, download = false) {
   msg.value = ''
   try { const r = await $fetch<{ view_id: string; url: string; watermark: string | null }>(api + '/open', { method: 'POST', body: { file_id: f.id, email: email.value, download, nda: nda.value || undefined } })
     if (download || (!f.mime_type.includes('pdf') && !f.mime_type.startsWith('image/'))) { window.location.href = r.url; return }
-    viewId = r.view_id; viewing.value = { title: f.title, url: r.url, mark: r.watermark }; clearInterval(timer); timer = setInterval(() => { if (document.visibilityState === 'visible') $fetch(api + '/beat', { method: 'POST', body: { view_id: viewId } }).catch(() => {}) }, 15000)
+    viewId = r.view_id; viewing.value = { title: f.title, url: r.url, mark: r.watermark, mime: (r as { mime?: string }).mime ?? '' }; clearInterval(timer); timer = setInterval(() => { if (document.visibilityState === 'visible') $fetch(api + '/beat', { method: 'POST', body: { view_id: viewId } }).catch(() => {}) }, 15000)
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not open the file.' }
 }
 function close() { viewing.value = null; clearInterval(timer) }
@@ -42,7 +42,7 @@ const groups = computed(() => { const m = new Map<string, Fi[]>(); for (const f 
       </template>
     </template>
     <div v-if="viewing" class="viewer" @contextmenu.prevent><div class="vh"><b>{{ viewing.title }}</b><button class="btn secondary" @click="close">Close</button></div>
-      <div class="vb"><iframe :src="viewing.url + (viewing.mark ? '#toolbar=0' : '')" title="Document" /><div v-if="viewing.mark" class="wm" aria-hidden="true"><span v-for="n in 40" :key="n">{{ viewing.mark }}</span></div></div></div>
+      <div class="vb"><ClientOnly v-if="viewing.mime === 'application/pdf'"><DeckViewer :src="viewing.url" /></ClientOnly><img v-else-if="viewing.mime?.startsWith('image/')" :src="viewing.url" :alt="viewing.title" class="vimg"><div v-else class="vnone"><p>This file can't be previewed in the browser.</p><p v-if="data?.allow_download" class="mut">Use Download to open it.</p><p v-else class="mut">Ask {{ data?.company }} for a PDF copy.</p></div><div v-if="viewing.mark" class="wm" aria-hidden="true"><span v-for="n in 40" :key="n">{{ viewing.mark }}</span></div></div></div>
   </section>
 </template>
 <style scoped>
@@ -52,4 +52,5 @@ const groups = computed(() => { const m = new Map<string, Fi[]>(); for (const f 
 .vb { flex: 1; position: relative; overflow: hidden; background: #fff; } .vb iframe { width: 100%; height: 100%; border: 0; }
 .wm { position: absolute; inset: -50%; pointer-events: none; display: flex; flex-wrap: wrap; gap: 70px 90px; transform: rotate(-28deg); align-content: center; justify-content: center; } .wm span { font-size: 18px; font-weight: 600; color: rgba(12, 26, 46, .13); white-space: nowrap; user-select: none; }
 .mut { opacity: .7; } .error { color: var(--c-danger); }
+.vb { overflow: auto !important; padding: 16px 0; } .vimg { max-width: 100%; display: block; margin: 0 auto; } .vnone { padding: 40px; text-align: center; } .vnone .mut { color: var(--c-muted); font-size: 13.5px; }
 </style>

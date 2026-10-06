@@ -24,8 +24,8 @@ export default defineEventHandler(async (event) => {
   if (l.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, 'Data room: ' + l.name + (email ? ' (' + email + ')' : ''), brands().finvry.url + '/fundraising').catch(() => {}) }
   const mime = (await db().query<{ mime_type: string }>('SELECT d.mime_type FROM fundraise.files f JOIN core.documents d ON d.id = f.document_id WHERE f.id = $1', [d.file_id])).rows[0]?.mime_type ?? ''
   const mark = (email || 'Confidential') + ' · ' + new Date().toISOString().slice(0, 10)
-  if (b.watermark && mime === 'application/pdf') return { view_id: v.id, url: '/api/public/d/' + encodeURIComponent(ref) + '/file/' + v.id + (d.download && l.allow_download ? '?dl=1' : ''), watermark: null, stamped: true }
+  if (b.watermark && mime === 'application/pdf') return { view_id: v.id, mime, url: '/api/public/d/' + encodeURIComponent(ref) + '/file/' + v.id + (d.download && l.allow_download ? '?dl=1' : ''), watermark: null, stamped: true }
   if (b.watermark && !mime.startsWith('image/')) throw apiError('watermark', 'This file can only be shared as a PDF while watermarking is on. Ask the company for a PDF copy.', 409)
   const allowDownload = d.download && l.allow_download && !b.watermark
-  return { view_id: v.id, url: await signedGetUrl({ key: f.storage_key, filename: f.title, seconds: 300, inline: !allowDownload }), watermark: b.watermark ? mark : null, stamped: false }
+  return { view_id: v.id, mime, url: allowDownload ? await signedGetUrl({ key: f.storage_key, filename: f.title, seconds: 300, inline: false }) : '/api/public/d/' + encodeURIComponent(ref) + '/raw/' + v.id, watermark: b.watermark ? mark : null, stamped: false }
 })

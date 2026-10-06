@@ -36,7 +36,7 @@ async function delProgram() { if (!confirm('Delete this fundraising program, its
       <div class="ef"><div class="g3"><label class="label">Investor *<input v-model="ie.name" maxlength="200"></label><label class="label">Firm<input v-model="ie.firm" maxlength="200"></label><label class="label">Email (not shown to client)<input v-model="ie.email" maxlength="254"></label>
         <label class="label">Ticket size<input v-model="ie.ticket" inputmode="decimal"></label><label class="label">Committed<input v-model="ie.committed" inputmode="decimal"></label><label class="label">Status<select v-model="ie.status"><option v-for="(l, k) in data.labels" :key="k" :value="k">{{ l }}</option></select></label></div>
         <label class="label">Next step<input v-model="ie.next_step" maxlength="500" placeholder="e.g. Send data room; partner meeting Tuesday"></label>
-        <label class="label">Notes<textarea v-model="ie.notes" rows="3" maxlength="5000" /></label><label class="label">Terms they raised<textarea v-model="ie.terms" rows="2" maxlength="5000" placeholder="e.g. $8M cap, pro-rata, board observer" /></label>
+        <div class="label">Notes<ClientOnly><RichEditor v-model="ie.notes" compact :min-height="90" :max-length="5000" /></ClientOnly></div><div class="label">Terms they raised<ClientOnly><RichEditor v-model="ie.terms" compact :min-height="70" :max-length="5000" placeholder="e.g. $8M cap, pro-rata, board observer" /></ClientOnly></div>
         <label class="cb"><input v-model="ie.visible" type="checkbox"> Show this investor to the client</label>
         <label class="cb"><input v-model="ie.notify" type="checkbox" :disabled="!ie.email"> Email this investor meeting invites and reminders</label><p class="s">Leave unticked to keep it between the founder and Finvry: the investor gets no emails from us.</p></div>
       <template #foot><button v-if="ie.id" class="btn secondary danger" @click="delI">Remove</button><button class="btn secondary" @click="ie.open = false">Cancel</button><button class="btn" :disabled="!ie.name" @click="saveI">Save</button></template>
@@ -44,7 +44,7 @@ async function delProgram() { if (!confirm('Delete this fundraising program, its
     <AppModal :open="me.open" title="Schedule a meeting" @close="me.open = false">
       <div class="ef"><label class="label">With<select v-model="me.investor_id"><option value="">No specific investor</option><option v-for="i in data.investors" :key="i.id" :value="i.id">{{ i.name }}{{ i.firm ? ' (' + i.firm + ')' : '' }}</option></select></label>
         <label class="label">Title<input v-model="me.title" maxlength="200"></label><div class="g3"><label class="label">Date<input v-model="me.date" type="date"></label><label class="label">Time ({{ tz }})<input v-model="me.time" type="time"></label><label class="label">Length<select v-model.number="me.minutes"><option :value="30">30 min</option><option :value="45">45 min</option><option :value="60">1 hour</option><option :value="90">1.5 hours</option></select></label></div>
-        <label class="label">Location or video link<input v-model="me.location" maxlength="500"></label><label class="label">Agenda<textarea v-model="me.agenda" rows="3" maxlength="3000" /></label>
+        <label class="label">Location or video link<input v-model="me.location" maxlength="500"></label><div class="label">Agenda<ClientOnly><RichEditor v-model="me.agenda" compact :min-height="90" :max-length="3000" /></ClientOnly></div>
         <p class="s">{{ data.program.client_email ? 'We email ' + data.program.client_email + ' now, then 1 day and 1 hour before.' : 'The client has no email on file, so no reminders will be sent.' }} {{ data.investors.find((i) => i.id === me.investor_id)?.notify ? 'The investor is emailed too.' : 'The investor is not emailed.' }}</p></div>
       <template #foot><button class="btn secondary" @click="me.open = false">Cancel</button><button class="btn" :disabled="!me.title || !me.date" @click="saveM">Schedule</button></template>
     </AppModal>
@@ -59,4 +59,5 @@ async function delProgram() { if (!confirm('Delete this fundraising program, its
 @media (max-width: 1000px) { .cols, .g3 { grid-template-columns: 1fr; } }
 .pst { font-size: 12.5px; font-weight: 600; padding: 6px 10px; align-self: center; background: var(--c-paper-2); } .pst.active { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pst.closed { background: rgba(31,122,77,.1); color: var(--c-ok); } .pst.paused { background: rgba(181,71,8,.09); color: var(--c-warn); }
 .bfull { margin-top: 14px; }
+div.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 </style>
