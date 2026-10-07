@@ -5,7 +5,7 @@ const route = useRoute()
 const q = computed(() => (route.query.client ? '?client=' + route.query.client : ''))
 const { data, error, refresh } = await useFetch<Record<string, any>>(() => '/api/w/me' + q.value, { key: 'w-me' })
 const tab = ref('home')
-const TABS = computed(() => [['home', 'Overview'], ['plan', 'Financial plan'], ['holdings', 'Holdings'], ['accounts', 'Accounts'], ['family', 'Family'], ['billing', 'Invoices'], ['calculator', 'Calculator'], ...(data.value?.features?.savings ? [['savings', 'Savings']] : [])])
+const TABS = computed(() => [['home', 'Overview'], ['plan', 'Financial plan'], ['holdings', 'Holdings'], ['accounts', 'Accounts'], ['family', 'Family'], ['billing', 'Invoices'], ['calculator', 'Calculator'], ...(data.value?.features?.savings || data.value?.features?.trading || data.value?.features?.wallet ? [['invest', data.value?.client?.country === 'NG' ? 'Wallet & savings' : 'Invest & wallet']] : [])])
 const { data: fees } = await useFetch<{ id: string; number: string; kind: string; period: string | null; amount: number; currency: string; status: string; paid_on: string | null; invoice_doc_id: string | null; receipt_doc_id: string | null; pay_url: string | null }[]>('/api/w/fees', { key: 'w-fees', default: () => [] })
 const money = (v: number | string | null, c: string) => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(Number(v)))
 const fm = reactive({ name: '', relationship: '', email: '' }); const link = ref(''); const msg = ref('')
@@ -34,7 +34,7 @@ async function linkBank() { msg.value = ''; try { await loadScript(); const { li
           <div class="lnk"><button class="btn sm" @click="fam('link')">Create family link</button><button class="lk red" @click="fam('revoke')">Turn off link</button><span v-if="link" class="mut">Copied: {{ link }}</span></div><p v-if="msg" class="mut">{{ msg }}</p></div>
         <div class="card"><h3>Who viewed</h3><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><em>{{ new Date(v.viewed_at).toLocaleString('en-GB') }}</em></div><p v-if="!data.views.length" class="mut">No views yet.</p></div></template>
       <WealthCalculator v-else-if="tab === 'calculator'" />
-      <div v-else-if="tab === 'savings'" class="card"><h3>Savings plans</h3><p class="mut">Save in US dollars at {{ data.features.savings_rate }}% a year. Speak to your Aidi Wealth contact to start a plan.</p></div>
+      <template v-else-if="tab === 'invest'"><InvestPanel v-if="!preview" api="/api/w/invest" /><InvestPanel v-else :api="'/api/wm/clients/' + route.query.client + '/invest'" staff :client-id="String(route.query.client)" /></template>
       <p class="disc">Aidi Wealth shows information you and your advisers provide. It is not investment advice. Values may be delayed.</p>
     </template>
   </section>

@@ -3,7 +3,7 @@
 // a health check, practical actions and a growth projection. Not investment advice: no products or securities.
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-export const DOC_KINDS = ['bank_statement', 'tax_return', 'payslip', 'credit_report', 'other']
+export const DOC_KINDS = ['bank_statement', 'tax_return', 'payslip', 'credit_report', 'passport', 'proof_of_address', 'other']
 export async function planGet(clientId: string) {
   const profile = (await db().query<{ data: Record<string, unknown>; updated_at: string }>('SELECT data, updated_at FROM wm.profiles WHERE client_id = $1', [clientId])).rows[0] ?? { data: {}, updated_at: null }
   const docs = (await db().query("SELECT p.id, p.kind, p.name, p.created_at, d.size_bytes, d.mime_type FROM wm.profile_docs p JOIN core.documents d ON d.id = p.document_id WHERE p.client_id = $1 ORDER BY p.created_at DESC", [clientId])).rows

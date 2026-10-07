@@ -25,3 +25,8 @@ jobs:
           if [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" = "08" ] && [ "$(date -u +%M)" -lt "15" ]; then
             curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/wm-billing -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
           fi
+      - name: Savings interest (monthly)
+        run: |
+          if [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" = "07" ] && [ "$(date -u +%M)" -lt "15" ]; then
+            curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/wm-interest -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+          fi

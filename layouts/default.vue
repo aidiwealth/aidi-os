@@ -70,12 +70,14 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
   <div class="shell" :class="{ collapsed, 'mobile-open': mobileOpen }">
     <div class="overlay" @click="mobileOpen = false" />
     <aside class="sidebar" :aria-label="brand.name">
+      <div class="sb-top">
       <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><span v-else class="sb-mono">{{ brand.key === 'finvry' ? 'F' : 'A' }}</span></NuxtLink>
 
       <div v-if="canPlatform && !collapsed" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
         <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')">Aidi</button>
         <button type="button" role="tab" :aria-selected="platformMode" :class="{ on: platformMode }" @click="setMode('platform')">Finvry</button>
         <span class="thumb" :class="{ right: platformMode }" />
+      </div>
       </div>
 
       <nav class="sb-nav">
@@ -184,4 +186,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
   .sb-collapse { display: none; }
 }
 .supbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; } .supbar button { background: #fff; color: #b5470b; border: 0; padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer; }
+.sidebar { background: var(--c-paper-2); }
+.sb-top { position: sticky; top: -18px; z-index: 3; margin: -18px -12px 0; padding: 18px 12px 2px; background: var(--c-paper-2); }
+.sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; }
 </style>

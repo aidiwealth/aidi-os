@@ -8,5 +8,5 @@ export default defineEventHandler(async (event) => {
   const cfg = await wmSettings(), cc = cfg[(c.country as 'US' | 'NG')]
   return { client: c, summary: await clientSummary(id), members: (await db().query('SELECT id, name, relationship, email FROM wm.members WHERE client_id = $1', [id])).rows,
     views: (await db().query('SELECT name, email, viewed_at FROM wm.views WHERE client_id = $1 ORDER BY viewed_at DESC LIMIT 30', [id])).rows,
-    features: { plaid: cc.plaid && plaidOn(), savings: cc.savings, trading: c.country === 'US' ? cc.alpaca : cc.busha, wallet: c.country === 'NG' ? cc.anchor : cc.alpaca, savings_rate: cc.savings_rate } }
+    features: { plaid: cc.plaid && plaidOn(), savings: cc.savings, trading: c.country === 'US' ? cc.alpaca : cc.busha, wallet: cc.fincra || (c.country === 'US' && cc.alpaca), savings_rate: cc.savings_rate } }
 })

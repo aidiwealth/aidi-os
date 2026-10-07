@@ -19,7 +19,7 @@ async function upload(ev: Event) { if (props.preview) return; const files = Arra
 async function act(action: string, extra: Record<string, unknown> = {}) { if (props.preview) { msg.value = 'Preview only.'; return null } busy.value = action; msg.value = ''; ok.value = ''; try { const r = await $fetch<Record<string, any>>(props.api, { method: 'POST', body: { action, ...extra } }); await refresh(); return r } catch (e) { msg.value = err(e); return null } finally { busy.value = '' } }
 async function generate() { await save(); if (msg.value) return; const r = await act('generate'); if (r) { sec.value = 'report'; ok.value = 'Your financial review is ready.' } }
 async function share() { const r = await act('share'); if (r?.url) { link.value = r.url; try { await navigator.clipboard.writeText(r.url) } catch { /* ignore */ } } }
-const KIND: Record<string, string> = { bank_statement: 'Bank statement', tax_return: 'Tax return', payslip: 'Payslip / salary', credit_report: 'Credit report (FICO, Credit Karma…)', other: 'Other' }
+const KIND: Record<string, string> = { bank_statement: 'Bank statement', tax_return: 'Tax return', payslip: 'Payslip / salary', credit_report: 'Credit report (FICO, Credit Karma…)', passport: 'Passport', proof_of_address: 'Proof of address (last 3 months)', other: 'Other' }
 </script>
 <template>
   <div v-if="data" class="fp">

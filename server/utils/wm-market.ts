@@ -1,12 +1,25 @@
 // Live gold and silver prices (gold-api.com, no key), refreshed at most every 15 minutes and kept as history; US
 // Treasury bill average rates (US Treasury Fiscal Data); other rates (Nigerian T-bills, bank CDs…) entered by staff.
+// One-off backfill of daily closes (Stooq CSV, free) so the charts show growth over time, not just from today.
+async function backfill(symbol: 'XAU' | 'XAG') {
+  const days = Number((await asPlatform(() => db().query<{ n: string }>("SELECT count(DISTINCT date_trunc('day', as_of)) AS n FROM wm.market WHERE symbol = $1", [symbol]))).rows[0]?.n ?? 0)
+  if (days > 200) return
+  try {
+    const res = await fetch('https://stooq.com/q/d/l/?s=' + symbol.toLowerCase() + 'usd&i=d', { signal: AbortSignal.timeout(10000) }); const csv = await res.text()
+    const since = new Date(Date.now() - 5 * 365 * 86400e3).toISOString().slice(0, 10)
+    const rows = csv.split(/\r?\n/).slice(1).map((l) => l.split(',')).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c[0] ?? '') && Number(c[4]) > 0 && c[0]! >= since)
+    if (rows.length < 20) return
+    await asPlatform(async () => { for (let i = 0; i < rows.length; i += 400) { const chunk = rows.slice(i, i + 400); await db().query('INSERT INTO wm.market (symbol, price, as_of) SELECT $1, p, (d::date + time \'21:00\')::timestamptz FROM unnest($2::date[], $3::numeric[]) AS t(d, p) WHERE NOT EXISTS (SELECT 1 FROM wm.market m WHERE m.symbol = $1 AND date_trunc(\'day\', m.as_of) = t.d::timestamptz)', [symbol, chunk.map((c) => c[0]), chunk.map((c) => Number(c[4]))]) } })
+  } catch (err) { console.error('[market] backfill ' + symbol, (err as Error).message) }
+}
 export async function metalPrices() {
+  await Promise.all([backfill('XAU'), backfill('XAG')])
   const last = (await asPlatform(() => db().query<{ symbol: string; as_of: string }>("SELECT symbol, max(as_of) AS as_of FROM wm.market GROUP BY symbol"))).rows
   const stale = (s: string) => { const r = last.find((x) => x.symbol === s); return !r || Date.now() - new Date(r.as_of).getTime() > 15 * 60 * 1000 }
   for (const s of ['XAU', 'XAG']) if (stale(s)) {
     try { const res = await fetch('https://api.gold-api.com/price/' + s, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(6000) }); const j = await res.json() as { price?: number }; if (res.ok && j.price && j.price > 0) await asPlatform(() => db().query('INSERT INTO wm.market (symbol, price) VALUES ($1,$2)', [s, j.price])) } catch (err) { console.error('[market] ' + s, (err as Error).message) }
   }
-  const series = async (s: string) => (await asPlatform(() => db().query<{ d: string; price: string }>("SELECT to_char(date_trunc('day', as_of), 'YYYY-MM-DD') AS d, (array_agg(price ORDER BY as_of DESC))[1]::text AS price FROM wm.market WHERE symbol = $1 AND as_of > now() - interval '365 days' GROUP BY 1 ORDER BY 1", [s]))).rows.map((r) => ({ d: r.d, price: Number(r.price) }))
+  const series = async (s: string) => (await asPlatform(() => db().query<{ d: string; price: string }>("SELECT to_char(date_trunc('day', as_of), 'YYYY-MM-DD') AS d, (array_agg(price ORDER BY as_of DESC))[1]::text AS price FROM wm.market WHERE symbol = $1 AND as_of > now() - interval '5 years' GROUP BY 1 ORDER BY 1", [s]))).rows.map((r) => ({ d: r.d, price: Number(r.price) }))
   const pack = async (s: string) => { const sr = await series(s); const now = (await asPlatform(() => db().query<{ price: string; as_of: string }>('SELECT price::text, as_of FROM wm.market WHERE symbol = $1 ORDER BY as_of DESC LIMIT 1', [s]))).rows[0]; const first = sr[0]?.price; const prevDay = sr.length > 1 ? sr[sr.length - 2]!.price : null
     return now ? { price: Number(now.price), as_of: now.as_of, day_change_pct: prevDay ? Math.round(((Number(now.price) - prevDay) / prevDay) * 10000) / 100 : null, since_pct: first ? Math.round(((Number(now.price) - first) / first) * 10000) / 100 : null, since: sr[0]?.d ?? null, series: sr } : null }
   return { gold: await pack('XAU'), silver: await pack('XAG') }
