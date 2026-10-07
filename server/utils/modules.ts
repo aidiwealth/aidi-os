@@ -2,7 +2,7 @@
 // When a module is off, its sidebar link disappears and its pages and APIs return "not found".
 import type { H3Event } from 'h3'
 
-export interface ModuleDef { code: string; group: 'vc' | 'fin' | 'fo' | 'cs' | 'admin'; label: string; to: string; roles: string[]; api: string[]; pages: string[]; switchable: boolean }
+export interface ModuleDef { code: string; group: 'vc' | 'fin' | 'fo' | 'cs' | 'admin' | 'wm'; label: string; to: string; roles: string[]; api: string[]; pages: string[]; switchable: boolean }
 export const MODULES: ModuleDef[] = [
   { code: 'pitches', group: 'vc', label: 'Pitches', to: '/deals', roles: ['gp', 'team'], api: ['/api/deals', '/api/public/pitch'], pages: ['/deals'], switchable: true },
   { code: 'pipeline', group: 'vc', label: 'Pipeline', to: '/pipeline', roles: ['gp', 'team'], api: ['/api/pipeline'], pages: ['/pipeline'], switchable: true },
@@ -19,6 +19,8 @@ export const MODULES: ModuleDef[] = [
   { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
+  { code: 'wealth_mgmt', group: 'wm', label: 'Wealth management', to: '/wealth-mgmt', roles: ['admin', 'gp', 'team'], api: ['/api/wm'], pages: ['/wealth-mgmt'], switchable: true },
+  { code: 'wm_portal', group: 'wm', label: 'My wealth', to: '/w', roles: ['wealth_client'], api: ['/api/w/'], pages: ['/w'], switchable: false },
   { code: 'expenses', group: 'fin', label: 'Payments & expenses', to: '/expenses', roles: ['admin', 'gp'], api: ['/api/expenses'], pages: ['/expenses'], switchable: true },
   { code: 'deployments', group: 'fo', label: 'Deployments & books', to: '/deployments', roles: ['admin', 'gp'], api: ['/api/deployments'], pages: ['/deployments'], switchable: true },
   { code: 'client_raise', group: 'fin', label: 'Fundraise with us', to: '/client/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },
@@ -42,7 +44,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'modules', group: 'admin', label: 'Modules', to: '/modules', roles: ['admin'], api: ['/api/admin/modules'], pages: ['/modules'], switchable: false },
   { code: 'settings', group: 'admin', label: 'Settings', to: '/settings', roles: ['admin'], api: ['/api/settings'], pages: ['/settings'], switchable: false }
 ]
-export const GROUP_LABEL: Record<ModuleDef['group'], string> = { vc: 'Venture Capital', fin: 'Financials', fo: 'Family Office', cs: 'Client Services', admin: 'Administration' }
+export const GROUP_LABEL: Record<ModuleDef['group'], string> = { wm: 'Wealth management', vc: 'Venture Capital', fin: 'Financials', fo: 'Family Office', cs: 'Client Services', admin: 'Administration' }
 
 // Per workspace: modules in its plan, minus any an admin switched off. Cached for 30 seconds.
 const cache = new Map<string, { at: number; on: Set<string>; plan: Set<string> }>()

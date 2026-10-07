@@ -80,7 +80,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 
       <nav class="sb-nav">
         <template v-if="!platformMode">
-          <NuxtLink to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
+          <NuxtLink v-if="!(me?.roles ?? []).every((r: string) => r === 'wealth_client') || !(me?.roles ?? []).length" to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
             <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>

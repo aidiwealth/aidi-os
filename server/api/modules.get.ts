@@ -11,7 +11,8 @@ export default defineEventHandler(async (event) => {
   const raiseOn = company && (await currentOrg())?.settings.raise_enabled === true
   const ov = await moduleRoleOverrides()
   const ops = !company && ((await currentOrg())?.settings.services_operator === true || (await currentOrg())?.settings.services_operator === 'true')
-  return MODULES.filter((m) => (m.code !== 'client_raise' || raiseOn) && (m.code !== 'cs_raise' || ops)).map((m) => ({
+  const wmClient = user.roles.includes('wealth_client')
+  return MODULES.filter((m) => (m.code !== 'wm_portal' || wmClient) && (!wmClient || user.roles.some((r) => r !== 'wealth_client') || m.code === 'wm_portal')).filter((m) => (m.code !== 'client_raise' || raiseOn) && (m.code !== 'cs_raise' || ops)).map((m) => ({
     navHidden: ['analytics', 'fo_analytics', 'cs_analytics'].includes(m.code),
     code: m.code, group: !company && (m.code === 'contacts' || m.code === 'updates') ? 'vc' : !company && FIN_MOVE.includes(m.code) ? 'fin' : m.group, groupLabel: company ? (m.group === 'fin' ? 'Investors' : m.group === 'fo' ? 'Company' : GROUP_LABEL[m.group]) : (m.code === 'contacts' || m.code === 'updates' ? GROUP_LABEL.vc : FIN_MOVE.includes(m.code) ? GROUP_LABEL.fin : GROUP_LABEL[m.group]), label: company && m.code === 'directory' ? 'Trusted partners' : !company && m.code === 'contacts' ? 'LP & partner contacts' : !company && m.code === 'updates' ? 'LP reports' : m.label, to: m.to, pages: m.pages,
     switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles, ov) && (m.code !== 'modules' || user.platform) && !(company && m.code === 'directory'),

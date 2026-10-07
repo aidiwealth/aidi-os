@@ -25,6 +25,9 @@ export default defineNuxtConfig({
     jwtSecret: '',
     cronSecret: '',
     plaidClientId: '', plaidSecret: '', plaidEnv: 'sandbox',
+    premblyApiKey: '',
+    premblyAppId: '',
+    premblyBaseUrl: '',
     creditchekSecretKey: '', usBureauEnabled: '', opencorporatesToken: '', inboundEmailToken: '',
     defaultOrgSlug: 'the-aidi-group', // public pitch form without ?org= goes here
     r2AccountId: '',

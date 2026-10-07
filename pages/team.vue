@@ -7,7 +7,7 @@ const { data: me } = await useFetch<{ email: string; org: { kind: string } | nul
 const isCo = computed(() => me.value?.org?.kind === 'company')
 const AIDI_ROLES = [
   { v: 'admin', label: 'Admin' }, { v: 'gp', label: 'GP' }, { v: 'team', label: 'Team' }, { v: 'family', label: 'Family' },
-  { v: 'adviser', label: 'Adviser' }, { v: 'founder', label: 'Founder' }, { v: 'investor', label: 'Investor' }, { v: 'client', label: 'Client' }
+  { v: 'adviser', label: 'Adviser' }, { v: 'founder', label: 'Founder' }, { v: 'investor', label: 'Investor' }, { v: 'client', label: 'Client' }, { v: 'wealth_client', label: 'Wealth client' }
 ]
 const CO_ROLES = [{ v: 'admin', label: 'Admin · billing, plan and team' }, { v: 'gp', label: 'Founder · every company feature' }, { v: 'team', label: 'Team member · day-to-day work' }]
 const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 'Team member' }

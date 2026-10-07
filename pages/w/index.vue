@@ -1,0 +1,44 @@
+<script setup lang="ts">
+// Aidi Wealth client portal: the client's own household only (net worth, holdings, accounts, family, calculator).
+useHead({ title: 'My wealth' })
+const route = useRoute()
+const q = computed(() => (route.query.client ? '?client=' + route.query.client : ''))
+const { data, error, refresh } = await useFetch<Record<string, any>>(() => '/api/w/me' + q.value, { key: 'w-me' })
+const tab = ref('home')
+const TABS = computed(() => [['home', 'Overview'], ['holdings', 'Holdings'], ['accounts', 'Accounts'], ['family', 'Family'], ['calculator', 'Calculator'], ...(data.value?.features?.savings ? [['savings', 'Savings']] : [])])
+const money = (v: number | string | null, c: string) => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(Number(v)))
+const fm = reactive({ name: '', relationship: '', email: '' }); const link = ref(''); const msg = ref('')
+const preview = computed(() => !!route.query.client)
+const errMsg = computed(() => (error.value as { data?: { data?: { error?: { message?: string } } } } | null)?.data?.data?.error?.message ?? 'Your wealth account is not set up yet.')
+async function fam(action: string, extra: Record<string, unknown> = {}) { if (preview.value) { msg.value = 'Preview only.'; return } const r = await $fetch<Record<string, any>>('/api/w/family', { method: 'POST', body: { action, ...extra } }); if (r.url) { link.value = r.url; try { await navigator.clipboard.writeText(r.url) } catch { /* ignore */ } } await refresh() }
+function loadScript(): Promise<void> { return new Promise((res, rej) => { if ((window as unknown as { Plaid?: unknown }).Plaid) return res(); const s = document.createElement('script'); s.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js'; s.onload = () => res(); s.onerror = () => rej(new Error('Could not load Plaid')); document.head.appendChild(s) }) }
+async function linkBank() { msg.value = ''; try { await loadScript(); const { link_token } = await $fetch<{ link_token: string }>('/api/w/plaid', { method: 'POST', body: {} }); const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid; P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { await $fetch('/api/w/plaid', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); await refresh() } }).open() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as Error).message } }
+</script>
+<template>
+  <section>
+    <p v-if="error" class="mut">{{ errMsg }}</p>
+    <template v-else-if="data">
+      <p v-if="preview" class="pv">Preview of {{ data.client.name }}'s portal</p>
+      <p class="label">Aidi Wealth</p><h1>{{ data.client.name }}</h1>
+      <nav class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
+      <WealthSummary v-if="tab === 'home'" :s="data.summary" />
+      <div v-else-if="tab === 'holdings'" class="card tc"><table v-if="data.summary.holdings.length" class="table"><thead><tr><th>Holding</th><th>Type</th><th>Where</th><th class="n">Cost</th><th class="n">Value</th></tr></thead><tbody><tr v-for="h in data.summary.holdings" :key="h.id"><td><b>{{ h.name }}</b><span class="s">{{ h.meta?.ounces ? h.meta.ounces + ' oz · ' + (h.meta.vault ?? '') : h.meta?.symbol ?? '' }} · as of {{ h.as_of }}</span></td><td>{{ h.category.replace('_', ' ') }}</td><td>{{ h.platform ?? '—' }}</td><td class="n">{{ money(h.cost, h.currency) }}</td><td class="n"><b>{{ money(h.current_value, h.currency) }}</b></td></tr></tbody></table><p v-else class="mut pad">Your holdings appear here once they are added.</p></div>
+      <template v-else-if="tab === 'accounts'"><div class="card"><div class="ch"><h3>Bank accounts</h3><button v-if="data.features.plaid" class="btn sm" @click="linkBank">Link a bank</button></div><div v-for="b in data.summary.banks" :key="b.id" class="rw"><span>{{ b.institution }} · {{ b.name }}{{ b.mask ? ' ••' + b.mask : '' }}</span><b>{{ money(b.current, b.currency) }}</b></div><p v-if="!data.summary.banks.length" class="mut">{{ data.features.plaid ? 'Link your bank to see live balances next to your investments.' : 'Bank linking is coming soon for your account.' }}</p></div>
+        <div class="card"><h3>Investment accounts</h3><div v-for="a in data.summary.accounts" :key="a.id" class="rw"><span>{{ a.institution }}{{ a.name ? ' · ' + a.name : '' }}{{ a.managed_by ? ' · with ' + a.managed_by : '' }}</span><b>{{ money(a.balance, a.currency) }}</b></div><p v-if="!data.summary.accounts.length" class="mut">None recorded yet.</p></div><p v-if="msg" class="error">{{ msg }}</p></template>
+      <template v-else-if="tab === 'family'"><div class="card"><h3>Family members</h3><p class="mut">Share a view-only link with your family. They give their name and email to open it, and you are emailed each time someone looks.</p>
+          <div v-for="m in data.members" :key="m.id" class="rw"><span>{{ m.name }}{{ m.relationship ? ' · ' + m.relationship : '' }}</span><button class="lk red" @click="fam('remove', { member_id: m.id })">Remove</button></div>
+          <div class="g3"><input v-model="fm.name" placeholder="Name"><input v-model="fm.relationship" placeholder="Relationship"><input v-model="fm.email" placeholder="Email"></div><button class="btn secondary sm" :disabled="!fm.name" @click="fam('add', { ...fm }).then(() => Object.assign(fm, { name: '', relationship: '', email: '' }))">Add</button>
+          <div class="lnk"><button class="btn sm" @click="fam('link')">Create family link</button><button class="lk red" @click="fam('revoke')">Turn off link</button><span v-if="link" class="mut">Copied: {{ link }}</span></div><p v-if="msg" class="mut">{{ msg }}</p></div>
+        <div class="card"><h3>Who viewed</h3><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><em>{{ new Date(v.viewed_at).toLocaleString('en-GB') }}</em></div><p v-if="!data.views.length" class="mut">No views yet.</p></div></template>
+      <WealthCalculator v-else-if="tab === 'calculator'" />
+      <div v-else-if="tab === 'savings'" class="card"><h3>Savings plans</h3><p class="mut">Save in US dollars at {{ data.features.savings_rate }}% a year. Speak to your Aidi Wealth contact to start a plan.</p></div>
+      <p class="disc">Aidi Wealth shows information you and your advisers provide. It is not investment advice. Values may be delayed.</p>
+    </template>
+  </section>
+</template>
+<style scoped>
+h1 { margin: 2px 0 0; } .pv { background: var(--c-signal-soft); padding: 8px 12px; font-size: 13px; } .sub { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0; width: fit-content; max-width: 100%; overflow-x: auto; } .sub button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .sub .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
+.card { margin-bottom: 12px; } .card h3 { margin: 0; font-size: 15px; } .ch { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; } .tc { padding: 0; overflow-x: auto; } .table { width: 100%; border-collapse: collapse; font-size: 13.5px; } .table th { text-align: left; padding: 10px 14px; } .table td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); } .n { text-align: right; } .s { display: block; font-size: 12.5px; color: var(--c-muted); } .pad { padding: 14px; margin: 0; }
+.rw { display: flex; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .rw em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .mut { color: var(--c-muted); font-size: 13px; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 6px; } input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); width: 100%; box-sizing: border-box; }
+.lnk { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; } .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 12.5px; } .lk.red { color: var(--c-danger); } .error { color: var(--c-danger); } .disc { font-size: 12px; color: var(--c-muted); margin-top: 18px; }
+</style>

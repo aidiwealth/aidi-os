@@ -43,7 +43,7 @@ const P: Record<string, string> = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>', left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', dot: '<circle cx="12" cy="12" r="3"/>'
 }
-const ALIAS: Record<string, string> = { expenses: 'billing', deployments: 'banking', boards: 'analytics', decks: 'pitches', client_raise: 'fundraising', cs_raise: 'fundraising', notices: 'cs_inbox', blog: 'documents', client_inbox: 'cs_inbox', wealth: 'portfolio', cs_tracker: 'pipeline', chart: 'financials', finance: 'wallet' }
+const ALIAS: Record<string, string> = { wealth_mgmt: 'wealth', wm_portal: 'wealth', expenses: 'billing', deployments: 'banking', boards: 'analytics', decks: 'pitches', client_raise: 'fundraising', cs_raise: 'fundraising', notices: 'cs_inbox', blog: 'documents', client_inbox: 'cs_inbox', wealth: 'portfolio', cs_tracker: 'pipeline', chart: 'financials', finance: 'wallet' }
 const body = computed(() => P[ALIAS[props.name] ?? props.name] ?? P.dot)
 </script>
 
