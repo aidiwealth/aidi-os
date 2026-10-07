@@ -1,7 +1,7 @@
 <script setup lang="ts">
 useHead({ title: 'Settings' })
 interface S { org: { name: string; slug: string; kind: string; status: string; plan: string }; settings: { public_name: string; investor_name: string; thesis: string; notify_emails: string[]; default_vehicle_id: string }
-  plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string }
+  plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string; pitchFormUrl?: string }
 const { data, refresh } = await useFetch<S>('/api/settings')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
 const { data: billing } = await useFetch<{ subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')
@@ -19,6 +19,9 @@ async function save() {
 const gb = (b: number) => (b / 1024 ** 3).toFixed(2)
 const pct = (v: number, max: number | null) => (max ? Math.min(100, (v / max) * 100) : 0)
 const copied = ref(false)
+const pf = reactive({ url: '', busy: false, saved: false, msg: '' })
+watchEffect(() => { if (data.value && !pf.url && !pf.saved) pf.url = data.value.pitchFormUrl ?? '' })
+async function savePf() { pf.busy = true; pf.msg = ''; try { await $fetch('/api/settings/pitch-form', { method: 'POST', body: { url: pf.url } }); pf.saved = true; setTimeout(() => (pf.saved = false), 1500) } catch (e) { pf.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { pf.busy = false } }
 async function copy() { if (!data.value) return; await navigator.clipboard.writeText(data.value.pitchUrl); copied.value = true; setTimeout(() => (copied.value = false), 1500) }
 </script>
 
@@ -57,8 +60,10 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
         <div id="vehicles" class="card"><VehicleManager /></div>
         <div class="card">
           <h2>Public pitch form</h2>
-          <p class="muted small">Founders can pitch you through this address. Point your website's pitch form at it.</p>
-          <div class="link"><code>{{ data.pitchUrl }}</code><button type="button" class="btn secondary sm" @click="copy">{{ copied ? 'Copied' : 'Copy' }}</button></div>
+          <p class="muted small">The page where founders pitch you. Share this link.</p>
+          <div class="link"><input v-model="pf.url" class="pfi" placeholder="https://yourwebsite.com/pitch"><a v-if="pf.url" :href="pf.url" target="_blank" class="btn secondary sm">Open</a><button type="button" class="btn sm" :disabled="pf.busy" @click="savePf">{{ pf.saved ? 'Saved' : 'Save' }}</button></div>
+          <p v-if="pf.msg" class="muted small err">{{ pf.msg }}</p>
+          <p class="muted small dev">For your developer: the form sends each pitch (POST) to <code>{{ data.pitchUrl }}</code> <button type="button" class="lnk" @click="copy">{{ copied ? 'Copied' : 'Copy' }}</button>. Opening that address in a browser takes you to the form page above.</p>
           <p class="muted small">Workspace link name: <b>{{ data.org.slug }}</b></p>
         </div>
       </div>
@@ -81,4 +86,5 @@ textarea { resize: vertical; } .hint { font-size: 12px; color: var(--c-muted); l
 .invs { list-style: none; padding: 0; margin: 8px 0 0; } .invs li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .invs b { font-weight: 500; } .red { color: var(--c-danger); } .payl { margin-left: 10px; font-weight: 500; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+.pfi { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .dev code { font-size: 11.5px; word-break: break-all; } .lnk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; padding: 0; } .err { color: var(--c-danger); }
 </style>

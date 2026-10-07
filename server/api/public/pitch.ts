@@ -29,6 +29,14 @@ const Body = z.object({
 export default defineEventHandler(async (event) => {
   const origins = useRuntimeConfig().pitchAllowedOrigins.split(',').map((s) => s.trim()).filter(Boolean)
   if (handleCors(event, { origin: origins, methods: ['POST', 'OPTIONS'], allowHeaders: ['content-type'] })) return
+  if (event.method === 'GET') {
+    // Opened in a browser: go to the workspace's public pitch form page.
+    const s = String(getQuery(event).org ?? '') || useRuntimeConfig().defaultOrgSlug
+    const o = (await asPlatform(() => db().query<{ form: string | null }>("SELECT settings->>'pitch_form_url' AS form FROM core.organizations WHERE slug = $1", [s]))).rows[0]
+    const form = o?.form || (s === 'the-aidi-group' ? 'https://aidiventures.com/pitch' : '')
+    if (form) return sendRedirect(event, form, 302)
+    return { message: 'This address receives pitches sent from your website\'s pitch form. It is not a page; set your public pitch form address in Settings.' }
+  }
   if (event.method !== 'POST') throw apiError('method_not_allowed', 'Use POST', 405)
   // Which workspace the pitch is for: ?org=<workspace link name>, else the default workspace
   const slug = String(getQuery(event).org ?? '') || useRuntimeConfig().defaultOrgSlug

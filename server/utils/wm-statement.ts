@@ -154,7 +154,6 @@ export async function statementPdf(d: StatementData): Promise<Uint8Array> {
   const colW = (W - M * 2 - 30) / 2; const lines = wrap(d.terms, reg, 7.5, colW); let col = 0; y = H - 180
   for (const l of lines) { if (y < 150) { col++; y = H - 180; if (col > 1) break } T(p, l, M + col * (colW + 30), y, 7.5, reg, ink); y -= 10 }
   y = 120; for (const l of wrap('For inquiries, contact ' + d.contact + ' through your Aidi Wealth portal. (c) ' + new Date().getUTCFullYear() + ' ' + d.contact + '. All rights reserved.', reg, 7.5, W - M * 2)) { T(p, l, M, y, 7.5); y -= 10 }
-  y = 80; for (const l of wrap('Aidi Ventures Group provides technology and coordinated services to help professionals, families and business owners manage wealth. ' + d.contact + ' is not a bank. The information in this statement should not be taken as an offer or solicitation to provide advisory, investment or other services in regions not covered by licensed affiliates.', reg, 6.5, W - M * 2)) { T(p, l, M, y, 6.5, reg, grey); y -= 8.5 }
   footer(p, 3)
   return pdf.save()
 }

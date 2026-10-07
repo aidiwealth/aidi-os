@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const licensed = (c: 'US' | 'NG') => (d[c].managed && !cur[c].managed) || (d[c].savings && !cur[c].savings) || (d[c].alpaca && !cur[c].alpaca) || (d[c].busha && !cur[c].busha) || (d[c].fincra && !cur[c].fincra)
   if ((licensed('US') || licensed('NG')) && !d.confirm_licence) throw apiError('confirm_licence', 'Turning on managed accounts, savings or trading needs the right licence. Confirm you hold it to continue.', 409)
   if (d.NG.alpaca) throw apiError('invalid', 'Alpaca is for US clients only.')
-  if (d.US.busha) throw apiError('invalid', 'Busha is for Nigerian clients only.')
+  if (d.US.busha || d.US.fincra) throw apiError('invalid', 'Busha and Fincra are for Nigerian clients only.')
   const org = (await currentOrg())!
   await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('wm_config', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify({ ...cur, US: d.US, NG: d.NG, advisory_tiers: d.advisory_tiers, ...(d.banks ? { banks: d.banks } : {}) })]))
   await audit({ event, actorUserId: user.userId, action: 'wm.settings', objectType: 'organization', objectId: org.id, detail: { US: d.US, NG: d.NG } })

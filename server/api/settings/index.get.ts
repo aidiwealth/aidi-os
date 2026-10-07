@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
     settings: { public_name: s.public_name ?? '', investor_name: s.investor_name ?? '', thesis: s.thesis ?? '', notify_emails: s.notify_emails ?? [], default_vehicle_id: s.default_vehicle_id ?? '' },
     plan: { name: u.plan_name, seat_limit: u.seat_limit, storage_gb: u.storage_gb, ai_runs_month: u.ai_runs_month },
     usage: { members: u.members, storage_bytes: Number(u.storage), ai_runs: u.ai },
-    pitchUrl: (await appUrl()) + '/api/public/pitch?org=' + org.slug
+    pitchUrl: (await appUrl()) + '/api/public/pitch?org=' + org.slug,
+    pitchFormUrl: (s.pitch_form_url as string | undefined) || (org.slug === 'the-aidi-group' ? 'https://aidiventures.com/pitch' : '')
   }
 })

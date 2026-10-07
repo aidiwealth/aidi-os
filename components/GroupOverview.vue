@@ -5,7 +5,7 @@ import CsInsights from '~/pages/client-services/analytics.vue'
 useHead({ title: 'Overview' })
 const { data: modsO } = await useFetch<{ code: string; usable: boolean }[]>('/api/modules', { key: 'modules' })
 const has = (c: string) => !!modsO.value?.some((m) => m.code === c && m.usable)
-const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') ? [['cs', 'Client services']] : [])] as [string, string][])
+const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') ? [['cs', 'Client services']] : []), ...(has('wealth_mgmt') ? [['wm', 'Wealth management']] : [])] as [string, string][])
 const otab = ref(String(useRoute().query.tab ?? 'overview'))
 type Pt = { period: string; value: number }
 interface O {
@@ -64,6 +64,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
     <div v-if="otab === 'vc'" class="ovtab"><VcInsights /></div>
     <div v-else-if="otab === 'fo'" class="ovtab"><FoInsights /></div>
     <div v-else-if="otab === 'cs'" class="ovtab"><CsInsights /></div>
+    <div v-else-if="otab === 'wm'" class="ovtab"><WmAnalytics /></div>
     <template v-else>
     <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
 
@@ -74,8 +75,6 @@ const empty = computed(() => !!data.value && !kpis.value.length)
     <div v-if="charts.length" class="charts" :class="'n' + charts.length">
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
     </div>
-
-    <WmAnalytics v-if="(modsO ?? []).some((m) => m.code === 'wealth_mgmt' && m.usable)" />
 
     <div class="two">
       <div class="card att">
