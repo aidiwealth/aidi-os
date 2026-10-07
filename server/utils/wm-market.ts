@@ -4,6 +4,17 @@
 async function backfill(symbol: 'XAU' | 'XAG') {
   const days = Number((await asPlatform(() => db().query<{ n: string }>("SELECT count(DISTINCT date_trunc('day', as_of)) AS n FROM wm.market WHERE symbol = $1", [symbol]))).rows[0]?.n ?? 0)
   if (days > 200) return
+  // Yahoo Finance daily closes (COMEX gold and silver futures), 5 years
+  try {
+    const res = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + (symbol === 'XAU' ? 'GC=F' : 'SI=F') + '?range=5y&interval=1d', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; AidiOS/1.0)', accept: 'application/json' }, signal: AbortSignal.timeout(10000) })
+    const j = await res.json() as { chart?: { result?: { timestamp?: number[]; indicators?: { quote?: { close?: (number | null)[] }[] } }[] } }
+    const r = j.chart?.result?.[0], ts = r?.timestamp ?? [], cl = r?.indicators?.quote?.[0]?.close ?? []
+    const pts = ts.map((t, i) => [new Date(t * 1000).toISOString().slice(0, 10), cl[i]] as const).filter((x) => x[1] != null && Number(x[1]) > 0)
+    if (pts.length > 100) {
+      await asPlatform(async () => { for (let i = 0; i < pts.length; i += 400) { const ch = pts.slice(i, i + 400); await db().query('INSERT INTO wm.market (symbol, price, as_of) SELECT $1, p, (d::date + time \'21:00\')::timestamptz FROM unnest($2::date[], $3::numeric[]) AS t(d, p) WHERE NOT EXISTS (SELECT 1 FROM wm.market m WHERE m.symbol = $1 AND date_trunc(\'day\', m.as_of) = t.d::timestamptz)', [symbol, ch.map((x) => x[0]), ch.map((x) => Number(x[1]))]) } })
+      return
+    }
+  } catch (err) { console.error('[market] yahoo ' + symbol, (err as Error).message) }
   try {
     const res = await fetch('https://stooq.com/q/d/l/?s=' + symbol.toLowerCase() + 'usd&i=d', { signal: AbortSignal.timeout(10000) }); const csv = await res.text()
     const since = new Date(Date.now() - 5 * 365 * 86400e3).toISOString().slice(0, 10)

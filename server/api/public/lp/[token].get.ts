@@ -42,5 +42,6 @@ export default defineEventHandler(async (event) => {
   for (const f of (await db().query<{ entity_id: string; name: string; currency: string }>("SELECT f.entity_id, e.name, f.currency FROM funds.funds f JOIN core.entities e ON e.id = f.entity_id JOIN funds.commitments c ON c.fund_id = f.id AND c.lp_id = $1 WHERE f.structure = 'rolling'", [lp.id])).rows) {
     const ps = await lpParticipations(f.entity_id, lpEmail); if (ps.length) participations.push({ fund: f.name, currency: f.currency, deals: ps })
   }
-  return { participations, lp: { name: lp.name }, preview: !!previewLp, positions, history: history.rows, financials, deals, workspace: await publicWorkspace() }
+  const taxDocs = (await db().query('SELECT id, tax_year, form_type, issuer, created_at FROM core.tax_docs WHERE lp_id = $1 ORDER BY tax_year DESC, created_at DESC', [lp.id])).rows
+  return { taxDocs, participations, lp: { name: lp.name }, preview: !!previewLp, positions, history: history.rows, financials, deals, workspace: await publicWorkspace() }
 })

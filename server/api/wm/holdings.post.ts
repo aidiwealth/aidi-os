@@ -18,8 +18,9 @@ export default defineEventHandler(async (event) => {
     [d.id, d.category ?? null, d.name ?? null, d.platform || null, d.currency ?? null, d.cost ?? null, value, d.as_of ?? null, d.notes || null, JSON.stringify(d.meta ?? {})])
   else {
     if (!d.category || !d.name || !d.currency) throw apiError('invalid', 'Add the asset type, name and currency.')
-    await db().query("INSERT INTO wealth.holdings (entity_id, client_name, section, category, name, platform, currency, cost, current_value, status, as_of, notes, meta, in_nav, in_aum, wm_client_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,$11,$12,$13,$14,$15,$16)",
+    const ins = await one<{ id: string }>("INSERT INTO wealth.holdings (entity_id, client_name, section, category, name, platform, currency, cost, current_value, status, as_of, notes, meta, in_nav, in_aum, wm_client_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,$11,$12,$13,$14,$15,$16) RETURNING id",
       [client?.entity_id ?? null, client?.name ?? null, client ? 'client' : 'family', d.category, d.name, d.platform || null, d.currency, d.cost ?? null, value, d.as_of ?? new Date().toISOString().slice(0, 10), d.notes || null, JSON.stringify(d.meta ?? {}), !client, !!client, d.wm_client_id ?? null, user.userId])
+    if (client && d.wm_client_id && d.cost) { try { const t = await templateMd('investment_confirmation', d.wm_client_id, ins.id); await issueClientDoc(d.wm_client_id, 'investment_confirmation', t.title, t.md, false, user.userId, ins.id) } catch (err) { console.error('[wm] confirmation', err) } }
   }
   await audit({ event, actorUserId: user.userId, action: 'wm.holding', objectType: 'holding', objectId: d.id })
   return { ok: true }

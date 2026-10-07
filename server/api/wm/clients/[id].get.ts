@@ -12,5 +12,5 @@ export default defineEventHandler(async (event) => {
   const fees = (await db().query("SELECT id, number, kind, period, amount::float AS amount, currency, status, to_char(paid_on, 'YYYY-MM-DD') AS paid_on, note, method, invoice_doc_id, receipt_doc_id FROM wm.fees WHERE client_id = $1 ORDER BY created_at DESC", [id])).rows
   const cfg = await wmSettings()
   const usdAum = summary.totals.invested + summary.totals.cash
-  return { client: c, summary, members, views, firms, fees, settings: cfg, advisory_estimate: c.model === 'managed' ? advisoryFee(usdAum, cfg.advisory_tiers) : null, has_link: !!(await db().query('SELECT 1 FROM wm.view_links WHERE client_id = $1 AND NOT revoked', [id])).rowCount }
+  return { client: c, summary, members, views, firms, fees, settings: cfg, advisory_estimate: c.model === 'managed' ? advisoryFee(usdAum, cfg.advisory_tiers) : null, entities: (await db().query("SELECT id, name FROM core.entities WHERE status <> 'dissolved' ORDER BY name")).rows, has_link: !!(await db().query('SELECT 1 FROM wm.view_links WHERE client_id = $1 AND NOT revoked', [id])).rowCount }
 })

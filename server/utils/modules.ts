@@ -21,6 +21,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
   { code: 'wealth_mgmt', group: 'wm', label: 'Wealth management', to: '/wealth-mgmt', roles: ['admin', 'gp', 'team'], api: ['/api/wm'], pages: ['/wealth-mgmt'], switchable: true },
   { code: 'wm_portal', group: 'wm', label: 'My wealth', to: '/w', roles: ['wealth_client'], api: ['/api/w/'], pages: ['/w'], switchable: false },
+  { code: 'tax_docs', group: 'admin', label: 'Tax documents', to: '/tax-documents', roles: ['admin', 'gp', 'team'], api: ['/api/tax-docs'], pages: ['/tax-documents'], switchable: true },
   { code: 'expenses', group: 'fin', label: 'Payments & expenses', to: '/expenses', roles: ['admin', 'gp'], api: ['/api/expenses'], pages: ['/expenses'], switchable: true },
   { code: 'deployments', group: 'fo', label: 'Deployments & books', to: '/deployments', roles: ['admin', 'gp'], api: ['/api/deployments'], pages: ['/deployments'], switchable: true },
   { code: 'client_raise', group: 'fin', label: 'Fundraise with us', to: '/client/raise', roles: ['admin', 'gp', 'team'], api: [], pages: [], switchable: true },

@@ -75,6 +75,8 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
     </div>
 
+    <WmAnalytics v-if="(modsO ?? []).some((m) => m.code === 'wealth_mgmt' && m.usable)" />
+
     <div class="two">
       <div class="card att">
         <h2>Needs attention</h2>
