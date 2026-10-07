@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!ev.data.reference) return { ok: true }
   if (ev.data.reference.startsWith('wt_')) { if (ev.event === 'charge.success') await walletTopupSucceeded(ev.data.reference, paystackCard(ev.data)); return { ok: true } }
   if (ev.data.reference.startsWith('cs_')) { if (ev.event === 'charge.success') await csPaymentSucceeded(ev.data.reference); return { ok: true } }
+  if (ev.data.reference.startsWith('wm_')) { if (ev.event === 'charge.success') await wmPaymentSucceeded(ev.data.reference); return { ok: true } }
   if (ev.event === 'charge.success') await recordSuccess(ev.data.reference, paystackCard(ev.data))
   else if (ev.event === 'charge.failed') await recordFailure(ev.data.reference, ev.data.gateway_response ?? 'Payment failed')
   return { ok: true }

@@ -20,3 +20,8 @@ jobs:
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/storage \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+      - name: Wealth subscriptions (monthly)
+        run: |
+          if [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" = "08" ] && [ "$(date -u +%M)" -lt "15" ]; then
+            curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/wm-billing -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+          fi

@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   if (!ref) return { ok: true }
   if (ref.startsWith('wt_')) { if (ev.type === 'checkout.session.completed' || ev.type === 'payment_intent.succeeded') await walletTopupSucceeded(ref, o.payment_intent ? await stripeCard(o.payment_intent).catch(() => ({})) : {}); return { ok: true } }
   if (ref.startsWith('cs_')) { if (ev.type === 'checkout.session.completed' || ev.type === 'payment_intent.succeeded') await csPaymentSucceeded(ref); return { ok: true } }
+  if (ref.startsWith('wm_')) { if (ev.type === 'checkout.session.completed' || ev.type === 'payment_intent.succeeded') await wmPaymentSucceeded(ref); return { ok: true } }
   if (ev.type === 'checkout.session.completed' && o.payment_status === 'paid') await recordSuccess(ref, o.payment_intent ? await stripeCard(o.payment_intent) : {})
   else if (ev.type === 'payment_intent.succeeded') await recordSuccess(ref)
   else if (ev.type === 'payment_intent.payment_failed') await recordFailure(ref, o.last_payment_error?.message ?? 'Payment failed')

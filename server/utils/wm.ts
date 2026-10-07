@@ -32,6 +32,7 @@ export async function clientSummary(clientId: string) {
   for (const b of banks) if (b.current != null && !['credit', 'loan'].includes(b.subtype ?? '')) { const v = await usd(Number(b.current), b.currency); cash += v; byPlatform[b.institution ?? 'Bank'] = (byPlatform[b.institution ?? 'Bank'] ?? 0) + v }
   const liabilities = -(byClass['Liabilities'] ?? 0)
   const r = (x: number) => Math.round(x * 100) / 100
+  await db().query('INSERT INTO wm.snapshots (organization_id, client_id, as_of, net_worth, invested, cash) SELECT organization_id, id, current_date, $2, $3, $4 FROM wm.clients WHERE id = $1 ON CONFLICT (client_id, as_of) DO UPDATE SET net_worth = EXCLUDED.net_worth, invested = EXCLUDED.invested, cash = EXCLUDED.cash', [clientId, r(invested + cash - liabilities), r(invested), r(cash)]).catch(() => {})
   return { holdings, accounts, banks, totals: { net_worth: r(invested + cash - liabilities), invested: r(invested), cash: r(cash), cost: r(cost), gain: r(invested - cost), liabilities: r(liabilities) },
     by_class: Object.entries(byClass).filter(([k]) => k !== 'Liabilities').map(([label, value]) => ({ label, value: r(value) })).filter((x) => x.value > 0),
     by_platform: Object.entries(byPlatform).map(([label, value]) => ({ label, value: r(value) })).sort((a, b) => b.value - a.value) }

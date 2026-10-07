@@ -60,6 +60,11 @@ export default defineEventHandler(async (event) => {
     return { ok: true, verified: r.ok, detail: r.detail }
   } else if (a === 'kyc_status') {
     await db().query("UPDATE wm.clients SET kyc_status = $2, kyc_provider = coalesce(nullif($3, ''), kyc_provider, 'manual'), kyc_checked_at = now(), updated_at = now() WHERE id = $1", [id, z.enum(['not_started', 'pending', 'verified', 'failed']).parse(s('status')), s('provider', 40)])
+  } else if (a === 'advisory_invoice') {
+    const cfg = await wmSettings(); const sum = await clientSummary(id); const annual = advisoryFee(sum.totals.invested + sum.totals.cash, cfg.advisory_tiers)
+    const per = s('period', 40) || ('Q' + (Math.floor(new Date().getUTCMonth() / 3) + 1) + ' ' + new Date().getUTCFullYear())
+    const f = await one<{ id: string }>("INSERT INTO wm.fees (client_id, kind, period, amount, currency, entity_id, method, note) VALUES ($1,'advisory',$2,$3,'USD',$4,'transfer',$5) RETURNING id", [id, per, Math.round((annual / 4) * 100) / 100, c.entity_id, 'Quarter of the yearly advisory fee on ' + Math.round(sum.totals.invested + sum.totals.cash).toLocaleString('en-US') + ' USD'])
+    await issueFee(f.id)
   } else if (a === 'fee') {
     if (s('fee_id') && body.status) {
       await db().query("UPDATE wm.fees SET status = $2, paid_on = CASE WHEN $2 = 'paid' THEN coalesce($3::date, current_date) ELSE NULL END WHERE id = $1", [s('fee_id'), z.enum(['due', 'paid', 'waived']).parse(s('status')), s('paid_on') || null])

@@ -2,6 +2,7 @@
 // Line icons (24px grid, Telroi style) for the sidebar, top bar and empty states. One distinct icon per feature.
 const props = defineProps<{ name: string }>()
 const P: Record<string, string> = {
+  gem: '<path d="M6.5 4h11l3.5 5-9 11L3 9z"/><path d="M3 9h18"/><path d="M9.5 4 8 9l4 11 4-11-1.5-5" opacity=".6"/>',
   home: '<rect x="3" y="3" width="8" height="10" rx="1.6"/><rect x="13" y="3" width="8" height="6" rx="1.6"/><rect x="3" y="15" width="8" height="6" rx="1.6"/><rect x="13" y="11" width="8" height="10" rx="1.6"/>',
   financials: '<path d="M3.5 20.5h17"/><rect x="5" y="11" width="3.2" height="7" rx="1"/><rect x="10.4" y="7" width="3.2" height="11" rx="1"/><rect x="15.8" y="4" width="3.2" height="14" rx="1"/>',
   contacts: '<rect x="4" y="3" width="15" height="18" rx="2.2"/><circle cx="11.5" cy="10" r="2.8"/><path d="M7.2 17.2a4.6 4.6 0 0 1 8.6 0"/><path d="M19 7h1.8M19 12h1.8M19 17h1.8" opacity=".6"/>',
@@ -43,7 +44,7 @@ const P: Record<string, string> = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>', left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', dot: '<circle cx="12" cy="12" r="3"/>'
 }
-const ALIAS: Record<string, string> = { wealth_mgmt: 'wealth', wm_portal: 'wealth', expenses: 'billing', deployments: 'banking', boards: 'analytics', decks: 'pitches', client_raise: 'fundraising', cs_raise: 'fundraising', notices: 'cs_inbox', blog: 'documents', client_inbox: 'cs_inbox', wealth: 'portfolio', cs_tracker: 'pipeline', chart: 'financials', finance: 'wallet' }
+const ALIAS: Record<string, string> = { wealth_mgmt: 'gem', wm_portal: 'gem', expenses: 'billing', deployments: 'banking', boards: 'analytics', decks: 'pitches', client_raise: 'fundraising', cs_raise: 'fundraising', notices: 'cs_inbox', blog: 'documents', client_inbox: 'cs_inbox', wealth: 'portfolio', cs_tracker: 'pipeline', chart: 'financials', finance: 'wallet' }
 const body = computed(() => P[ALIAS[props.name] ?? props.name] ?? P.dot)
 </script>
 

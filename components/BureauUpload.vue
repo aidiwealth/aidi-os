@@ -9,7 +9,7 @@ async function save() { busy.value = true; msg.value = ''; const fd = new FormDa
 <template>
   <form class="bu" @submit.prevent="save"><b v-if="label">{{ label }}</b>
     <div class="row"><label>Score<input v-model="f.score" type="number" min="300" max="850" placeholder="300–850"></label><label>Source<select v-model="f.source"><option>Equifax</option><option>Experian</option><option>TransUnion</option><option>FICO</option><option>Credit Karma</option><option>Dun &amp; Bradstreet</option><option>Other</option></select></label>
-      <label class="fl">Report (PDF or image)<input type="file" accept=".pdf,image/png,image/jpeg,image/webp" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null"></label></div>
+      <label class="fl">Report (PDF or image)<DropZone compact accept=".pdf,image/png,image/jpeg,image/webp" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" /></label></div>
     <input v-model="f.note" maxlength="1000" placeholder="Note (optional), e.g. report dated 1 Oct 2026, pulled by the founder">
     <div class="row"><button class="btn sm" :disabled="busy || (f.score === '' && !file)">{{ busy ? 'Saving…' : 'Save score' }}</button><span v-if="msg" class="m">{{ msg }}</span></div></form>
 </template>

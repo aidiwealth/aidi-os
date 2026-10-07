@@ -26,7 +26,7 @@ async function submit() {
         <label v-for="o in (f.type === 'multi' ? f.options : [])" :key="o" class="op"><input v-model="(a[f.key] as string[])" type="checkbox" :value="o"> {{ o }}</label>
         <input v-if="f.type === 'text'" v-model="(a[f.key] as string)" maxlength="500"><textarea v-else-if="f.type === 'textarea'" v-model="(a[f.key] as string)" rows="3" maxlength="3000" />
         <input v-else-if="f.type === 'secret'" v-model="(a[f.key] as string)" type="password" inputmode="numeric" autocomplete="off" maxlength="11" :placeholder="data.submitted?.ssn_last4 ? 'On file (ending ' + data.submitted.ssn_last4 + '). Leave blank to keep.' : '123-45-6789'">
-        <template v-else-if="f.type === 'file' || f.type === 'files'"><input type="file" :multiple="f.type === 'files'" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx" @change="pick(f, $event)">
+        <template v-else-if="f.type === 'file' || f.type === 'files'"><DropZone compact :multiple="f.type === 'files'" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx" @change="pick(f, $event)" />
           <span v-for="x in filesFor(f.key)" :key="x.name" class="fl">✓ {{ x.name }} (sent)</span><span v-for="x in picked[f.key] ?? []" :key="x.name" class="fl new">+ {{ x.name }}</span></template></div></template>
       <div class="row"><button class="btn" type="submit" :disabled="busy">{{ busy ? 'Sending…' : data.submitted ? 'Send update' : 'Send to the team' }}</button><button v-if="editing" type="button" class="btn secondary" @click="editing = false">Cancel</button></div>
       <p v-if="msg" class="error">{{ msg }}</p></form>
