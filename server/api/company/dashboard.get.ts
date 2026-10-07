@@ -28,12 +28,18 @@ export default defineEventHandler(async (event) => {
     company: org.name, first: (name ?? user.email).split(' ')[0], currency: last?.currency ?? ((org.settings.currency as string) || 'USD'), plan: org.plan_code, status: org.status,
     last, growth, series, mix: last ? [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
     due: due.rows, page, shares, services, wallet: await walletOf(org.id),
-    setup: [
-      { label: 'Add your company type for filing reminders', done: !!org.settings.entity_type, to: '/settings' },
-      { label: 'Add your first financials', done: series.length > 0, to: '/financials' },
-      { label: 'Publish your investor page', done: !!page?.published, to: '/investor-page' },
-      { label: 'Invite a co-founder or your accountant', done: members.n > 1, to: '/team' },
-      { label: 'Order a service (virtual office, tax filing, registration)', done: services.open > 0 || services.unpaid > 0, to: '/client/order' }
-    ]
+    setup: await (async () => {
+      const mods = await enabledModules()
+      const decks = Number((await db().query<{ n: string }>('SELECT count(*) AS n FROM fundraise.decks').catch(() => ({ rows: [{ n: '0' }] }))).rows[0]?.n ?? 0)
+      const ups = Number((await db().query<{ n: string }>("SELECT count(*) AS n FROM financials.updates WHERE status = 'sent'").catch(() => ({ rows: [{ n: '0' }] }))).rows[0]?.n ?? 0)
+      return [
+        { key: 'fin', label: 'Bring in your financials', desc: 'Connect QuickBooks, paste a Google Sheet or drop a spreadsheet. We map the figures for you to check.', cta: 'Add financials', mins: 5, done: series.length > 0, to: '/financials' },
+        { key: 'co', label: 'Add your company type', desc: 'We add your usual filing deadlines to the compliance calendar, with reminders.', cta: 'Open settings', mins: 1, done: !!org.settings.entity_type, to: '/settings' },
+        ...(mods.has('decks') ? [{ key: 'deck', label: 'Upload your deck', desc: 'Share it by link and see who reads it and for how long on every slide.', cta: 'Upload deck', mins: 2, done: decks > 0, to: '/decks' }] : []),
+        { key: 'page', label: 'Publish your investor page', desc: 'One link that always shows where the company is, with your deck and data room.', cta: 'Set up page', mins: 5, done: !!page?.published, to: '/investor-page' },
+        ...(mods.has('updates') ? [{ key: 'upd', label: 'Send your first investor update', desc: 'Finvry AI drafts it from your numbers. Edit, then send to every investor.', cta: 'Write update', mins: 10, done: ups > 0, to: '/updates' }] : []),
+        { key: 'team', label: 'Invite a co-founder or your accountant', desc: 'Share the work. You choose what each person can see and do.', cta: 'Invite', mins: 1, done: members.n > 1, to: '/team' }
+      ]
+    })()
   }
 })
