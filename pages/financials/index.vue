@@ -45,6 +45,20 @@ function openForm(s?: St) {
   if (s) { setFromEnd(s.period_end, s.period_type); Object.assign(form, { currency: s.currency, notes: s.notes ?? '', show_to_lps: s.show_to_lps, lines: Object.fromEntries(Object.entries(s.lines).map(([k, v]) => [k, String(v)])), kpis: Object.entries(s.kpis).map(([name, v]) => ({ name, value: String(v) })) }) }
 }
 const num = (s: string) => (s === undefined || String(s).trim() === '' ? null : Number(String(s).replace(/[^0-9.\-]/g, '')))
+const src = reactive({ gs: '', busy: '', qb: null as null | { configured: boolean; connected: boolean; company: string | null; last_pulled_at: string | null } })
+async function loadSources() { if (!form.subject || form.subject === 'group') { src.qb = null; return } try { const s = await $fetch<{ quickbooks: { configured: boolean; connected: boolean; company: string | null; last_pulled_at: string | null }; gsheet: { url: string } }>('/api/integrations/status', { query: { subject: form.subject } }); src.qb = s.quickbooks; if (!src.gs) src.gs = s.gsheet.url } catch { src.qb = null } }
+watch(() => [showForm.value, form.subject], () => { if (showForm.value) loadSources() })
+function applyProposal(r: { period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id?: string; source?: string }) {
+  if (r.period_end) setFromEnd(r.period_end, r.period_type)
+  const c = (r.currency || form.currency).toUpperCase()
+  Object.assign(form, { currency: CURS.value.includes(c) ? c : form.currency, document_id: r.document_id ?? form.document_id, lines: Object.fromEntries(Object.entries(r.lines).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)])), kpis: Object.entries(r.kpis).map(([name, v]) => ({ name, value: String(v) })) })
+  aiNote.value = (r.source ? 'From ' + r.source + '. ' : '') + r.notes + ' Check every figure before saving.'
+}
+const errOf = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? d
+async function fromGoogle() { src.busy = 'gs'; msg.value = ''; try { applyProposal(await $fetch('/api/financials/gsheet', { method: 'POST', body: { url: src.gs, subject: form.subject, wanted: periodEnd.value || 'latest period' } })) } catch (e) { msg.value = errOf(e, 'Could not read the Google Sheet.') } finally { src.busy = '' } }
+async function fromQuickBooks() { if (!periodEnd.value) { msg.value = 'Choose the period first.'; return } src.busy = 'qb'; msg.value = ''; try { applyProposal(await $fetch('/api/integrations/quickbooks/pull', { method: 'POST', body: { subject: form.subject, period_type: form.period_type, period_end: periodEnd.value } })) } catch (e) { msg.value = errOf(e, 'Could not pull from QuickBooks.') } finally { src.busy = '' } }
+async function qbDisconnect() { if (!confirm('Disconnect QuickBooks for this entity or company?')) return; await $fetch('/api/integrations/quickbooks/disconnect', { method: 'POST', body: { subject: form.subject } }); await loadSources() }
+onMounted(() => { const q = useRoute().query; if (q.qb === 'connected') { ok.value = 'QuickBooks connected. Open "Add a statement" and choose Pull from QuickBooks.' } else if (q.qb === 'failed' || q.qb === 'cancelled') msg.value = q.qb === 'failed' ? 'QuickBooks connection failed. Please try again.' : 'QuickBooks connection cancelled.' })
 async function fromSheet(ev: Event) {
   const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return
   busy.value = true; msg.value = ''
@@ -142,6 +156,10 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
         <DropZone accept=".xlsx,.csv" :disabled="busy" :label="busy ? 'Reading your spreadsheet…' : 'Fill from a spreadsheet'" hint="Drop an Excel or CSV file and we map the figures for you to check · or click to choose" @change="fromSheet" />
+        <div v-if="form.subject && form.subject !== 'group'" class="srcs">
+          <div class="src"><span class="sl"><b>Google Sheets</b><em>Share the sheet as "Anyone with the link: Viewer", then paste the link.</em></span><span class="sr"><input v-model="src.gs" placeholder="https://docs.google.com/spreadsheets/d/…"><button type="button" class="btn secondary sm" :disabled="!src.gs || !!src.busy" @click="fromGoogle">{{ src.busy === 'gs' ? 'Reading…' : 'Import' }}</button></span></div>
+          <div v-if="src.qb" class="src"><span class="sl"><b>QuickBooks</b><em>{{ src.qb.connected ? 'Connected' + (src.qb.company ? ' · ' + src.qb.company : '') + (src.qb.last_pulled_at ? ' · last pulled ' + new Date(src.qb.last_pulled_at).toLocaleDateString('en-GB') : '') : src.qb.configured ? 'Pull P&L, balance sheet and cash flow for the period you choose.' : 'Not set up on this server yet.' }}</em></span>
+            <span class="sr"><template v-if="src.qb.connected"><button type="button" class="btn secondary sm" :disabled="!!src.busy" @click="fromQuickBooks">{{ src.busy === 'qb' ? 'Pulling…' : 'Pull this period' }}</button><button type="button" class="lnk" @click="qbDisconnect">Disconnect</button></template><a v-else-if="src.qb.configured" class="btn secondary sm" :href="'/api/integrations/quickbooks/connect?subject=' + encodeURIComponent(form.subject)">Connect QuickBooks</a></span></div></div>
         <p v-if="aiNote" class="note">{{ aiNote }}</p>
         <div class="g4">
           <label v-if="!co" class="label">For<select v-model="form.subject" required><option value="" disabled>Choose</option>
@@ -192,4 +210,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .feeds { margin: 12px 0; }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
 .bdl { text-decoration: none; }
+.srcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .src { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .sl { display: flex; flex-direction: column; } .sl b { font-size: 13.5px; } .sl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sr { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; } .sr input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .lnk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; }
 </style>
