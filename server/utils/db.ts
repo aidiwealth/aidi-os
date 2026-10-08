@@ -26,15 +26,20 @@ function getPool(): pg.Pool {
 function requestEvent(): H3Event | undefined { try { return useEvent() } catch { return undefined } }
 export function currentOrgId(): string | null { return (requestEvent()?.context.orgId as string | undefined) ?? null }
 
+const applied = new WeakMap<pg.PoolClient, string>()
 async function checkout(): Promise<pg.PoolClient> {
   const e = requestEvent()
   const org = (e?.context.orgId as string | undefined) ?? ''
   const bypass = e?.context.dbBypass === true ? 'on' : 'off'
   const scope = (e?.context.entityScope as string | undefined) ?? ''
   const client = await getPool().connect()
+  // Pooled connections keep their settings; only send them again when this request needs different ones.
+  const key = org + '|' + bypass + '|' + scope
+  if (applied.get(client) === key) return client
   try {
     await client.query("SELECT set_config('app.org_id', $1, false), set_config('app.bypass', $2, false), set_config('app.entity_scope', $3, false)", [org, bypass, scope])
-  } catch (err) { client.release(err as Error); throw err }
+    applied.set(client, key)
+  } catch (err) { applied.delete(client); client.release(err as Error); throw err }
   return client
 }
 

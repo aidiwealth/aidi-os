@@ -28,6 +28,9 @@ export async function issueSession(event: H3Event, userId: string, email: string
   setCookie(event, COOKIE, jwt, { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: MAX_AGE })
 }
 
+// Sessions are looked up on every request; keep each one for 10 seconds to save a database round trip.
+const sessionCache = new Map<string, { at: number; v: SessionUser | null }>()
+export function forgetSessions(match?: (v: SessionUser | null, sid: string) => boolean) { if (!match) { sessionCache.clear(); return } for (const [k, e] of sessionCache) if (match(e.v, k)) sessionCache.delete(k) }
 export async function readSession(event: H3Event): Promise<SessionUser | null> {
   const token = getCookie(event, COOKIE)
   if (!token) return null
@@ -37,6 +40,9 @@ export async function readSession(event: H3Event): Promise<SessionUser | null> {
     if (typeof payload.sid !== 'string') return null
     sid = payload.sid
   } catch { return null } // bad or expired signature: simply not signed in
+  const hit = sessionCache.get(sid)
+  if (hit && Date.now() - hit.at < 10_000) return hit.v
+  if (sessionCache.size > 5000) sessionCache.clear()
   const r = await asPlatform(() => db().query<{ user_id: string; email: string; org_id: string | null; org_ok: boolean; roles: string[]; platform: boolean }>(
     `SELECT s.user_id, u.email, s.organization_id AS org_id,
             coalesce(o.status = ANY($2::text[]) AND m.status = 'active', false) AS org_ok,
@@ -47,9 +53,11 @@ export async function readSession(event: H3Event): Promise<SessionUser | null> {
        LEFT JOIN core.memberships m ON m.organization_id = s.organization_id AND m.user_id = u.id
       WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'active'`, [sid, LIVE_ORG_STATUSES]))
   const row = r.rows[0]
-  if (!row) return null
+  if (!row) { sessionCache.set(sid, { at: Date.now(), v: null }); return null }
   const orgId = row.org_ok ? row.org_id : null
-  return { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform }
+  const v = { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform }
+  sessionCache.set(sid, { at: Date.now(), v })
+  return v
 }
 
 export async function endSession(event: H3Event): Promise<void> {
@@ -59,6 +67,7 @@ export async function endSession(event: H3Event): Promise<void> {
       const { payload } = await jwtVerify(token, secret())
       if (typeof payload.sid === 'string') {
         await db().query("UPDATE core.sessions SET revoked_at = now(), revoked_reason = 'signed out' WHERE id = $1 AND revoked_at IS NULL", [payload.sid])
+        sessionCache.delete(payload.sid)
       }
     } catch (err) { if (!(err instanceof Error && /JWT|JWS|signature|exp/i.test(err.message))) throw err }
   }
@@ -67,6 +76,7 @@ export async function endSession(event: H3Event): Promise<void> {
 
 // Sign someone out: everywhere, or only of one workspace.
 export async function revokeSessions(userId: string, reason: string, orgId?: string | null): Promise<void> {
+  forgetSessions((v) => v?.userId === userId)
   if (orgId) await db().query('UPDATE core.sessions SET revoked_at = now(), revoked_reason = $2 WHERE user_id = $1 AND organization_id = $3 AND revoked_at IS NULL', [userId, reason, orgId])
   else await db().query('UPDATE core.sessions SET revoked_at = now(), revoked_reason = $2 WHERE user_id = $1 AND revoked_at IS NULL', [userId, reason])
 }

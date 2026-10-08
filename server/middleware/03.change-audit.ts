@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(m)) return
   const path = event.path.split('?')[0]!
   const u = event.context.user as { userId?: string } | undefined
+  if (/^\/api\/(team|platform|settings|account)(\/|$)/.test(path)) forgetSessions()
   if (!WATCH.test(path) || !u?.userId) return
   try { await audit({ event, actorUserId: u.userId, action: 'change.' + m.toLowerCase(), objectType: 'route', detail: { path } }) } catch { /* never block the request on logging */ }
 })

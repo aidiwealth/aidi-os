@@ -4,8 +4,13 @@ export const LIVE_ORG_STATUSES = ['trial', 'active', 'past_due']
 export interface OrgSettings { public_name?: string; brand?: string; default_vehicle_id?: string; notify_emails?: string[]; investor_name?: string; thesis?: string; [k: string]: unknown }
 
 export async function currentOrg(): Promise<{ id: string; name: string; slug: string; kind: string; status: string; plan_code: string; settings: OrgSettings } | null> {
+  let e: ReturnType<typeof useEvent> | undefined; try { e = useEvent() } catch { e = undefined }
+  const cacheKey = 'org:' + String(e?.context.orgId ?? '')
+  if (e && e.context[cacheKey] !== undefined) return e.context[cacheKey]
   const r = await db().query('SELECT id, name, slug, kind, status, plan_code, settings FROM core.organizations WHERE id = core.current_org()')
-  return r.rows[0] ?? null
+  const org = r.rows[0] ?? null
+  if (e) e.context[cacheKey] = org
+  return org
 }
 
 // Who hears about new pitches, reports and reminders: the workspace's notification list, else its admins.
