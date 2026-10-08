@@ -6,5 +6,5 @@ export default defineEventHandler(async (event) => {
   const op = (await asPlatform(() => db().query<{ id: string }>("SELECT id FROM core.organizations WHERE (settings->>'services_operator') = 'true' ORDER BY created_at LIMIT 1"))).rows[0]?.id
   if (!op) return []
   setOrgContext(op)
-  return (await db().query("SELECT name, code, billing, region, currency, cost::float, fee::float, price::float, cost_ngn::float, fee_ngn::float, price_ngn::float, cost_label FROM services.catalog WHERE active AND public ORDER BY sort, name")).rows
+  return (await db().query("SELECT name, code, billing, region, cost::float, fee::float, price::float, cost_label FROM services.catalog WHERE active AND public AND region <> 'ng' AND (price IS NOT NULL OR billing = 'quoted') ORDER BY sort, name")).rows
 })
