@@ -1,6 +1,6 @@
 <script setup lang="ts">
 useHead({ title: 'Prices & settings' })
-interface Item { id: string; code: string; name: string; description: string | null; billing: string; price: string | null; price_ngn: string | null; region: string; currency: string; formation: boolean; active: boolean; sort: number }
+interface Item { cost?: string | null; fee?: string | null; cost_ngn?: string | null; fee_ngn?: string | null; cost_label?: string | null; public?: boolean; id: string; code: string; name: string; description: string | null; billing: string; price: string | null; price_ngn: string | null; region: string; currency: string; formation: boolean; active: boolean; sort: number }
 interface Region { issuer: string; address: string; phone: string; email: string; bank: Record<string, string> }
 const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
 const { data: items, refresh: ri } = await useFetch<Item[]>('/api/services/catalog')
@@ -15,9 +15,11 @@ watchEffect(() => { if (s.value) { Object.assign(f, JSON.parse(JSON.stringify({ 
 const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function save() { msg.value = ''; ok.value = ''; try { await $fetch('/api/services/billing-settings', { method: 'POST', body: f }); ok.value = 'Settings saved.'; await rs() } catch (e) { msg.value = err(e) } }
-const blank = () => ({ id: '', code: '', name: '', description: '', billing: 'one_time', price: '' as string | number, price_ngn: '' as string | number, region: 'us', currency: 'USD', formation: false, active: true, sort: 10 })
+const blank = () => ({ cost: '' as string | number, fee: '' as string | number, cost_ngn: '' as string | number, fee_ngn: '' as string | number, cost_label: '', public: true, id: '', code: '', name: '', description: '', billing: 'one_time', price: '' as string | number, price_ngn: '' as string | number, region: 'us', currency: 'USD', formation: false, active: true, sort: 10 })
 const it = reactive(blank()); const editing = ref(false)
-function edit(i?: Item) { Object.assign(it, blank(), i ? { ...i, description: i.description ?? '', price: i.price ?? '', price_ngn: i.price_ngn ?? '' } : {}); editing.value = true }
+function edit(i?: Item) { Object.assign(it, blank(), i ? { ...i, description: i.description ?? '', price: i.price ?? '', price_ngn: i.price_ngn ?? '', cost: i.cost ?? '', fee: i.fee ?? '', cost_ngn: i.cost_ngn ?? '', fee_ngn: i.fee_ngn ?? '', cost_label: i.cost_label ?? '', public: i.public !== false } : {}); editing.value = true }
+const sumUsd = computed(() => (it.cost !== '' || it.fee !== '' ? Number(it.cost || 0) + Number(it.fee || 0) : null))
+const sumNgn = computed(() => (it.cost_ngn !== '' || it.fee_ngn !== '' ? Number(it.cost_ngn || 0) + Number(it.fee_ngn || 0) : null))
 async function saveItem() { msg.value = ''; try { await $fetch('/api/services/catalog', { method: 'POST', body: { ...it, id: it.id || undefined } }); editing.value = false; await ri() } catch (e) { msg.value = err(e) } }
 const BILL: Record<string, string> = { one_time: 'One-time', annual: 'Per year', monthly: 'Per month', quoted: 'Quoted (from)' }
 const money = (v: string | null, c: string) => (v === null ? 'Set price' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v)))
@@ -38,8 +40,14 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
         <label class="label">Name<input v-model="it.name" required maxlength="120"></label>
         <label class="label">Code<input v-model="it.code" required maxlength="40" placeholder="e.g. irs_annual"></label>
         <label class="label">Billing<select v-model="it.billing"><option v-for="(l, k) in BILL" :key="k" :value="k">{{ l }}</option></select></label>
-        <label class="label">Price (US$)<input v-model="it.price" inputmode="decimal" placeholder="Leave blank to set later"></label>
-        <label class="label">Price (₦, for Nigerian companies)<input v-model="it.price_ngn" inputmode="decimal" placeholder="Leave blank to charge in US$"></label>
+        <label class="label">Provider &amp; government cost (US$)<input v-model="it.cost" inputmode="decimal" placeholder="e.g. state fee + provider"></label>
+        <label class="label">Finvry processing fee (US$)<input v-model="it.fee" inputmode="decimal" placeholder="Your margin"></label>
+        <label class="label">Price (US$){{ sumUsd !== null ? ' · cost + fee' : '' }}<input v-if="sumUsd === null" v-model="it.price" inputmode="decimal" placeholder="Or a single price"><input v-else :value="sumUsd.toFixed(2)" disabled></label>
+        <label class="label">Provider &amp; government cost (₦)<input v-model="it.cost_ngn" inputmode="decimal" placeholder="Optional"></label>
+        <label class="label">Finvry processing fee (₦)<input v-model="it.fee_ngn" inputmode="decimal" placeholder="Optional"></label>
+        <label class="label">Price (₦, for Nigerian companies){{ sumNgn !== null ? ' · cost + fee' : '' }}<input v-if="sumNgn === null" v-model="it.price_ngn" inputmode="decimal" placeholder="Leave blank to charge in US$"><input v-else :value="sumNgn.toFixed(2)" disabled></label>
+        <label class="label">What the cost covers<input v-model="it.cost_label" maxlength="80" placeholder="e.g. Delaware state fee, registered agent provider"></label>
+        <label class="label chk"><input v-model="it.public" type="checkbox"> Show on finvry.com</label>
         <label class="label">Offered to<select v-model="it.region"><option value="us">Everyone (US services)</option><option value="all">Everyone</option><option value="ng">Nigerian companies only</option></select></label>
         <label class="label">Currency<select v-model="it.currency"><option>USD</option><option>NGN</option></select></label>
         <label class="label">Order<input v-model="it.sort" inputmode="numeric"></label>
