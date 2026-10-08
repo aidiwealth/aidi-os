@@ -26,7 +26,7 @@ const foot = computed(() => {
       <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ ['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? 'Ventures' : 'Group' }}</span></template>
       <img v-else-if="br?.logo_url" :src="br.logo_url" :alt="title" class="pub-logo">
       <span v-else-if="title" class="pub-name">{{ title }}</span>
-      <BrandMark v-else />
+      <a v-else :href="brand.key === 'finvry' ? 'https://finvry.com' : 'https://theaidigroup.com'" class="pub-home" aria-label="Home"><BrandMark /></a>
     </header>
     <main class="pub-main"><slot /></main>
     <footer class="pub-foot" :style="band">{{ foot }}</footer>
@@ -43,4 +43,5 @@ const foot = computed(() => {
 .pub-name { font-family: var(--font-serif); font-weight: 500; font-size: 1.5rem; letter-spacing: -0.01em; }
 .pub-main { flex: 1; padding: 48px 24px; }
 .pub-foot { padding: 20px 32px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
+.pub-home { display: inline-flex; text-decoration: none; color: inherit; }
 </style>

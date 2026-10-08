@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const fvIcons = useBrand()
+useHead(() => ({ link: fvIcons.key === 'finvry' ? [{ rel: 'icon', type: 'image/png', sizes: '32x32', href: '/brand/finvry-favicon-32.png' }, { rel: 'apple-touch-icon', href: '/brand/finvry-apple-touch-icon.png' }] : [] }))
 const brand = useBrand()
 useHead({
   titleTemplate: (t?: string) => (t ? t + ' — ' + brand.name : brand.name),
