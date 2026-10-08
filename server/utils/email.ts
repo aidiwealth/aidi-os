@@ -1,8 +1,9 @@
 // Transactional email through Resend. Fails loudly; never reports success it did not get.
-export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string }): Promise<void> {
+export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry' }): Promise<void> {
+  const extra = { replyTo: input.replyTo, headers: input.headers }
   const { resendApiKey } = useRuntimeConfig()
   // Brand: the workspace's (or, before sign-in, the address's) name, logo, links and sender
-  const b = brands()[await resolveBrand()]
+  const b = brands()[input.brand ?? await resolveBrand()]
   const org = currentOrgId() ? await currentOrg() : null
   const firm = org?.settings.public_name || org?.name || b.name, orgName = org?.name || b.name
   const fill = (s: string): string => s.replaceAll('{{FIRM}}', firm).replaceAll('{{ORG}}', orgName).replaceAll('{{APP_URL}}', b.url).replaceAll('{{PRODUCT}}', b.name).replaceAll('{{BRAND_LOGO}}', b.logoHtml)
@@ -16,7 +17,7 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html })
+    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html, ...(extra.replyTo ? { reply_to: extra.replyTo } : {}), ...(extra.headers ? { headers: extra.headers } : {}) })
   })
   if (!res.ok) throw new Error('Resend ' + res.status + ': ' + (await res.text()).slice(0, 300))
 }
@@ -323,4 +324,12 @@ export async function sendInvestorUpdateEmail(to: string, name: string, company:
 export async function sendWalletNotice(to: string, subject: string, heading: string, body: string, cta: string, link: string): Promise<void> {
   const html = shell(h1(esc(heading)) + para(esc(body)) + button(cta, link), heading)
   await sendEmail({ to, subject, text: heading + '\n\n' + body + '\n\n' + cta + ': ' + link, html })
+}
+
+// A reply from the Finvry support desk: Finvry-branded, threaded (In-Reply-To), replies come back to support@finvry.com.
+export async function sendSupportReply(to: string, subject: string, bodyHtml: string, bodyText: string, inReplyTo: string | null, references: string | null): Promise<void> {
+  const support = (useRuntimeConfig() as unknown as { supportInbox?: string }).supportInbox || 'support@finvry.com'
+  const headers: Record<string, string> = {}
+  if (inReplyTo) { headers['In-Reply-To'] = inReplyTo; headers.References = [references, inReplyTo].filter(Boolean).join(' ') }
+  await sendEmail({ to, subject, text: bodyText, html: shell(bodyHtml, bodyText.slice(0, 120)), fromName: 'Finvry Support', replyTo: support, headers, brand: 'finvry' })
 }

@@ -28,7 +28,7 @@ export default defineNuxtConfig({
     premblyApiKey: '',
     premblyAppId: '',
     premblyBaseUrl: '', quickbooksEnv: '', quickbooksClientSecret: '', quickbooksClientId: '', bushaWebhookSecret: '', bushaBaseUrl: '', bushaApiKey: '', fincraWebhookSecret: '', fincraBaseUrl: '', fincraApiKey: '', alpacaBaseUrl: '', alpacaClientSecret: '', alpacaClientId: '',
-    creditchekSecretKey: '', usBureauEnabled: '', opencorporatesToken: '', inboundEmailToken: '',
+    creditchekSecretKey: '', usBureauEnabled: '', opencorporatesToken: '', inboundEmailToken: '', supportInbox: 'support@finvry.com',
     defaultOrgSlug: 'the-aidi-group', // public pitch form without ?org= goes here
     r2AccountId: '',
     r2AccessKeyId: '',
@@ -68,7 +68,9 @@ export default defineNuxtConfig({
           'X-Content-Type-Options': 'nosniff',
           'Referrer-Policy': 'no-referrer',
           'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
-          'X-Robots-Tag': 'noindex, nofollow'
+          'X-Robots-Tag': 'noindex, nofollow',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'X-Permitted-Cross-Domain-Policies': 'none'
         }
       }
     }

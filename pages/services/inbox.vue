@@ -2,6 +2,7 @@
 // Services desk inbox: client conversations as tickets. Reply, attach files, close or reopen.
 useHead({ title: 'Inbox' })
 const route = useRoute()
+const box = computed(() => (route.query.box === 'support' ? 'support' : 'clients'))
 interface T { id: string; subject: string; status: string; last_message_at: string; client_id: string; client: string; last: string | null; unread: number }
 const status = ref<'open' | 'closed'>('open'); const q = ref(''); const cur = ref(String(route.query.t ?? ''))
 const { data: list, refresh: rlist } = await useFetch<T[]>('/api/services/inbox', { query: { status } })
@@ -20,7 +21,9 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value) rconv() },
 <template>
   <section>
     <p class="label">Services desk</p><h1>Inbox</h1>
-    <div class="ib">
+    <nav class="bx" aria-label="Inbox"><NuxtLink :to="{ query: {} }" :class="{ on: box === 'clients' }">Client messages</NuxtLink><NuxtLink :to="{ query: { box: 'support' } }" :class="{ on: box === 'support' }">Support email <span class="mut">support@finvry.com</span></NuxtLink></nav>
+    <SupportInbox v-if="box === 'support'" />
+    <div v-else class="ib">
       <aside class="ls"><div class="lt"><button :class="{ on: status === 'open' }" @click="status = 'open'; cur = ''">Open</button><button :class="{ on: status === 'closed' }" @click="status = 'closed'; cur = ''">Closed</button></div>
         <input v-model="q" placeholder="Search client or subject" aria-label="Search">
         <button v-for="t in shown" :key="t.id" class="it" :class="{ on: cur === t.id, un: t.unread }" @click="cur = t.id"><span class="r1"><b>{{ t.client }}</b><em>{{ ago(t.last_message_at) }}</em></span><span class="sj">{{ t.subject }}</span><span class="lm">{{ t.last }}</span><i v-if="t.unread" class="dot">{{ t.unread }}</i></button>
@@ -46,4 +49,5 @@ h1 { margin: 0 0 14px; } .ib { display: grid; grid-template-columns: 320px 1fr; 
 .empty { display: grid; place-items: center; color: var(--c-muted); } .oth { padding: 8px 16px; border-top: 1px solid var(--c-rule); font-size: 12.5px; display: flex; gap: 10px; flex-wrap: wrap; color: var(--c-muted); } .lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .mut { color: var(--c-muted); font-size: 13px; padding: 14px; } .error { color: var(--c-danger); padding: 0 16px; }
 @media (max-width: 900px) { .ib { grid-template-columns: 1fr; height: auto; } }
+.bx { display: flex; gap: 2px; border-bottom: 1px solid var(--c-rule); margin: 8px 0 14px; } .bx a { padding: 10px 14px; text-decoration: none; color: var(--c-muted); font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; } .bx a.on { color: var(--c-ink); border-bottom-color: var(--c-navy); } .bx .mut { font-size: 12px; font-weight: 400; margin-left: 4px; }
 </style>

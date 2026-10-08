@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   const d = b.data
   if (d.website) throw apiError('invalid', 'Please try again.')
   await verifyHuman(d.turnstile_token, clientIp(event))
+  { const ec = await checkEmail(d.email); if (!ec.ok) throw apiError('bad_email', ec.message!, 400) }
   const email = d.email.toLowerCase()
   rateLimit('signup_email', email, 3, 60 * 60 * 1000)
   const base = d.company.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'company'

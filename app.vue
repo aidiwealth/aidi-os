@@ -17,4 +17,5 @@ useHead({
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
+  <CookieConsent v-if="brand.key === 'finvry'" />
 </template>

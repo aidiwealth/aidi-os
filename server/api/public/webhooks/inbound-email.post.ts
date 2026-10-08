@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
     to_email: String((pm ? raw.OriginalRecipient ?? raw.To : raw.to) ?? '').slice(0, 500), subject: String((pm ? raw.Subject : raw.subject) ?? '(no subject)').slice(0, 500),
     text: String((pm ? raw.TextBody : raw.text) ?? '').slice(0, 100000), html: String((pm ? raw.HtmlBody : raw.html) ?? '').slice(0, 300000),
     attachments: (((pm ? raw.Attachments : raw.attachments) as { Name?: string; filename?: string; Content?: string; content?: string; ContentType?: string; contentType?: string }[] | undefined) ?? []).slice(0, 10) }
+  if (isSupportMail(m.to_email, raw)) return await handleSupportMail(m, raw)
   const org = (await asPlatform(() => db().query<{ id: string }>("SELECT id FROM core.organizations WHERE plan_code = 'internal' ORDER BY created_at LIMIT 1"))).rows[0]?.id
   if (!org) throw apiError('not_found', 'Not found', 404)
   setOrgContext(org)

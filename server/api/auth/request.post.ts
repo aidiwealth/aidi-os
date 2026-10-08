@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   rateLimit('auth_request_email_day', email, 15, 24 * 60 * 60 * 1000)
   rateLimit('auth_request_ip', ip, 15, 15 * 60 * 1000)
   await verifyHuman(parsed.data.turnstile_token, ip)
+  { const ec = await checkEmail(email); if (!ec.ok) throw apiError('bad_email', ec.message!, 400) }
   await startLogin(email, ip)
   return { ok: true }
 })

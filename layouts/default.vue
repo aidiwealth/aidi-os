@@ -48,6 +48,7 @@ const groups = computed(() => {
 const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
 const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', internal: 'Internal' }
 const collapsed = useState('sb-collapsed', () => false)
+const sbScrolled = ref(false)
 const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
@@ -75,7 +76,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 <template>
   <div class="shell" :class="{ collapsed, 'mobile-open': mobileOpen }">
     <div class="overlay" @click="mobileOpen = false" />
-    <aside class="sidebar" :aria-label="brand.name">
+    <aside class="sidebar" :class="{ sbs: sbScrolled }" :aria-label="brand.name" @scroll.passive="sbScrolled = ($event.target as HTMLElement).scrollTop > 4">
       <div class="sb-top">
       <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/brand/aidi-mark-navy.svg'" :alt="brand.name" class="sb-logo"></NuxtLink>
 
@@ -196,7 +197,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .supbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; } .supbar button { background: #fff; color: #b5470b; border: 0; padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer; }
 .sidebar { background: var(--c-paper-2); }
 .sb-top { position: sticky; top: -18px; z-index: 3; margin: -18px -12px 0; padding: 18px 12px 2px; background: var(--c-paper-2); }
-.sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; }
+.sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; opacity: 0; transition: opacity .2s; } .sidebar.sbs .sb-top::after { opacity: 1; }
 .sb-logo { width: 32px; height: 32px; display: block; margin-left: -4px; }
 a.sb-user { text-decoration: none; } a.sb-user:hover { color: var(--c-ink); }
 </style>
