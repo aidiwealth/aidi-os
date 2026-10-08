@@ -31,11 +31,16 @@ async function copy(id: string, s: string) { await navigator.clipboard.writeText
   <div class="dv">
     <header><a href="https://finvry.com" class="brand" aria-label="Finvry home"><img src="/brand/finvry-logo.svg" alt="Finvry"></a><span class="tag">API reference</span><nav><a href="/status">Status</a><a href="/settings?s=api">Get an API key</a></nav></header>
     <div class="grid">
-      <aside><p class="sg">Getting started</p><a href="#intro">Introduction</a><a href="#auth">Authentication</a><a href="#limits">Rate limits</a><a href="#errors">Errors</a>
+      <aside><p class="sg">Getting started</p><a href="#intro">Introduction</a><a href="#auth">Authentication</a><a href="#limits">Rate limits</a><a href="#errors">Errors</a><a href="#mcp">MCP server (AI tools)</a>
         <p class="sg">Endpoints</p><a v-for="e in EPS" :key="e.id" :href="'#' + e.id"><span :class="'m ' + e.method">{{ e.method }}</span>{{ e.title }}</a></aside>
       <main>
         <section id="intro"><h1>Finvry Data API</h1><p>Push figures and contacts into Finvry as they change in your own systems (accounting, CRM, data warehouse, Zapier or Make), and pull your data out. Everything is JSON over HTTPS.</p><div class="kv"><span>Base URL</span><code>{{ base }}</code></div></section>
         <section id="auth"><h2>Authentication</h2><p>Create a key in <b>Settings → Data API</b>. Read keys can only read; write keys can also add data. Send the key as a bearer token. Keys belong to one workspace and are shown once; revoke a key at any time.</p><pre>Authorization: Bearer fv_live_…</pre></section>
+        <section id="mcp"><h2>MCP server for AI tools</h2><p>Connect Claude, ChatGPT, Cursor or any MCP client to your Finvry data, read-only. Your AI tool can then answer questions like "what is our runway?" or "which investors are in due diligence?" from live figures.</p>
+          <div class="kv"><span>Server URL</span><code>{{ base.replace('/api/v1', '') }}/api/mcp</code></div><div class="kv"><span>Auth</span><code>Authorization: Bearer fv_live_… (a read key)</code></div>
+          <p>Tools: <code>company_metrics</code>, <code>statements</code>, <code>fundraising</code>, <code>contacts</code>, <code>compliance_deadlines</code>.</p>
+          <p><b>Claude Desktop</b> (Settings → Developer → Edit config):</p><pre>{ "mcpServers": { "finvry": { "command": "npx", "args": ["mcp-remote", "{{ base.replace('/api/v1', '') }}/api/mcp", "--header", "Authorization: Bearer YOUR_KEY"] } } }</pre>
+          <p><b>Cursor, Windsurf and other clients</b> that accept remote servers with headers: add the server URL above with the Authorization header.</p></section>
         <section id="limits"><h2>Rate limits</h2><p>600 requests per minute per key. Above that you get <code>429</code>; wait a minute and retry.</p></section>
         <section id="errors"><h2>Errors</h2><p>Errors return a status code and a JSON body with a code and a human-readable message.</p>
           <table><tbody><tr><td><code>401</code></td><td>Missing, wrong or revoked key</td></tr><tr><td><code>403</code></td><td>The key lacks write access, or API access is switched off</td></tr><tr><td><code>422</code></td><td>The request body failed validation (the message says which field)</td></tr><tr><td><code>429</code></td><td>Rate limit reached</td></tr></tbody></table>

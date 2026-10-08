@@ -71,7 +71,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
     <div class="overlay" @click="mobileOpen = false" />
     <aside class="sidebar" :aria-label="brand.name">
       <div class="sb-top">
-      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/brand/aidi-mark.svg'" :alt="brand.name" class="sb-logo"></NuxtLink>
+      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/brand/aidi-mark-navy.svg'" :alt="brand.name" class="sb-logo"></NuxtLink>
 
       <div v-if="canPlatform && !collapsed" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
         <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')">Aidi</button>
@@ -121,6 +121,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
       </header>
       <div v-if="supportBy" class="supbar">You are signed in as <b>{{ me?.email }}</b> with Finvry support access ({{ supportBy }}). Changes are made as this person. <button type="button" @click="endSupport">Return to console</button></div>
       <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
+      <AnalystPanel v-if="me && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
     </div>
   </div>
 </template>
