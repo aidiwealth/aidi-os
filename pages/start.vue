@@ -14,10 +14,11 @@ const FEATS: Record<string, string[]> = { company_free: ['Financials and boards'
 const ngn = computed(() => isNigeria(f.country))
 const amount = (p: Plan) => { const v = ngn.value ? p.ngn : p.usd; return v === null ? 'Contact us' : v === 0 ? (ngn.value ? '₦0' : '$0') : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') }
 const msg = ref(''); const busy = ref(false)
+const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), humanReady = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' }
 function next() { msg.value = ''; if (step.value === 1 && (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))) { msg.value = 'Add your name and a valid email.'; return } if (step.value === 2 && !f.company.trim()) { msg.value = 'Add your company name.'; return } step.value++ }
 watch(() => f.country, (c) => { if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' })
-async function create() { busy.value = true; msg.value = ''; try { await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // six code boxes: type, paste, backspace
 const digits = ref<string[]>(['', '', '', '', '', '']); const boxes = ref<HTMLInputElement[]>([])
 function onDigit(i: number, e: Event) { const v = (e.target as HTMLInputElement).value.replace(/\D/g, ''); if (v.length > 1) { fill(v); return } digits.value[i] = v; if (v && i < 5) boxes.value[i + 1]?.focus(); sync() }
@@ -28,7 +29,7 @@ function sync() { f.code = digits.value.join(''); if (f.code.length === 6 && !bu
 async function verify() { busy.value = true; msg.value = ''; try { await $fetch('/api/auth/verify-otp', { method: 'POST', body: { email: f.email, code: f.code } }); await navigateTo('/') } catch (e) { msg.value = err(e); digits.value = ['', '', '', '', '', '']; f.code = ''; boxes.value[0]?.focus() } finally { busy.value = false } }
 const cool = ref(0); let t: ReturnType<typeof setInterval> | null = null
 function startCooldown() { cool.value = 30; if (t) clearInterval(t); t = setInterval(() => { cool.value--; if (cool.value <= 0 && t) clearInterval(t) }, 1000) }
-async function resend() { msg.value = ''; try { await $fetch('/api/auth/request', { method: 'POST', body: { email: f.email } }); startCooldown() } catch (e) { msg.value = err(e) } }
+async function resend() { msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch('/api/auth/request', { method: 'POST', body: { email: f.email, turnstile_token: tt || undefined } }); startCooldown() } catch (e) { msg.value = err(e) } }
 onBeforeUnmount(() => { if (t) clearInterval(t) })
 const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
 </script>
@@ -46,7 +47,7 @@ const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
       <div v-if="brand.key !== 'finvry'" class="form"><h1>Create an account</h1><p class="hint">Sign-up is on Finvry. <a href="https://app.finvry.com/start">Go to app.finvry.com/start →</a></p></div>
       <div v-else class="form">
         <div class="prog"><span>Step {{ step }} of 4</span><i><b :style="{ width: Math.max(6, pct) + '%' }" /></i></div>
-        <form v-if="step === 1" @submit.prevent="next"><h1>Create your account</h1><p class="hint">Start free. No card needed.</p>
+        <form v-if="step === 1" :class="{ gate: !humanReady }" @submit.prevent="next"><h1>Create your account</h1><p class="hint">Start free. No card needed.</p>
           <label class="fl">Your full name<input v-model="f.name" required maxlength="120" autocomplete="name" placeholder="Ada Okafor" autofocus></label>
           <label class="fl">Work email<input v-model="f.email" type="email" required maxlength="254" autocomplete="email" placeholder="ada@yourcompany.com"></label>
           <button class="go" type="submit">Continue</button></form>
@@ -67,6 +68,7 @@ const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
           <div class="otp" @paste="onPaste"><input v-for="(d, i) in digits" :key="i" :ref="(el) => { if (el) boxes[i] = el as HTMLInputElement }" :value="d" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :aria-label="'Digit ' + (i + 1)" @input="onDigit(i, $event)" @keydown="onKey(i, $event)"></div>
           <button class="go" type="submit" :disabled="busy || f.code.length !== 6">{{ busy ? 'Checking…' : 'Open Finvry' }}</button>
           <p class="hint sm">Didn't get it? Check spam, or <button type="button" class="lnk" :disabled="cool > 0" @click="resend">{{ cool > 0 ? 'resend in ' + cool + 's' : 'send a new code' }}</button>. <button type="button" class="lnk" @click="step = 1">Use a different email</button></p></form>
+        <HumanCheck v-show="step < 4" ref="hc" v-model="human" v-model:ready="humanReady" />
         <p v-if="msg" class="error" role="alert">{{ msg }}</p>
         <p v-if="step < 4" class="foot">Already have an account? <NuxtLink to="/login">Sign in</NuxtLink></p>
       </div>
@@ -104,4 +106,5 @@ input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 1
 .lnk { background: none; border: 0; color: #1c547d; font: inherit; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; } .lnk:disabled { color: var(--c-muted); text-decoration: none; cursor: default; }
 .error { color: var(--c-danger); margin: 16px 0 0; font-size: 14px; } .foot { margin: 26px 0 0; font-size: 14px; color: var(--c-muted); } .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
 @media (max-width: 900px) { .su { grid-template-columns: 1fr; } .side { padding: 28px 24px; gap: 22px; } .pitch, .trust, .legal, .rail em { display: none; } .rail { flex-direction: row; gap: 8px; } .rail li { border: 0 !important; padding: 0; } .rail b { display: none; } .pane { align-items: flex-start; padding: 32px 20px; } }
+.gate { opacity: .45; pointer-events: none; transition: opacity .4s; }
 </style>

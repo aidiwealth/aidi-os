@@ -2,13 +2,14 @@
 // Nigeria is billed in naira, everywhere else in US dollars. We then email a sign-in code to prove the address.
 import { z } from 'zod'
 const Body = z.object({ website: z.string().max(0).optional(), name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254),
-  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_free', 'company_startup', 'company_scale']) })
+  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_free', 'company_startup', 'company_scale']), turnstile_token: z.string().max(4000).optional() })
 export default defineEventHandler(async (event) => {
   rateLimit('signup_ip', clientIp(event), 5, 60 * 60 * 1000)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Add your name, a valid email, your company and country.')
   const d = b.data
   if (d.website) throw apiError('invalid', 'Please try again.')
+  await verifyHuman(d.turnstile_token, clientIp(event))
   const email = d.email.toLowerCase()
   rateLimit('signup_email', email, 3, 60 * 60 * 1000)
   const base = d.company.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'company'

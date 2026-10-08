@@ -5,8 +5,10 @@ useHead({ title: 'Sign in' })
 const route = useRoute()
 const email = ref('')
 const code = ref('')
-const step = ref<'email' | 'code'>('email')
+const step = ref<'email' | 'code' | 'mfa'>(typeof route.query.mfa === 'string' ? 'mfa' : 'email')
+const ticket = ref(typeof route.query.mfa === 'string' ? route.query.mfa : ''), mfaCode = ref(''), useRecovery = ref(false)
 const busy = ref(false)
+const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), humanReady = ref(false)
 const error = ref(route.query.error === 'link' ? 'That sign-in link is invalid or has expired. Request a new code.' : '')
 
 function message(e: unknown): string {
@@ -15,12 +17,17 @@ function message(e: unknown): string {
 }
 async function requestCode() {
   busy.value = true; error.value = ''
-  try { await $fetch('/api/auth/request', { method: 'POST', body: { email: email.value } }); step.value = 'code' }
+  try { const t = await hc.value?.fresh(); await $fetch('/api/auth/request', { method: 'POST', body: { email: email.value, turnstile_token: t || undefined } }); step.value = 'code' }
+  catch (e) { error.value = message(e) } finally { busy.value = false }
+}
+async function verifyMfa() {
+  busy.value = true; error.value = ''
+  try { await $fetch('/api/auth/mfa-verify', { method: 'POST', body: { ticket: ticket.value, code: mfaCode.value } }); await navigateTo('/') }
   catch (e) { error.value = message(e) } finally { busy.value = false }
 }
 async function verify() {
   busy.value = true; error.value = ''
-  try { await $fetch('/api/auth/verify-otp', { method: 'POST', body: { email: email.value, code: code.value } }); await navigateTo('/') }
+  try { const r = await $fetch<{ ok?: boolean; mfa_required?: boolean; ticket?: string }>('/api/auth/verify-otp', { method: 'POST', body: { email: email.value, code: code.value } }); if (r.mfa_required) { ticket.value = r.ticket!; step.value = 'mfa' } else await navigateTo('/') }
   catch (e) { error.value = message(e) } finally { busy.value = false }
 }
 </script>
@@ -28,12 +35,20 @@ async function verify() {
 <template>
   <div class="box">
     <div class="brand"><BrandMark /></div>
-    <form v-if="step === 'email'" @submit.prevent="requestCode">
+    <form v-if="step === 'email'" :class="{ gate: !humanReady }" @submit.prevent="requestCode">
       <h1>Sign in</h1>
       <p class="hint">We'll email you a sign-in link and a 6-digit code.</p>
       <label for="email" class="label">Email</label>
       <input id="email" v-model="email" type="email" autocomplete="email" required>
-      <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Sending…' : 'Email me a code' }}</button>
+      <button class="btn" type="submit" :disabled="busy || !humanReady">{{ busy ? 'Sending…' : 'Email me a code' }}</button>
+    </form>
+    <form v-else-if="step === 'mfa'" @submit.prevent="verifyMfa">
+      <h1>Two-step verification</h1>
+      <p class="hint">{{ useRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.' }}</p>
+      <label for="mfa" class="label">{{ useRecovery ? 'Recovery code' : 'Authenticator code' }}</label>
+      <input id="mfa" v-model="mfaCode" :inputmode="useRecovery ? 'text' : 'numeric'" autocomplete="one-time-code" :maxlength="useRecovery ? 20 : 6" required autofocus>
+      <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Checking…' : 'Verify and sign in' }}</button>
+      <button class="link" type="button" @click="useRecovery = !useRecovery; mfaCode = ''">{{ useRecovery ? 'Use your authenticator app' : 'Lost your phone? Use a recovery code' }}</button>
     </form>
     <form v-else @submit.prevent="verify">
       <h1>Check your email</h1>
@@ -43,6 +58,7 @@ async function verify() {
       <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Checking…' : 'Sign in' }}</button>
       <button class="link" type="button" @click="step = 'email'; code = ''">Use a different email</button>
     </form>
+    <HumanCheck v-show="step === 'email'" ref="hc" v-model="human" v-model:ready="humanReady" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="brand.key === 'finvry' && step === 'email'" class="new">New to Finvry? <NuxtLink to="/start">Create a free account</NuxtLink></p>
   </div>
@@ -59,4 +75,5 @@ input { width: 100%; font: inherit; padding: 9px 12px; border: 1px solid var(--c
 .link { background: none; border: 0; color: var(--c-blue-deep); margin-top: 14px; cursor: pointer; font: inherit; padding: 0; }
 .error { color: var(--c-danger); margin-top: 16px; }
 .new { margin: 18px 0 0; font-size: 13.5px; color: var(--c-muted); }
+.gate { opacity: .45; pointer-events: none; transition: opacity .4s; } form { transition: opacity .4s; }
 </style>

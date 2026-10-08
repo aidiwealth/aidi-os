@@ -18,7 +18,8 @@ const tpl = ref(false)
 </script>
 <template>
   <section v-if="data">
-    <p class="label">Investors</p>
+    <p class="label">Investor relations</p>
+    <InvestorTabs />
     <div class="hd"><div class="tt"><h1>Updates</h1><select v-model="view" aria-label="Filter"><option value="all">All updates</option><option value="sent">Sent</option><option value="drafts">Drafts</option></select></div>
       <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><NuxtLink to="/contacts" class="btn secondary">Contacts</NuxtLink><button class="btn" @click="nu.open = true">New update</button></div></div>
     <p v-if="msg" class="error">{{ msg }}</p>

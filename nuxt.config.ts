@@ -44,7 +44,7 @@ export default defineNuxtConfig({
     emailFrom: 'Aidi OS <no-reply@notifications.theaidigroup.com>',
     emailFromFinvry: '', // Finvry sender once notifications.finvry.com is verified
     stripeSecretKey: '', stripeWebhookSecret: '', paystackSecretKey: '',
-    public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com', finvryBaseUrl: 'https://app.finvry.com', forceBrand: '' }
+    public: { appName: 'Aidi OS', appBaseUrl: 'https://app.theaidigroup.com', finvryBaseUrl: 'https://app.finvry.com', forceBrand: '', turnstileSiteKey: '' }
   },
   app: {
     head: {
@@ -62,7 +62,7 @@ export default defineNuxtConfig({
     routeRules: {
       '/**': {
         headers: {
-          'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.plaid.com; frame-src https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests",
+          'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.plaid.com https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://*.plaid.com https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests",
           'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
           'X-Frame-Options': 'DENY',
           'X-Content-Type-Options': 'nosniff',

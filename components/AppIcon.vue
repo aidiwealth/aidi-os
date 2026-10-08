@@ -2,6 +2,7 @@
 // Line icons (24px grid, Telroi style) for the sidebar, top bar and empty states. One distinct icon per feature.
 const props = defineProps<{ name: string }>()
 const P: Record<string, string> = {
+  help: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M5.99 5.99l3.54 3.54M14.47 14.47l3.54 3.54M18.01 5.99l-3.54 3.54M9.53 14.47l-3.54 3.54"/>',
   gem: '<path d="M6.5 4h11l3.5 5-9 11L3 9z"/><path d="M3 9h18"/><path d="M9.5 4 8 9l4 11 4-11-1.5-5" opacity=".6"/>',
   home: '<rect x="3" y="3" width="8" height="10" rx="1.6"/><rect x="13" y="3" width="8" height="6" rx="1.6"/><rect x="3" y="15" width="8" height="6" rx="1.6"/><rect x="13" y="11" width="8" height="10" rx="1.6"/>',
   financials: '<path d="M3.5 20.5h17"/><rect x="5" y="11" width="3.2" height="7" rx="1"/><rect x="10.4" y="7" width="3.2" height="11" rx="1"/><rect x="15.8" y="4" width="3.2" height="14" rx="1"/>',

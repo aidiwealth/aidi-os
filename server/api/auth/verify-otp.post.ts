@@ -7,6 +7,9 @@ export default defineEventHandler(async (event) => {
   const email = parsed.data.email.trim().toLowerCase()
   rateLimit('auth_otp_ip', clientIp(event), 30, 15 * 60 * 1000)
   rateLimit('auth_otp_email', email, 10, 15 * 60 * 1000)
-  await establishSession(event, await verifyOtp(email, parsed.data.code))
+  const who = await verifyOtp(email, parsed.data.code)
+  const ticket = await mfaTicketFor(who)
+  if (ticket) return { mfa_required: true, ticket }
+  await establishSession(event, who)
   return { ok: true }
 })

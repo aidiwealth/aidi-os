@@ -38,6 +38,11 @@ const groups = computed(() => {
     if (!g) { g = { label: m.groupLabel, items: [] }; out.push(g) }
     g.items.push(m)
   }
+  // "Investor updates" + "Investor page" → one item, "Investor relations"; tabs on the pages switch between them
+  for (const g of out) {
+    const up = g.items.find((x) => x.code === 'updates'), ip = g.items.find((x) => x.code === 'investor_page')
+    if (up && ip) { g.items = g.items.filter((x) => x !== ip).map((x) => (x === up ? { ...up, label: 'Investor relations', to: up.usable ? '/updates' : '/investor-page', locked: !up.usable && !ip.usable, alsoOn: up.usable ? '/investor-page' : '/updates' } : x)) }
+  }
   return out
 })
 const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
@@ -47,11 +52,12 @@ const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
 const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages')) && !(to === '/financials' && nowPath.value.startsWith('/financials/boards'))))
+const itemOn = (m: Mod & { alsoOn?: string }) => isOn(m.to) || (!!m.alsoOn && isOn(m.alsoOn))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
   if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', me.value?.org?.kind === 'company' ? 'Dashboard' : 'Overview']
-  for (const g of groups.value) { const m = g.items.find((x) => isOn(x.to)); if (m) return [g.label, m.label] }
+  for (const g of groups.value) { const m = g.items.find((x) => itemOn(x)); if (m) return [g.label, m.label] }
   return [me.value?.org?.name ?? 'Workspace']
 })
 async function switchOrg(id: string) {
@@ -85,8 +91,9 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           <NuxtLink v-if="!(me?.roles ?? []).every((r: string) => r === 'wealth_client') || !(me?.roles ?? []).length" to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
-            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
+            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: itemOn(m), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>
+          <a class="sb-link sb-help" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="help" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
         </template>
         <template v-else>
           <p class="sb-group">Finvry platform</p>
@@ -98,8 +105,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
       </nav>
 
       <div class="sb-foot">
-        <div v-if="me" class="sb-user" :title="me.email"><span class="av me">{{ me.email.slice(0, 1).toUpperCase() }}</span><span class="sb-label em">{{ me.email }}</span></div>
-        <a class="sb-link" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="inbox" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
+        <NuxtLink v-if="me" to="/account" class="sb-user" :title="me.email + ' · Account security'"><span class="av me">{{ me.email.slice(0, 1).toUpperCase() }}</span><span class="sb-label em">{{ me.email }}</span></NuxtLink>
         <button type="button" class="sb-link" title="Sign out" @click="signOut"><AppIcon name="logout" class="sb-icon" /><span class="sb-label">Sign out</span></button>
         <button type="button" class="sb-collapse" :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="collapsed = !collapsed"><AppIcon :name="collapsed ? 'right' : 'left'" /></button>
       </div>
@@ -192,4 +198,5 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-top { position: sticky; top: -18px; z-index: 3; margin: -18px -12px 0; padding: 18px 12px 2px; background: var(--c-paper-2); }
 .sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; }
 .sb-logo { width: 32px; height: 32px; display: block; margin-left: -4px; }
+a.sb-user { text-decoration: none; } a.sb-user:hover { color: var(--c-ink); }
 </style>

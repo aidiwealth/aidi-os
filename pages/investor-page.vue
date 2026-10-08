@@ -21,7 +21,8 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
 
 <template>
   <section v-if="data">
-    <p class="label">Investors</p>
+    <p class="label">Investor relations</p>
+    <InvestorTabs />
     <div class="hd"><h1>Investor page</h1><div class="row"><a v-if="data.page.published" :href="data.base + data.page.slug" target="_blank" rel="noopener" class="btn secondary">View live page</a>
       <button class="btn" type="button" :disabled="busy" @click="save(!f.published)">{{ f.published ? 'Unpublish' : 'Publish' }}</button></div></div>
     <p class="lead">A public page for {{ data.company }}, like the investor relations page of a listed company: your story and your key numbers, updated automatically from Financials. Share the link with investors, put it on your website, or add it to your deck. {{ data.page.published ? data.page.views + ' views so far.' : '' }}</p>
