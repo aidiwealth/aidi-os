@@ -5,5 +5,5 @@ export default defineEventHandler(async (event) => {
   const subject = String(getQuery(event).subject ?? '')
   if (!/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose the entity or company first.')
   const origin = publicOrigin(event)
-  return sendRedirect(event, qbAuthUrl(signState({ o: user.orgId ?? '', u: user.userId, s: subject, exp: Date.now() + 15 * 60 * 1000 }), origin))
+  return sendRedirect(event, await qbAuthUrl(signState({ o: user.orgId ?? '', u: user.userId, s: subject, exp: Date.now() + 15 * 60 * 1000 }), origin))
 })
