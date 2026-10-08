@@ -71,7 +71,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
     <div class="overlay" @click="mobileOpen = false" />
     <aside class="sidebar" :aria-label="brand.name">
       <div class="sb-top">
-      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/favicon-aidi.svg'" :alt="brand.name" class="sb-icon"></NuxtLink>
+      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/brand/aidi-mark.svg'" :alt="brand.name" class="sb-logo"></NuxtLink>
 
       <div v-if="canPlatform && !collapsed" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
         <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')">Aidi</button>
@@ -189,5 +189,5 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sidebar { background: var(--c-paper-2); }
 .sb-top { position: sticky; top: -18px; z-index: 3; margin: -18px -12px 0; padding: 18px 12px 2px; background: var(--c-paper-2); }
 .sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; }
-.sb-icon { width: 34px; height: 34px; display: block; }
+.sb-logo { width: 32px; height: 32px; display: block; margin-left: -4px; }
 </style>
