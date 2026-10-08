@@ -71,7 +71,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
     <div class="overlay" @click="mobileOpen = false" />
     <aside class="sidebar" :aria-label="brand.name">
       <div class="sb-top">
-      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else-if="brand.key === 'finvry'" src="/brand/finvry-mark.svg" alt="Finvry" class="sb-icon"><span v-else class="sb-mono">A</span></NuxtLink>
+      <NuxtLink to="/" class="sb-brand"><BrandMark v-if="!collapsed" /><img v-else :src="brand.key === 'finvry' ? '/brand/finvry-mark.svg' : '/favicon-aidi.svg'" :alt="brand.name" class="sb-icon"></NuxtLink>
 
       <div v-if="canPlatform && !collapsed" class="mode" role="tablist" aria-label="Switch between Aidi and Finvry">
         <button type="button" role="tab" :aria-selected="!platformMode" :class="{ on: !platformMode }" @click="setMode('workspace')">Aidi</button>
