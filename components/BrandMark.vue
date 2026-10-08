@@ -7,7 +7,7 @@ const brand = useBrand()
 <template>
   <span class="bm" :class="{ light }">
     <template v-if="brand.key === 'aidi'"><span class="aw" aria-label="Aidi"><AidiWordmark /></span></template>
-    <span v-else class="fv" aria-label="Finvry"><svg class="fsq" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" :fill="light ? '#fff' : '#0c1a2e'"/><path d="M20 14h26v7H28v8h15v7H28v14h-8z" :fill="light ? '#0c1a2e' : '#fff'"/><rect x="44" y="43" width="7" height="7" fill="#5fa8d3"/></svg>Finvry</span>
+    <img v-else class="fvimg" :src="light ? '/brand/finvry-logo-light.svg' : '/brand/finvry-logo.svg'" alt="Finvry">
   </span>
 </template>
 
@@ -19,4 +19,5 @@ const brand = useBrand()
 .arm { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
 .fv { display: inline-flex; align-items: center; gap: 9px; font-family: var(--font-heading); font-weight: 600; font-size: 1.3rem; letter-spacing: -0.02em; line-height: 1; } .fsq { width: 24px; height: 24px; flex: none; }
 .fv i { font-style: normal; color: #5fa8d3; }
+.fvimg { height: 26px; width: auto; display: block; }
 </style>

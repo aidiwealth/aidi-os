@@ -20,8 +20,8 @@ export function brands(): Record<BrandKey, Brand> {
     },
     finvry: {
       key: 'finvry', name: 'Finvry', url: c.public.finvryBaseUrl, from: c.emailFromFinvry || c.emailFrom,
-      logoHtml: `<div style="${serif}font-weight:500;font-size:26px;letter-spacing:-0.01em;color:${NAVY};">Finvry<span style="color:#5fa8d3;">.</span></div>`,
-      footerHtml: `<p style="margin:0 0 4px;color:${SOFT};font-size:12.5px;line-height:1.5;">Finvry · Operations for investors and family offices</p><p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://finvry.com" style="color:${BLUE};text-decoration:none;">finvry.com</a></p>`,
+      logoHtml: `<img src="${c.public.finvryBaseUrl}/brand/finvry-logo-email.png" width="140" height="37" alt="Finvry" style="display:block;border:0;height:37px;width:140px;">`,
+      footerHtml: `<p style="margin:0 0 4px;color:${SOFT};font-size:12.5px;line-height:1.5;">Finvry · The OS for every founder</p><p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://finvry.com" style="color:${BLUE};text-decoration:none;">finvry.com</a></p>`,
       smallprint: "You're receiving this because you have access to Finvry."
     }
   }
