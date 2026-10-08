@@ -99,6 +99,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 
       <div class="sb-foot">
         <div v-if="me" class="sb-user" :title="me.email"><span class="av me">{{ me.email.slice(0, 1).toUpperCase() }}</span><span class="sb-label em">{{ me.email }}</span></div>
+        <a class="sb-link" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="inbox" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
         <button type="button" class="sb-link" title="Sign out" @click="signOut"><AppIcon name="logout" class="sb-icon" /><span class="sb-label">Sign out</span></button>
         <button type="button" class="sb-collapse" :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="collapsed = !collapsed"><AppIcon :name="collapsed ? 'right' : 'left'" /></button>
       </div>

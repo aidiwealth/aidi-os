@@ -40,6 +40,7 @@ async function tokenCall(body: Record<string, string>) {
     if ((!res || res.status >= 500) && attempt < 2) { await new Promise((r) => setTimeout(r, 1500)); continue }
     if (!res) throw apiError('quickbooks_unavailable', 'QuickBooks could not be reached. Please try again in a moment.', 503)
     const j = await res.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number; x_refresh_token_expires_in?: number; error?: string; error_description?: string }
+    if (!res.ok || !j.access_token) console.error('[quickbooks]', JSON.stringify({ op: 'token:' + body.grant_type, status: res.status, tid: res.headers.get('intuit_tid'), error: j.error ?? null }))
     if (j.error === 'invalid_grant') throw apiError('quickbooks_reconnect', 'Your QuickBooks connection has expired or was revoked. Reconnect QuickBooks to continue.', 401)
     if (!res.ok || !j.access_token) throw apiError('quickbooks_auth', 'QuickBooks sign-in failed: ' + (j.error_description ?? j.error ?? 'HTTP ' + res.status), 502)
     return j as Required<Pick<typeof j, 'access_token' | 'refresh_token' | 'expires_in' | 'x_refresh_token_expires_in'>>
@@ -47,6 +48,13 @@ async function tokenCall(body: Record<string, string>) {
 }
 export const qbExchange = (code: string, origin: string) => tokenCall({ grant_type: 'authorization_code', code, redirect_uri: qbRedirect(origin) })
 interface Conn { id: string; realm_id: string; access_enc: string; refresh_enc: string; expires_at: string }
+// Every QuickBooks error is logged (server logs) and the last 20 are kept on the connection, with Intuit's
+// intuit_tid so Intuit support can trace a request.
+async function logQb(c: Conn | null, e: { op: string; status?: number; tid?: string | null; message: string }) {
+  const row = { at: new Date().toISOString(), ...e }
+  console.error('[quickbooks]', JSON.stringify({ realm: c?.realm_id ?? null, ...row }))
+  if (c) await db().query("UPDATE financials.connections SET settings = jsonb_set(settings, '{errors}', (SELECT coalesce(jsonb_agg(x), '[]'::jsonb) FROM (SELECT x FROM jsonb_array_elements(coalesce(settings->'errors', '[]'::jsonb) || jsonb_build_array($2::jsonb)) AS x ORDER BY x->>'at' DESC LIMIT 20) s)) WHERE id = $1", [c.id, JSON.stringify(row)]).catch(() => {})
+}
 async function markReconnect(c: Conn) { await db().query("UPDATE financials.connections SET settings = settings || '{\"needs_reconnect\": true}'::jsonb, updated_at = now() WHERE id = $1", [c.id]).catch(() => {}) }
 // Access tokens last an hour: refreshed when within a minute of expiry (or when QuickBooks rejects one); each refresh
 // stores the new refresh token. An expired or revoked refresh token marks the connection as needing reconnect.
@@ -63,9 +71,14 @@ export async function qbGet<T = any>(c: Conn, path: string): Promise<T> {
   const url = qbApiBase() + '/v3/company/' + c.realm_id + path + (path.includes('?') ? '&' : '?') + 'minorversion=75'
   let res = await fetch(url, { headers: { authorization: 'Bearer ' + await qbToken(c), accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
   if (res.status === 401) res = await fetch(url, { headers: { authorization: 'Bearer ' + await qbToken(c, true), accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
-  if (res.status === 401) { await markReconnect(c); throw apiError('quickbooks_reconnect', 'QuickBooks no longer accepts this connection. Reconnect QuickBooks to continue.', 401) }
-  const j = await res.json().catch(() => ({})) as T & { Fault?: { Error?: { Message?: string; Detail?: string }[] } }
-  if (!res.ok) throw apiError('quickbooks_error', 'QuickBooks: ' + (j.Fault?.Error?.[0]?.Detail ?? j.Fault?.Error?.[0]?.Message ?? 'HTTP ' + res.status), 502)
+  const tid = res.headers.get('intuit_tid')
+  if (res.status === 401) { await logQb(c, { op: 'GET ' + path.split('?')[0], status: 401, tid, message: 'Unauthorized after refresh' }); await markReconnect(c); throw apiError('quickbooks_reconnect', 'QuickBooks no longer accepts this connection. Reconnect QuickBooks to continue.', 401) }
+  const j = await res.json().catch(() => ({})) as T & { Fault?: { type?: string; Error?: { Message?: string; Detail?: string; code?: string }[] } }
+  if (!res.ok || j.Fault) {
+    const m = j.Fault?.Error?.[0]?.Detail ?? j.Fault?.Error?.[0]?.Message ?? 'HTTP ' + res.status
+    await logQb(c, { op: 'GET ' + path.split('?')[0], status: res.status, tid, message: (j.Fault?.type ? j.Fault.type + ': ' : '') + m })
+    throw apiError('quickbooks_error', 'QuickBooks: ' + m + (tid ? ' (reference ' + tid + ')' : ''), 502)
+  }
   return j
 }
 export async function qbRevoke(c: Conn) { try { await fetch((await qbEndpoints()).revocation_endpoint, { method: 'POST', headers: { authorization: basic(), 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ token: decryptText(c.refresh_enc) }), signal: AbortSignal.timeout(10000) }) } catch { /* best effort */ } }
