@@ -1,11 +1,11 @@
 <script setup lang="ts">
-useHead({ title: 'Invoices & payments' })
-interface I { id: string; number: string; currency: string; amount: string; status: string; issue_date: string; due_date: string; paid_at: string | null; paid_via: string | null; company: string | null; overdue: boolean; summary: string; link: string }
+useHead({ title: 'Billing' })
+interface I { id: string; number: string; currency: string; amount: string; status: string; issue_date: string; due_date: string; paid_at: string | null; paid_via: string | null; company: string | null; overdue: boolean; summary: string; link: string; job_id: string | null; job: string | null; tax_amount: string }
 const { data } = await usePortalFetch<I[]>('/api/portal/invoices')
 const unpaid = computed(() => (data.value ?? []).filter((i) => i.status === 'sent'))
 const paid = computed(() => (data.value ?? []).filter((i) => i.status === 'paid'))
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
-const VIA: Record<string, string> = { stripe: 'Card', paystack: 'Paystack', manual: 'Bank transfer' }
+const VIA: Record<string, string> = { stripe: 'Card', paystack: 'Paystack', manual: 'Bank transfer', wallet: 'Wallet' }
 const { data: wal, refresh: rwal } = await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
 const paying = ref(''); const pmsg = ref('')
 async function payWallet(id: string) { paying.value = id; pmsg.value = ''; try { await $fetch('/api/portal/invoices/' + id + '/pay-wallet', { method: 'POST' }); await refreshNuxtData('portal:/api/portal/invoices'); await rwal() } catch (e) { pmsg.value = portalErr(e) } finally { paying.value = '' } }
@@ -13,14 +13,15 @@ async function payWallet(id: string) { paying.value = id; pmsg.value = ''; try {
 <template>
   <section v-if="data">
     <ClientTabs />
-    <h1>Invoices &amp; payments</h1>
-    <h2>To pay</h2><p v-if="wal" class="wb">Wallet balance: <b><Money :value="wal.balance_minor / 100" :currency="wal.currency" /></b> · <NuxtLink to="/wallet">Top up</NuxtLink></p><p v-if="pmsg" class="error">{{ pmsg }}</p>
-    <div class="box"><table v-if="unpaid.length"><tbody><tr v-for="i in unpaid" :key="i.id"><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}{{ i.company ? ' · ' + i.company : '' }}</span></td>
+    <BillingTabs />
+    <h1>Invoices</h1>
+    <h2>To pay</h2><p v-if="wal" class="wb">Wallet balance: <b><Money :value="wal.balance_minor / 100" :currency="wal.currency" /></b> · <NuxtLink to="/wallet">Top up</NuxtLink> · invoices in {{ wal.currency }} can be paid from it</p><p v-if="pmsg" class="error">{{ pmsg }}</p>
+    <div class="box"><table v-if="unpaid.length"><tbody><tr v-for="i in unpaid" :key="i.id"><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}{{ i.company ? ' · ' + i.company : '' }}</span><NuxtLink v-if="i.job_id" :to="'/client/jobs/' + i.job_id" class="jl">For: {{ i.job }}</NuxtLink></td>
       <td><span class="chip" :class="{ over: i.overdue }">{{ i.overdue ? 'Overdue · ' : 'Due ' }}{{ day(i.due_date) }}</span></td><td class="n"><b><Money :value="i.amount" :currency="i.currency" /></b></td><td class="n"><button v-if="wal && wal.currency === i.currency && wal.balance_minor >= Number(i.amount) * 100" class="btn" type="button" :disabled="!!paying" @click="payWallet(i.id)">{{ paying === i.id ? 'Paying…' : 'Pay from wallet' }}</button> <a :href="i.link" class="btn secondary">View &amp; pay</a></td></tr></tbody></table>
       <EmptyState v-else icon="billing" title="Nothing to pay" text="You are all settled. Thank you." /></div>
     <h2>Payments made</h2>
     <div class="box"><table v-if="paid.length"><thead><tr><th>Date</th><th>Invoice</th><th>Paid by</th><th class="n">Amount</th><th /></tr></thead>
-      <tbody><tr v-for="i in paid" :key="i.id"><td class="dt">{{ i.paid_at ? day(i.paid_at) : '—' }}</td><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}</span></td><td>{{ VIA[i.paid_via ?? ''] ?? '—' }}</td>
+      <tbody><tr v-for="i in paid" :key="i.id"><td class="dt">{{ i.paid_at ? day(i.paid_at) : '—' }}</td><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}</span><NuxtLink v-if="i.job_id" :to="'/client/jobs/' + i.job_id" class="jl">For: {{ i.job }}</NuxtLink></td><td>{{ VIA[i.paid_via ?? ''] ?? '—' }}</td>
         <td class="n pos"><Money :value="i.amount" :currency="i.currency" /></td><td class="n"><a :href="i.link" class="link">Receipt</a></td></tr></tbody></table>
       <EmptyState v-else icon="wallet" title="No payments yet" /></div>
   </section>
@@ -31,5 +32,6 @@ th { text-align: left; font-weight: 400; font-size: 13px; color: var(--c-muted);
 .m { font-family: ui-monospace, Menlo, monospace; font-weight: 500; } .s { display: block; font-size: 12.5px; color: var(--c-muted); } .n { text-align: right; white-space: nowrap; } .pos { color: var(--c-ok); } .dt { white-space: nowrap; color: var(--c-ink-soft); }
 .chip { font-size: 13px; background: var(--c-paper-2); padding: 4px 10px; white-space: nowrap; } .chip.over { color: var(--c-danger); background: rgba(180,35,24,.08); }
 a.btn { text-decoration: none; } .link { color: var(--c-blue-deep); } .none { padding: 18px; color: var(--c-muted); margin: 0; }
+.jl { display: block; font-size: 12.5px; color: var(--c-blue-deep); text-decoration: none; margin-top: 2px; }
 .wb { font-size: 13.5px; color: var(--c-ink-soft); margin: -4px 0 10px; } .error { color: var(--c-danger); }
 </style>

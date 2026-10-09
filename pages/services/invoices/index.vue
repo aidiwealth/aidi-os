@@ -1,6 +1,6 @@
 <script setup lang="ts">
 useHead({ title: 'Invoices' })
-interface I { id: string; number: string; client_id: string; client: string; company: string | null; currency: string; amount: string; status: string; issue_date: string; due_date: string; overdue: boolean }
+interface I { id: string; number: string; client_id: string; client: string; company: string | null; currency: string; amount: string; status: string; issue_date: string; due_date: string; overdue: boolean; job_id: string | null; job: string | null; paid_via: string | null; country: string | null; tax_amount: string }
 const { data } = await useFetch<{ invoices: I[]; kpis: { currency: string; outstanding: number; overdue: number; paid30: number }[] }>('/api/services/invoices')
 const filter = ref<'all' | 'unpaid' | 'overdue' | 'paid'>('all')
 const shown = computed(() => (data.value?.invoices ?? []).filter((i) => filter.value === 'all' || (filter.value === 'unpaid' ? i.status === 'sent' : filter.value === 'overdue' ? i.overdue : i.status === 'paid')))
@@ -11,16 +11,17 @@ const kpis = computed(() => (data.value?.kpis ?? []).filter((k) => k.currency ==
 <template>
   <section v-if="data">
     <CsNav />
+    <CsBillingTabs />
     <div class="head"><h1>Invoices</h1><NuxtLink to="/services/invoices/new" class="btn">New invoice</NuxtLink></div>
     <div class="kpis"><div v-for="k in kpis" :key="k.currency" class="kpi"><span>Outstanding ({{ k.currency }})</span><b>{{ money(k.outstanding, k.currency) }}</b><em :class="{ error: k.overdue }">{{ money(k.overdue, k.currency) }} overdue · {{ money(k.paid30, k.currency) }} paid in 30 days</em></div></div>
     <div v-if="data.invoices.length" class="card donut"><DonutChart title="Invoices by status" total-label="Invoices" :segments="['sent', 'paid', 'draft', 'void'].map((s) => ({ label: s === 'sent' ? 'Unpaid' : s[0]!.toUpperCase() + s.slice(1), value: data!.invoices.filter((i) => i.status === s).length }))" /></div>
     <div class="filters"><button v-for="f in (['all', 'unpaid', 'overdue', 'paid'] as const)" :key="f" :class="{ on: filter === f }" @click="filter = f">{{ f[0]!.toUpperCase() + f.slice(1) }}</button></div>
     <table class="table">
-      <thead><tr><th>Invoice</th><th>Client</th><th>Issued</th><th>Due</th><th class="n">Amount</th><th>Status</th></tr></thead>
+      <thead><tr><th>Invoice</th><th>Client</th><th>Job</th><th>Issued</th><th>Due</th><th class="n">Amount</th><th>Status</th></tr></thead>
       <tbody><tr v-for="i in shown" :key="i.id">
         <td><NuxtLink :to="'/services/invoices/' + i.id" class="co">{{ i.number }}</NuxtLink></td>
-        <td><NuxtLink :to="'/services/clients/' + i.client_id">{{ i.client }}</NuxtLink><span v-if="i.company" class="sub">{{ i.company }}</span></td>
-        <td>{{ i.issue_date }}</td><td>{{ i.due_date }}</td><td class="n">{{ money(i.amount, i.currency) }}</td><td><span class="st" :class="i.overdue ? 'overdue' : i.status">{{ i.overdue ? 'overdue' : i.status }}</span></td>
+        <td><NuxtLink :to="'/services/clients/' + i.client_id">{{ i.client }}</NuxtLink><span v-if="i.company" class="sub">{{ i.company }}</span></td><td><NuxtLink v-if="i.job_id" :to="'/services/' + i.job_id">{{ i.job }}</NuxtLink><span v-else class="sub">—</span></td>
+        <td>{{ i.issue_date }}</td><td>{{ i.due_date }}</td><td class="n">{{ money(i.amount, i.currency) }}<span v-if="Number(i.tax_amount)" class="sub">incl. VAT {{ money(i.tax_amount, i.currency) }}</span></td><td><span class="st" :class="i.overdue ? 'overdue' : i.status">{{ i.overdue ? 'overdue' : i.status }}</span><span v-if="i.status === 'paid' && i.paid_via" class="sub">{{ i.paid_via === 'wallet' ? 'from wallet' : i.paid_via === 'manual' ? 'by transfer' : 'online' }}</span></td>
       </tr></tbody>
     </table>
     <p v-if="!shown.length" class="muted">No invoices here.</p>

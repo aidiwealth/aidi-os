@@ -28,9 +28,10 @@ export default defineEventHandler(async (event) => {
   const pkg = d.entity_type === 'llc' ? cat.llc : cat.inc
   if (!pkg) throw apiError('unavailable', 'Online formation is not available yet. Please contact us.')
   const picked = cat.addons.filter((i) => d.addons.includes(i.code))
-  const lines = [{ description: pkg.name + ' (' + d.state + ')', quantity: 1, unit_amount: Number(pkg.price) }, ...picked.map((i) => ({ description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: addonQty(i), unit_amount: Number(i.price) }))]
+  const raw = [{ description: pkg.name + ' (' + d.state + ')', quantity: 1, unit_amount: Number(pkg.price) }, ...picked.map((i) => ({ description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: addonQty(i), unit_amount: Number(i.price) }))]
     .map((l) => ({ ...l, amount: Math.round(l.quantity * l.unit_amount * 100) / 100 }))
-  const amount = Math.round(lines.reduce((t, l) => t + l.amount, 0) * 100) / 100
+  const tx = await applyTax(raw, 'US', 'services')
+  const lines = tx.lines, amount = tx.amount
   const settings = await csBilling()
   const email = d.contact.email.toLowerCase()
   const virtual = picked.some((i) => i.code === 'virtual_office' || i.code === 'de_mailbox')
@@ -50,10 +51,10 @@ export default defineEventHandler(async (event) => {
     for (const m of d.members) await client.query("INSERT INTO services.people (client_id, company_id, name, email, role, ownership_pct, address, nationality) VALUES ($1,$2,$3,$4,'owner',$5,$6,$7)", [clientId, co.rows[0]!.id, m.name, m.email?.toLowerCase() ?? null, m.ownership, m.address || null, m.country || null])
     const job = await client.query<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status) VALUES ($1,$2,'company_formation',$3,$4,'new') RETURNING id", [clientId, co.rows[0]!.id, 'Form ' + names[0] + ' (' + d.state + ')', summary])
     const inv = await client.query<{ id: string; number: string }>(
-      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at)
+      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at, country, subtotal, tax_label, tax_rate, tax_amount)
        VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT count(*) FROM services.invoices WHERE issue_date >= date_trunc('year', current_date)) + 1)::text, 4, '0'),
-               $2,$3,$4,'us','USD', current_date + 7, $5, $6, $7, $8, 'sent', now()) RETURNING id, number`,
-      [settings.prefix, clientId, co.rows[0]!.id, job.rows[0]!.id, JSON.stringify(lines), amount, JSON.stringify({ name: d.contact.name, email }), JSON.stringify({ ...settings.us, note_top: settings.note_top, note_bottom: settings.note_bottom })])
+               $2,$3,$4,'us','USD', current_date + 7, $5, $6, $7, $8, 'sent', now(), 'US', $9, $10, $11, $12) RETURNING id, number`,
+      [settings.prefix, clientId, co.rows[0]!.id, job.rows[0]!.id, JSON.stringify(lines), amount, JSON.stringify({ name: d.contact.name, email }), JSON.stringify({ ...settings.us, note_top: settings.note_top, note_bottom: settings.note_bottom }), tx.subtotal, tx.tax_label, tx.tax_rate, tx.tax_amount])
     await client.query('COMMIT')
     ids = { client: clientId, company: co.rows[0]!.id, job: job.rows[0]!.id, invoice: inv.rows[0]!.id, number: inv.rows[0]!.number }
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }

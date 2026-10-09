@@ -34,13 +34,14 @@ export default defineEventHandler(async (event) => {
   if (priced.length) {
     const settings = await csBilling()
     const currency = priced[0]!.currency, region = currency === 'NGN' ? 'ng' : 'us'
-    const lines = priced.filter((i) => i.currency === currency).map((i) => { const qty = i.billing === 'monthly' ? 12 : 1, unit = Number(i.price); return { code: i.code, description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: qty, unit_amount: unit, amount: Math.round(qty * unit * 100) / 100 } })
-    const amount = Math.round(lines.reduce((t, l) => t + l.amount, 0) * 100) / 100
+    const raw = priced.filter((i) => i.currency === currency).map((i) => { const qty = i.billing === 'monthly' ? 12 : 1, unit = Number(i.price); return { code: i.code, description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: qty, unit_amount: unit, amount: Math.round(qty * unit * 100) / 100 } })
+    const tx = await applyTax(raw, taxCountry({ region, currency }), 'services')
+    const lines = tx.lines, amount = tx.amount
     const inv = await one<{ id: string }>(
-      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at)
+      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at, country, subtotal, tax_label, tax_rate, tax_amount)
        VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT count(*) FROM services.invoices WHERE issue_date >= date_trunc('year', current_date)) + 1)::text, 4, '0'),
-               $2,$3,$4,$5,$6, current_date + 7, $7, $8, $9, $10, 'sent', now()) RETURNING id`,
-      [settings.prefix, u.clientId, companyId, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom })])
+               $2,$3,$4,$5,$6, current_date + 7, $7, $8, $9, $10, 'sent', now(), $11, $12, $13, $14, $15) RETURNING id`,
+      [settings.prefix, u.clientId, companyId, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom }), tx.country, tx.subtotal, tx.tax_label, tx.tax_rate, tx.tax_amount])
     invoice = await billUrl(inv.id); invoiceId = inv.id
   }
   await filingsOrdered(u.clientId, items.map((i) => i.code)).catch((e) => console.error('[order] compliance', e))

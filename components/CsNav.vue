@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const tabs = [{ to: '/services', label: 'Jobs' }, { to: '/services/clients', label: 'Clients' }, { to: '/services/invoices', label: 'Invoices' }, { to: '/services/settings', label: 'Prices & settings' }]
+const tabs = [{ to: '/services', label: 'Jobs' }, { to: '/services/clients', label: 'Clients' }, { to: '/services/invoices', label: 'Billing' }, { to: '/services/settings', label: 'Prices & settings' }]
 const on = (to: string) => (to === '/services' ? route.path === '/services' || /^\/services\/[0-9a-f-]{36}$/.test(route.path) : route.path.startsWith(to))
 </script>
 <template><nav class="csnav"><NuxtLink v-for="t in tabs" :key="t.to" :to="t.to" :class="{ on: on(t.to) }">{{ t.label }}</NuxtLink></nav></template>

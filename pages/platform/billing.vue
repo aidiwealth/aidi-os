@@ -45,6 +45,8 @@ async function newInv(s?: Sub) {
 }
 watch(() => inf.organization_id, (v, old) => { if (old !== undefined && v && form.value === 'inv' && v !== old) newInv((data.value?.subscriptions ?? []).find((x) => x.organization_id === v && x.status !== 'ended') ?? undefined) })
 const total = computed(() => inf.lines.reduce((t, l) => t + Number(l.quantity || 0) * Number(l.unit_amount || 0), 0))
+const { data: rates } = await useFetch<{ country: string; label: string; rate: number; applies_to: string[] }[]>('/api/tax/rates', { key: 'tax-rates-pub', default: () => [] })
+const vat = computed(() => { const r = (rates.value ?? []).find((x) => x.country === (inf.currency === 'NGN' ? 'NG' : 'US') && x.applies_to.includes('platform')); return r && r.rate > 0 ? { label: r.label + ' (' + r.rate + '%)', amount: Math.round(total.value * r.rate) / 100 } : null })
 const saveInv = () => run(async () => { const r = await $fetch<{ number: string; emailed: boolean }>('/api/platform/invoices', { method: 'POST', body: inf }); form.value = ''; tab.value = 'inv'; ok.value = r.number + (inf.send ? (r.emailed ? ' created and emailed.' : ' created; the email did not send.') : ' saved as a draft.') }, '')
 const act = (i: Inv, action: 'send' | 'mark_paid' | 'void') => run(async () => {
   if (action === 'void' && !confirm('Void invoice ' + i.number + '?')) throw new Error('cancel')
@@ -100,7 +102,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
       <div class="wide lines">
         <div class="lh"><span>Description</span><span>Qty</span><span>Unit price ({{ inf.currency }})</span><span /></div>
         <div v-for="(l, i) in inf.lines" :key="i" class="lr"><input v-model="l.description" required maxlength="300"><input v-model.number="l.quantity" type="number" min="0" step="any"><input v-model="l.unit_amount" inputmode="decimal" required><button type="button" class="link" :disabled="inf.lines.length === 1" @click="inf.lines.splice(i, 1)">Remove</button></div>
-        <div class="lf"><button type="button" class="link" @click="inf.lines.push({ description: '', quantity: 1, unit_amount: '' })">+ Add line</button><b>Total {{ cur(total, inf.currency) }}</b></div>
+        <div class="lf"><button type="button" class="link" @click="inf.lines.push({ description: '', quantity: 1, unit_amount: '' })">+ Add line</button><b><template v-if="vat"><small>Subtotal {{ cur(total, inf.currency) }} · {{ vat.label }} {{ cur(vat.amount, inf.currency) }} · </small></template>Total {{ cur(total + (vat?.amount ?? 0), inf.currency) }}</b></div>
       </div>
       <label class="chk wide"><input v-model="inf.send" type="checkbox"> Email it to the billing contact now{{ data.providers.stripe || data.providers.paystack ? ', with a link to pay online' : '' }}</label>
       <div class="wide row"><button class="btn" type="submit" :disabled="busy">{{ inf.send ? 'Create and send' : 'Save draft' }}</button><button class="btn secondary" type="button" @click="form = ''">Cancel</button></div>

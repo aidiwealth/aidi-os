@@ -2,7 +2,7 @@
 // Wallet: balance card, card top-up, money movement by month, transactions with export.
 useHead({ title: 'Wallet' })
 interface Bank { bank: string; account_number: string; account_name: string; routing?: string; swift?: string }
-interface D { transfer: { mode: 'monnify'; account: { bank_name: string; account_number: string; account_name: string; accounts: { bankName: string; accountNumber: string; accountName: string }[] } | null } | { mode: 'manual'; bank: Bank } | null; reference: string; card: { brand: string | null; last4: string | null } | null; subscriptions: { id: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; next_charge_at: string; status: string; failures: number; last_error: string | null }[]; company: string; plan: string; currency: string; balance_minor: number; min_minor: number; ledger: { id: string; kind: string; amount_minor: number; balance_after_minor: number; category: string; reason: string; date: string }[]; pending: number; canTopup: boolean; provider: string }
+interface D { transfer: { mode: 'monnify'; account: { bank_name: string; account_number: string; account_name: string; accounts: { bankName: string; accountNumber: string; accountName: string }[] } | null } | { mode: 'manual'; bank: Bank } | null; reference: string; card: { brand: string | null; last4: string | null } | null; subscriptions: { id: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; next_charge_at: string; status: string; failures: number; last_error: string | null }[]; company: string; plan: string; currency: string; balance_minor: number; min_minor: number; ledger: { id: string; reference?: string | null; kind: string; amount_minor: number; balance_after_minor: number; category: string; reason: string; date: string }[]; pending: number; canTopup: boolean; provider: string }
 const route = useRoute()
 const { data, refresh } = await useFetch<D>('/api/wallet', { query: { ref: route.query.ref ?? '' } })
 const tab = ref<'transfer' | 'card'>('card')
@@ -26,11 +26,14 @@ async function topup() { busy.value = true; msg.value = ''; try { const r = awai
 onMounted(() => { if (returned.value && data.value?.pending) setTimeout(() => refresh(), 4000) })
 const rows = computed(() => (data.value?.ledger ?? []).map((l) => ({ date: l.date, description: l.reason, reference: null, amount: (l.kind === 'credit' ? 1 : -1) * l.amount_minor / 100, balance: l.balance_after_minor / 100 })))
 const lastMove = computed(() => { const l = data.value?.ledger[0]; return l ? 'Last movement ' + new Date(l.date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'No movements yet' })
+const { data: me } = await useFetch<{ org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
+const invoicePays = computed(() => (data.value?.ledger ?? []).filter((l) => l.kind === 'debit' && (l.reference ?? '').startsWith('invoice:')).slice(0, 8))
 const LABEL: Record<string, string> = { topup: 'Top-ups', admin_credit: 'Credits from Finvry', refund: 'Refunds', service: 'Services', subscription: 'Subscription', admin_debit: 'Adjustments' }
 const byCat = computed(() => { const m = new Map<string, number>(); for (const l of data.value?.ledger ?? []) if (l.kind === 'debit') m.set(l.category, (m.get(l.category) ?? 0) + l.amount_minor / 100); return [...m.entries()].map(([k, v]) => ({ label: LABEL[k] ?? k, value: v })) })
 </script>
 <template>
   <section v-if="data">
+    <template v-if="me?.org?.kind === 'company'"><ClientTabs /><BillingTabs /></template>
     <p class="label">Company</p><h1>Wallet</h1>
     <p class="lead">Top up once and pay for Aidi services, filings and renewals from your balance. Every movement is listed below.</p>
     <p v-if="returned && data.pending" class="card note">Payment received; we're confirming it with {{ data.provider }}. Your balance updates in a moment.</p>
@@ -74,6 +77,7 @@ const byCat = computed(() => { const m = new Map<string, number>(); for (const l
     </AppModal>
     <MoneyFlow v-if="data.ledger.length" class="flow" :rows="rows" :currency="data.currency" />
     <div v-if="byCat.length" class="card mix"><DonutChart title="Where your wallet went" total-label="Spent" :currency="data.currency" :segments="byCat" /></div>
+    <div v-if="invoicePays.length" class="card ip"><b>Invoices paid from this wallet</b><div v-for="l in invoicePays" :key="l.id" class="ipr"><span>{{ l.date }} · {{ l.reason }}</span><b>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency }).format(l.amount_minor / 100) }}</b></div><NuxtLink to="/client/invoices">See all invoices →</NuxtLink></div>
     <TxnTable :rows="rows" :currency="data.currency" title="Transactions"><template #empty>No transactions yet. Add money to get started.</template></TxnTable>
   </section>
 </template>
@@ -87,4 +91,5 @@ label.label { display: flex; flex-direction: column; gap: 6px; } input { font: i
 .cp { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-size: 12px; color: var(--c-blue-deep); cursor: pointer; } .kyc { display: flex; gap: 8px; } .kyc select { font: inherit; padding: 8px; border: 1px solid var(--c-rule-strong); } .kyc input { flex: 1; } .okm { color: var(--c-ok); font-size: 13.5px; margin: 0; }
 .subs { margin-bottom: 22px; } .subs h3 { margin: 0 0 4px; } .sr { display: grid; grid-template-columns: 1fr auto 220px; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; align-items: center; } .sr em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .sr span:last-child { text-align: right; color: var(--c-ink-soft); font-size: 13px; } .nt { display: flex; flex-direction: column; gap: 12px; } .mix { max-width: 640px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
+.ip { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; font-size: 14px; } .ipr { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--c-rule); padding: 4px 0; } .ip a { color: var(--c-blue-deep); font-size: 13px; }
 </style>

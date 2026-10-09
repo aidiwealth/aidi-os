@@ -77,7 +77,7 @@ export default defineEventHandler(async (event) => {
     } else {
       const kind = z.enum(['subscription', 'advisory', 'referral']).parse(s('kind'))
       const amt = n('amount'); if (amt == null || amt < 0) throw apiError('invalid', 'Enter the amount.')
-      await db().query('INSERT INTO wm.fees (client_id, firm_id, kind, period, amount, currency, entity_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, s('firm_id') || null, kind, s('period', 40) || null, amt, s('currency') || (c.country === 'NG' ? 'NGN' : 'USD'), c.entity_id, s('note', 500) || null])
+      const nf = await one<{ id: string }>('INSERT INTO wm.fees (client_id, firm_id, kind, period, amount, currency, entity_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [id, s('firm_id') || null, kind, s('period', 40) || null, amt, s('currency') || (c.country === 'NG' ? 'NGN' : 'USD'), c.entity_id, s('note', 500) || null]); await taxFee(nf.id)
     }
   } else throw apiError('invalid', 'Unknown action.')
   await audit({ event, actorUserId: user.userId, action: 'wm.client_' + a, objectType: 'wm_client', objectId: id })

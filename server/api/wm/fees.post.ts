@@ -9,7 +9,8 @@ export default defineEventHandler(async (event) => {
   else {
     if (!d.kind || d.amount == null) throw apiError('invalid', 'Add the fee type and amount.')
     const ent = d.client_id ? (await db().query<{ entity_id: string | null }>('SELECT entity_id FROM wm.clients WHERE id = $1', [d.client_id])).rows[0]?.entity_id : d.firm_id ? await wmEntityFor(((await db().query<{ country: string | null }>('SELECT country FROM wm.firms WHERE id = $1', [d.firm_id])).rows[0]?.country ?? 'US') as 'US' | 'NG') : null
-    await db().query('INSERT INTO wm.fees (client_id, firm_id, kind, period, amount, currency, entity_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [d.client_id ?? null, d.firm_id ?? null, d.kind, d.period || null, d.amount, d.currency ?? 'USD', ent ?? null, d.note || null])
+    const nf = await one<{ id: string }>('INSERT INTO wm.fees (client_id, firm_id, kind, period, amount, currency, entity_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [d.client_id ?? null, d.firm_id ?? null, d.kind, d.period || null, d.amount, d.currency ?? 'USD', ent ?? null, d.note || null])
+    await taxFee(nf.id)
   }
   await audit({ event, actorUserId: user.userId, action: 'wm.fee', objectType: 'wm_fee', objectId: d.fee_id })
   return { ok: true }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
-interface D { job: { id: string; title: string; status: string; due_date: string | null; company: string | null }; events: { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; from_client: boolean; document_id: string | null; document: string | null }[] }
+interface D { invoices: { id: string; number: string; currency: string; amount: string; status: string; paid_via: string | null; overdue: boolean; link: string }[]; job: { id: string; title: string; status: string; due_date: string | null; company: string | null }; events: { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; from_client: boolean; document_id: string | null; document: string | null }[] }
 const { data, refresh } = await usePortalFetch<D>('/api/portal/jobs/' + id)
 useHead({ title: () => data.value?.job.title ?? 'Request' })
 const ST: Record<string, string> = { new: 'Received', in_progress: 'In progress', waiting_client: 'Waiting on you', completed: 'Completed', cancelled: 'Cancelled' }
@@ -23,6 +23,7 @@ async function delJob() { if (!data.value || !confirm('Delete "' + data.value.jo
     <NuxtLink to="/client" class="back">← Home</NuxtLink>
     <div class="hd"><div><h1>{{ data.job.title }}</h1><p class="mut">{{ data.job.company }}{{ data.job.due_date ? ' · due ' + data.job.due_date : '' }}</p></div><div class="ja"><span class="tag" :class="data.job.status">{{ ST[data.job.status] }}</span><button v-if="data.job.status !== 'completed'" type="button" class="del" @click="delJob">Delete request</button></div></div>
     <IntakeForm :job-id="data.job.id" />
+    <div class="card jb"><b>Billing</b><template v-if="data.invoices.length"><div v-for="i in data.invoices" :key="i.id" class="jbi"><a :href="i.link">{{ i.number }}</a><Money :value="i.amount" :currency="i.currency" /><span :class="i.overdue ? 'over' : i.status">{{ i.status === 'paid' ? 'Paid' + (i.paid_via === 'wallet' ? ' from wallet' : '') : i.overdue ? 'Overdue' : 'To pay' }}</span><NuxtLink v-if="i.status === 'sent'" to="/client/invoices">Pay</NuxtLink></div></template><span v-else class="mut">No invoice for this job yet.</span><NuxtLink to="/client/jobs" class="all">All jobs &amp; billing →</NuxtLink></div>
     <p v-if="data.job.status === 'waiting_client'" class="card need">We are waiting on you. Please read the latest message below and upload what is needed.</p>
     <div class="grid">
       <div class="card tl"><h2>Updates</h2>
@@ -50,4 +51,5 @@ input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px
 .ok { color: var(--c-ok); margin: 0; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
 .ja { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } .del { background: none; border: 0; color: var(--c-danger); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0; }
+.jb { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 12px 0; font-size: 14px; } .jbi { display: flex; gap: 10px; align-items: center; } .jbi a { color: var(--c-blue-deep); } .jbi .paid { color: var(--c-ok); } .jbi .over { color: var(--c-danger); } .jb .all { margin-left: auto; font-size: 13px; color: var(--c-blue-deep); }
 </style>

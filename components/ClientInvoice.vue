@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A client invoice in the Telroi invoice layout: issuer and number, billed to / period / issued, lines, totals, bank transfer.
 interface Inv { number: string; currency: string; amount: string; issue_date: string; due_date: string; status: string; paid_at: string | null; company?: string | null
-  lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; bill_to: { name: string; email: string; address?: string }
+  lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; bill_to: { name: string; email: string; address?: string }
   issuer: { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string>; note_top?: string; note_bottom?: string }; note: string | null }
 const props = defineProps<{ inv: Inv; payable?: boolean }>()
 defineEmits<{ pay: [] }>()
@@ -25,9 +25,11 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
     </div>
     <p v-if="inv.issuer.note_top" class="note">{{ inv.issuer.note_top }}</p>
     <table class="ln"><thead><tr><th>Description</th><th class="q">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead>
-      <tbody><tr v-for="(l, i) in inv.lines" :key="i"><td>{{ l.description }}</td><td class="q">{{ l.quantity }}</td><td class="n m">{{ money(l.unit_amount) }}</td><td class="n m">{{ money(l.amount) }}</td></tr></tbody></table>
+      <tbody><tr v-for="(l, i) in inv.lines.filter((x) => x.kind !== 'tax')" :key="i"><td>{{ l.description }}</td><td class="q">{{ l.quantity }}</td><td class="n m">{{ money(l.unit_amount) }}</td><td class="n m">{{ money(l.amount) }}</td></tr></tbody></table>
     <div class="tot">
-      <div><span>Subtotal</span><span class="m">{{ money(inv.amount) }}</span></div>
+      <div><span>Subtotal</span><span class="m">{{ money(inv.lines.filter((x) => x.kind !== 'tax').reduce((t, x) => t + Number(x.amount), 0)) }}</span></div>
+      <div v-for="(l, i) in inv.lines.filter((x) => x.kind === 'tax')" :key="'t' + i"><span>{{ l.description }}</span><span class="m">{{ money(l.amount) }}</span></div>
+      <div v-if="inv.lines.some((x) => x.kind === 'tax')"><span><b>Total</b></span><span class="m"><b>{{ money(inv.amount) }}</b></span></div>
       <div v-if="inv.status === 'paid'"><span>Paid</span><span class="m ok">−{{ money(inv.amount) }}</span></div>
       <div class="due"><span>Amount due</span><span class="m">{{ inv.status === 'paid' ? money(0) : money(inv.amount) }}</span></div>
       <button v-if="payable" type="button" class="btn paynow" @click="$emit('pay')">Pay now</button>

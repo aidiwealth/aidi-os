@@ -2,7 +2,8 @@
 const id = useRoute().params.id as string
 interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
-const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[] }>('/api/services/' + id)
+const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[]; invoices: { id: string; number: string; currency: string; amount: string; tax_amount: string; status: string; paid_via: string | null; issue_date: string; overdue: boolean }[]; wallet: { currency: string; balance_minor: number } | null }>('/api/services/' + id)
+const fmtMoney = (v: number | string, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v))
 const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
 const { data: docs } = await useFetch<{ id: string; title: string; sensitivity: string }[]>('/api/documents')
 useHead({ title: () => (data.value?.job.title ?? 'Job') })
@@ -84,6 +85,13 @@ const linkify = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').re
           <p class="muted small">No login for the client. The link shows status and shared items, and lets them reply and upload documents. It works for 90 days.</p>
           <input v-if="link" :value="link" readonly class="linkbox" aria-label="Client link" @focus="($event.target as HTMLInputElement).select()">
         </div>
+        <div class="card bill">
+          <h2>Billing</h2>
+          <div v-for="i in data.invoices" :key="i.id" class="bi"><NuxtLink :to="'/services/invoices/' + i.id"><b>{{ i.number }}</b></NuxtLink><span>{{ fmtMoney(i.amount, i.currency) }}<template v-if="Number(i.tax_amount)"> incl. VAT</template></span><em :class="i.overdue ? 'overdue' : i.status">{{ i.overdue ? 'Overdue' : i.status === 'sent' ? 'Unpaid' : i.status === 'paid' ? 'Paid' + (i.paid_via === 'wallet' ? ' from wallet' : '') : i.status }}</em></div>
+          <p v-if="!data.invoices.length" class="muted small">Not invoiced yet.</p>
+          <p v-if="data.wallet" class="muted small">Client wallet: <b>{{ fmtMoney(data.wallet.balance_minor / 100, data.wallet.currency) }}</b></p>
+          <NuxtLink class="btn secondary" :to="{ path: '/services/invoices/new', query: { client: data.job.client_id, job: data.job.id, company: data.job.company_id ?? undefined } }">Create invoice for this job</NuxtLink>
+        </div>
         <form class="card facts" @submit.prevent="save">
           <h2>Details</h2>
           <label class="label">Owner<select v-model="fields.owner_id"><option value="">No owner</option><option v-for="p in people ?? []" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
@@ -126,4 +134,5 @@ textarea { resize: vertical; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 10px 0 0; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .desc { white-space: pre-wrap; } .desc :deep(a) { color: var(--c-blue-deep); word-break: break-all; }
+.bill { display: flex; flex-direction: column; gap: 8px; } .bill h2 { margin: 0; } .bi { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13.5px; border-bottom: 1px solid var(--c-rule); padding-bottom: 6px; } .bi a { color: var(--c-navy); text-decoration: none; } .bi em { grid-column: 1 / -1; font-style: normal; font-size: 12px; color: var(--c-blue-deep); } .bi em.paid { color: var(--c-ok); } .bi em.overdue { color: var(--c-danger); } .bill a.btn { text-decoration: none; text-align: center; }
 </style>

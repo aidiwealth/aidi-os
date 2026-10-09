@@ -3,9 +3,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 export const wmPayToken = (feeId: string) => feeId + '.' + createHmac('sha256', useRuntimeConfig().jwtSecret as string).update('wmpay:' + feeId).digest('base64url').slice(0, 32)
 export function wmFeeFromToken(t: string): string | null { const [id, sig] = t.split('.'); if (!id || !sig || !/^[0-9a-f-]{36}$/.test(id)) return null; const want = wmPayToken(id).split('.')[1]!; return sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? id : null }
-interface FeeRow { id: string; number: string | null; kind: string; period: string | null; amount: string; currency: string; status: string; paid_on: string | null; due_date: string | null; created_at: string; client: string | null; email: string | null; contact_name: string | null; country: string | null; entity: string | null; entity_address: string | null; firm: string | null; method: string | null }
+interface FeeRow { id: string; number: string | null; kind: string; period: string | null; amount: string; subtotal: string | null; tax_amount: string | null; tax_label: string | null; tax_rate: string | null; currency: string; status: string; paid_on: string | null; due_date: string | null; created_at: string; client: string | null; email: string | null; contact_name: string | null; country: string | null; entity: string | null; entity_address: string | null; firm: string | null; method: string | null }
 async function feeRow(id: string): Promise<FeeRow | undefined> {
-  return (await db().query<FeeRow>(`SELECT f.id, f.number, f.kind, f.period, f.amount::text, f.currency, f.status, to_char(f.paid_on, 'YYYY-MM-DD') AS paid_on, to_char(f.due_date, 'YYYY-MM-DD') AS due_date, to_char(f.created_at, 'YYYY-MM-DD') AS created_at,
+  return (await db().query<FeeRow>(`SELECT f.id, f.number, f.kind, f.period, f.amount::text, f.subtotal::text, f.tax_amount::text, f.tax_label, f.tax_rate::text, f.currency, f.status, to_char(f.paid_on, 'YYYY-MM-DD') AS paid_on, to_char(f.due_date, 'YYYY-MM-DD') AS due_date, to_char(f.created_at, 'YYYY-MM-DD') AS created_at,
       c.name AS client, c.email, c.contact_name, coalesce(c.country, fm.country) AS country, e.name AS entity, e.address AS entity_address, fm.name AS firm, f.method
     FROM wm.fees f LEFT JOIN wm.clients c ON c.id = f.client_id LEFT JOIN wm.firms fm ON fm.id = f.firm_id LEFT JOIN core.entities e ON e.id = coalesce(f.entity_id, c.entity_id) WHERE f.id = $1`, [id])).rows[0]
 }
@@ -15,11 +15,21 @@ async function pdfFor(f: FeeRow, receipt: boolean) {
   const payLine = f.kind === 'advisory' || f.method === 'transfer' ? await bankText(f.country) : 'Pay online: ' + brands().aidi.url + '/wpay/' + wmPayToken(f.id)
   return invoicePdf({ title: receipt ? 'RECEIPT' : 'INVOICE', number: f.number ?? f.id.slice(0, 8), issue_date: receipt ? (f.paid_on ?? f.created_at) : f.created_at, due_date: receipt ? null : f.due_date, status: receipt ? 'paid' : f.status, paid_at: f.paid_on, currency: f.currency,
     issuer: { name: f.entity ?? 'Aidi Wealth', address: f.entity_address ?? undefined }, bill_to: { name: f.client ?? f.firm ?? '', email: f.email ?? undefined },
-    lines: [{ description: (KIND[f.kind] ?? f.kind) + (f.period ? ' · ' + f.period : ''), quantity: 1, unit_amount: Number(f.amount), amount: Number(f.amount) }], amount: Number(f.amount),
+    lines: [{ description: (KIND[f.kind] ?? f.kind) + (f.period ? ' · ' + f.period : ''), quantity: 1, unit_amount: Number(f.subtotal ?? f.amount), amount: Number(f.subtotal ?? f.amount) }, ...(Number(f.tax_amount) > 0 ? [{ description: (f.tax_label ?? 'VAT') + ' (' + Number(f.tax_rate) + '%)', quantity: 1, unit_amount: Number(f.tax_amount), amount: Number(f.tax_amount), kind: 'tax' }] : [])], amount: Number(f.amount),
     note: receipt ? 'Thank you. Payment received' + (f.method ? ' by ' + (f.method === 'transfer' ? 'bank transfer' : f.method) : '') + '.' : f.kind === 'advisory' ? 'Please pay by bank transfer, quoting invoice ' + (f.number ?? '') + '.' : null, payment: receipt ? null : payLine })
+}
+// VAT on a new fee (same rule as every other invoice): the logged amount is the net fee; the fee's amount becomes the
+// total to pay. Runs once per fee.
+export async function taxFee(feeId: string) {
+  const f = (await db().query<{ amount: string; currency: string; country: string | null; subtotal: string | null }>(
+    'SELECT f.amount::text, f.currency, coalesce(c.country, fm.country) AS country, f.subtotal::text FROM wm.fees f LEFT JOIN wm.clients c ON c.id = f.client_id LEFT JOIN wm.firms fm ON fm.id = f.firm_id WHERE f.id = $1', [feeId])).rows[0]
+  if (!f || f.subtotal !== null) return
+  const t = await taxOnAmount(Number(f.amount), taxCountry({ currency: f.currency, country: f.country }), 'wealth')
+  await db().query('UPDATE wm.fees SET country = $2, subtotal = $3, tax_label = $4, tax_rate = $5, tax_amount = $6, amount = $7 WHERE id = $1', [feeId, t.country, t.subtotal, t.tax_label, t.tax_rate, t.tax_amount, t.amount])
 }
 // Number the fee, create its invoice PDF, and email it with the way to pay.
 export async function issueFee(feeId: string, email = true) {
+  await taxFee(feeId)
   let f = await feeRow(feeId); if (!f) throw apiError('not_found', 'Fee not found.', 404)
   if (!f.number) { const n = Number((await db().query<{ n: string }>("SELECT count(*) AS n FROM wm.fees WHERE number IS NOT NULL AND created_at >= date_trunc('year', now())")).rows[0]?.n ?? 0) + 1; await db().query("UPDATE wm.fees SET number = $2, due_date = coalesce(due_date, current_date + 14), method = coalesce(method, CASE WHEN kind = 'advisory' THEN 'transfer' ELSE 'online' END) WHERE id = $1", [feeId, 'AW-' + new Date().getFullYear() + '-' + String(n).padStart(4, '0')]); f = (await feeRow(feeId))! }
   const doc = await storePdf(await pdfFor(f, false), 'Invoice ' + f.number + ' - ' + (f.client ?? f.firm ?? '') + '.pdf', null)

@@ -1,6 +1,6 @@
 // An invoice as a typeset PDF (issuer, bill to, dates, line items, total, status, notes, payment details).
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-export interface InvoicePdf { title?: string; number: string; issue_date: string; due_date?: string | null; status?: string | null; paid_at?: string | null; currency: string; issuer: { name: string; address?: string; email?: string; phone?: string }; bill_to: { name: string; email?: string; address?: string }; lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: number; note?: string | null; payment?: string | null; period?: string | null }
+export interface InvoicePdf { title?: string; number: string; issue_date: string; due_date?: string | null; status?: string | null; paid_at?: string | null; currency: string; issuer: { name: string; address?: string; email?: string; phone?: string }; bill_to: { name: string; email?: string; address?: string }; lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; amount: number; note?: string | null; payment?: string | null; period?: string | null }
 const clean = (s: string) => String(s ?? '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF\n]/g, '')
 export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
   const pdf = await PDFDocument.create(); pdf.setTitle('Invoice ' + clean(inv.number)); pdf.setProducer('Finvry')
@@ -23,14 +23,18 @@ export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
   const cx = [M, W - M - 230, W - M - 140, W - M]
   page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 22, color: rgb(0.93, 0.95, 0.98) })
   text('Description', cx[0]! + 8, y, 9, bold); right('Qty', cx[1]! + 40, y, 9, bold); right('Unit price', cx[2]! + 60, y, 9, bold); right('Amount', cx[3]! - 8, y, 9, bold); y -= 24
-  for (const l of inv.lines ?? []) {
+  const taxLines = (inv.lines ?? []).filter((l) => l.kind === 'tax')
+  for (const l of (inv.lines ?? []).filter((x) => x.kind !== 'tax')) {
     const ls = wrap(l.description, cx[1]! - cx[0]! - 20, 10)
     if (y - ls.length * 13 < M + 120) { page = pdf.addPage([W, H]); y = H - M }
     ls.forEach((s, i) => text(s, cx[0]! + 8, y - i * 13, 10))
     right(String(l.quantity ?? 1), cx[1]! + 40, y, 10); right(money(l.unit_amount ?? l.amount), cx[2]! + 60, y, 10); right(money(l.amount), cx[3]! - 8, y, 10)
     const bottom = y - (ls.length - 1) * 13 - 7; page.drawLine({ start: { x: M, y: bottom }, end: { x: W - M, y: bottom }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) }); y = bottom - 15
   }
-  y -= 10; right('Total', W - M - 120, y, 11, bold); right(money(inv.amount), W - M - 8, y, 13, bold, blue); y -= 30
+  y -= 10
+  if (taxLines.length) { right('Subtotal', W - M - 120, y, 10, reg, mut); right(money(Math.round((inv.amount - taxLines.reduce((t, l) => t + Number(l.amount), 0)) * 100) / 100), W - M - 8, y, 10); y -= 16
+    for (const t of taxLines) { right(t.description, W - M - 120, y, 10, reg, mut); right(money(t.amount), W - M - 8, y, 10); y -= 16 } y -= 4 }
+  right('Total', W - M - 120, y, 11, bold); right(money(inv.amount), W - M - 8, y, 13, bold, blue); y -= 30
   for (const [h, body] of [['Notes', inv.note], ['Payment details', inv.payment]] as [string, string | null | undefined][]) {
     if (!body) continue; if (y < M + 60) { page = pdf.addPage([W, H]); y = H - M }
     text(h.toUpperCase(), M, y, 8, bold, mut); y -= 13; for (const s of wrap(body, W - 2 * M, 9.5)) { text(s, M, y, 9.5); y -= 12.5 } y -= 10

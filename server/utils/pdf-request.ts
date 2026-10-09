@@ -1,6 +1,6 @@
 // Turn what is on screen into a proper PDF: { kind: 'doc', title, company, md } or { kind: 'invoice', invoice }.
 import { z } from 'zod'
-const line = z.object({ description: z.string().max(1000), quantity: z.coerce.number(), unit_amount: z.coerce.number(), amount: z.coerce.number() })
+const line = z.object({ description: z.string().max(1000), quantity: z.coerce.number(), unit_amount: z.coerce.number(), amount: z.coerce.number(), kind: z.string().max(20).optional() })
 const S = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('doc'), title: z.string().trim().min(1).max(200), company: z.string().trim().max(200).default(''), md: z.string().max(300000), filename: z.string().max(150).optional() }),
   z.object({ kind: z.literal('invoice'), filename: z.string().max(150).optional(), invoice: z.object({ number: z.string().max(60), issue_date: z.string().max(40), due_date: z.string().max(40).nullable().optional(), status: z.string().max(30).nullable().optional(), paid_at: z.string().max(40).nullable().optional(), currency: z.string().max(5),

@@ -16,5 +16,7 @@ export default defineEventHandler(async (event) => {
        FROM services.job_events e LEFT JOIN core.users u ON u.id = e.created_by LEFT JOIN core.people p ON p.id = u.person_id
        LEFT JOIN core.documents d ON d.id = e.document_id WHERE e.job_id = $1 ORDER BY e.created_at DESC`, [id.data, levels])
   const companies = await db().query('SELECT id, name FROM services.companies WHERE client_id = $1 ORDER BY name', [(j.rows[0] as { client_id: string }).client_id])
-  return { job: j.rows[0], events: ev.rows, companies: companies.rows }
+  const invoices = (await db().query("SELECT id, number, currency, amount::text, tax_amount::text, status, paid_via, to_char(issue_date, 'YYYY-MM-DD') AS issue_date, (status = 'sent' AND due_date < current_date) AS overdue FROM services.invoices WHERE job_id = $1 ORDER BY issue_date DESC", [id.data])).rows
+  const wallet = await clientWallet((j.rows[0] as { client_id: string }).client_id)
+  return { job: j.rows[0], events: ev.rows, companies: companies.rows, invoices, wallet }
 })

@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
     if (t && t.status === 'pending' && t.provider === 'paystack') { try { const d = await paystackApi<{ status: string } & Parameters<typeof paystackCard>[0]>('transaction/verify/' + encodeURIComponent(ref)); if (d.status === 'success') await walletTopupSucceeded(ref, paystackCard(d)) } catch (err) { console.error('[wallet] verify failed', err) } }
   }
   const w = await walletOf(org.id)
-  const ledger = await db().query("SELECT id, kind, amount_minor::float AS amount_minor, balance_after_minor::float AS balance_after_minor, category, reason, to_char(created_at, 'YYYY-MM-DD') AS date, created_at FROM wallet.ledger ORDER BY created_at DESC LIMIT 300")
+  const ledger = await db().query("SELECT id, kind, amount_minor::float AS amount_minor, balance_after_minor::float AS balance_after_minor, category, reason, reference, to_char(created_at, 'YYYY-MM-DD') AS date, created_at FROM wallet.ledger ORDER BY created_at DESC LIMIT 300")
   const pending = await one<{ n: number }>("SELECT count(*)::int AS n FROM wallet.topups WHERE status = 'pending' AND created_at > now() - interval '1 day'")
   const s = await walletSettings()
   const va = (await db().query('SELECT bank_name, account_number, account_name, accounts FROM wallet.virtual_accounts LIMIT 1')).rows[0] ?? null

@@ -19,6 +19,7 @@ function csv() { const rows = data.value?.ledger ?? []; const esc = (s: string) 
 </script>
 <template>
   <section v-if="data">
+    <CsBillingTabs />
     <div class="hd"><div><p class="label">Finvry console</p><h1>Finance</h1><p class="lead">Every top-up, credit and debit across customer wallets.</p></div><button class="btn" @click="openAdj()">Credit or debit a wallet</button></div>
     <p v-if="ok" class="ok">{{ ok }}</p>
     <div v-for="t in data.totals" :key="t.currency" class="sum"><span class="cur">{{ t.currency }}</span>

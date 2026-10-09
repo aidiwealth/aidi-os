@@ -23,6 +23,7 @@ const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invo
         <template v-if="data.invoice.status === 'draft' || data.invoice.status === 'sent'"><button class="btn" :disabled="busy" @click="act('send')">{{ data.invoice.status === 'draft' ? 'Send to client' : 'Resend' }}</button></template>
       </div>
     </div>
+    <p v-if="data.invoice.job_id || data.invoice.paid_via === 'wallet'" class="lnk noprint"><template v-if="data.invoice.job_id">For job <NuxtLink :to="'/services/' + data.invoice.job_id">{{ data.invoice.job }}</NuxtLink></template><template v-if="data.invoice.paid_via === 'wallet'"> · Paid from the client's wallet</template></p>
     <p v-if="ok" class="ok noprint" role="status">{{ ok }}</p><p v-if="msg" class="error noprint" role="alert">{{ msg }}</p>
     <div v-if="data.invoice.status === 'sent' || data.invoice.status === 'draft'" class="card side noprint">
       <span class="muted sm">{{ data.online.length ? 'The client can pay online by ' + (data.online[0] === 'stripe' ? 'card (Stripe)' : 'card or transfer (Paystack)') + ' or by bank transfer.' : 'Online payment is not set up for this currency; the client pays by bank transfer.' }}</span>
@@ -41,4 +42,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .wrap { max-width: 900px; } .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .side { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; } .sm { font-size: 13px; }
 @media print { .noprint { display: none !important; } }
+.lnk { font-size: 13.5px; color: var(--c-muted); margin: 8px 0; } .lnk a { color: var(--c-blue-deep); }
 </style>
