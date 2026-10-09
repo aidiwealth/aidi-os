@@ -9,6 +9,7 @@ const templates = computed(() => (data.value ?? []).filter((u) => u.is_template)
 const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 1000; const m = s / 2629800; return m >= 12 ? Math.floor(m / 12) + (Math.floor(m / 12) === 1 ? ' year ago' : ' years ago') : m >= 1 ? Math.floor(m) + (Math.floor(m) === 1 ? ' month ago' : ' months ago') : s > 86400 ? Math.floor(s / 86400) + ' days ago' : s > 3600 ? Math.floor(s / 3600) + ' hours ago' : 'just now' }
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const msg = ref(''); const menu = ref('')
+const sig = ref(false)
 const lastMonthEnd = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0)).toISOString().slice(0, 10) }
 const nu = reactive({ open: false, period_type: 'month', period_end: lastMonthEnd(), template: '' })
 async function create() { msg.value = ''; try { const r = nu.template ? await $fetch<{ id: string }>('/api/updates/' + nu.template + '/duplicate', { method: 'POST', body: { as: 'from_template' } }) : await $fetch<{ id: string }>('/api/updates', { method: 'POST', body: { period_type: nu.period_type, period_end: nu.period_end } }); await navigateTo('/updates/' + r.id) } catch (e) { msg.value = err(e) } }
@@ -21,7 +22,7 @@ const tpl = ref(false)
     <p class="label">Investor relations</p>
     <InvestorTabs />
     <div class="hd"><div class="tt"><h1>Updates</h1><select v-model="view" aria-label="Filter"><option value="all">All updates</option><option value="sent">Sent</option><option value="drafts">Drafts</option></select></div>
-      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><NuxtLink to="/contacts" class="btn secondary">Contacts</NuxtLink><button class="btn" @click="nu.open = true">New update</button></div></div>
+      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="sig = true">Footer &amp; sign-off</button><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><NuxtLink to="/contacts" class="btn secondary">Contacts</NuxtLink><button class="btn" @click="nu.open = true">New update</button></div></div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div class="box"><table v-if="list.length"><thead><tr><th>Title</th><th>Sent by</th><th>Sent</th><th>Created</th><th /></tr></thead>
       <tbody><tr v-for="u in list" :key="u.id"><td><NuxtLink :to="'/updates/' + u.id" class="t">{{ u.title }}</NuxtLink> <span class="st" :class="u.sent_at ? 'sent' : u.status">{{ u.sent_at ? '✓ Sent' : u.status === 'published' ? 'Published' : 'Draft' }}</span>
@@ -39,6 +40,7 @@ const tpl = ref(false)
       <p v-if="!templates.length" class="mut">No templates yet. Open any update's ⋯ menu and choose "Save as template" to reuse its layout, charts and recipients.</p>
       <div v-for="t in templates" :key="t.id" class="tp"><span>{{ t.title }}</span><span class="row"><button class="btn sm" @click="nu.template = t.id; tpl = false; create()">Use</button><NuxtLink :to="'/updates/' + t.id" class="btn secondary sm">Edit</NuxtLink></span></div>
     </AppModal>
+    <AppModal :open="sig" title="Report footer & sign-off" wide @close="sig = false"><ReportSignoff v-if="sig" @close="sig = false" /></AppModal>
   </section>
 </template>
 <style scoped>

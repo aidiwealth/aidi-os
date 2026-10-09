@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
   const deals = (await enabledModules()).has('pitches') ? (await db().query(`SELECT p.id, p.company, p.one_liner, p.sector, p.stage, p.country, p.raising_usd::float, to_char(p.received_at, 'YYYY-MM-DD') AS received_at, p.website,
       s.score, s.recommendation, (SELECT count(*) > 0 FROM deals.lp_interest i WHERE i.pitch_id = p.id AND i.lp_id = $1) AS interested, p.funding_type,
       (SELECT json_build_object('amount', a.amount, 'currency', a.currency, 'tenor', a.tenor_months, 'status', a.status,
-        'business', (SELECT json_build_object('score', c.score, 'band', c.band, 'source', coalesce(c.source, c.provider)) FROM credit.checks c WHERE c.borrower_id = a.borrower_id AND c.guarantor_id IS NULL AND c.score IS NOT NULL ORDER BY c.created_at DESC LIMIT 1),
+        'business', (SELECT json_build_object('score', c.score, 'band', c.band, 'source', CASE WHEN coalesce(c.source, c.provider) = 'manual' THEN 'manual review' ELSE 'credit bureau' END) FROM credit.checks c WHERE c.borrower_id = a.borrower_id AND c.guarantor_id IS NULL AND c.score IS NOT NULL ORDER BY c.created_at DESC LIMIT 1),
         'founders', (SELECT json_agg(json_build_object('name', x.name, 'score', x.score, 'band', x.band)) FROM (SELECT DISTINCT ON (g.id) g.name, c.score, c.band FROM credit.guarantors g JOIN credit.checks c ON c.guarantor_id = g.id AND c.score IS NOT NULL WHERE g.borrower_id = a.borrower_id ORDER BY g.id, c.created_at DESC) x))
       FROM credit.applications a WHERE a.pitch_id = p.id) AS credit
       FROM deals.pitches p LEFT JOIN LATERAL (SELECT score, recommendation FROM deals.screenings x WHERE x.pitch_id = p.id ORDER BY x.created_at DESC LIMIT 1) s ON true

@@ -44,7 +44,7 @@ export async function clientSummary(clientId: string) {
 // Prembly IdentityPass (Nigeria): BVN validation.
 export async function premblyBvn(bvn: string): Promise<{ ok: boolean; data: Record<string, unknown>; detail: string }> {
   const c = useRuntimeConfig() as unknown as Record<string, string>
-  if (!c.premblyApiKey || !c.premblyAppId) throw apiError('prembly_off', 'Prembly is not set up (NUXT_PREMBLY_API_KEY and NUXT_PREMBLY_APP_ID).', 503)
+  if (!c.premblyApiKey || !c.premblyAppId) throw apiError('prembly_off', 'BVN verification is not set up yet.', 503)
   const res = await fetch((c.premblyBaseUrl || 'https://api.prembly.com') + '/identitypass/verification/bvn_validation', { method: 'POST', headers: { 'x-api-key': c.premblyApiKey, 'app-id': c.premblyAppId, 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ number: bvn }) })
   const j = await res.json().catch(() => ({})) as { status?: boolean; detail?: string; data?: Record<string, unknown> }
   return { ok: res.ok && j.status === true, data: j.data ?? {}, detail: j.detail ?? ('HTTP ' + res.status) }

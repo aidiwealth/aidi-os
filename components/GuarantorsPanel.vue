@@ -14,7 +14,7 @@ const stat = (c: Chk | null) => (!c ? 'Not checked' : c.status === 'no_data' ? '
 </script>
 <template>
   <div v-if="data" class="gp"><div class="gh"><h3>Founders &amp; guarantors</h3><button class="btn secondary sm" @click="f.open = !f.open">{{ f.open ? 'Close' : '+ Add guarantor' }}</button></div>
-    <p class="mut">{{ data.nigeria ? 'Personal credit is checked through CreditChek with the BVN (NIN optional), alongside the business.' : 'Outside Nigeria, ask each guarantor for their credit report (Equifax, Experian, TransUnion, FICO or Credit Karma), then enter the score and upload the report to keep it on record.' }}</p>
+    <p class="mut">{{ data.nigeria ? 'Personal credit is checked with the credit bureaus using the BVN (NIN optional), alongside the business.' : 'Outside Nigeria, ask each guarantor for their credit report (Equifax, Experian, TransUnion, FICO or Credit Karma), then enter the score and upload the report to keep it on record.' }}</p>
     <div v-for="g in data.rows" :key="g.id" class="gw"><div class="gr"><span><b>{{ g.name }}</b><em>{{ g.relationship }}<template v-if="data.nigeria">{{ g.bvn_last4 ? ' · BVN •••' + g.bvn_last4 : ' · no BVN' }}{{ g.nin_last4 ? ' · NIN •••' + g.nin_last4 : '' }}</template><template v-if="g.last_check?.source"> · {{ g.last_check.source }}</template></em></span>
       <span class="gs"><span v-if="g.last_check?.score" class="sc" :class="BAND[g.last_check.band ?? '']"><b>{{ g.last_check.score }}</b> {{ g.last_check.band }}</span><span v-else class="mut sm">{{ stat(g.last_check) }}</span>
         <a v-if="g.last_check?.document_id" :href="'/api/credit/checks/' + g.last_check.id + '/file'" target="_blank" class="lk">Report</a>

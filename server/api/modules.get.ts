@@ -1,5 +1,5 @@
 // Aidi OS: money modules sit together under Financials.
-const FIN_MOVE = ['expenses', 'deployments', 'banking']
+const FIN_MOVE = ['expenses', 'books', 'deployments', 'banking']
 const WM_MOVE = ['wealth']
 // The modules this person can use right now (for the sidebar and page guard), plus the full list for admins.
 export default defineEventHandler(async (event) => {

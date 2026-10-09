@@ -30,11 +30,11 @@ export function scoreOf(s: CreditSummary): { score: number; band: string } {
 }
 export async function creditchek(kind: 'individual' | 'business', id: string): Promise<{ status: 'ok' | 'no_data'; summary: CreditSummary | null; name?: string }> {
   const key = await creditchekKey()
-  if (!key) throw apiError('creditchek_off', 'CreditChek is not set up yet. An admin can add the key in Credit → Settings.', 503)
+  if (!key) throw apiError('creditchek_off', 'Credit bureau checks are not set up yet. An admin can add the key in Credit → Settings.', 503)
   const url = kind === 'individual' ? 'https://api.creditchek.africa/v1/credit/advanced?bvn=' + encodeURIComponent(id) : 'https://api.creditchek.africa/v1/credit/sme/premium?businessregno=' + encodeURIComponent(id)
   const r = await fetch(url, { headers: { token: key }, signal: AbortSignal.timeout(45000) })
   const j = await r.json().catch(() => ({})) as { status?: boolean; message?: string; data?: { name?: string; score?: Record<string, unknown> } }
-  if (!r.ok && r.status !== 404) { console.error('[creditchek]', r.status, j.message); throw apiError('creditchek', 'CreditChek returned an error: ' + (j.message ?? r.status), 502) }
+  if (!r.ok && r.status !== 404) { console.error('[creditchek]', r.status, j.message); throw apiError('creditchek', 'The credit bureau returned an error: ' + (j.message ?? r.status), 502) }
   if (!j.status || !j.data?.score) return { status: 'no_data', summary: null }
   return { status: 'ok', summary: summarise(j.data.score as Record<string, Src[]>), name: j.data.name }
 }
