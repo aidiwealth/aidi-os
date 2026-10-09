@@ -25,6 +25,10 @@ jobs:
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/wallet \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
 
+      - name: Portfolio update requests (monthly / quarterly schedules)
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/portfolio -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+
       - name: Credit monitoring
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/credit-monitor -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

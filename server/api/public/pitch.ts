@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const cap = cc.max_amount[b.loan_currency ?? (/nigeria/i.test(b.country ?? '') ? 'NGN' : 'USD')]
   if (loan && cap && Number(b.loan_amount) > cap) throw apiError('loans_max', 'The most we can lend at the moment is ' + cap.toLocaleString('en-US') + ' ' + (b.loan_currency ?? '') + '.', 400)
   if (loan && !b.loan_amount) throw apiError('invalid', 'Please enter the loan amount you need.', 400)
-  if (loan && cc.require_bvn && /nigeria/i.test(b.country ?? '') && !b.bvn) throw apiError('invalid', 'Please enter your 11-digit BVN so we can assess the loan.', 400)
+  // The pitch form no longer asks for BVN/RC; the credit team collects those later on the loan application.
   rateLimit('pitch_email', email, 3, 24 * 60 * 60 * 1000)
   const row = await one<{ id: string }>(
     `INSERT INTO deals.pitches (founder_name, email, company, website, deck_url, country, stage, sector, raising_usd, one_liner, description, traction, team, female_founder, ip)

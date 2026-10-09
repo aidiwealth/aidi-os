@@ -13,8 +13,9 @@ export default defineEventHandler(async (event) => {
   if (id) { if (!(await db().query('SELECT 1 FROM fundraise.decks WHERE id = $1', [id])).rowCount) throw apiError('not_found', 'Not found', 404) }
   else {
     const first = !(await db().query('SELECT 1 FROM fundraise.decks WHERE active AND primary_deck')).rowCount
-    id = (await one<{ id: string }>('INSERT INTO fundraise.decks (title, token, primary_deck, created_by) VALUES ($1,$2,$3,$4) RETURNING id', [(field('title') || filename.replace(/\.pdf$/i, '')).slice(0, 200), newDeckToken(), first, user.userId])).id
+    id = (await one<{ id: string }>('INSERT INTO fundraise.decks (title, token, primary_deck, created_by, description) VALUES ($1,$2,$3,$4,$5) RETURNING id', [(field('title').trim() || filename.replace(/\.pdf$/i, '')).slice(0, 200), newDeckToken(), first || field('primary') === '1', user.userId, field('description').trim().slice(0, 500) || null])).id
   }
+  if (!deckId && field('primary') === '1') await db().query('UPDATE fundraise.decks SET primary_deck = (id = $1)', [id])
   await db().query('INSERT INTO fundraise.deck_versions (deck_id, document_id, filename) VALUES ($1,$2,$3)', [id, docId, filename])
   await db().query('UPDATE fundraise.decks SET updated_at = now() WHERE id = $1', [id])
   await db().query('UPDATE fundraise.files SET document_id = $2 WHERE deck_id = $1', [id, docId])

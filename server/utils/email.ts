@@ -111,11 +111,11 @@ export async function sendInviteEmail(to: string, name: string, invitedBy: strin
 }
 
 // To a founder: their personal link for the month's update. No login needed.
-export async function sendReportRequest(to: string, founderName: string, company: string, monthLabel: string, link: string, fromName: string): Promise<void> {
+export async function sendReportRequest(to: string, founderName: string, company: string, monthLabel: string, link: string, fromName: string, cadence: 'monthly' | 'quarterly' = 'monthly'): Promise<void> {
   const first = esc(founderName.split(' ')[0] ?? founderName)
   const html = shell(
     h1('Your ' + esc(monthLabel) + ' update') +
-    para('Hi ' + first + ', it is time for the ' + esc(company) + ' monthly update for {{FIRM}}. It takes about five minutes: type your key figures, or upload your spreadsheet and we will fill them in for you.') +
+    para('Hi ' + first + ', it is time for the ' + esc(company) + ' ' + cadence + ' update for {{FIRM}}. It takes about five minutes: type your key figures, or upload your spreadsheet and we will fill them in for you.') +
     para('You can save and come back to finish. The link is personal to you and works for ' + LINK_DAYS + ' days.') +
     button('Open your update →', link) + divider() +
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Sent by ${esc(fromName)} at {{FIRM}}. Please do not forward this link.</p>`,

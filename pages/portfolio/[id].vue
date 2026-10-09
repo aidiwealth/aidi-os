@@ -8,6 +8,7 @@ interface Data {
   metrics: Metric[]; months: Month[]
   analysis: { headline: string[]; flags: { level: string; text: string }[]; runwayMonths: number | null }
   updates: { period: string; highlights: string | null; challenges: string | null; asks: string | null }[]
+  schedule: { cadence: 'off' | 'monthly' | 'quarterly'; day: number; next: { date: string; label: string; soon: boolean } | null }
   requests: { period: string; status: string; sent_at: string; opened_at: string | null; submitted_at: string | null; expires_at: string; file_document_id: string | null }[]
 }
 const { data, error, refresh } = await useFetch<Data>('/api/portfolio/' + id)
@@ -22,6 +23,14 @@ async function sendRequest() {
     await refresh()
   } catch (e) { req.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } finally { req.busy = false }
 }
+const sch = reactive({ cadence: 'off' as 'off' | 'monthly' | 'quarterly', day: 5, busy: false, msg: '' })
+watchEffect(() => { if (data.value?.schedule) { sch.cadence = data.value.schedule.cadence; sch.day = data.value.schedule.day } })
+async function saveSchedule() {
+  sch.busy = true; sch.msg = ''
+  try { await $fetch('/api/portfolio/' + id + '/schedule', { method: 'POST', body: { cadence: sch.cadence, day: Number(sch.day) } }); await refresh(); sch.msg = 'Saved.' }
+  catch (e) { sch.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { sch.busy = false }
+}
+const fmtDay = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 const series = (key: string) => (data.value?.months ?? []).map((m) => ({ period: m.period, value: m.values[key] ?? null }))
 const editing = ref<{ period: string; metric: string; value: string; note: string } | null>(null)
 const oMsg = ref('')
@@ -61,6 +70,15 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
         <p class="muted small">No login for the founder. The link works for 30 days; they can save and come back, or upload a spreadsheet.</p>
         <p v-if="req.msg" class="small">{{ req.msg }}</p>
         <input v-if="req.link" :value="req.link" readonly class="linkbox" aria-label="Report link" @focus="($event.target as HTMLInputElement).select()">
+        <div class="sched">
+          <h3>Automatic requests</h3>
+          <div class="seg"><button v-for="o in (['off', 'monthly', 'quarterly'] as const)" :key="o" type="button" :class="{ on: sch.cadence === o }" @click="sch.cadence = o">{{ o === 'off' ? 'Off' : o === 'monthly' ? 'Monthly' : 'Quarterly' }}</button></div>
+          <label v-if="sch.cadence !== 'off'" class="label">Send on day<select v-model.number="sch.day"><option v-for="n in 28" :key="n" :value="n">{{ n }}</option></select></label>
+          <p class="muted small">{{ sch.cadence === 'off' ? 'No automatic requests. Send links by hand above.' : sch.cadence === 'monthly' ? 'Each month, ' + data.company.founder_name.split(' ')[0] + ' gets a link for the month before.' : 'In January, April, July and October, ' + data.company.founder_name.split(' ')[0] + ' gets a link for the quarter just ended.' }}</p>
+          <button class="btn secondary" type="button" :disabled="sch.busy || (sch.cadence === data.schedule.cadence && sch.day === data.schedule.day)" @click="saveSchedule">{{ sch.busy ? 'Saving…' : 'Save schedule' }}</button>
+          <p v-if="data.schedule.next" class="small">Next request: <b>{{ data.schedule.next.label }}</b> — {{ data.schedule.next.soon ? 'goes out on the next daily run (07:00 UTC)' : 'sent ' + fmtDay(data.schedule.next.date) }}</p>
+          <p v-if="sch.msg" class="small">{{ sch.msg }}</p>
+        </div>
       </form>
     </div>
 
@@ -132,7 +150,7 @@ h1 { margin-bottom: 20px; } h2 { margin-bottom: 12px; }
 .flags li { padding: 8px 12px; font-size: 13.5px; border-left: 3px solid var(--c-rule-strong); background: var(--c-paper); }
 .flags li[data-level="red"] { border-color: var(--c-danger); background: #fdf1f0; } .flags li[data-level="amber"] { border-color: var(--c-warn); background: #fdf6ec; } .flags li[data-level="green"] { border-color: var(--c-ok); background: #f2faf5; }
 .hl { margin: 0 0 6px; }
-.send { display: flex; flex-direction: column; gap: 10px; } .send label { display: flex; flex-direction: column; gap: 6px; }
+.send { display: flex; flex-direction: column; gap: 10px; } .sched { border-top: 1px solid var(--c-rule); margin-top: 6px; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; } .sched h3 { margin: 0; font-size: 16px; } .seg { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; width: fit-content; } .seg button { background: none; border: 0; padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer; } .seg .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); } .sched select { font: inherit; padding: 8px; border: 1px solid var(--c-rule-strong); width: 100px; } .send label { display: flex; flex-direction: column; gap: 6px; }
 input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .linkbox { font-size: 12px; }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }

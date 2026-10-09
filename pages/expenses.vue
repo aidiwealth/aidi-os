@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Payments out of the group: vendors, landlord, purchases… Each payment gets a voucher PDF and is posted to the books.
 // Reconcile against an uploaded spreadsheet or balance sheet so the numbers stay true.
-useHead({ title: 'Payments & expenses' })
+useHead({ title: 'Payments' })
 interface Row { id: string; number: string; paid_on: string; payee: string; category: string; description: string | null; amount: number; currency: string; method: string | null; reference: string | null; voucher_id: string | null; attachment_id: string | null; entity: string | null; entity_id: string | null }
 const { data, refresh } = await useFetch<{ rows: Row[]; options: { entities: { id: string; name: string }[]; accounts: { id: string; name: string; entity_id: string; currency: string }[]; categories: string[]; payees: string[] } }>('/api/expenses')
 const money = (v: number, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 2 }).format(v)
@@ -23,7 +23,7 @@ async function reconcile() { if (!rfile.value) return; rc.busy = true; rc.msg = 
 </script>
 <template>
   <section v-if="data">
-    <div class="hd"><div><p class="label">Financials</p><h1>Payments &amp; expenses</h1><p class="lead">Log what the group pays out: vendors, rent, purchases, fees. Each payment gets a voucher PDF, is posted to the books, and can be reconciled against your spreadsheets.</p></div>
+    <div class="hd"><div><p class="label">Financials</p><h1>Payments</h1><p class="lead">Log what the group pays out: vendors, rent, purchases, fees. Each payment gets a voucher PDF, is posted to the journals, and can be reconciled against your spreadsheets.</p></div>
       <div class="acts"><button class="btn secondary" @click="rc.open = true; rec = null">Reconcile with a spreadsheet</button><button class="btn" @click="open()">Log a payment</button></div></div>
     <div class="kp"><div class="k"><span>Total in view</span><b>{{ Object.keys(totals).length ? Object.entries(totals).map(([c, v]) => money(v, c)).join(' · ') : '—' }}</b><em>{{ shown.length }} payment{{ shown.length === 1 ? '' : 's' }}</em></div>
       <div v-if="byCat.length" class="k wide"><DonutChart title="By category" total-label="Total" :currency="Object.keys(totals)[0]" :segments="byCat" /></div></div>

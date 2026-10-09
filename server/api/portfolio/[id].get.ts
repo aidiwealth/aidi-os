@@ -1,9 +1,10 @@
 import { z } from 'zod'
+import type { Cadence } from '~/server/utils/portfolio-requests'
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team')
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Company not found', 404)
-  const c = await db().query('SELECT c.id, c.name, c.founder_name, c.founder_email, c.deal_id, c.relationship, he.name AS holder FROM portfolio.companies c LEFT JOIN core.entities he ON he.id = c.holding_entity_id WHERE c.id = $1', [id.data])
+  const c = await db().query('SELECT c.id, c.name, c.founder_name, c.founder_email, c.deal_id, c.relationship, c.report_cadence, c.report_day, he.name AS holder FROM portfolio.companies c LEFT JOIN core.entities he ON he.id = c.holding_entity_id WHERE c.id = $1', [id.data])
   if (c.rowCount !== 1) throw apiError('not_found', 'Company not found', 404)
   const v = await db().query<{ period: string; metric: string; founder_value: string | null; override_value: string | null; override_note: string | null; override_by: string | null }>(
     `SELECT to_char(m.period, 'YYYY-MM-DD') AS period, m.metric, m.founder_value::text, m.override_value::text, m.override_note, p.full_name AS override_by
@@ -20,5 +21,6 @@ export default defineEventHandler(async (event) => {
   const months = [...byPeriod.values()].sort((a, b) => a.period.localeCompare(b.period))
   const updates = await db().query(`SELECT to_char(period, 'YYYY-MM-DD') AS period, highlights, challenges, asks, submitted_at FROM portfolio.updates WHERE company_id = $1 ORDER BY period DESC`, [id.data])
   const requests = await db().query(`SELECT to_char(period, 'YYYY-MM-DD') AS period, status, sent_at, opened_at, submitted_at, expires_at, file_document_id FROM portfolio.requests WHERE company_id = $1 ORDER BY sent_at DESC LIMIT 24`, [id.data])
-  return { company: c.rows[0], metrics: METRICS, months, analysis: analyse(months, periodLabel), updates: updates.rows, requests: requests.rows }
+  const co = c.rows[0] as { report_cadence: Cadence; report_day: number }
+  return { schedule: { cadence: co.report_cadence, day: co.report_day, next: await upcomingRequest(id.data, co.report_cadence, co.report_day) }, company: c.rows[0], metrics: METRICS, months, analysis: analyse(months, periodLabel), updates: updates.rows, requests: requests.rows }
 })

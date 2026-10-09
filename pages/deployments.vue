@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Money sent to companies from Credit, the Angel Fund and the venture fund, tied to the company, founder, fund and the
 // books; Angel Fund money shows whether it came from Aidi or a named angel.
-useHead({ title: 'Deployments & books' })
+useHead({ title: 'Deployments' })
 interface Opt { entities: { id: string; name: string }[]; funds: { id: string; name: string; structure: string; entity_id: string; currency: string }[]; loans: { id: string; borrower: string; reference: string | null; principal: number; currency: string; lender_entity_id: string | null }[]; applications: { id: string; company: string; contact_name: string | null; contact_email: string | null; amount: number; currency: string; terms: { lender_entity_id?: string } }[]; holdings: { id: string; name: string; entity_id: string | null; founder: { name?: string; email?: string } | null; currency: string }[]; angels: { id: string; name: string; email: string | null }[]; accounts: { id: string; name: string; entity_id: string; currency: string }[] }
 interface Row { id: string; paid_on: string; source: string; entity: string | null; fund: string | null; loan_ref: string | null; holding: string | null; company: string; founder_name: string | null; amount: number; currency: string; instrument: string | null; reference: string | null; funded_by: { type: string; name?: string; amount: number }[]; notes: string | null }
 const { data, refresh } = await useFetch<{ rows: Row[]; journal: { id: string; entry_date: string; account: string; debit: number; credit: number; currency: string; memo: string | null; entity: string | null }[]; balances: { entity: string | null; account: string; currency: string; balance: number }[]; options: Opt }>('/api/deployments')
@@ -31,9 +31,9 @@ const bal = computed(() => { const m = new Map<string, { entity: string; rows: {
 </script>
 <template>
   <section v-if="data">
-    <div class="hd"><div><p class="label">Family office</p><h1>Deployments &amp; books</h1><p class="lead">Every payment out of Credit, the Angel Fund and the venture fund: who paid, which company and founder received it, how it was funded, and the matching book entries.</p></div><button class="btn" @click="open">Log a deployment</button></div>
+    <div class="hd"><div><p class="label">Family office</p><h1>Deployments</h1><p class="lead">Every payment out of Credit, the Angel Fund and the venture fund: who paid, which company and founder received it, how it was funded, and the matching book entries.</p></div><button class="btn" @click="open">Log a deployment</button></div>
     <div class="kp"><div v-for="s in ['credit', 'angel_fund', 'venture_fund']" :key="s" class="k"><span>{{ SRC[s] }}</span><b>{{ totals[s] ? Object.entries(totals[s]!).map(([c, a]) => money(a, c)).join(' · ') : '—' }}</b><em>{{ (data.rows.filter((r) => r.source === s).length) }} payment{{ data.rows.filter((r) => r.source === s).length === 1 ? '' : 's' }}</em></div></div>
-    <p class="mut bk">The book entries for each deployment are in <NuxtLink to="/books">Financials → Books</NuxtLink>.</p>
+    <p class="mut bk">The book entries for each deployment are in <NuxtLink to="/books">Financials → Journals</NuxtLink>.</p>
     <div v-if="tab === 'deployments'" class="card tc"><table v-if="data.rows.length" class="table"><thead><tr><th>Date</th><th>Company · founder</th><th>From</th><th>Funded by</th><th class="n">Amount</th><th /></tr></thead><tbody>
       <tr v-for="r in data.rows" :key="r.id"><td>{{ r.paid_on }}</td><td><b>{{ r.company }}</b><span class="s">{{ [r.founder_name, r.instrument, r.reference].filter(Boolean).join(' · ') }}</span></td>
         <td>{{ SRC[r.source] }}<span class="s">{{ [r.fund, r.entity, r.loan_ref && 'loan ' + r.loan_ref].filter(Boolean).join(' · ') }}</span></td>
