@@ -23,5 +23,14 @@ export default defineEventHandler(async (event) => {
   }
   const tot = (await db().query<{ currency: string; d: number; c: number }>('SELECT currency, sum(debit)::float AS d, sum(credit)::float AS c FROM finance.journal GROUP BY 1')).rows
   for (const t of tot) if (Math.abs(t.d - t.c) >= 0.01) flags.push({ kind: 'Journals', ref: t.currency + ' journal', text: 'Total debits ' + fmt(t.d, t.currency) + ' and credits ' + fmt(t.c, t.currency) + ' are out by ' + fmt(t.d - t.c, t.currency) + '.', to: '/books' })
+  // Payments against the bank, their receipts and the financial statements.
+  const pc = await paymentChecks()
+  const num = new Map((await db().query<{ id: string; number: string | null; payee: string }>('SELECT id, number, payee FROM finance.expenses')).rows.map((r) => [r.id, (r.number ? r.number + ' · ' : '') + r.payee]))
+  for (const [id, c] of Object.entries(pc.by_id)) {
+    if (c.bank === 'missing') flags.push({ kind: 'Payment', ref: num.get(id) ?? 'Payment', text: 'Not found in the imported bank statement for that date.', to: '/expenses' })
+    if (c.receipt === 'mismatch' || c.receipt === 'unreadable') flags.push({ kind: 'Receipt', ref: num.get(id) ?? 'Payment', text: c.receipt_issues.join(' ') || 'Receipt could not be read.', to: '/expenses' })
+  }
+  for (const u of pc.unlogged.slice(0, 20)) flags.push({ kind: 'Bank', ref: u.date + ' · ' + u.account, text: fmt(u.amount, u.currency) + ' left the bank (' + u.description + ') but is not logged as a payment or deployment.', to: '/expenses' })
+  for (const f of pc.financials) flags.push({ kind: 'Financials', ref: f.entity + ' · ' + f.period, text: f.text, to: '/financials' })
   return { ok: !flags.length, checked: { payments: exp.length, deployments: dep.length }, flags }
 })
