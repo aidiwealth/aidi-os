@@ -37,7 +37,9 @@ const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
 function choose(k: string) { cat.value = k; step.value = 2 }
 const forming = computed(() => picked.value.some((c) => c === 'llc_formation' || c === 'inc_formation'))
 const nf = reactive({ name: '', alt_name: '', country: 'United States', state: 'Delaware', entity_type: 'llc' as 'llc' | 'c_corp' })
-watch(picked, (p) => { if (p.includes('inc_formation') && !p.includes('llc_formation')) nf.entity_type = 'c_corp'; else if (p.includes('llc_formation')) nf.entity_type = 'llc' })
+watch(picked, (p) => { if (p.includes('inc_formation') && !p.includes('llc_formation')) nf.entity_type = 'c_corp'; else if (p.includes('llc_formation') && !p.includes('inc_formation')) nf.entity_type = 'llc' })
+// Changing the company type swaps the formation service (and its price) in the order.
+watch(() => nf.entity_type, (t) => { const want = t === 'llc' ? 'llc_formation' : 'inc_formation', other = t === 'llc' ? 'inc_formation' : 'llc_formation'; if (picked.value.includes(other) && !picked.value.includes(want) && (data.value?.items ?? []).some((i) => i.code === want)) picked.value = [...picked.value.filter((c) => c !== other), want] })
 const sel = computed(() => data.value?.companies.find((c) => c.id === company.value) ?? null)
 const cp = reactive({ country: 'United States', state: '' })
 watch(sel, (s) => { cp.country = s?.country || 'United States'; cp.state = s?.state || '' })
@@ -61,12 +63,25 @@ const toggle = (code: string) => { picked.value = picked.value.includes(code) ? 
 const STEPS = ['What you need', 'Services', 'Details', 'Review & pay']
 // State and federal filings: the filing details (and documents) are collected here and sent with the order.
 const FORM = INTAKE_FORMS.filing
-const filing = computed(() => picked.value.some((c) => ['irs_annual', 'de_franchise', 'ca_state'].includes(c)))
-const fa = reactive<Record<string, unknown>>({ services: [] as string[] }); const ff = reactive<Record<string, File[]>>({})
-watch(picked, (p) => { const s: string[] = []; if (p.includes('irs_annual')) s.push('File annual IRS federal company income tax'); if (p.includes('de_franchise') || p.includes('ca_state')) s.push('File annual state franchise tax'); const cur = (fa.services as string[]) ?? []; fa.services = [...new Set([...cur.filter((x) => !FORM.fields[0]!.options!.includes(x) || x === 'Incorporate and flip to a US LLC or Corp'), ...s])] }, { immediate: true })
+// Each answer to "What do you need?" is a service: ticking it adds the service (and its price) to the order; unticking removes it.
+const FILING_CODES = ['irs_annual', 'de_franchise', 'ca_state']
+const OPT: Record<string, string[]> = { 'Incorporate and flip to a US LLC or Corp': ['inc_formation', 'llc_formation'], 'File annual state franchise tax': ['de_franchise', 'ca_state'], 'File annual IRS federal company income tax': ['irs_annual'] }
+const has = (code: string) => (data.value?.items ?? []).some((i) => i.code === code)
+const optOn = (o: string) => (OPT[o] ?? []).some((c) => picked.value.includes(c))
+const optItem = (o: string) => { const items = data.value?.items ?? []; const codes = o === 'Incorporate and flip to a US LLC or Corp' ? [nf.entity_type === 'llc' ? 'llc_formation' : 'inc_formation'] : (OPT[o] ?? []); return items.find((i) => codes.includes(i.code) && picked.value.includes(i.code)) ?? items.find((i) => codes.includes(i.code)) ?? null }
+function toggleOpt(o: string, on: boolean) {
+  const codes = OPT[o] ?? []
+  if (!on) { picked.value = picked.value.filter((c) => !codes.includes(c)); return }
+  if (codes.some((c) => picked.value.includes(c))) return
+  const add = o === 'Incorporate and flip to a US LLC or Corp' ? (nf.entity_type === 'llc' ? 'llc_formation' : 'inc_formation') : codes.find(has)
+  if (add && has(add)) picked.value = [...picked.value, add]
+}
+const filing = computed(() => cat.value === 'tax' || picked.value.some((c) => FILING_CODES.includes(c)))
+const fa = reactive<Record<string, unknown>>({}); const ff = reactive<Record<string, File[]>>({})
+const filingServices = computed(() => Object.keys(OPT).filter(optOn))
 function pickF(k: string, multi: boolean, ev: Event) { const l = Array.from((ev.target as HTMLInputElement).files ?? []); ff[k] = multi ? [...(ff[k] ?? []), ...l] : l.slice(0, 1) }
-const filingOk = computed(() => !filing.value || FORM.fields.every((f) => !f.required || (f.type === 'file' || f.type === 'files' ? (ff[f.key]?.length ?? 0) > 0 : f.type === 'multi' ? ((fa[f.key] as string[]) ?? []).length > 0 : String(fa[f.key] ?? '').trim().length > 0)))
-async function sendFiling(jobId: string) { const fd = new FormData(); fd.append('answers', JSON.stringify(fa)); for (const [k, l] of Object.entries(ff)) for (const file of l) fd.append(k, file); await $fetch('/api/portal/jobs/' + jobId + '/intake', { method: 'POST', body: fd }) }
+const filingOk = computed(() => !filing.value || FORM.fields.every((f) => !f.required || (f.type === 'file' || f.type === 'files' ? (ff[f.key]?.length ?? 0) > 0 : f.type === 'multi' ? (f.key === 'services' ? filingServices.value.length > 0 : ((fa[f.key] as string[]) ?? []).length > 0) : String(fa[f.key] ?? '').trim().length > 0)))
+async function sendFiling(jobId: string) { const fd = new FormData(); fd.append('answers', JSON.stringify({ ...fa, services: filingServices.value })); for (const [k, l] of Object.entries(ff)) for (const file of l) fd.append(k, file); await $fetch('/api/portal/jobs/' + jobId + '/intake', { method: 'POST', body: fd }) }
 const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? '')
 async function place() {
   busy.value = true; msg.value = ''
@@ -119,7 +134,8 @@ async function place() {
               <p v-else class="hint">We assign your {{ vo.state }} address when we set it up and share it in your Documents.</p></div>
             <div v-if="filing" class="fil"><b>{{ FORM.title }}</b><p class="hint">{{ FORM.intro }} Our team sees these with your order.</p>
               <template v-for="f in FORM.fields" :key="f.key"><div class="fq"><span class="ql">{{ f.label }}<em v-if="f.required"> *</em></span><span v-if="f.help" class="hint">{{ f.help }}</span>
-                <label v-for="o in (f.type === 'multi' ? f.options : [])" :key="o" class="op"><input v-model="(fa[f.key] as string[])" type="checkbox" :value="o"> {{ o }}</label>
+                <template v-if="f.key === 'services'"><label v-for="o in f.options" :key="o" class="op sv" :class="{ on: optOn(o), off: !optItem(o) }"><input type="checkbox" :checked="optOn(o)" :disabled="!optItem(o)" @change="toggleOpt(o, ($event.target as HTMLInputElement).checked)"><span>{{ o }}</span><em v-if="optItem(o)">{{ price(optItem(o)!) }}</em><em v-else>Not offered</em></label><span class="hint">Ticking a service adds it to your order and the total.</span></template>
+                <label v-for="o in (f.type === 'multi' && f.key !== 'services' ? f.options : [])" :key="o" class="op"><input v-model="(fa[f.key] as string[])" type="checkbox" :value="o"> {{ o }}</label>
                 <input v-if="f.type === 'text'" v-model="(fa[f.key] as string)" maxlength="500"><textarea v-else-if="f.type === 'textarea'" v-model="(fa[f.key] as string)" rows="3" maxlength="3000" />
                 <template v-else-if="f.type === 'file' || f.type === 'files'"><DropZone compact :multiple="f.type === 'files'" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx" @change="pickF(f.key, f.type === 'files', $event)" /><span v-for="x in ff[f.key] ?? []" :key="x.name" class="fl">+ {{ x.name }}</span></template></div></template></div>
             <label class="label">Anything we should know?<textarea v-model="notes" rows="6" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
@@ -170,4 +186,5 @@ async function place() {
 input:not([type=checkbox]):not([type=radio]) { font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; box-sizing: border-box; width: 100%; }
 .term { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .term button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; font: inherit; cursor: pointer; text-align: left; } .term button.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f6f8fb; } .term b { font-size: 14px; } .term em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 .fil { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--c-rule); padding: 14px; background: #fbfaf7; } .fil > b { font-size: 14.5px; } .fq { display: flex; flex-direction: column; gap: 6px; } .ql { font-size: 13.5px; font-weight: 500; } .ql em { color: var(--c-danger); font-style: normal; } .op { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .op input { width: auto !important; } .fl { font-size: 12.5px; color: var(--c-blue-deep); }
+.op.sv { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 9px 12px; border: 1px solid var(--c-rule); background: #fff; } .op.sv.on { border-color: var(--c-navy); background: #f6f8fb; } .op.sv.off { opacity: .55; } .op.sv em { font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--c-ink); white-space: nowrap; }
 </style>

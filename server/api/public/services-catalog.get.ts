@@ -1,8 +1,8 @@
 // Public price list for finvry.com: active services the Services desk marks "Show on finvry.com". All-in prices only.
-// ?country=NG returns naira prices (and Nigeria-only services); every other country sees US-dollar prices. Cached 5 minutes.
+// ?country=NG returns naira prices (and Nigeria-only services); every other country sees US-dollar prices. Not cached, so changes in the Services desk show on the next page load.
 export default defineEventHandler(async (event) => {
   if (handleCors(event, { origin: ['https://finvry.com', 'https://www.finvry.com', 'http://localhost:8080'], methods: ['GET', 'OPTIONS'] })) return
-  setResponseHeader(event, 'cache-control', 'public, max-age=300')
+  setResponseHeader(event, 'cache-control', 'no-cache')
   const ng = String(getQuery(event).country ?? '').toUpperCase() === 'NG'
   const op = (await asPlatform(() => db().query<{ id: string }>("SELECT id FROM core.organizations WHERE (settings->>'services_operator') = 'true' ORDER BY created_at LIMIT 1"))).rows[0]?.id
   if (!op) return []

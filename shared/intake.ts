@@ -24,7 +24,8 @@ export const INTAKE_FORMS: Record<'incorporation' | 'filing', { title: string; i
     { key: 'address', label: 'Most recent official address of each founder', type: 'textarea', required: true }] } }
 // Which form a job needs, from the services ordered.
 export function intakeKindFor(codes: string[], service?: string | null): 'incorporation' | 'filing' | null {
+  if (codes.some((c) => ['irs_annual', 'de_franchise', 'ca_state', 'boi_report', 'annual_report'].includes(c))) return 'filing'
   if (codes.some((c) => c === 'llc_formation' || c === 'inc_formation') || service === 'company_formation') return 'incorporation'
-  if (codes.some((c) => ['irs_annual', 'de_franchise', 'ca_state', 'boi_report', 'annual_report'].includes(c)) || ['annual_compliance', 'tax_filing'].includes(service ?? '')) return 'filing'
+  if (['annual_compliance', 'tax_filing'].includes(service ?? '')) return 'filing'
   return null
 }
