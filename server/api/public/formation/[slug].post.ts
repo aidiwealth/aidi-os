@@ -10,7 +10,7 @@ const Body = z.object({
   management: z.enum(['member', 'manager', 'board']).default('member'),
   agent: z.enum(['ours', 'theirs']).default('ours'), agent_details: s(500).optional(),
   members: z.array(z.object({ name: s(200).min(1), email: z.string().trim().email().max(254).optional().or(z.literal('').transform(() => undefined)), ownership: z.coerce.number().min(0).max(100), address: s(500).optional(), country: s(100).optional() })).min(1).max(10),
-  addons: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).max(15).default([]),
+  addons: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).max(15).default([]), virtual: z.boolean().default(false), vo_term: z.enum(['monthly', 'annual']).default('monthly'),
   contact: z.object({ name: s(200).min(1), email: z.string().trim().email().max(254), phone: s(40).optional(), country: s(100).optional() })
 })
 export default defineEventHandler(async (event) => {
@@ -28,13 +28,16 @@ export default defineEventHandler(async (event) => {
   const pkg = d.entity_type === 'llc' ? cat.llc : cat.inc
   if (!pkg) throw apiError('unavailable', 'Online formation is not available yet. Please contact us.')
   const picked = cat.addons.filter((i) => d.addons.includes(i.code))
-  const raw = [{ description: pkg.name + ' (' + d.state + ')', quantity: 1, unit_amount: Number(pkg.price) }, ...picked.map((i) => ({ description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: addonQty(i), unit_amount: Number(i.price) }))]
-    .map((l) => ({ ...l, amount: Math.round(l.quantity * l.unit_amount * 100) / 100 }))
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const raw: { code?: string; interval?: string; free_first_year?: boolean; description: string; quantity: number; unit_amount: number; amount: number }[] = [{ code: pkg.code, description: pkg.name + ' (' + d.state + ')', quantity: 1, unit_amount: Number(pkg.price), amount: Number(pkg.price) }]
+  if (d.agent === 'ours' && cat.agent) raw.push({ code: 'registered_agent', interval: 'year', free_first_year: true, description: cat.agent.name + ' — first year free, then $' + Number(cat.agent.price).toLocaleString('en-US') + ' / year', quantity: 1, unit_amount: 0, amount: 0 })
+  if (d.virtual && cat.virtual) { const yr = d.vo_term === 'annual', unit = Number(cat.virtual.price); raw.push({ code: 'virtual_office', interval: yr ? 'year' : 'month', description: cat.virtual.name + (yr ? ' (first year, billed yearly)' : ' (first month, billed monthly)'), quantity: yr ? 12 : 1, unit_amount: unit, amount: r2((yr ? 12 : 1) * unit) }) }
+  for (const i of picked) raw.push({ code: i.code, description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: addonQty(i), unit_amount: Number(i.price), amount: r2(addonQty(i) * Number(i.price)) })
   const tx = await applyTax(raw, 'US', 'services')
   const lines = tx.lines, amount = tx.amount
   const settings = await csBilling()
   const email = d.contact.email.toLowerCase()
-  const virtual = picked.some((i) => i.code === 'virtual_office' || i.code === 'de_mailbox')
+  const virtual = (d.virtual && !!cat.virtual) || picked.some((i) => i.code === 'de_mailbox')
   const addr = d.address ? [d.address.line1, d.address.line2, [d.address.city, d.address.region, d.address.postal].filter(Boolean).join(' '), d.address.country].filter(Boolean).join('\n') : null
   const summary = ['Formation order', 'State: ' + d.state, 'Type: ' + (d.entity_type === 'llc' ? 'LLC' : 'C-Corp (Inc)'), 'Names in order of preference: ' + names.join(' / '),
     'Management: ' + d.management, 'Registered agent: ' + (d.agent === 'ours' ? 'provided by us' : 'their own — ' + (d.agent_details ?? '')), 'Purpose: ' + (d.purpose || '—'),
@@ -47,7 +50,7 @@ export default defineEventHandler(async (event) => {
     const clientId = existing.rows[0]?.id ?? (await client.query<{ id: string }>("INSERT INTO services.clients (name, kind, contact_name, email, phone, country, status) VALUES ($1,'individual',$2,$3,$4,$5,'lead') RETURNING id",
       [d.contact.name, d.contact.name, email, d.contact.phone || null, d.contact.country || null])).rows[0]!.id
     const co = await client.query<{ id: string }>("INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, address, registered_agent, virtual_office, mailbox, status, notes) VALUES ($1,$2,$3,$4,'United States',$5,$6,$7,$8,'forming',$9) RETURNING id",
-      [clientId, names[0], d.entity_type, d.state, addr, d.agent, picked.some((i) => i.code === 'virtual_office'), picked.some((i) => i.code === 'de_mailbox'), 'Alternative names: ' + (names.slice(1).join(' / ') || '—') + (d.purpose ? '\nPurpose: ' + d.purpose : '')])
+      [clientId, names[0], d.entity_type, d.state, addr, d.agent, d.virtual && !!cat.virtual, picked.some((i) => i.code === 'de_mailbox'), 'Alternative names: ' + (names.slice(1).join(' / ') || '—') + (d.purpose ? '\nPurpose: ' + d.purpose : '')])
     for (const m of d.members) await client.query("INSERT INTO services.people (client_id, company_id, name, email, role, ownership_pct, address, nationality) VALUES ($1,$2,$3,$4,'owner',$5,$6,$7)", [clientId, co.rows[0]!.id, m.name, m.email?.toLowerCase() ?? null, m.ownership, m.address || null, m.country || null])
     const job = await client.query<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status) VALUES ($1,$2,'company_formation',$3,$4,'new') RETURNING id", [clientId, co.rows[0]!.id, 'Form ' + names[0] + ' (' + d.state + ')', summary])
     const inv = await client.query<{ id: string; number: string }>(
@@ -60,7 +63,8 @@ export default defineEventHandler(async (event) => {
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   await audit({ event, actorUserId: null, action: 'services.formation_order', objectType: 'job', objectId: ids.job, detail: { company: names[0], state: d.state, amount } })
   sendJobClientActivity(null, ids.job, d.contact.name, 'Form ' + names[0], 'placed a formation order for ' + names[0] + ' (' + d.state + ')', '').catch((e) => console.error('[formation] alert failed', e))
-  try { const op = currentOrgId(); const ws = await workspaceForClient(event, ids.client); setOrgContext(ws.orgId); try { await sendInviteEmail(email, d.contact.name, 'the Aidi team') } finally { setOrgContext(op) } }
+  try { const op = currentOrgId(); const ws = await workspaceForClient(event, ids.client); setOrgContext(ws.orgId); try { await sendInviteEmail(email, d.contact.name, 'the Aidi team') } finally { setOrgContext(op) }
+    await filingsOrdered(ids.client, raw.map((l) => l.code ?? '').filter(Boolean), { vo_term: d.vo_term, ra_free: true }).catch((e) => console.error('[formation] calendar', e)) }
   catch (err) { console.error('[formation] finvry account failed', err) }
   const link = await billUrl(ids.invoice)
   const o = await currentOrg()

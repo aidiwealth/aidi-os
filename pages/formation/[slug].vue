@@ -3,19 +3,19 @@
 definePageMeta({ layout: 'public' })
 interface Item { code: string; name: string; description: string | null; billing: string; price: string }
 const slug = useRoute().params.slug as string
-const { data, error } = await useFetch<{ llc: Item | null; inc: Item | null; addons: Item[]; states: string[]; online: boolean; workspace: { firm: string } }>('/api/public/formation/' + slug, { key: 'pub-formation-' + slug })
+const { data, error } = await useFetch<{ llc: Item | null; inc: Item | null; agent: Item | null; virtual: Item | null; addons: Item[]; states: string[]; online: boolean; workspace: { firm: string } }>('/api/public/formation/' + slug, { key: 'pub-formation-' + slug })
 useHead({ titleTemplate: '%s', title: () => 'Start your US company' + (data.value ? ' — ' + data.value.workspace.firm : '') })
 const steps = ['Company', 'Name', 'Address', 'Registered agent', 'Owners', 'Add-ons', 'Your details', 'Review']
 const step = ref(0)
-const f = reactive({ website: '', state: 'Delaware', entity_type: 'llc' as 'llc' | 'c_corp', names: ['', '', ''], purpose: '', useVirtual: false, address: { line1: '', line2: '', city: '', region: '', postal: '', country: 'United States' }, management: 'member',
+const f = reactive({ website: '', state: 'Delaware', entity_type: 'llc' as 'llc' | 'c_corp', names: ['', '', ''], purpose: '', useVirtual: false, vo_term: 'monthly' as 'monthly' | 'annual', address: { line1: '', line2: '', city: '', region: '', postal: '', country: 'United States' }, management: 'member',
   agent: 'ours' as 'ours' | 'theirs', agent_details: '', members: [{ name: '', email: '', ownership: 100 as number | string, address: '', country: '' }], addons: [] as string[], contact: { name: '', email: '', phone: '', country: '' } })
 const pkg = computed(() => (f.entity_type === 'llc' ? data.value?.llc : data.value?.inc) ?? null)
 const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
 const qty = (i: Item) => (i.billing === 'monthly' ? 12 : 1)
 const picked = computed(() => (data.value?.addons ?? []).filter((i) => f.addons.includes(i.code)))
-const total = computed(() => (pkg.value ? Number(pkg.value.price) : 0) + picked.value.reduce((t, i) => t + qty(i) * Number(i.price), 0))
-const virtualAvailable = computed(() => (data.value?.addons ?? []).some((i) => i.code === 'virtual_office' || i.code === 'de_mailbox'))
-watch(() => f.useVirtual, (v) => { const code = (data.value?.addons ?? []).find((i) => i.code === 'virtual_office')?.code ?? (data.value?.addons ?? []).find((i) => i.code === 'de_mailbox')?.code; if (!code) return; if (v && !f.addons.includes(code)) f.addons.push(code); if (!v) f.addons = f.addons.filter((c) => c !== code) })
+const voAmount = computed(() => (f.useVirtual && data.value?.virtual ? Number(data.value.virtual.price) * (f.vo_term === 'annual' ? 12 : 1) : 0))
+const total = computed(() => (pkg.value ? Number(pkg.value.price) : 0) + voAmount.value + picked.value.reduce((t, i) => t + qty(i) * Number(i.price), 0))
+const virtualAvailable = computed(() => !!data.value?.virtual)
 const ownSum = computed(() => f.members.reduce((t, m) => t + (Number(m.ownership) || 0), 0))
 const msg = ref(''); const busy = ref(false)
 function check(): string {
@@ -31,7 +31,7 @@ async function pay() {
   try {
     const r = await $fetch<{ url: string }>('/api/public/formation/' + slug, { method: 'POST', body: { website: f.website, state: f.state, entity_type: f.entity_type, names: f.names.filter((n) => n.trim()), purpose: f.purpose || undefined,
       address: f.useVirtual ? undefined : f.address, management: f.entity_type === 'llc' ? f.management : 'board', agent: f.agent, agent_details: f.agent_details || undefined,
-      members: f.members.map((m) => ({ ...m, ownership: Number(m.ownership) })), addons: f.addons, contact: f.contact } })
+      members: f.members.map((m) => ({ ...m, ownership: Number(m.ownership) })), addons: f.addons, virtual: f.useVirtual, vo_term: f.vo_term, contact: f.contact } })
     window.location.href = r.url
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not place the order. Please try again.'; busy.value = false }
 }
@@ -65,7 +65,9 @@ async function pay() {
           </template>
           <template v-else-if="step === 2">
             <h2>Business address</h2>
-            <label v-if="virtualAvailable" class="chk"><input v-model="f.useVirtual" type="checkbox"> Use a US virtual office or mailbox from us (added to your order)</label>
+            <label v-if="virtualAvailable" class="chk"><input v-model="f.useVirtual" type="checkbox"> Use a US virtual office from us (added to your order)</label>
+            <div v-if="f.useVirtual && data.virtual" class="vt"><button type="button" :class="{ on: f.vo_term === 'monthly' }" @click="f.vo_term = 'monthly'"><b>Monthly</b><em>{{ usd(Number(data.virtual.price)) }} / month</em></button><button type="button" :class="{ on: f.vo_term === 'annual' }" @click="f.vo_term = 'annual'"><b>Yearly</b><em>{{ usd(Number(data.virtual.price) * 12) }} / year</em></button></div>
+            <p v-if="f.useVirtual" class="muted sm">A recurring subscription: renews automatically {{ f.vo_term === 'annual' ? 'every year' : 'every month' }} from your Finvry wallet or card on file.</p>
             <template v-if="!f.useVirtual">
               <label class="label">Address<input v-model="f.address.line1" maxlength="200"></label>
               <label class="label">Address line 2<input v-model="f.address.line2" maxlength="200"></label>
@@ -75,7 +77,7 @@ async function pay() {
           </template>
           <template v-else-if="step === 3">
             <h2>Registered agent</h2><p class="muted sm">Every US company needs a registered agent in its state to receive official mail.</p>
-            <label class="chk"><input v-model="f.agent" type="radio" value="ours"> Use ours (recommended)</label>
+            <label class="chk"><input v-model="f.agent" type="radio" value="ours"> Use ours (recommended){{ data.agent ? ' — free for the first year, then ' + usd(Number(data.agent.price)) + ' / year, renewed automatically' : '' }}</label>
             <label class="chk"><input v-model="f.agent" type="radio" value="theirs"> I have my own registered agent</label>
             <label v-if="f.agent === 'theirs'" class="label">Agent name and address<textarea v-model="f.agent_details" rows="2" maxlength="500" /></label>
           </template>
@@ -114,7 +116,9 @@ async function pay() {
         </div>
         <aside class="card sum"><h2>Your order</h2>
           <div v-if="pkg" class="li"><span>{{ pkg.name }} ({{ f.state }})</span><b>{{ usd(Number(pkg.price)) }}</b></div>
-          <div v-for="i in picked" :key="i.code" class="li"><span>{{ i.name }}{{ i.billing === 'monthly' ? ' × 12 months' : '' }}</span><b>{{ usd(qty(i) * Number(i.price)) }}</b></div>
+          <div v-if="f.agent === 'ours' && data.agent" class="li"><span>{{ data.agent.name }}<em>First year free · then {{ usd(Number(data.agent.price)) }} / year</em></span><b>Free</b></div>
+          <div v-if="f.useVirtual && data.virtual" class="li"><span>{{ data.virtual.name }}<em>{{ f.vo_term === 'annual' ? 'Billed yearly' : 'Billed monthly' }} · renews automatically</em></span><b>{{ usd(voAmount) }}</b></div>
+          <div v-for="i in picked" :key="i.code" class="li"><span>{{ i.name }}{{ i.billing === 'monthly' ? ' × 12 months' : '' }}</span><b>{{ Number(i.price) === 0 ? 'Free' : usd(qty(i) * Number(i.price)) }}</b></div>
           <div class="li tot"><span>Total</span><b>{{ usd(total) }}</b></div>
           <p class="muted sm">State filing fees included. {{ data.online ? 'Pay securely by card.' : 'We will email you an invoice with bank transfer details.' }}</p></aside>
       </div>
@@ -139,4 +143,5 @@ label.label { display: flex; flex-direction: column; gap: 6px; } input, select, 
 .sum { position: sticky; top: 12px; } .sum h2 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .li.tot { font-weight: 600; border-bottom: 0; font-size: 15px; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; align-self: flex-start; } .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .two, .types { grid-template-columns: 1fr; } .sum { position: static; } }
+.vt { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; } .vt button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; font: inherit; cursor: pointer; text-align: left; } .vt button.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); } .vt em, .li em { font-style: normal; font-size: 12px; color: var(--c-muted); display: block; } .vt b { font-size: 14px; }
 </style>
