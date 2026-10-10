@@ -90,17 +90,19 @@ export async function chargeCardIntoWallet(orgId: string, minor: number, currenc
 // Recurring services created when an invoice with monthly or yearly items is paid (the first period is on the invoice).
 export async function subscriptionsFromInvoice(invoiceId: string): Promise<void> {
   await asPlatform(async () => {
-    const inv = (await db().query<{ client_id: string; currency: string; lines: { code?: string; description: string; quantity: number; unit_amount: number }[]; workspace_id: string | null }>(
+    const inv = (await db().query<{ client_id: string; currency: string; lines: { code?: string; interval?: string; description: string; quantity: number; unit_amount: number }[]; workspace_id: string | null }>(
       'SELECT i.client_id, i.currency, i.lines, c.workspace_id FROM services.invoices i JOIN services.clients c ON c.id = i.client_id WHERE i.id = $1', [invoiceId])).rows[0]
     if (!inv?.workspace_id) return
     for (const l of inv.lines ?? []) {
       if (!l.code) continue
       const cat = (await db().query<{ name: string; billing: string; price: string | null }>('SELECT name, billing, price::text FROM services.catalog WHERE code = $1', [l.code])).rows[0]
       if (!cat || !['monthly', 'annual'].includes(cat.billing) || !cat.price) continue
-      const months = cat.billing === 'monthly' ? Math.max(1, l.quantity) : 12
+      const yearly = l.interval === 'year' || (l.interval !== 'month' && cat.billing === 'annual')
+      const months = l.interval === 'month' ? 1 : yearly ? 12 : Math.max(1, l.quantity)
+      const amount = cat.billing === 'monthly' && yearly ? Number(cat.price) * 12 : Number(cat.price)
       await db().query(`INSERT INTO wallet.subscriptions (organization_id, kind, code, name, client_id, amount_minor, currency, interval, next_charge_at)
         SELECT $1, 'service', $2, $3, $4, $5, $6, $7, (current_date + make_interval(months => $8))::date WHERE NOT EXISTS (SELECT 1 FROM wallet.subscriptions WHERE organization_id = $1 AND code = $2 AND status = 'active')`,
-        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(Number(cat.price) * 100), inv.currency, cat.billing === 'monthly' ? 'month' : 'year', months])
+        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(amount * 100), inv.currency, yearly ? 'year' : 'month', months])
     }
   })
 }

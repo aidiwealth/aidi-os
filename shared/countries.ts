@@ -3,3 +3,11 @@ export const COUNTRIES: string[] = ["Afghanistan", "Albania", "Algeria", "Andorr
 export const isNigeria = (c?: string | null) => /^\s*nigeria\s*$/i.test(c ?? '')
 export const currencyForCountry = (c?: string | null) => (isNigeria(c) ? 'NGN' : 'USD')
 export const US_STATES: string[] = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"]
+
+// The countries Finvry sets up for by name (sign-up and finvry.com); anything else is "Other".
+export const MARKETS: { name: string; flag: string; note: string }[] = [
+  { name: 'United States', flag: '🇺🇸', note: 'US dollars' }, { name: 'Canada', flag: '🇨🇦', note: 'Billed in US dollars' }, { name: 'Nigeria', flag: '🇳🇬', note: 'Naira' },
+  { name: 'Kenya', flag: '🇰🇪', note: 'Billed in US dollars' }, { name: 'Ghana', flag: '🇬🇭', note: 'Billed in US dollars' }, { name: 'United Kingdom', flag: '🇬🇧', note: 'Billed in US dollars' }]
+// Charged in US dollars but not a US account: they can pay with a local card; the payment processor converts.
+export const localCardCountry = (c?: string | null) => !!c && !isNigeria(c) && !/^\s*(united states|usa|us)\s*$/i.test(c)
+export const LOCAL_CARD_NOTE = 'Prices are charged in US dollars. You can pay with your local card; our payment processor handles the currency conversion.'

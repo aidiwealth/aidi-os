@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { localCardCountry, LOCAL_CARD_NOTE } from '~/shared/countries'
 useHead({ title: 'Settings' })
 interface S { org: { name: string; slug: string; kind: string; status: string; plan: string }; settings: { public_name: string; investor_name: string; thesis: string; notify_emails: string[]; default_vehicle_id: string }
   plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string; pitchFormUrl?: string }
 const { data, refresh } = await useFetch<S>('/api/settings')
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const { data: billing } = await useFetch<{ subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')
+const { data: billing } = await useFetch<{ country?: string; subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')
 const usd = (v: string | number) => '$' + Number(v).toLocaleString()
 const f = reactive({ name: '', public_name: '', investor_name: '', thesis: '', notify: '', default_vehicle_id: '' })
 watchEffect(() => { const d = data.value; if (!d) return; Object.assign(f, { name: d.org.name, public_name: d.settings.public_name, investor_name: d.settings.investor_name, thesis: d.settings.thesis, notify: d.settings.notify_emails.join(', '), default_vehicle_id: d.settings.default_vehicle_id }) })
@@ -52,6 +53,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
         </div>
         <div class="card">
           <h2>Billing</h2>
+          <p v-if="localCardCountry(billing?.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
           <p v-if="billing?.subscription" class="plan"><b>{{ billing.subscription.plan }}</b> · {{ usd(billing.subscription.amount_usd) }} / {{ billing.subscription.billing === 'annual' ? 'year' : 'month' }} · renews {{ billing.subscription.renews }}</p>
           <EmptyState v-else compact icon="empty" :title="`No subscription on file${data.org.status === 'trial' ? ' yet: you are on a trial' : ''}`" />
           <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b><a v-if="i.payUrl" :href="i.payUrl" class="payl">Pay</a></span></li></ul>
@@ -87,4 +89,5 @@ textarea { resize: vertical; } .hint { font-size: 12px; color: var(--c-muted); l
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .pfi { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .dev code { font-size: 11.5px; word-break: break-all; } .lnk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; padding: 0; } .err { color: var(--c-danger); }
+.lcn { background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; font-size: 13.5px; color: var(--c-ink-soft); margin: 0 0 10px; }
 </style>

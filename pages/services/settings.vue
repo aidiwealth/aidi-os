@@ -6,15 +6,16 @@ const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; 
 const { data: items, refresh: ri } = await useFetch<Item[]>('/api/services/catalog')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const isAdmin = computed(() => !!me.value?.roles.includes('admin'))
-const origin = useRequestURL().origin
-const formationUrl = computed(() => origin + '/formation/' + (s.value?.slug ?? ''))
+const formationUrl = computed(() => 'https://app.finvry.com/formation/' + (s.value?.slug ?? ''))
+const fcopied = ref(false); async function copyFormation() { await navigator.clipboard.writeText(formationUrl.value); fcopied.value = true; setTimeout(() => (fcopied.value = false), 1500) }
 const US_BANK = ['Account holder', 'Bank name', 'Routing number', 'Account number', 'SWIFT code', 'Bank address']
 const NG_BANK = ['Account name', 'Bank name', 'Account number', 'Sort code']
 const f = reactive({ prefix: 'INV', terms_days: 30, note_top: '', note_bottom: '', us: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> }, ng: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> } })
-watchEffect(() => { if (s.value) { Object.assign(f, JSON.parse(JSON.stringify({ prefix: s.value.prefix, terms_days: s.value.terms_days, note_top: s.value.note_top, note_bottom: s.value.note_bottom, us: s.value.us, ng: s.value.ng }))); for (const k of US_BANK) f.us.bank[k] ??= ''; for (const k of NG_BANK) f.ng.bank[k] ??= '' } })
+watch(s, (v) => { if (v) { Object.assign(f, JSON.parse(JSON.stringify({ prefix: v.prefix, terms_days: v.terms_days, note_top: v.note_top, note_bottom: v.note_bottom, us: v.us, ng: v.ng }))); for (const k of US_BANK) f.us.bank[k] ??= ''; for (const k of NG_BANK) f.ng.bank[k] ??= '' } }, { immediate: true })
 const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
-async function save() { msg.value = ''; ok.value = ''; try { await $fetch('/api/services/billing-settings', { method: 'POST', body: f }); ok.value = 'Settings saved.'; await rs() } catch (e) { msg.value = err(e) } }
+const saving = ref(false), saved = ref(false), saveErr = ref('')
+async function save() { msg.value = ''; ok.value = ''; saveErr.value = ''; saved.value = false; saving.value = true; try { await $fetch('/api/services/billing-settings', { method: 'POST', body: f }); saved.value = true; await rs(); setTimeout(() => (saved.value = false), 4000) } catch (e) { saveErr.value = err(e) } finally { saving.value = false } }
 const blank = () => ({ cost: '' as string | number, fee: '' as string | number, cost_ngn: '' as string | number, fee_ngn: '' as string | number, cost_label: '', public: true, id: '', code: '', name: '', description: '', billing: 'one_time', price: '' as string | number, price_ngn: '' as string | number, region: 'us', currency: 'USD', formation: false, active: true, sort: 10 })
 const it = reactive(blank()); const editing = ref(false)
 function edit(i?: Item) { Object.assign(it, blank(), i ? { ...i, description: i.description ?? '', price: i.price ?? '', price_ngn: i.price_ngn ?? '', cost: i.cost ?? '', fee: i.fee ?? '', cost_ngn: i.cost_ngn ?? '', fee_ngn: i.fee_ngn ?? '', cost_label: i.cost_label ?? '', public: i.public !== false } : {}); editing.value = true }
@@ -29,7 +30,7 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
   <section v-if="s">
     <CsNav />
     <h1>Prices &amp; settings</h1>
-    <div class="card link"><b>Formation sign-up page</b><span class="muted sm">Share this link or add it to your website. Prices come from the services marked "Offer in the formation sign-up".</span><a :href="formationUrl" target="_blank" rel="noopener">{{ formationUrl }}</a></div>
+    <div class="card link"><b>Formation sign-up page</b><span class="muted sm">Share this link or add it to your website. Prices come from the services marked "Offer in the formation sign-up".</span><span class="frow"><a :href="formationUrl" target="_blank" rel="noopener">{{ formationUrl }}</a><button type="button" class="btn secondary" @click="copyFormation">{{ fcopied ? 'Copied' : 'Copy link' }}</button></span></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="card">
       <div class="ch"><h2>Price list</h2><button v-if="isAdmin" class="btn secondary" @click="edit()">Add service</button></div>
@@ -71,7 +72,7 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
         <label class="label wide">Address<textarea v-model="f[r].address" rows="2" maxlength="500" :disabled="!isAdmin" /></label>
         <label v-for="k in (r === 'us' ? US_BANK : NG_BANK)" :key="r + k" class="label">{{ k }}<input v-model="f[r].bank[k]" maxlength="120" :disabled="!isAdmin"></label>
       </template>
-      <div v-if="isAdmin" class="wide row"><button class="btn" type="submit">Save settings</button><span class="muted sm">Bank details appear on invoices and in invoice emails for manual transfers.</span></div>
+      <div v-if="isAdmin" class="wide row"><button class="btn" :class="{ done: saved }" type="submit" :disabled="saving">{{ saving ? 'Saving…' : saved ? '✓ Saved' : 'Save settings' }}</button><span v-if="saved" class="okb" role="status">Settings saved. New invoices use these details.</span><span v-else-if="saveErr" class="error" role="alert">{{ saveErr }}</span><span v-else class="muted sm">Bank details appear on invoices and in invoice emails for manual transfers.</span></div>
     </form>
   </section>
 </template>
@@ -89,4 +90,6 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .chk { display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; font-size: 13px; } .chk input { width: auto; } .sm { font-size: 12.5px; }
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr; } }
 .ngp { color: var(--c-muted); font-size: 12.5px; }
+.frow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn.done { background: var(--c-ok); border-color: var(--c-ok); } .okb { color: var(--c-ok); font-weight: 500; font-size: 13.5px; }
 </style>

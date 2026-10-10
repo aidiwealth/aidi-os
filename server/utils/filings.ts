@@ -16,13 +16,21 @@ async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>)
   try { return await fn(ws) } finally { setOrgContext(prev) }
 }
 // On order: make sure each filing is on the company's compliance calendar.
-export async function filingsOrdered(clientId: string, codes: string[]): Promise<number> {
+export async function filingsOrdered(clientId: string, codes: string[], opts: { vo_term?: 'monthly' | 'annual'; ra_free?: boolean } = {}): Promise<number> {
   const list = codes.filter((c) => FILING[c])
   if (!list.length && !codes.some((c) => c === 'llc_formation' || c === 'inc_formation')) return 0
   return (await inCompany(clientId, async () => {
     const ent = await companyEntityId(); if (!ent) return 0
     let n = 0
-    for (const c of list) { const f = FILING[c]!; const r = await db().query("INSERT INTO compliance.obligations (entity_id, title, category, jurisdiction, recurrence, next_due, reminder_days, notes) SELECT $1,$2,$3,$4,'annual',$5,30,$6 WHERE NOT EXISTS (SELECT 1 FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active)", [ent, f.title, f.category, f.jurisdiction, nextDue(f), 'Ordered from Aidi in Finvry. Our team handles this filing.']); n += r.rowCount ?? 0 }
+    for (const c of list) {
+      const f = FILING[c]!
+      const monthly = c === 'virtual_office' && opts.vo_term !== 'annual'
+      const due = monthly ? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, new Date().getUTCDate())).toISOString().slice(0, 10) : nextDue(f)
+      const note = c === 'registered_agent' ? (opts.ra_free ? 'Free for the first year with your new company. ' : '') + 'Renews automatically each year: charged from your Finvry wallet, or your card on file.'
+        : c === 'virtual_office' ? 'Renews automatically ' + (monthly ? 'every month' : 'every year') + ': charged from your Finvry wallet, or your card on file.' : 'Ordered from Aidi in Finvry. Our team handles this filing.'
+      const r = await db().query("INSERT INTO compliance.obligations (entity_id, title, category, jurisdiction, recurrence, next_due, reminder_days, notes) SELECT $1,$2,$3,$4,$7,$5,$8,$6 WHERE NOT EXISTS (SELECT 1 FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active)", [ent, f.title, f.category, f.jurisdiction, due, note, monthly ? 'monthly' : 'annual', monthly ? 5 : 30])
+      n += r.rowCount ?? 0
+    }
     return n
   })) ?? 0
 }

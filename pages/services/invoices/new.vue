@@ -1,15 +1,24 @@
 <script setup lang="ts">
-useHead({ title: 'New invoice' })
+const editId = String(useRoute().query.edit ?? '')
+useHead({ title: editId ? 'Edit invoice' : 'New invoice' })
 interface Item { id: string; code: string; name: string; billing: string; price: string | null; currency: string; active: boolean }
 const route = useRoute()
 const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients/list')
 const { data: catalog } = await useFetch<Item[]>('/api/services/catalog')
 const { data: settings } = await useFetch<{ terms_days: number; us: { issuer: string }; ng: { issuer: string } }>('/api/services/billing-settings')
 const f = reactive({ client_id: String(route.query.client ?? ''), job_id: String(route.query.job ?? ''), company_id: String(route.query.company ?? ''), region: 'us' as 'us' | 'ng', due_date: '', note: '', bill_name: '', bill_email: '', bill_address: '' })
-const lines = ref<{ description: string; quantity: number | string; unit_amount: number | string }[]>([{ description: '', quantity: 1, unit_amount: '' }])
+interface Ln { description: string; quantity: number | string; unit_amount: number | string; code?: string; interval?: 'month' | 'year'; free_first_year?: boolean }
+const lines = ref<Ln[]>([{ description: '', quantity: 1, unit_amount: '' }])
+// Editing an unpaid invoice: load it once and keep the client fixed.
+interface Ed { number: string; status: string; client_id: string; company_id: string | null; job_id: string | null; region: 'us' | 'ng'; due_date: string; note: string | null; bill_to: { name: string; email: string; address?: string }; lines: (Ln & { kind?: string })[] }
+const { data: editing } = editId ? await useFetch<{ invoice: Ed }>('/api/services/invoices/' + editId) : { data: ref(null) }
+const edited = ref(false)
+watch(editing, (e) => { const i = e?.invoice; if (!i || edited.value) return; edited.value = true
+  Object.assign(f, { client_id: i.client_id, company_id: i.company_id ?? '', job_id: i.job_id ?? '', region: i.region, due_date: i.due_date, note: i.note ?? '', bill_name: i.bill_to.name, bill_email: i.bill_to.email, bill_address: i.bill_to.address ?? '' })
+  lines.value = i.lines.filter((l) => l.kind !== 'tax').map((l) => ({ description: l.description, quantity: l.quantity, unit_amount: l.unit_amount, ...(l.code ? { code: l.code } : {}), ...(l.interval ? { interval: l.interval } : {}), ...(l.free_first_year ? { free_first_year: true } : {}) })) }, { immediate: true })
 const { data: client, refresh: loadClient } = await useFetch<{ client: { name: string; contact_name: string; email: string; address: string | null; country: string | null }; companies: { id: string; name: string }[] }>(() => '/api/services/clients/' + (f.client_id || '00000000-0000-0000-0000-000000000000'), { immediate: !!f.client_id, watch: false })
 watch(() => f.client_id, async (v) => { if (v) await loadClient() })
-watchEffect(() => { const c = client.value?.client; if (c && f.client_id) { f.bill_name = c.name; f.bill_email = c.email; f.bill_address = c.address ?? ''; f.region = /^\s*(nigeria|ng)\s*$/i.test(c.country ?? '') ? 'ng' : 'us' } })
+watchEffect(() => { const c = client.value?.client; if (c && f.client_id && !editId) { f.bill_name = c.name; f.bill_email = c.email; f.bill_address = c.address ?? ''; f.region = /^\s*(nigeria|ng)\s*$/i.test(c.country ?? '') ? 'ng' : 'us' } })
 const { data: rates } = await useFetch<{ country: string; label: string; rate: number; applies_to: string[] }[]>('/api/tax/rates', { key: 'tax-rates-pub', default: () => [] })
 const tax = computed(() => { const r = (rates.value ?? []).find((x) => x.country === (f.region === 'ng' ? 'NG' : 'US') && x.applies_to.includes('services')); return r && r.rate > 0 ? { label: r.label + ' (' + r.rate + '%)', amount: Math.round(total.value * r.rate) / 100 } : null })
 const cur = computed(() => (f.region === 'ng' ? 'NGN' : 'USD'))
@@ -17,7 +26,7 @@ const items = computed(() => (catalog.value ?? []).filter((i) => i.active && i.c
 function addItem(i: Item) {
   const qty = i.billing === 'monthly' ? 12 : 1
   const empty = lines.value.findIndex((l) => !l.description)
-  const row = { description: i.name, quantity: qty, unit_amount: i.price ?? '' }
+  const row: Ln = { description: i.name, quantity: qty, unit_amount: i.price ?? '', code: i.code }
   if (empty >= 0) lines.value[empty] = row; else lines.value.push(row)
 }
 const money = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur.value }).format(v)
@@ -26,8 +35,10 @@ const msg = ref(''); const busy = ref(false)
 async function save(send: boolean) {
   busy.value = true; msg.value = ''
   try {
-    const r = await $fetch<{ id: string; emailed: boolean }>('/api/services/invoices', { method: 'POST', body: { client_id: f.client_id, job_id: f.job_id || undefined, company_id: f.company_id || undefined, region: f.region, due_date: f.due_date || undefined, note: f.note || undefined, send,
-      lines: lines.value.filter((l) => l.description).map((l) => ({ description: l.description, quantity: Number(l.quantity), unit_amount: Number(l.unit_amount) })), bill_to: { name: f.bill_name, email: f.bill_email, address: f.bill_address || undefined } } })
+    const body = { job_id: f.job_id || undefined, company_id: f.company_id || undefined, region: f.region, due_date: f.due_date || undefined, note: f.note || undefined, send,
+      lines: lines.value.filter((l) => l.description).map((l) => ({ description: l.description, quantity: Number(l.quantity), unit_amount: Number(l.unit_amount), ...(l.code ? { code: l.code } : {}), ...(l.interval ? { interval: l.interval } : {}), ...(l.free_first_year ? { free_first_year: true } : {}) })), bill_to: { name: f.bill_name, email: f.bill_email, address: f.bill_address || undefined } }
+    const r = editId ? await $fetch<{ id: string; emailed: boolean }>('/api/services/invoices/' + editId + '/edit', { method: 'POST', body })
+      : await $fetch<{ id: string; emailed: boolean }>('/api/services/invoices', { method: 'POST', body: { ...body, client_id: f.client_id } })
     await navigateTo('/services/invoices/' + r.id)
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save the invoice.' } finally { busy.value = false }
 }
@@ -37,11 +48,12 @@ const BILL: Record<string, string> = { one_time: '', annual: '/yr', monthly: '/m
 <template>
   <section>
     <CsNav />
-    <div class="head"><h1>New invoice</h1></div>
+    <div class="head"><h1>{{ editId ? 'Edit invoice ' + (editing?.invoice.number ?? '') : 'New invoice' }}</h1><NuxtLink v-if="editId" :to="'/services/invoices/' + editId" class="btn secondary">Cancel</NuxtLink></div>
+    <p v-if="editId" class="muted sm">Change the services, descriptions, quantities and prices for this client. Prices here apply to this invoice only; your price list is not changed. VAT is worked out again.</p>
     <div class="grid">
       <div class="card main">
         <div class="two">
-          <label class="label">Client<select v-model="f.client_id" required><option value="" disabled>Choose a client</option><option v-for="c in clients ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+          <label class="label">Client<select v-model="f.client_id" required :disabled="!!editId"><option value="" disabled>Choose a client</option><option v-for="c in clients ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label class="label">Company<select v-model="f.company_id" :disabled="!client?.companies.length"><option value="">—</option><option v-for="c in client?.companies ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label class="label">Country billed in<select v-model="f.region"><option value="us">United States · USD · {{ settings?.us.issuer || 'US entity' }}</option><option value="ng">Nigeria · NGN (naira) · {{ settings?.ng.issuer || 'Nigerian entity' }}</option></select></label>
           <label class="label">Due date<input v-model="f.due_date" type="date" :placeholder="'In ' + (settings?.terms_days ?? 30) + ' days'"></label>
@@ -55,7 +67,8 @@ const BILL: Record<string, string> = { one_time: '', annual: '/yr', monthly: '/m
         <p v-if="f.job_id" class="muted sm">Linked to the job this invoice was raised from.</p>
         <label class="label">Note on the invoice (optional)<input v-model="f.note" maxlength="1000" placeholder="e.g. 2025 tax year, priced on volume of transactions"></label>
         <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-        <div class="row"><button class="btn" type="button" :disabled="busy || !f.client_id" @click="save(true)">Save and send</button><button class="btn secondary" type="button" :disabled="busy || !f.client_id" @click="save(false)">Save as draft</button></div>
+        <div v-if="editId" class="row"><button class="btn" type="button" :disabled="busy" @click="save(false)">{{ busy ? 'Saving…' : 'Save changes' }}</button><button class="btn secondary" type="button" :disabled="busy" @click="save(true)">{{ editing?.invoice.status === 'sent' ? 'Save and resend to client' : 'Save and send' }}</button></div>
+        <div v-else class="row"><button class="btn" type="button" :disabled="busy || !f.client_id" @click="save(true)">Save and send</button><button class="btn secondary" type="button" :disabled="busy || !f.client_id" @click="save(false)">Save as draft</button></div>
       </div>
       <aside class="card side"><h2>Price list</h2><p class="muted sm">Click to add. Quoted services (like IRS filing) start from the listed price; adjust to the client's workload.</p>
         <button v-for="i in items" :key="i.id" type="button" class="item" @click="addItem(i)"><span>{{ i.name }}</span><b>{{ i.price ? money(Number(i.price)) + BILL[i.billing] : 'Set price' }}</b></button>

@@ -20,6 +20,7 @@ const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invo
       <div class="row">
         <button class="btn secondary" @click="doPrint">Download PDF</button>
         <button v-if="data.invoice.status !== 'draft' && data.invoice.status !== 'void'" class="btn secondary" @click="copy">Copy pay link</button>
+        <NuxtLink v-if="data.invoice.status === 'draft' || data.invoice.status === 'sent'" :to="{ path: '/services/invoices/new', query: { edit: id } }" class="btn secondary">Edit invoice</NuxtLink>
         <template v-if="data.invoice.status === 'draft' || data.invoice.status === 'sent'"><button class="btn" :disabled="busy" @click="act('send')">{{ data.invoice.status === 'draft' ? 'Send to client' : 'Resend' }}</button></template>
       </div>
     </div>

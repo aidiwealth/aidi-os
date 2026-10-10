@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { localCardCountry, LOCAL_CARD_NOTE } from '~/shared/countries'
 // Wallet: balance card, card top-up, money movement by month, transactions with export.
 useHead({ title: 'Wallet' })
 interface Bank { bank: string; account_number: string; account_name: string; routing?: string; swift?: string }
-interface D { transfer: { mode: 'monnify'; account: { bank_name: string; account_number: string; account_name: string; accounts: { bankName: string; accountNumber: string; accountName: string }[] } | null } | { mode: 'manual'; bank: Bank } | null; reference: string; card: { brand: string | null; last4: string | null } | null; subscriptions: { id: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; next_charge_at: string; status: string; failures: number; last_error: string | null }[]; company: string; plan: string; currency: string; balance_minor: number; min_minor: number; ledger: { id: string; reference?: string | null; kind: string; amount_minor: number; balance_after_minor: number; category: string; reason: string; date: string }[]; pending: number; canTopup: boolean; provider: string }
+interface D { country?: string; transfer: { mode: 'monnify'; account: { bank_name: string; account_number: string; account_name: string; accounts: { bankName: string; accountNumber: string; accountName: string }[] } | null } | { mode: 'manual'; bank: Bank } | null; reference: string; card: { brand: string | null; last4: string | null } | null; subscriptions: { id: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; next_charge_at: string; status: string; failures: number; last_error: string | null }[]; company: string; plan: string; currency: string; balance_minor: number; min_minor: number; ledger: { id: string; reference?: string | null; kind: string; amount_minor: number; balance_after_minor: number; category: string; reason: string; date: string }[]; pending: number; canTopup: boolean; provider: string }
 const route = useRoute()
 const { data, refresh } = await useFetch<D>('/api/wallet', { query: { ref: route.query.ref ?? '' } })
 const tab = ref<'transfer' | 'card'>('card')
@@ -36,6 +37,7 @@ const byCat = computed(() => { const m = new Map<string, number>(); for (const l
     <template v-if="me?.org?.kind === 'company'"><ClientTabs /><BillingTabs /></template>
     <p class="label">Company</p><h1>Wallet</h1>
     <p class="lead">Top up once and pay for Aidi services, filings and renewals from your balance. Every movement is listed below.</p>
+    <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
     <p v-if="returned && data.pending" class="card note">Payment received; we're confirming it with {{ data.provider }}. Your balance updates in a moment.</p>
     <div class="top">
       <WalletCard title="Finvry" label="Available balance" :value="data.balance_minor / 100" :currency="data.currency" :sub="lastMove" foot-label="Workspace" :foot-value="data.company" :tag="PLAN[data.plan] ?? data.plan" />
@@ -92,4 +94,5 @@ label.label { display: flex; flex-direction: column; gap: 6px; } input { font: i
 .subs { margin-bottom: 22px; } .subs h3 { margin: 0 0 4px; } .sr { display: grid; grid-template-columns: 1fr auto 220px; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; align-items: center; } .sr em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .sr span:last-child { text-align: right; color: var(--c-ink-soft); font-size: 13px; } .nt { display: flex; flex-direction: column; gap: 12px; } .mix { max-width: 640px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
 .ip { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; font-size: 14px; } .ipr { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--c-rule); padding: 4px 0; } .ip a { color: var(--c-blue-deep); font-size: 13px; }
+.lcn { background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; font-size: 13.5px; color: var(--c-ink-soft); margin: 0 0 14px; }
 </style>

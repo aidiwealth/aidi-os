@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isNigeria } from '~/shared/countries'
+import { isNigeria, MARKETS, localCardCountry, LOCAL_CARD_NOTE } from '~/shared/countries'
 // Finvry sign-up: you, your company and country, a plan (naira for Nigeria, dollars elsewhere), then the emailed code.
 definePageMeta({ layout: false })
 useHead({ title: 'Create your Finvry account' })
@@ -8,7 +8,16 @@ interface Plan { code: string; name: string; description: string; seat_limit: nu
 const { data } = await useFetch<{ plans: Plan[] }>('/api/public/signup')
 const step = ref(1)
 const f = reactive({ website: '', name: '', email: '', company: '', country: 'United States', entity_type: '', state: 'Delaware', plan: 'company_free', code: '' })
-const TYPES: Record<string, string> = { us_llc: 'LLC (United States)', us_corp: 'C-Corp / Inc (United States)', ng_ltd: 'Limited company (Nigeria)', other: 'Other / not formed yet' }
+const TYPES = computed<Record<string, string>>(() => ({ us_llc: 'LLC (United States)', us_corp: 'C-Corp / Inc (United States)', ...(isNigeria(f.country) ? { ng_ltd: 'Limited company (Nigeria)' } : {}), ...(!isNigeria(f.country) && !/^united states$/i.test(f.country) ? { local: 'Company registered in ' + f.country } : {}), other: 'Not formed yet' }))
+// Country: six named markets as tiles, everything else under "Other".
+const market = ref<string>('United States')
+watch(market, (m) => { if (m !== 'Other') f.country = m; else if (MARKETS.some((x) => x.name === f.country)) f.country = '' })
+const cardNote = computed(() => localCardCountry(f.country))
+const setup = computed(() => isNigeria(f.country)
+  ? ['Billed in naira (₦), with card, transfer or your Finvry wallet', 'Nigerian company services and filings, priced in naira, plus US company formation', 'Filing reminders for Nigerian companies']
+  : /^united states$/i.test(f.country)
+    ? ['Billed in US dollars', 'US company services: formation, EIN, registered agent and state filings', 'Delaware and state filing reminders']
+    : ['Billed in US dollars — pay with your local card; our payment processor converts', 'US company services: form a Delaware or Wyoming company, EIN, registered agent', 'Investor tools work the same in every country'])
 const STEPS = [{ t: 'About you', d: 'Your name and work email' }, { t: 'Your company', d: 'Name, country and type' }, { t: 'Choose a plan', d: 'Start free, upgrade any time' }, { t: 'Verify your email', d: 'Enter the 6-digit code' }]
 const FEATS: Record<string, string[]> = { company_free: ['Financials and boards', 'Decks with analytics', 'Investor page and data room'], company_startup: ['Everything in Free', 'Investor updates and contacts', 'Fundraising pipeline'], company_scale: ['Everything in Startup', 'More seats, storage and AI', 'Priority support'] }
 const ngn = computed(() => isNigeria(f.country))
@@ -16,9 +25,9 @@ const amount = (p: Plan) => { const v = ngn.value ? p.ngn : p.usd; return v === 
 const msg = ref(''); const busy = ref(false)
 const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), humanReady = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' }
-function next() { msg.value = ''; if (step.value === 1 && (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))) { msg.value = 'Add your name and a valid email.'; return } if (step.value === 2 && !f.company.trim()) { msg.value = 'Add your company name.'; return } step.value++ }
-watch(() => f.country, (c) => { if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' })
-async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+function next() { msg.value = ''; if (step.value === 1 && (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))) { msg.value = 'Add your name and a valid email.'; return } if (step.value === 2 && !f.company.trim()) { msg.value = 'Add your company name.'; return } if (step.value === 2 && !f.country) { msg.value = 'Choose your country.'; return } step.value++ }
+watch(() => f.country, () => { if (f.entity_type && !(f.entity_type in TYPES.value)) f.entity_type = '' })
+async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type === 'local' ? 'other' : f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // six code boxes: type, paste, backspace
 const digits = ref<string[]>(['', '', '', '', '', '']); const boxes = ref<HTMLInputElement[]>([])
 function onDigit(i: number, e: Event) { const v = (e.target as HTMLInputElement).value.replace(/\D/g, ''); if (v.length > 1) { fill(v); return } digits.value[i] = v; if (v && i < 5) boxes.value[i + 1]?.focus(); sync() }
@@ -53,13 +62,17 @@ const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
           <button class="go" type="submit">Continue</button></form>
         <form v-else-if="step === 2" @submit.prevent="next"><h1>About your company</h1><p class="hint">We use this to set your currency and filing reminders.</p>
           <label class="fl">Company name<input v-model="f.company" required maxlength="200" autocomplete="organization" placeholder="Acme Technologies"></label>
-          <label class="fl">Country<CountrySelect v-model="f.country" required /></label>
-          <label class="fl">Company type <small>optional</small><select v-model="f.entity_type"><option value="">Choose</option><option v-for="(l, k) in TYPES" v-show="k !== 'ng_ltd' || ngn" :key="k" :value="k">{{ l }}</option></select></label>
+          <div class="fl">Where is your company based?
+            <div class="mk2"><button v-for="m in MARKETS" :key="m.name" type="button" class="mt" :class="{ on: market === m.name }" @click="market = m.name"><span class="fg">{{ m.flag }}</span><b>{{ m.name }}</b><em>{{ m.note }}</em></button>
+              <button type="button" class="mt" :class="{ on: market === 'Other' }" @click="market = 'Other'"><span class="fg">🌍</span><b>Other</b><em>Billed in US dollars</em></button></div></div>
+          <label v-if="market === 'Other'" class="fl">Country<CountrySelect v-model="f.country" required /></label>
+          <div class="setup"><b>Set up for {{ f.country || 'your country' }}</b><ul><li v-for="x in setup" :key="x">{{ x }}</li></ul></div>
+          <label class="fl">Company type <small>optional</small><select v-model="f.entity_type"><option value="">Choose</option><option v-for="(l, k) in TYPES" :key="k" :value="k">{{ l }}</option></select></label>
           <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="fl">State of formation<select v-model="f.state"><option>Delaware</option><option>Wyoming</option><option>Other US state</option></select></label>
-          <p class="note">{{ f.entity_type && f.entity_type !== 'other' ? 'We will add your usual filing deadlines to your compliance calendar, with reminders. ' : '' }}You will be billed in {{ ngn ? 'naira' : 'US dollars' }}.</p>
+          <p class="note">{{ f.entity_type && f.entity_type !== 'other' ? 'We will add your usual filing deadlines to your compliance calendar, with reminders. ' : '' }}</p>
           <input v-model="f.website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
           <button class="go" type="submit">Continue</button><button class="back" type="button" @click="step--">← Back</button></form>
-        <form v-else-if="step === 3" @submit.prevent="create"><h1>Choose a plan</h1><p class="hint">Paid plans start with a 14-day free trial. Change plan any time.</p>
+        <form v-else-if="step === 3" @submit.prevent="create"><h1>Choose a plan</h1><p class="hint">Paid plans start with a 14-day free trial. Change plan any time.</p><p v-if="cardNote" class="note card">{{ LOCAL_CARD_NOTE }}</p>
           <div class="plans"><label v-for="p in data?.plans ?? []" :key="p.code" class="pc" :class="{ on: f.plan === p.code, pop: p.code === 'company_startup' }"><input v-model="f.plan" type="radio" :value="p.code" class="sr">
             <span class="ph"><b>{{ p.name }}</b><i v-if="p.code === 'company_startup'">Most popular</i></span><span class="pp"><strong>{{ amount(p) }}</strong><em>{{ (ngn ? p.ngn : p.usd) ? '/ month' : p.code === 'company_free' ? 'forever' : '' }}</em></span>
             <ul><li v-for="x in FEATS[p.code] ?? [p.description]" :key="x">{{ x }}</li></ul></label></div>
@@ -94,7 +107,10 @@ const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
 h1 { font-family: var(--font-heading); font-size: 32px; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 8px; color: #0c1a2e; font-weight: 600; } .hint { color: var(--c-muted); margin: 0 0 26px; font-size: 15px; } .hint.sm { font-size: 13.5px; margin: 18px 0 0; }
 form { display: flex; flex-direction: column; gap: 16px; } .fl { display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; font-weight: 500; color: #3b4658; } .fl small { font-weight: 400; color: var(--c-muted); }
 input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 14px; border: 1px solid #cfd5dd; background: #fff; color: #0c1a2e; width: 100%; } input:focus, select:focus { outline: none; border-color: #0c1a2e; box-shadow: 0 0 0 3px rgba(95,168,211,.25); }
-.note { margin: -4px 0 0; font-size: 13px; color: var(--c-muted); }
+.note { margin: -4px 0 0; font-size: 13px; color: var(--c-muted); } .note.card { margin: -14px 0 4px; background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; color: #3b4658; }
+.mk2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; margin-top: 2px; } .mt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid #dfe3e9; background: #fff; font: inherit; cursor: pointer; text-align: left; }
+.mt:hover { border-color: #9aa5b4; } .mt.on { border-color: #0c1a2e; box-shadow: inset 0 0 0 1px #0c1a2e; background: #f7f9fb; } .mt .fg { font-size: 20px; line-height: 1; } .mt b { font-size: 14px; color: #0c1a2e; font-weight: 600; } .mt em { font-style: normal; font-size: 11.5px; color: var(--c-muted); font-weight: 400; }
+.setup { background: #f7f9fb; border: 1px solid #e6e9ee; padding: 12px 14px; font-size: 13.5px; color: #3b4658; } .setup b { color: #0c1a2e; } .setup ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
 .go { height: 50px; border: 0; background: #0c1a2e; color: #fff; font: inherit; font-weight: 600; font-size: 15.5px; cursor: pointer; margin-top: 6px; } .go:hover { background: #1c547d; } .go:disabled { opacity: .5; cursor: default; }
 .back { background: none; border: 0; color: var(--c-muted); font: inherit; font-size: 14px; cursor: pointer; align-self: flex-start; padding: 0; } .back:hover { color: #0c1a2e; }
 .plans { display: grid; gap: 10px; } .pc { position: relative; border: 1px solid #dfe3e9; padding: 16px 18px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; transition: border-color .15s; }

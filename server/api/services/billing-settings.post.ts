@@ -7,7 +7,8 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin')
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the fields. The invoice prefix is 2 to 10 capital letters or numbers.')
-  await db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('cs_billing', $1::jsonb) WHERE id = core.current_org()", [JSON.stringify(b.data)])
+  const r = await db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('cs_billing', $1::jsonb) WHERE id = core.current_org()", [JSON.stringify(b.data)])
+  if (!r.rowCount) throw apiError('not_saved', 'Could not save the settings. Sign in again and retry.', 409)
   await audit({ event, actorUserId: user.userId, action: 'services.billing_settings', objectType: 'organization', objectId: user.orgId ?? undefined })
   return { ok: true }
 })
