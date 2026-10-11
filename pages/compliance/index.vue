@@ -63,7 +63,7 @@ const blank = () => ({ entity_id: entities.value?.[0]?.id ?? '', title: '', cate
 const form = reactive(blank())
 function openAdd() { Object.assign(form, blank()); tpl.value = ''; err.value = ''; adding.value = true }
 watch(tpl, (i) => { const t = i.startsWith('s') ? svcTemplates.value[Number(i.slice(1))] : TEMPLATES[Number(i)]; if (t) Object.assign(form, { title: t.title, category: t.category, jurisdiction: t.jurisdiction, recurrence: t.recurrence, next_due: nextDate(t.md) || form.next_due }) })
-async function add() { err.value = ''; try { await $fetch('/api/compliance', { method: 'POST', body: { ...form, jurisdiction: form.jurisdiction || undefined, notes: form.notes || undefined, owner_id: null } }); adding.value = false; await refresh() } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
+async function add() { err.value = ''; try { await $fetch('/api/compliance', { method: 'POST', body: { ...form, jurisdiction: form.jurisdiction || undefined, notes: form.notes || undefined, owner_id: null, service_code: pickedSvc.value?.code } }); adding.value = false; await refresh() } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
 // mark done
 const doneFor = ref<ObligationRow | null>(null); const doneForm = reactive({ completed_on: today, note: '' })
 function openDone(o: ObligationRow) { doneFor.value = o; doneForm.completed_on = today; doneForm.note = '' }

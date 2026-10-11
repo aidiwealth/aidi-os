@@ -6,6 +6,11 @@ export const FILING: Record<string, { title: string; category: string; jurisdict
   ca_state: { title: 'California state filing', category: 'annual_return', jurisdiction: 'US-CA', month: 4, day: 15 },
   registered_agent: { title: 'Registered agent renewal', category: 'registered_agent', jurisdiction: 'US' },
   virtual_office: { title: 'Virtual office renewal', category: 'other', jurisdiction: 'US' } }
+// The services price list's names (operator workspace), so calendar items read exactly like the price list.
+export async function catalogNames(): Promise<Record<string, string>> {
+  const op = await operatorOrgId()
+  return Object.fromEntries((await asPlatform(() => db().query<{ code: string; name: string }>('SELECT code, name FROM services.catalog WHERE organization_id = $1', [op]))).rows.map((r) => [r.code, r.name]))
+}
 const nextDue = (f: { month?: number; day?: number }) => { const now = new Date(); if (f.month === undefined) return new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10); let d = new Date(Date.UTC(now.getUTCFullYear(), f.month - 1, f.day ?? 1)); if (d <= now) d = new Date(Date.UTC(now.getUTCFullYear() + 1, f.month - 1, f.day ?? 1)); return d.toISOString().slice(0, 10) }
 export async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>): Promise<T | null> {
   const ws = (await asPlatform(() => db().query<{ workspace_id: string | null }>('SELECT workspace_id FROM services.clients WHERE id = $1', [clientId]))).rows[0]?.workspace_id
@@ -20,6 +25,7 @@ export async function filingsOrdered(clientId: string, codes: string[], opts: { 
   if (!list.length && !codes.some((c) => c === 'llc_formation' || c === 'inc_formation')) return 0
   return (await inCompany(clientId, async () => {
     const ent = await companyEntityId(); if (!ent) return 0
+    const names = await catalogNames().catch(() => ({} as Record<string, string>))
     let n = 0
     for (const c of list) {
       const f = FILING[c]!
@@ -29,7 +35,7 @@ export async function filingsOrdered(clientId: string, codes: string[], opts: { 
         : monthly ? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, new Date().getUTCDate())).toISOString().slice(0, 10) : nextDue(f)
       const note = c === 'registered_agent' ? (opts.ra_free ? 'Free for the first year with your new company. ' : '') + 'Renews automatically each year: charged from your Finvry wallet, or your card on file.'
         : c === 'virtual_office' ? 'Renews automatically ' + (monthly ? 'every month' : 'every year') + ': charged from your Finvry wallet, or your card on file.' : 'Ordered from Aidi in Finvry. Our team handles this filing.'
-      const r = await db().query("INSERT INTO compliance.obligations (entity_id, title, category, jurisdiction, recurrence, next_due, reminder_days, notes) SELECT $1,$2,$3,$4,$7,$5,$8,$6 WHERE NOT EXISTS (SELECT 1 FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active)", [ent, f.title, f.category, f.jurisdiction, due, note, monthly ? 'monthly' : 'annual', monthly ? 5 : 30])
+      const r = await db().query("INSERT INTO compliance.obligations (entity_id, title, category, jurisdiction, recurrence, next_due, reminder_days, notes, service_code) SELECT $1,$2,$3,$4,$7,$5,$8,$6,$9 WHERE NOT EXISTS (SELECT 1 FROM compliance.obligations WHERE entity_id = $1 AND (service_code = $9 OR title = $2) AND active)", [ent, names[c] ?? f.title, f.category, f.jurisdiction, due, note, monthly ? 'monthly' : 'annual', monthly ? 5 : 30, c])
       n += r.rowCount ?? 0
     }
     return n
@@ -42,8 +48,8 @@ export async function filingsCompleted(clientId: string, codes: string[], jobTit
     let n = 0
     for (const c of codes.filter((x) => FILING[x])) {
       const f = FILING[c]!
-      let o = (await db().query<{ id: string; next_due: string; recurrence: string }>("SELECT id, to_char(next_due, 'YYYY-MM-DD') AS next_due, recurrence FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active LIMIT 1", [ent, f.title])).rows[0]
-      if (!o) { await filingsOrdered(clientId, [c]); o = (await db().query<{ id: string; next_due: string; recurrence: string }>("SELECT id, to_char(next_due, 'YYYY-MM-DD') AS next_due, recurrence FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active LIMIT 1", [ent, f.title])).rows[0] }
+      let o = (await db().query<{ id: string; next_due: string; recurrence: string }>("SELECT id, to_char(next_due, 'YYYY-MM-DD') AS next_due, recurrence FROM compliance.obligations WHERE entity_id = $1 AND (service_code = $3 OR title = $2) AND active ORDER BY service_code NULLS LAST LIMIT 1", [ent, f.title, c])).rows[0]
+      if (!o) { await filingsOrdered(clientId, [c]); o = (await db().query<{ id: string; next_due: string; recurrence: string }>("SELECT id, to_char(next_due, 'YYYY-MM-DD') AS next_due, recurrence FROM compliance.obligations WHERE entity_id = $1 AND (service_code = $3 OR title = $2) AND active ORDER BY service_code NULLS LAST LIMIT 1", [ent, f.title, c])).rows[0] }
       if (!o) continue
       await db().query('INSERT INTO compliance.completions (obligation_id, due_date, completed_on, note) VALUES ($1,$2,current_date,$3)', [o.id, o.next_due, ('Filed by Aidi: ' + jobTitle).slice(0, 2000)])
       const next = rollForward(o.next_due, o.recurrence); if (next) await db().query('UPDATE compliance.obligations SET next_due = $2 WHERE id = $1', [o.id, next])

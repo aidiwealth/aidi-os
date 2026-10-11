@@ -20,6 +20,8 @@ export default defineEventHandler(async (event) => {
     ? await db().query<{ id: string }>('UPDATE services.catalog SET code=$2, name=$3, description=$4, billing=$5, price=$6, currency=$7, formation=$8, active=$9, sort=$10 WHERE id=$1 RETURNING id', [d.id, ...vals])
     : await db().query<{ id: string }>('INSERT INTO services.catalog (code, name, description, billing, price, currency, formation, active, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (organization_id, code) DO UPDATE SET name = EXCLUDED.name RETURNING id', vals)
   if (r.rows[0]) await db().query('UPDATE services.catalog SET price_ngn = $2, region = $3, cost = $4, fee = $5, cost_ngn = $6, fee_ngn = $7, cost_label = $8, public = $9 WHERE id = $1', [r.rows[0].id, d.price_ngn ?? null, d.region, d.cost ?? null, d.fee ?? null, d.cost_ngn ?? null, d.fee_ngn ?? null, d.cost_label || null, d.public])
+  // Finvry customers' compliance calendars show the service by its price-list name: keep them in step.
+  await asPlatform(() => db().query('UPDATE compliance.obligations SET title = $2 WHERE service_code = $1 AND title <> $2', [d.code, d.name])).catch((e) => console.error('[catalog] calendar names', e))
   await audit({ event, actorUserId: user.userId, action: 'services.catalog_save', objectType: 'catalog', objectId: r.rows[0]?.id, detail: { code: d.code, price: d.price ?? null } })
   return { ok: true }
 })
