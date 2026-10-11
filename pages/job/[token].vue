@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mdRender } from '~/shared/markdown'
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface Ev { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; document_title: string | null; has_document: boolean }
@@ -26,6 +27,7 @@ async function upload(f: File | undefined) {
 }
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const WHAT: Record<string, string> = { status: 'Status update', message: 'Message from the team', document: 'Document shared with you', client_message: 'You wrote', client_document: 'You uploaded' }
+const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(s) ? s : s.replace(/\n/g, '  \n'))
 </script>
 
 <template>
@@ -64,7 +66,8 @@ const WHAT: Record<string, string> = { status: 'Status update', message: 'Messag
           <li v-for="e in data.events" :key="e.id" :data-kind="e.kind">
             <p class="h">{{ WHAT[e.kind] ?? 'Update' }}<template v-if="e.kind === 'status' && e.to_status">: {{ LABEL[e.to_status] }}</template></p>
             <p v-if="e.has_document" class="b"><a :href="'/api/public/job/' + token + '/file/' + e.id">{{ e.document_title }}</a></p>
-            <p v-if="e.body" class="b">{{ e.body }}</p>
+            <p v-if="e.body && e.kind === 'client_message'" class="b">{{ e.body }}</p>
+            <div v-else-if="e.body" class="b md" v-html="rich(e.body)" />
             <p class="m">{{ when(e.created_at) }}</p>
           </li>
         </ul>
@@ -91,4 +94,5 @@ textarea { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid
 .tl li[data-kind^="client"] { border-left-color: var(--c-rule-strong); }
 .h { margin: 0; font-weight: 500; color: var(--c-navy); } .b { margin: 4px 0 0; white-space: pre-wrap; } .m { margin: 4px 0 0; font-size: 12px; color: var(--c-muted); }
 .error { color: var(--c-danger); margin: 8px 0 0; } .ok { color: var(--c-ok); margin: 8px 0 0; } .muted { color: var(--c-muted); }
+ .b.md { white-space: normal; line-height: 1.55; } .md :deep(p) { margin: 0 0 8px; } .md :deep(p:last-child) { margin-bottom: 0; } .md :deep(ul), .md :deep(ol) { margin: 4px 0 8px; padding-left: 20px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(blockquote) { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--c-rule-strong); } .md :deep(h2), .md :deep(h3), .md :deep(h4) { font-size: 15px; margin: 6px 0; }
 </style>

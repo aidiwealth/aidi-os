@@ -2,12 +2,13 @@
 // A client invoice in the Telroi invoice layout: issuer and number, billed to / period / issued, lines, totals, bank transfer.
 interface Inv { number: string; currency: string; amount: string; issue_date: string; due_date: string; status: string; paid_at: string | null; company?: string | null
   lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; bill_to: { name: string; email: string; address?: string }
-  issuer: { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string>; note_top?: string; note_bottom?: string }; note: string | null }
+  issuer: { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string>; note_top?: string; note_bottom?: string }; note: string | null; legal_footer?: string }
 const props = defineProps<{ inv: Inv; payable?: boolean }>()
 defineEmits<{ pay: [] }>()
 const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: props.inv.currency }).format(Number(v))
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-const short = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const short = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC', ...(d.slice(0, 4) !== String(new Date().getUTCFullYear()) ? { year: 'numeric' } : {}) })
+const brand = useBrand()
 const bank = computed(() => Object.entries(props.inv.issuer.bank ?? {}).filter(([, v]) => v))
 const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.paid_at ? ' ' + short(props.inv.paid_at) : '') : props.inv.status === 'void' ? 'Void' : 'Due ' + short(props.inv.due_date))
 </script>
@@ -15,7 +16,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
 <template>
   <article class="ti">
     <header class="hd">
-      <div><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
+      <div><div class="logo"><BrandMark /></div><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
       <div class="rt"><span class="lb">Invoice</span><b class="no">{{ inv.number }}</b><span class="chip" :class="inv.status">{{ chip }}</span></div>
     </header>
     <div class="info">
@@ -39,13 +40,15 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
       <div class="bg"><div v-for="[k, v] in bank" :key="k"><span class="lb sm">{{ k }}</span><b :class="{ m: /number|routing|swift|sort/i.test(k) }">{{ v }}</b></div><div><span class="lb sm">Reference</span><b class="m">{{ inv.number }}</b></div></div>
       <p class="mut">Use the invoice number as the reference. Bank transfers can take up to two business days.</p></div>
     <p v-if="inv.issuer.note_bottom" class="foot">{{ inv.issuer.note_bottom }}</p>
+    <p v-if="brand.key === 'finvry' && inv.legal_footer" class="legal">{{ inv.legal_footer }}</p>
   </article>
 </template>
 
 <style scoped>
 .ti { background: #fff; border: 1px solid var(--c-rule); padding: 48px 56px; color: var(--c-ink); font-family: var(--font-body); }
 .hd { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--c-rule); }
-.hd h1 { font-family: var(--font-heading); font-weight: 500; font-size: 30px; color: var(--c-navy); margin: 0 0 10px; } .hd p { margin: 0 0 4px; color: var(--c-ink-soft); font-size: 15px; } .pre { white-space: pre-line; }
+.logo { margin: 0 0 14px; } .logo :deep(.fvimg) { height: 34px; } .logo :deep(.aw) { width: 78px; height: 31px; }
+.hd h1 { font-family: var(--font-heading); font-weight: 600; font-size: 17px; color: var(--c-navy); margin: 0 0 6px; letter-spacing: -.01em; } .hd p { margin: 0 0 3px; color: var(--c-ink-soft); font-size: 14px; } .pre { white-space: pre-line; }
 .rt { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .lb { display: block; font-size: 13.5px; color: var(--c-muted); } .lb.sm { font-size: 12.5px; margin-bottom: 3px; }
 .no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: .02em; } .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .chip { font-size: 13.5px; background: var(--c-paper-2); padding: 5px 12px; color: var(--c-ink-soft); } .chip.paid { background: rgba(31,122,77,.1); color: var(--c-ok); } .chip.void { color: var(--c-muted); }
@@ -57,6 +60,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
 .tot .ok { color: var(--c-ok); } .tot .due { border-top: 1px solid var(--c-ink); margin-top: 8px; padding-top: 14px; font-size: 20px; color: var(--c-ink); font-weight: 500; } .paynow { margin-top: 12px; align-self: flex-end; }
 .bank { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--c-rule); } .bg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 24px; margin: 12px 0; } .bg b { font-weight: 500; font-size: 15px; }
 .foot { margin: 26px 0 0; font-size: 13px; color: var(--c-muted); }
+.legal { margin: 30px 0 0; padding-top: 16px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); text-align: center; }
 @media (max-width: 760px) { .ti { padding: 26px 20px; } .hd { flex-direction: column; } .rt { align-items: flex-start; text-align: left; } .info, .bg { grid-template-columns: 1fr; } .tot { width: 100%; } }
 @media print { .ti { border: 0; padding: 0; } .paynow { display: none; } }
 </style>

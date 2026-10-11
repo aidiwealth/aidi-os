@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const files = (parts ?? []).filter((p) => p.name === 'file' && p.filename && p.data.length)
   const note = (parts?.find((p) => p.name === 'note')?.data.toString() ?? '').trim().slice(0, 2000)
   const visible = parts?.find((p) => p.name === 'visible')?.data.toString() === '1'
+  const notify = parts?.find((p) => p.name === 'notify')?.data.toString() !== '0' // the job page sends its own message about the files
   if (!files.length) throw apiError('invalid', 'Choose a file.')
   if (files.length > 10) throw apiError('invalid', 'Upload up to 10 files at a time.')
   for (const f of files) {
@@ -36,7 +37,7 @@ export default defineEventHandler(async (event) => {
   await db().query('UPDATE services.jobs SET updated_at = now() WHERE id = $1', [id])
   await audit({ event, actorUserId: user.userId, action: 'services.team_upload', objectType: 'job', objectId: id, detail: { files: names.length, visible } })
   let emailed = false
-  if (visible) {
+  if (visible && notify) {
     try {
       const to = await clientRecipients(j.client_id)
       const link = to.portal ? await portalUrl('/jobs/' + id, j.client_id) : await issueClientLink(id)

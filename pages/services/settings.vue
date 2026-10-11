@@ -2,7 +2,7 @@
 useHead({ title: 'Prices & settings' })
 interface Item { cost?: string | null; fee?: string | null; cost_ngn?: string | null; fee_ngn?: string | null; cost_label?: string | null; public?: boolean; id: string; code: string; name: string; description: string | null; billing: string; price: string | null; price_ngn: string | null; region: string; currency: string; formation: boolean; active: boolean; sort: number }
 interface Region { issuer: string; address: string; phone: string; email: string; bank: Record<string, string> }
-const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
+const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; legal_footer: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
 const { data: items, refresh: ri } = await useFetch<Item[]>('/api/services/catalog')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const isAdmin = computed(() => !!me.value?.roles.includes('admin'))
@@ -10,8 +10,8 @@ const formationUrl = computed(() => 'https://app.finvry.com/formation/' + (s.val
 const fcopied = ref(false); async function copyFormation() { await navigator.clipboard.writeText(formationUrl.value); fcopied.value = true; setTimeout(() => (fcopied.value = false), 1500) }
 const US_BANK = ['Account holder', 'Bank name', 'Routing number', 'Account number', 'SWIFT code', 'Bank address']
 const NG_BANK = ['Account name', 'Bank name', 'Account number', 'Sort code']
-const f = reactive({ prefix: 'INV', terms_days: 30, note_top: '', note_bottom: '', us: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> }, ng: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> } })
-watch(s, (v) => { if (v) { Object.assign(f, JSON.parse(JSON.stringify({ prefix: v.prefix, terms_days: v.terms_days, note_top: v.note_top, note_bottom: v.note_bottom, us: v.us, ng: v.ng }))); for (const k of US_BANK) f.us.bank[k] ??= ''; for (const k of NG_BANK) f.ng.bank[k] ??= '' } }, { immediate: true })
+const f = reactive({ prefix: 'INV', terms_days: 30, note_top: '', note_bottom: '', legal_footer: '', us: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> }, ng: { issuer: '', address: '', phone: '', email: '', bank: {} as Record<string, string> } })
+watch(s, (v) => { if (v) { Object.assign(f, JSON.parse(JSON.stringify({ prefix: v.prefix, terms_days: v.terms_days, note_top: v.note_top, note_bottom: v.note_bottom, legal_footer: v.legal_footer, us: v.us, ng: v.ng }))); for (const k of US_BANK) f.us.bank[k] ??= ''; for (const k of NG_BANK) f.ng.bank[k] ??= '' } }, { immediate: true })
 const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 const saving = ref(false), saved = ref(false), saveErr = ref('')
@@ -64,6 +64,7 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
       <span />
       <label class="label wide">Message under the amount<input v-model="f.note_top" maxlength="500" :disabled="!isAdmin"></label>
       <label class="label wide">Footer note<input v-model="f.note_bottom" maxlength="500" :disabled="!isAdmin"></label>
+      <label class="label wide">Legal line (bottom of every Finvry invoice)<input v-model="f.legal_footer" maxlength="300" :disabled="!isAdmin" placeholder="Leave empty to hide it"><em class="lhint">{year} becomes the current year. Applies to all invoices, old and new.</em></label>
       <template v-for="r in (['us', 'ng'] as const)" :key="r">
         <h2 class="wide sec">{{ r === 'us' ? 'United States · USD' : 'Nigeria · NGN' }}<span :class="(r === 'us' ? s.online.usd : s.online.ngn) ? 'ok' : 'muted'">{{ (r === 'us' ? s.online.usd : s.online.ngn) ? (r === 'us' ? 'Card payments on via Stripe' : 'Payments on via Paystack') : 'Online payment off (bank transfer only)' }}</span></h2>
         <label class="label">Billing entity<input v-model="f[r].issuer" maxlength="200" :disabled="!isAdmin" :placeholder="r === 'us' ? 'Aidi Ventures LLC' : 'Aidi Technology Limited'"></label>
@@ -92,4 +93,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .ngp { color: var(--c-muted); font-size: 12.5px; }
 .frow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .btn.done { background: var(--c-ok); border-color: var(--c-ok); } .okb { color: var(--c-ok); font-weight: 500; font-size: 13.5px; }
+.lhint { font-style: normal; font-size: 12px; color: var(--c-muted); font-weight: 400; }
 </style>

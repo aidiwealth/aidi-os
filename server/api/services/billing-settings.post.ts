@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const s = (n: number) => z.string().trim().max(n).default('')
 const Region = z.object({ issuer: s(200), address: s(500), phone: s(40), email: s(254), bank: z.record(z.string(), z.string().trim().max(120)).default({}) })
-const Body = z.object({ prefix: z.string().trim().regex(/^[A-Z0-9]{2,10}$/), terms_days: z.coerce.number().int().min(0).max(120), note_top: s(500), note_bottom: s(500), us: Region, ng: Region })
+const Body = z.object({ prefix: z.string().trim().regex(/^[A-Z0-9]{2,10}$/), terms_days: z.coerce.number().int().min(0).max(120), note_top: s(500), note_bottom: s(500), legal_footer: s(300), us: Region, ng: Region })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin')
   const b = Body.safeParse(await readBody(event))

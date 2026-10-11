@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // A services job: what was ordered, the customer and their company, files, activity and billing.
 import { intakeKindFor } from '~/shared/intake'
+import { mdRender } from '~/shared/markdown'
 const id = useRoute().params.id as string
 interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null; document_mime: string | null; document_size: number | null }
@@ -35,13 +36,37 @@ const setStatus = (s: string) => run(async () => {
   if (tellClient.value) ok.value = r.emailed ? 'Status changed. Client emailed.' : 'Status changed; the client email did not send.'
 })
 
-// Activity: message the client or leave an internal note.
-const ev = reactive({ kind: 'message' as 'message' | 'note', body: '' })
-const addEvent = () => run(async () => {
-  const r = await $fetch<{ emailed: boolean }>('/api/services/' + id + '/events', { method: 'POST', body: { kind: ev.kind, body: ev.body } })
-  ok.value = ev.kind === 'message' ? (r.emailed ? 'Sent to the client.' : 'Saved; the client email did not send.') : 'Note added.'
-  ev.body = ''
-})
+// Activity: message the client or leave an internal note, written in a rich editor (Markdown), with optional attachments.
+// Drafts are kept in this browser per job, so a half-written message survives a refresh.
+const ev = reactive({ kind: 'message' as 'message' | 'note', body: '', files: [] as File[] })
+const draftKey = (k: string) => 'job-draft:' + id + ':' + k
+const readDraft = (k: string) => { try { return localStorage.getItem(draftKey(k)) ?? '' } catch { return '' } }
+onMounted(() => { ev.body = readDraft(ev.kind) })
+watch(() => ev.kind, (k, prev) => { try { if (ev.body.trim()) localStorage.setItem(draftKey(prev), ev.body); else localStorage.removeItem(draftKey(prev)) } catch { /* private mode */ } ev.body = readDraft(k) })
+watch(() => ev.body, (v) => { try { if (v.trim()) localStorage.setItem(draftKey(ev.kind), v); else localStorage.removeItem(draftKey(ev.kind)) } catch { /* private mode */ } })
+const hasText = computed(() => ev.body.replace(/[\s\u00a0]|&nbsp;|<br\s*\/?>/g, '').length > 0)
+const attachInput = ref<HTMLInputElement | null>(null)
+function attach(list: FileList | null | undefined) { if (list) ev.files = [...ev.files, ...Array.from(list)].slice(0, 10); if (attachInput.value) attachInput.value.value = '' }
+const addEvent = () => { if (!hasText.value && !ev.files.length) return; return run(async () => {
+  const toClient = ev.kind === 'message'
+  let emailed = false
+  // Files first (no separate email when there is a message — the message mentions them), then the message.
+  if (ev.files.length) {
+    const fd = new FormData(); for (const f of ev.files) fd.append('file', f)
+    fd.append('visible', toClient ? '1' : '0'); fd.append('notify', toClient && !hasText.value ? '1' : '0')
+    emailed = (await $fetch<{ emailed: boolean }>('/api/services/' + id + '/upload', { method: 'POST', body: fd })).emailed
+  }
+  if (hasText.value) {
+    const body = ev.body + (ev.files.length && toClient ? '\n\n_Attached: ' + ev.files.map((f) => f.name.replace(/[*_[\]]/g, '')).join(', ') + '_' : '')
+    emailed = (await $fetch<{ emailed: boolean }>('/api/services/' + id + '/events', { method: 'POST', body: { kind: ev.kind, body: body.slice(0, 5000) } })).emailed
+  }
+  const n = ev.files.length
+  ok.value = toClient ? (emailed ? 'Sent to the client' + (n ? ' with ' + n + ' attachment' + (n === 1 ? '' : 's') : '') + '.' : 'Saved; the client email did not send.') : 'Note added' + (n ? ' with ' + n + ' file' + (n === 1 ? '' : 's') : '') + '.'
+  try { localStorage.removeItem(draftKey(ev.kind)) } catch { /* private mode */ }
+  ev.body = ''; ev.files = []
+}) }
+function composerKey(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); addEvent() } }
+const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(s) ? s : s.replace(/\n/g, '  \n'))
 const activity = computed(() => (data.value?.events ?? []).filter((e) => e.kind !== 'document' && e.kind !== 'client_document'))
 const KIND: Record<string, string> = { note: 'Internal note', message: 'Message to client', status: 'Status', client_message: 'Client replied' }
 
@@ -149,16 +174,26 @@ const owners = computed(() => data.value?.people ?? [])
 
         <div class="card">
           <h2>Activity</h2>
-          <form class="ev" @submit.prevent="addEvent">
+          <form class="ev" :class="ev.kind" @submit.prevent="addEvent" @keydown="composerKey">
             <div class="tabs"><button v-for="k in (['message', 'note'] as const)" :key="k" type="button" :class="{ on: ev.kind === k }" @click="ev.kind = k">{{ k === 'message' ? 'Message client' : 'Internal note' }}</button></div>
-            <textarea v-model="ev.body" rows="3" required :placeholder="ev.kind === 'message' ? 'The client sees this and gets an email' : 'Only the team sees this'" />
-            <button class="btn" type="submit" :disabled="busy || !ev.body.trim()">{{ ev.kind === 'message' ? 'Send to client' : 'Add note' }}</button>
+            <p class="who2">{{ ev.kind === 'message' ? 'To ' + (job.contact_name || job.client) + ' · ' + job.email + ' — they see it on their job page and get an email.' : 'Only your team sees internal notes.' }}</p>
+            <ClientOnly>
+              <RichEditor v-model="ev.body" compact minimal :min-height="150" :max-length="5000" :placeholder="ev.kind === 'message' ? 'Write to the client… use the toolbar for bold, lists and links' : 'Write a note for the team…'" />
+              <template #fallback><div class="edfb" /></template>
+            </ClientOnly>
+            <ul v-if="ev.files.length" class="queue"><li v-for="(f, k) in ev.files" :key="k"><span>📎 {{ f.name }}</span><em>{{ size(f.size) }}</em><button type="button" aria-label="Remove" @click="ev.files.splice(k, 1)">×</button></li></ul>
+            <div class="evbar">
+              <label class="att"><input ref="attachInput" type="file" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.zip,.xlsx,.xls,.docx,.doc" @change="attach(($event.target as HTMLInputElement).files)">📎 Attach files</label>
+              <span class="kbd">⌘ / Ctrl + Enter to {{ ev.kind === 'message' ? 'send' : 'save' }}</span>
+              <button class="btn" type="submit" :disabled="busy || (!hasText && !ev.files.length)">{{ busy ? 'Sending…' : ev.kind === 'message' ? 'Send to client' : 'Add note' }}</button>
+            </div>
           </form>
           <ul v-if="activity.length" class="tline">
             <li v-for="e in activity" :key="e.id" :data-kind="e.kind" :class="{ vis: e.visible_to_client }">
               <p class="h">{{ KIND[e.kind] ?? e.kind }}<template v-if="e.kind === 'status'">: {{ label(e.from_status) }} → <b>{{ label(e.to_status) }}</b></template>
                 <span v-if="e.visible_to_client && e.kind !== 'client_message'" class="tag">Client sees this</span></p>
-              <p v-if="e.body" class="b">{{ e.body }}</p>
+              <p v-if="e.body && e.kind === 'client_message'" class="b">{{ e.body }}</p>
+              <div v-else-if="e.body" class="b md" v-html="rich(e.body)" />
               <p class="m">{{ e.by_name ?? (e.kind.startsWith('client') ? job.contact_name : 'System') }} · {{ when(e.created_at) }}</p>
             </li>
           </ul>
@@ -267,13 +302,19 @@ textarea { resize: vertical; }
 .fi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14px; } .fi .muted { font-size: 12.5px; } .fnote { font-size: 13px; color: var(--c-ink-soft); white-space: pre-wrap; }
 .link { background: none; border: 0; padding: 0; font: inherit; font-weight: 500; color: var(--c-blue-deep); cursor: pointer; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex: none; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); background: #eef4f9; padding: 2px 8px; border-radius: 999px; } .tag.int { color: var(--c-muted); background: var(--c-paper-2); } .tag.cl { color: #0e7490; background: #e6f6fa; }
-.ev { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; } .ev .btn { align-self: flex-start; }
+.ev { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--c-rule); }
+.ev.note :deep(.re) { background: #fffbeb; } .ev.note :deep(.re .ProseMirror) { background: #fffbeb; }
+.who2 { margin: 0; font-size: 12.5px; color: var(--c-muted); }
+.edfb { height: 190px; border: 1px solid var(--c-rule-strong); border-radius: 6px; background: #fff; }
+.evbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; } .evbar .btn { margin-left: auto; }
+.att { font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .att:hover { text-decoration: underline; } .kbd { font-size: 12px; color: var(--c-muted); }
+.md :deep(p) { margin: 0 0 8px; } .md :deep(p:last-child) { margin-bottom: 0; } .md :deep(ul), .md :deep(ol) { margin: 4px 0 8px; padding-left: 20px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(blockquote) { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--c-rule-strong); color: var(--c-ink-soft); } .md :deep(h2), .md :deep(h3), .md :deep(h4) { font-size: 15px; margin: 6px 0; }
 .tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--c-rule); } .tabs button { font: inherit; font-size: 14px; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 0; margin-bottom: -1px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .tline { list-style: none; padding: 0; margin: 0; }
 .tline li { position: relative; padding: 0 0 16px 20px; border-left: 2px solid var(--c-rule); margin-left: 5px; } .tline li:last-child { padding-bottom: 0; }
 .tline li::before { content: ''; position: absolute; left: -6px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--c-rule-strong); }
 .tline li.vis::before { border-color: var(--c-blue); } .tline li[data-kind="client_message"]::before { background: var(--c-cyan); border-color: var(--c-cyan); } .tline li[data-kind="status"]::before { background: var(--c-navy); border-color: var(--c-navy); }
-.h { margin: 0; font-weight: 500; font-size: 14px; color: var(--c-navy); } .h .tag { margin-left: 8px; } .b { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; } .m { margin: 4px 0 0; font-size: 12px; color: var(--c-muted); }
+.h { margin: 0; font-weight: 500; font-size: 14px; color: var(--c-navy); } .h .tag { margin-left: 8px; } .b { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; } .b.md { white-space: normal; line-height: 1.55; } .m { margin: 4px 0 0; font-size: 12px; color: var(--c-muted); }
 .empty { font-size: 13.5px; margin: 0; }
 .who { display: flex; gap: 12px; align-items: center; } .who div { display: flex; flex-direction: column; } .who b { font-size: 15px; } .who .muted { font-size: 13px; }
 .av { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; } .av.sm { width: 32px; height: 32px; font-size: 12px; background: var(--c-blue-deep); }

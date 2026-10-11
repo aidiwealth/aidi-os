@@ -1,6 +1,6 @@
 // An invoice as a typeset PDF (issuer, bill to, dates, line items, total, status, notes, payment details).
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-export interface InvoicePdf { title?: string; number: string; issue_date: string; due_date?: string | null; status?: string | null; paid_at?: string | null; currency: string; issuer: { name: string; address?: string; email?: string; phone?: string }; bill_to: { name: string; email?: string; address?: string }; lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; amount: number; note?: string | null; payment?: string | null; period?: string | null }
+export interface InvoicePdf { title?: string; number: string; issue_date: string; due_date?: string | null; status?: string | null; paid_at?: string | null; currency: string; issuer: { name: string; address?: string; email?: string; phone?: string }; bill_to: { name: string; email?: string; address?: string }; lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; amount: number; note?: string | null; payment?: string | null; brand?: 'aidi' | 'finvry'; footer?: string | null; period?: string | null }
 const clean = (s: string) => String(s ?? '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF\n]/g, '')
 export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
   const pdf = await PDFDocument.create(); pdf.setTitle('Invoice ' + clean(inv.number)); pdf.setProducer('Finvry')
@@ -12,7 +12,11 @@ export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
   const text = (t: string, x: number, yy: number, size = 10, font = reg, color = ink) => page.drawText(clean(t), { x, y: yy, size, font, color })
   const right = (t: string, xr: number, yy: number, size = 10, font = reg, color = ink) => text(t, xr - font.widthOfTextAtSize(clean(t), size), yy, size, font, color)
   const wrap = (t: string, width: number, size = 10, font = reg) => { const out: string[] = []; for (const para of clean(t).split('\n')) { let line = ''; for (const w of para.split(/\s+/).filter(Boolean)) { const tt = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && line) { out.push(line); line = w } else line = tt } out.push(line) } return out }
-  text(inv.issuer.name, M, y, 15, bold, blue); right(inv.title ?? 'INVOICE', W - M, y, 20, bold, blue); y -= 18
+  // Logo (Aidi or Finvry) with the issuing company's name smaller beneath it.
+  const lg = LOGO_PNG[inv.brand ?? 'aidi']; const img = await pdf.embedPng(Buffer.from(lg.b64, 'base64'))
+  const lh = inv.brand === 'finvry' ? 24 : 26, lw = lh * lg.w / lg.h
+  page.drawImage(img, { x: M, y: y - lh + 14, width: lw, height: lh }); right(inv.title ?? 'INVOICE', W - M, y, 20, bold, blue); y -= lh + 4
+  text(inv.issuer.name, M, y, 11, bold, blue); y -= 14
   let iy = y; for (const l of [inv.issuer.address, inv.issuer.email, inv.issuer.phone].filter(Boolean) as string[]) for (const s of wrap(l, 260, 9)) { text(s, M, iy, 9, reg, mut); iy -= 12 }
   let ry = y; for (const [k, v] of [['Invoice no.', inv.number], ['Issue date', inv.issue_date], ...(inv.due_date ? [['Due date', inv.due_date]] : []), ...(inv.period ? [['Period', inv.period]] : [])] as [string, string][]) { right(k, W - M - 120, ry, 9, reg, mut); right(v, W - M, ry, 9, bold); ry -= 13 }
   y = Math.min(iy, ry) - 16
@@ -39,6 +43,11 @@ export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
     if (!body) continue; if (y < M + 60) { page = pdf.addPage([W, H]); y = H - M }
     text(h.toUpperCase(), M, y, 8, bold, mut); y -= 13; for (const s of wrap(body, W - 2 * M, 9.5)) { text(s, M, y, 9.5); y -= 12.5 } y -= 10
   }
+  // Legal line, centred near the bottom of the last page.
+  if (inv.footer) { const ls = wrap(inv.footer, W - 2 * M, 8); const top = M + 6 + ls.length * 11
+    if (y < top + 14) { page = pdf.addPage([W, H]) }
+    let fy = top; page.drawLine({ start: { x: M, y: fy + 6 }, end: { x: W - M, y: fy + 6 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) }); fy -= 8
+    for (const l of ls) { page.drawText(clean(l), { x: (W - reg.widthOfTextAtSize(clean(l), 8)) / 2, y: fy, size: 8, font: reg, color: mut }); fy -= 11 } }
   const pages = pdf.getPages(); pages.forEach((p, i) => { const t = clean(inv.issuer.name) + '  ·  Invoice ' + clean(inv.number) + '  ·  page ' + (i + 1) + ' of ' + pages.length; p.drawText(t, { x: (W - reg.widthOfTextAtSize(t, 7.5)) / 2, y: 30, size: 7.5, font: reg, color: mut }) })
   return pdf.save()
 }

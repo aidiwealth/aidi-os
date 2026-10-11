@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mdRender } from '~/shared/markdown'
 const id = useRoute().params.id as string
 interface D { invoices: { id: string; number: string; currency: string; amount: string; status: string; paid_via: string | null; overdue: boolean; link: string }[]; job: { id: string; title: string; status: string; due_date: string | null; company: string | null }; events: { id: string; kind: string; body: string | null; to_status: string | null; created_at: string; from_client: boolean; document_id: string | null; document: string | null }[] }
 const { data, refresh } = await usePortalFetch<D>('/api/portal/jobs/' + id)
@@ -18,6 +19,7 @@ async function payWallet(i: D['invoices'][number]) { if (!confirm('Pay ' + new I
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const label = (e: D['events'][number]) => e.kind === 'status' ? 'Status: ' + (ST[e.to_status ?? ''] ?? e.to_status) : e.kind === 'document' ? 'Document shared with you' : e.kind === 'client_document' ? 'You uploaded a document' : e.from_client ? 'You wrote' : 'Message from our team'
 async function delJob() { if (!data.value || !confirm('Delete "' + data.value.job.title + '"? This removes the request and its messages.')) return; try { await $fetch('/api/portal/jobs/' + data.value.job.id, { method: 'DELETE' }); await navigateTo('/client') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
+const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(s) ? s : s.replace(/\n/g, '  \n'))
 </script>
 
 <template>
@@ -31,7 +33,7 @@ async function delJob() { if (!data.value || !confirm('Delete "' + data.value.jo
     <div class="grid">
       <div class="card tl"><h2>Updates</h2>
         <div v-for="e in data.events" :key="e.id" class="ev" :class="{ me: e.from_client }"><span class="w">{{ label(e) }} · {{ when(e.created_at) }}</span>
-          <p v-if="e.body" class="b">{{ e.body }}</p><button v-if="e.document_id" type="button" class="doc" @click="openDoc(e.document_id)">{{ e.document?.split(' — ').pop() }} · Download</button></div>
+          <p v-if="e.body && e.from_client" class="b">{{ e.body }}</p><div v-else-if="e.body" class="b md" v-html="rich(e.body)" /><button v-if="e.document_id" type="button" class="doc" @click="openDoc(e.document_id)">{{ e.document?.split(' — ').pop() }} · Download</button></div>
         <p v-if="!data.events.length" class="mut">No updates yet.</p></div>
       <div class="side">
         <div class="card"><h2>Send documents</h2><label class="label">What are they? (optional)<input v-model="note" maxlength="1000" placeholder="e.g. 2025 bank statements"></label>
@@ -55,4 +57,5 @@ input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px
 @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
 .ja { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } .del { background: none; border: 0; color: var(--c-danger); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0; }
 .jb { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 12px 0; font-size: 14px; } .jbi { display: flex; gap: 10px; align-items: center; } .jbi a { color: var(--c-blue-deep); } .wp { font: inherit; font-size: 13px; padding: 5px 10px; background: var(--c-navy); color: #fff; border: 0; cursor: pointer; } .wp:disabled { opacity: .6; } .jbi .paid { color: var(--c-ok); } .jbi .over { color: var(--c-danger); } .jb .all { margin-left: auto; font-size: 13px; color: var(--c-blue-deep); }
+ .b.md { white-space: normal; line-height: 1.55; } .md :deep(p) { margin: 0 0 8px; } .md :deep(p:last-child) { margin-bottom: 0; } .md :deep(ul), .md :deep(ol) { margin: 4px 0 8px; padding-left: 20px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(blockquote) { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--c-rule-strong); } .md :deep(h2), .md :deep(h3), .md :deep(h4) { font-size: 15px; margin: 6px 0; }
 </style>

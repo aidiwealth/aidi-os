@@ -7,7 +7,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import { RICH_TABLE_EXTENSIONS, TABLE_COLORS, cleanPastedHtml, paintTable } from '~/utils/richTable'
-const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; maxLength?: number }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000 })
+const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; minimal?: boolean; maxLength?: number }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000 })
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 let last = props.modelValue ?? ''
 const md = (e: { storage: Record<string, unknown> }) => (e.storage.markdown as { getMarkdown: () => string }).getMarkdown()
@@ -35,25 +35,25 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
 <template>
   <div class="re" :class="{ compact }">
     <div v-if="editor" class="tb" role="toolbar" aria-label="Formatting">
-      <select v-model="block" aria-label="Text style"><option value="p">Paragraph</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option></select>
+      <select v-if="!minimal" v-model="block" aria-label="Text style"><option value="p">Paragraph</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option></select>
       <span class="sep" />
       <label v-if="imageUpload" class="imgbtn" title="Insert image"><input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" @change="addImage">Image</label>
       <button type="button" :class="{ on: on('bold') }" title="Bold (Ctrl+B)" @click="editor.chain().focus().toggleBold().run()"><b>B</b></button>
       <button type="button" :class="{ on: on('italic') }" title="Italic (Ctrl+I)" @click="editor.chain().focus().toggleItalic().run()"><i>I</i></button>
       <button type="button" :class="{ on: on('strike') }" title="Strikethrough" @click="editor.chain().focus().toggleStrike().run()"><s>S</s></button>
-      <button type="button" :class="{ on: on('code') }" title="Inline code" @click="editor.chain().focus().toggleCode().run()">&lt;/&gt;</button>
+      <button v-if="!minimal" type="button" :class="{ on: on('code') }" title="Inline code" @click="editor.chain().focus().toggleCode().run()">&lt;/&gt;</button>
       <span class="sep" />
       <button type="button" :class="{ on: on('bulletList') }" title="Bullet list" @click="editor.chain().focus().toggleBulletList().run()"><svg viewBox="0 0 20 20" fill="currentColor"><circle cx="4" cy="5" r="1.6" /><circle cx="4" cy="10" r="1.6" /><circle cx="4" cy="15" r="1.6" /><rect x="8" y="4" width="10" height="2" /><rect x="8" y="9" width="10" height="2" /><rect x="8" y="14" width="10" height="2" /></svg></button>
       <button type="button" :class="{ on: on('orderedList') }" title="Numbered list" @click="editor.chain().focus().toggleOrderedList().run()"><svg viewBox="0 0 20 20" fill="currentColor"><text x="1.5" y="7" font-size="5.5" font-family="sans-serif">1</text><text x="1.5" y="12" font-size="5.5" font-family="sans-serif">2</text><text x="1.5" y="17" font-size="5.5" font-family="sans-serif">3</text><rect x="8" y="4" width="10" height="2" /><rect x="8" y="9" width="10" height="2" /><rect x="8" y="14" width="10" height="2" /></svg></button>
       <button type="button" :class="{ on: on('blockquote') }" title="Quote" @click="editor.chain().focus().toggleBlockquote().run()">❝</button>
       <button type="button" :class="{ on: on('link') }" title="Link" @click="link"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8.5 11.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5L10 5" /><path d="M11.5 8.5a3.5 3.5 0 0 0-5 0L4 11a3.5 3.5 0 0 0 5 5l1-1" /></svg></button>
-      <button type="button" title="Divider" @click="editor.chain().focus().setHorizontalRule().run()">―</button>
+      <button v-if="!minimal" type="button" title="Divider" @click="editor.chain().focus().setHorizontalRule().run()">―</button>
       <span class="sep" />
       <button type="button" title="Undo (Ctrl+Z)" :disabled="!editor.can().undo()" @click="editor.chain().focus().undo().run()">↶</button>
       <button type="button" title="Redo (Ctrl+Shift+Z)" :disabled="!editor.can().redo()" @click="editor.chain().focus().redo().run()">↷</button>
       <button type="button" title="Clear formatting" @click="editor.chain().focus().unsetAllMarks().clearNodes().run()">⌫</button>
       <span class="sep" />
-      <button type="button" title="Insert a table" :class="{ on: inTable }" @click="insertTable"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1" /><path d="M2.5 8h15M2.5 12.3h15M7.5 3.5v13M12.5 3.5v13" /></svg></button>
+      <button v-if="!minimal" type="button" title="Insert a table" :class="{ on: inTable }" @click="insertTable"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1" /><path d="M2.5 8h15M2.5 12.3h15M7.5 3.5v13M12.5 3.5v13" /></svg></button>
     </div>
     <div v-if="editor && inTable" class="ttb" role="toolbar" aria-label="Table">
       <span class="tl">Table</span>

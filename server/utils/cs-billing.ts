@@ -1,12 +1,13 @@
 // Client Services billing: settings (issuers and bank details per region), invoices, pay links and payments.
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { DEFAULT_LEGAL_FOOTER, legalFooter } from '../../shared/invoice-brand'
 export interface CsRegion { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string> }
-export interface CsBilling { prefix: string; terms_days: number; note_top: string; note_bottom: string; us: CsRegion; ng: CsRegion }
+export interface CsBilling { prefix: string; terms_days: number; note_top: string; note_bottom: string; legal_footer: string; us: CsRegion; ng: CsRegion }
 export async function csBilling(): Promise<CsBilling> {
   const org = await currentOrg()
   const s = ((org?.settings as Record<string, unknown> | undefined)?.cs_billing ?? {}) as Partial<CsBilling>
   const blank: CsRegion = { issuer: org?.name ?? '', address: '', phone: '', email: '', bank: {} }
-  return { prefix: s.prefix || 'INV', terms_days: s.terms_days ?? 30, note_top: s.note_top ?? '', note_bottom: s.note_bottom ?? '', us: { ...blank, ...(s.us ?? {}) }, ng: { ...blank, ...(s.ng ?? {}) } }
+  return { prefix: s.prefix || 'INV', terms_days: s.terms_days ?? 30, note_top: s.note_top ?? '', note_bottom: s.note_bottom ?? '', legal_footer: s.legal_footer ?? DEFAULT_LEGAL_FOOTER, us: { ...blank, ...(s.us ?? {}) }, ng: { ...blank, ...(s.ng ?? {}) } }
 }
 export const regionCurrency = (r: string) => (r === 'ng' ? 'NGN' : 'USD')
 
@@ -21,13 +22,15 @@ export async function billUrl(id: string): Promise<string> { return (await appUr
 
 export interface CsInvoice { id: string; number: string; client_id: string; client: string; company_id: string | null; company: string | null; region: string; currency: string; issue_date: string; due_date: string
   lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: string; bill_to: { name: string; email: string; address?: string }; issuer: CsRegion & { note_top?: string; note_bottom?: string }
-  note: string | null; status: string; paid_at: string | null; paid_via: string | null; overdue: boolean; organization_id: string; job_id: string | null; job: string | null; country: string | null; subtotal: string | null; tax_amount: string | null }
+  note: string | null; status: string; paid_at: string | null; paid_via: string | null; overdue: boolean; organization_id: string; job_id: string | null; job: string | null; country: string | null; subtotal: string | null; tax_amount: string | null; legal_footer: string }
 export async function loadCsInvoice(id: string): Promise<CsInvoice | null> {
   const r = await db().query<CsInvoice>(
     `SELECT i.id, i.number, i.client_id, c.name AS client, i.company_id, co.name AS company, i.region, i.currency, to_char(i.issue_date, 'YYYY-MM-DD') AS issue_date, to_char(i.due_date, 'YYYY-MM-DD') AS due_date,
-            i.lines, i.amount::text, i.bill_to, i.issuer, i.note, i.status, to_char(i.paid_at, 'YYYY-MM-DD') AS paid_at, i.paid_via, (i.status = 'sent' AND i.due_date < current_date) AS overdue, i.organization_id, i.job_id, (SELECT title FROM services.jobs WHERE id = i.job_id) AS job, i.country, i.subtotal::text, i.tax_amount::text
+            i.lines, i.amount::text, i.bill_to, i.issuer, i.note, i.status, to_char(i.paid_at, 'YYYY-MM-DD') AS paid_at, i.paid_via, (i.status = 'sent' AND i.due_date < current_date) AS overdue, i.organization_id, i.job_id, (SELECT title FROM services.jobs WHERE id = i.job_id) AS job, i.country, i.subtotal::text, i.tax_amount::text, (SELECT o.settings->'cs_billing'->>'legal_footer' FROM core.organizations o WHERE o.id = i.organization_id) AS legal_footer
        FROM services.invoices i JOIN services.clients c ON c.id = i.client_id LEFT JOIN services.companies co ON co.id = i.company_id WHERE i.id = $1`, [id])
-  return r.rows[0] ?? null
+  const row = r.rows[0]
+  if (!row) return null
+  return { ...row, legal_footer: legalFooter(row.legal_footer) }
 }
 export async function sendCsInvoice(id: string): Promise<boolean> {
   const inv = await loadCsInvoice(id)

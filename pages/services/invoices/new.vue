@@ -6,15 +6,15 @@ const route = useRoute()
 const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients/list')
 const { data: catalog } = await useFetch<Item[]>('/api/services/catalog')
 const { data: settings } = await useFetch<{ terms_days: number; us: { issuer: string }; ng: { issuer: string } }>('/api/services/billing-settings')
-const f = reactive({ client_id: String(route.query.client ?? ''), job_id: String(route.query.job ?? ''), company_id: String(route.query.company ?? ''), region: 'us' as 'us' | 'ng', due_date: '', note: '', bill_name: '', bill_email: '', bill_address: '' })
+const f = reactive({ client_id: String(route.query.client ?? ''), job_id: String(route.query.job ?? ''), company_id: String(route.query.company ?? ''), region: 'us' as 'us' | 'ng', issue_date: '', due_date: '', note: '', bill_name: '', bill_email: '', bill_address: '' })
 interface Ln { description: string; quantity: number | string; unit_amount: number | string; code?: string; interval?: 'month' | 'year'; free_first_year?: boolean }
 const lines = ref<Ln[]>([{ description: '', quantity: 1, unit_amount: '' }])
 // Editing an unpaid invoice: load it once and keep the client fixed.
-interface Ed { number: string; status: string; client_id: string; company_id: string | null; job_id: string | null; region: 'us' | 'ng'; due_date: string; note: string | null; bill_to: { name: string; email: string; address?: string }; lines: (Ln & { kind?: string })[] }
+interface Ed { number: string; status: string; client_id: string; company_id: string | null; job_id: string | null; region: 'us' | 'ng'; due_date: string; issue_date: string; note: string | null; bill_to: { name: string; email: string; address?: string }; lines: (Ln & { kind?: string })[] }
 const { data: editing } = editId ? await useFetch<{ invoice: Ed }>('/api/services/invoices/' + editId) : { data: ref(null) }
 const edited = ref(false)
 watch(editing, (e) => { const i = e?.invoice; if (!i || edited.value) return; edited.value = true
-  Object.assign(f, { client_id: i.client_id, company_id: i.company_id ?? '', job_id: i.job_id ?? '', region: i.region, due_date: i.due_date, note: i.note ?? '', bill_name: i.bill_to.name, bill_email: i.bill_to.email, bill_address: i.bill_to.address ?? '' })
+  Object.assign(f, { client_id: i.client_id, company_id: i.company_id ?? '', job_id: i.job_id ?? '', region: i.region, issue_date: i.issue_date, due_date: i.due_date, note: i.note ?? '', bill_name: i.bill_to.name, bill_email: i.bill_to.email, bill_address: i.bill_to.address ?? '' })
   lines.value = i.lines.filter((l) => l.kind !== 'tax').map((l) => ({ description: l.description, quantity: l.quantity, unit_amount: l.unit_amount, ...(l.code ? { code: l.code } : {}), ...(l.interval ? { interval: l.interval } : {}), ...(l.free_first_year ? { free_first_year: true } : {}) })) }, { immediate: true })
 const { data: client, refresh: loadClient } = await useFetch<{ client: { name: string; contact_name: string; email: string; address: string | null; country: string | null }; companies: { id: string; name: string }[] }>(() => '/api/services/clients/' + (f.client_id || '00000000-0000-0000-0000-000000000000'), { immediate: !!f.client_id, watch: false })
 watch(() => f.client_id, async (v) => { if (v) await loadClient() })
@@ -35,7 +35,7 @@ const msg = ref(''); const busy = ref(false)
 async function save(send: boolean) {
   busy.value = true; msg.value = ''
   try {
-    const body = { job_id: f.job_id || undefined, company_id: f.company_id || undefined, region: f.region, due_date: f.due_date || undefined, note: f.note || undefined, send,
+    const body = { job_id: f.job_id || undefined, company_id: f.company_id || undefined, region: f.region, issue_date: f.issue_date || undefined, due_date: f.due_date || undefined, note: f.note || undefined, send,
       lines: lines.value.filter((l) => l.description).map((l) => ({ description: l.description, quantity: Number(l.quantity), unit_amount: Number(l.unit_amount), ...(l.code ? { code: l.code } : {}), ...(l.interval ? { interval: l.interval } : {}), ...(l.free_first_year ? { free_first_year: true } : {}) })), bill_to: { name: f.bill_name, email: f.bill_email, address: f.bill_address || undefined } }
     const r = editId ? await $fetch<{ id: string; emailed: boolean }>('/api/services/invoices/' + editId + '/edit', { method: 'POST', body })
       : await $fetch<{ id: string; emailed: boolean }>('/api/services/invoices', { method: 'POST', body: { ...body, client_id: f.client_id } })
@@ -56,6 +56,7 @@ const BILL: Record<string, string> = { one_time: '', annual: '/yr', monthly: '/m
           <label class="label">Client<select v-model="f.client_id" required :disabled="!!editId"><option value="" disabled>Choose a client</option><option v-for="c in clients ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label class="label">Company<select v-model="f.company_id" :disabled="!client?.companies.length"><option value="">—</option><option v-for="c in client?.companies ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label class="label">Country billed in<select v-model="f.region"><option value="us">United States · USD · {{ settings?.us.issuer || 'US entity' }}</option><option value="ng">Nigeria · NGN (naira) · {{ settings?.ng.issuer || 'Nigerian entity' }}</option></select></label>
+          <label class="label">Invoice date<input v-model="f.issue_date" type="date" :max="new Date().toISOString().slice(0, 10)" placeholder="Today"></label>
           <label class="label">Due date<input v-model="f.due_date" type="date" :placeholder="'In ' + (settings?.terms_days ?? 30) + ' days'"></label>
           <label class="label">Bill to<input v-model="f.bill_name" required maxlength="200"></label>
           <label class="label">Billing email<input v-model="f.bill_email" type="email" required maxlength="254"></label>

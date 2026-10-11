@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     const job = await client.query<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status) VALUES ($1,$2,'company_formation',$3,$4,'new') RETURNING id", [clientId, co.rows[0]!.id, 'Form ' + names[0] + ' (' + d.state + ')', summary])
     const inv = await client.query<{ id: string; number: string }>(
       `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at, country, subtotal, tax_label, tax_rate, tax_amount)
-       VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT count(*) FROM services.invoices WHERE issue_date >= date_trunc('year', current_date)) + 1)::text, 4, '0'),
+       VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT coalesce(max(substring(number from '-([0-9]+)$')::int), 0) FROM services.invoices WHERE number LIKE $1 || '-' || to_char(current_date, 'YYYY') || '-%') + 1)::text, 4, '0'),
                $2,$3,$4,'us','USD', current_date + 7, $5, $6, $7, $8, 'sent', now(), 'US', $9, $10, $11, $12) RETURNING id, number`,
       [settings.prefix, clientId, co.rows[0]!.id, job.rows[0]!.id, JSON.stringify(lines), amount, JSON.stringify({ name: d.contact.name, email }), JSON.stringify({ ...settings.us, note_top: settings.note_top, note_bottom: settings.note_bottom }), tx.subtotal, tx.tax_label, tx.tax_rate, tx.tax_amount])
     await client.query('COMMIT')

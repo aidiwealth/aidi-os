@@ -88,10 +88,22 @@ export async function chargeCardIntoWallet(orgId: string, minor: number, currenc
 }
 
 // Recurring services created when an invoice with monthly or yearly items is paid (the first period is on the invoice).
+// The next renewal: one period after the payment date (an old, back-dated order rolls forward to the next date that is
+// not in the past, so nothing is charged for periods already gone).
+export function nextChargeFrom(paidOn: string | null, months: number): string {
+  const today = new Date().toISOString().slice(0, 10)
+  const base = new Date((paidOn ?? today) + 'T00:00:00Z'), day = base.getUTCDate()
+  for (let k = 1; k < 1200; k++) {
+    const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + months * k, 1)); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+    d.setUTCDate(Math.min(day, last)); const iso = d.toISOString().slice(0, 10)
+    if (iso >= today) return iso
+  }
+  return today
+}
 export async function subscriptionsFromInvoice(invoiceId: string): Promise<void> {
   await asPlatform(async () => {
-    const inv = (await db().query<{ client_id: string; currency: string; lines: { code?: string; interval?: string; description: string; quantity: number; unit_amount: number }[]; workspace_id: string | null }>(
-      'SELECT i.client_id, i.currency, i.lines, c.workspace_id FROM services.invoices i JOIN services.clients c ON c.id = i.client_id WHERE i.id = $1', [invoiceId])).rows[0]
+    const inv = (await db().query<{ client_id: string; currency: string; paid_at: string | null; lines: { code?: string; interval?: string; description: string; quantity: number; unit_amount: number }[]; workspace_id: string | null }>(
+      "SELECT i.client_id, i.currency, to_char(i.paid_at, 'YYYY-MM-DD') AS paid_at, i.lines, c.workspace_id FROM services.invoices i JOIN services.clients c ON c.id = i.client_id WHERE i.id = $1", [invoiceId])).rows[0]
     if (!inv?.workspace_id) return
     for (const l of inv.lines ?? []) {
       if (!l.code) continue
@@ -101,8 +113,8 @@ export async function subscriptionsFromInvoice(invoiceId: string): Promise<void>
       const months = l.interval === 'month' ? 1 : yearly ? 12 : Math.max(1, l.quantity)
       const amount = cat.billing === 'monthly' && yearly ? Number(cat.price) * 12 : Number(cat.price)
       await db().query(`INSERT INTO wallet.subscriptions (organization_id, kind, code, name, client_id, amount_minor, currency, interval, next_charge_at)
-        SELECT $1, 'service', $2, $3, $4, $5, $6, $7, (current_date + make_interval(months => $8))::date WHERE NOT EXISTS (SELECT 1 FROM wallet.subscriptions WHERE organization_id = $1 AND code = $2 AND status = 'active')`,
-        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(amount * 100), inv.currency, yearly ? 'year' : 'month', months])
+        SELECT $1, 'service', $2, $3, $4, $5, $6, $7, $8::date WHERE NOT EXISTS (SELECT 1 FROM wallet.subscriptions WHERE organization_id = $1 AND code = $2 AND status = 'active')`,
+        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(amount * 100), inv.currency, yearly ? 'year' : 'month', nextChargeFrom(inv.paid_at, months)])
     }
   })
 }

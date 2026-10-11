@@ -1,3 +1,4 @@
+import { mdPlain, mdRender } from '../../shared/markdown'
 // Transactional email through Resend. Fails loudly; never reports success it did not get.
 export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry' }): Promise<void> {
   const extra = { replyTo: input.replyTo, headers: input.headers }
@@ -133,15 +134,21 @@ export async function sendReportSubmittedAlert(companyId: string, company: strin
 }
 
 // To a client: an update on their job, with their personal link.
+// A team message to a client, written in the rich editor (Markdown; HTML in it is escaped), styled for email.
+function jobBody(md: string): string {
+  const c = 'color:' + BRAND.inkSoft + ';font-size:15px;line-height:1.6;'
+  return '<div style="' + c + 'margin:0 0 18px;">' + mdRender(md.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(md) ? md : md.replace(/\n/g, '  \n'), { p: c + 'margin:0 0 12px', h1: 'font-size:18px;color:' + BRAND.ink + ';margin:16px 0 8px', h2: 'font-size:16px;color:' + BRAND.ink + ';margin:14px 0 6px', h3: 'font-size:15px;color:' + BRAND.ink + ';margin:12px 0 6px',
+    ul: 'margin:0 0 12px;padding-left:22px', ol: 'margin:0 0 12px;padding-left:22px', li: c + 'margin:0 0 4px', quote: 'margin:0 0 12px;padding:2px 0 2px 14px;border-left:3px solid #d9d6cf;color:#555', a: 'color:#1c4f9c', code: 'font-family:Menlo,monospace;font-size:13px;background:#f1f0ec;padding:1px 4px' }) + '</div>'
+}
 export async function sendJobUpdate(to: string, contactName: string, jobTitle: string, headline: string, body: string, link: string): Promise<void> {
   const first = esc(contactName.split(' ')[0] ?? contactName)
   const html = shell(
     `<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(jobTitle)}</p>` +
-    h1(esc(headline)) + para('Hi ' + first + ',') + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') +
+    h1(esc(headline)) + para('Hi ' + first + ',') + (body ? jobBody(body) : '') +
     button('Open your request →', link) + divider() +
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">This link is personal to you. You can reply and upload documents there.</p>`,
     headline)
-  await sendEmail({ to, subject: jobTitle + ': ' + headline, text: 'Hi ' + first + ',\n\n' + headline + (body ? '\n\n' + body : '') + '\n\nOpen your request: ' + link, html })
+  await sendEmail({ to, subject: jobTitle + ': ' + headline, text: 'Hi ' + first + ',\n\n' + headline + (body ? '\n\n' + mdPlain(body) : '') + '\n\nOpen your request: ' + link, html })
 }
 
 // To the team: a client replied or uploaded something.

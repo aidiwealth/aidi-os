@@ -13,7 +13,7 @@ export const OrderBody = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0
     virtual_office: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional(),
     company_place: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional() })
 export type OrderInput = z.infer<typeof OrderBody>
-export interface OrderOpts { admin?: boolean; prices?: Record<string, number>; payment?: 'online' | 'invoice' | 'draft' | 'paid' | 'none'; paid_on?: string; extra?: { description: string; quantity: number; unit_amount: number }[]; paid_note?: string }
+export interface OrderOpts { admin?: boolean; prices?: Record<string, number>; payment?: 'online' | 'invoice' | 'draft' | 'paid' | 'none'; paid_on?: string; extra?: { description: string; quantity: number; unit_amount: number }[]; paid_note?: string; issue_date?: string }
 export async function placeServiceOrder(clientId: string, actor: { name: string; email: string }, d: OrderInput, opts: OrderOpts = {}) {
   const ng = await clientIsNigerian(clientId)
   const items = (await db().query<{ code: string; name: string; price: string | null; price_ngn: string | null; currency: string; billing: string; region: string }>('SELECT code, name, price::text, price_ngn::text, currency, billing, region FROM services.catalog WHERE active AND code = ANY($1)', [d.codes])).rows
@@ -62,10 +62,10 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
     const tx = await applyTax(raw, taxCountry({ region, currency }), 'services')
     const lines = tx.lines, amount = tx.amount
     const inv = await one<{ id: string }>(
-      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at, country, subtotal, tax_label, tax_rate, tax_amount)
-       VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT count(*) FROM services.invoices WHERE issue_date >= date_trunc('year', current_date)) + 1)::text, 4, '0'),
-               $2,$3,$4,$5,$6, current_date + 7, $7, $8, $9, $10, 'sent', now(), $11, $12, $13, $14, $15) RETURNING id`,
-      [settings.prefix, clientId, companyId, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom }), tx.country, tx.subtotal, tx.tax_label, tx.tax_rate, tx.tax_amount])
+      `INSERT INTO services.invoices (number, client_id, company_id, job_id, region, currency, due_date, lines, amount, bill_to, issuer, status, sent_at, country, subtotal, tax_label, tax_rate, tax_amount, issue_date)
+       VALUES ($1 || '-' || to_char(current_date, 'YYYY') || '-' || lpad(((SELECT coalesce(max(substring(number from '-([0-9]+)$')::int), 0) FROM services.invoices WHERE number LIKE $1 || '-' || to_char(current_date, 'YYYY') || '-%') + 1)::text, 4, '0'),
+               $2,$3,$4,$5,$6, coalesce($16::date, current_date) + 7, $7, $8, $9, $10, 'sent', now(), $11, $12, $13, $14, $15, coalesce($16::date, current_date)) RETURNING id`,
+      [settings.prefix, clientId, companyId, job.id, region, currency, JSON.stringify(lines), amount, JSON.stringify({ name: c.name, email: c.email }), JSON.stringify({ ...(region === 'ng' ? settings.ng : settings.us), note_top: settings.note_top, note_bottom: settings.note_bottom }), tx.country, tx.subtotal, tx.tax_label, tx.tax_rate, tx.tax_amount, opts.issue_date ?? null])
     if (!tx.amount || opts.payment === 'paid') { // nothing to pay now, or already paid (bank transfer / old order): settled, renewals set up
       await db().query("UPDATE services.invoices SET status = 'paid', paid_at = coalesce($2::date, current_date), paid_via = 'manual', note = coalesce(note, $3) WHERE id = $1", [inv.id, opts.paid_on ?? null, opts.paid_note ?? null])
       await subscriptionsFromInvoice(inv.id).catch((e) => console.error('[order] renewals', e))
