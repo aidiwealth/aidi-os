@@ -19,13 +19,37 @@ function secret(): Uint8Array {
 }
 
 export async function issueSession(event: H3Event, userId: string, email: string, orgId: string | null): Promise<void> {
-  const row = await one<{ id: string }>(
+  const sid = await createSessionRow(event, userId, orgId)
+  setCookie(event, COOKIE, await sessionJwt(sid, userId, email), { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: MAX_AGE })
+}
+async function createSessionRow(event: H3Event, userId: string, orgId: string | null): Promise<string> {
+  return (await one<{ id: string }>(
     "INSERT INTO core.sessions (user_id, organization_id, expires_at, ip, user_agent) VALUES ($1, $2, now() + make_interval(secs => $3), $4, $5) RETURNING id",
-    [userId, orgId, MAX_AGE, getRequestIP(event, { xForwardedFor: true }) ?? null, (getHeader(event, 'user-agent') ?? '').slice(0, 300) || null]
-  )
-  const jwt = await new SignJWT({ sid: row.id, uid: userId, email })
-    .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime(MAX_AGE + 's').sign(secret())
-  setCookie(event, COOKIE, jwt, { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: MAX_AGE })
+    [userId, orgId, MAX_AGE, getRequestIP(event, { xForwardedFor: true }) ?? null, (getHeader(event, 'user-agent') ?? '').slice(0, 300) || null])).id
+}
+async function sessionJwt(sid: string, userId: string, email: string): Promise<string> {
+  return new SignJWT({ sid, uid: userId, email }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime(MAX_AGE + 's').sign(secret())
+}
+// Hand a new session to the other product's address (app.finvry.com <-> app.theaidigroup.com): cookies cannot cross
+// domains, so the session row is created here and a one-minute, single-use token carries it over.
+export const RETURN_URL_COOKIE = 'aidi_os_return_url'
+export async function sessionHandoff(event: H3Event, userId: string, email: string, orgId: string | null): Promise<{ sid: string; token: string }> {
+  const sid = await createSessionRow(event, userId, orgId)
+  const token = await new SignJWT({ h_sid: sid, uid: userId, email }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('60s').sign(secret())
+  return { sid, token }
+}
+const usedHandoffs = new Map<string, number>()
+export async function acceptHandoff(event: H3Event, token: string): Promise<boolean> {
+  let p: { h_sid?: unknown; uid?: unknown; email?: unknown }
+  try { p = (await jwtVerify(token, secret())).payload as typeof p } catch { return false }
+  if (typeof p.h_sid !== 'string' || typeof p.uid !== 'string' || typeof p.email !== 'string') return false
+  for (const [k, t] of usedHandoffs) if (Date.now() - t > 120_000) usedHandoffs.delete(k)
+  if (usedHandoffs.has(p.h_sid)) return false
+  usedHandoffs.set(p.h_sid, Date.now())
+  const ok = (await asPlatform(() => db().query('SELECT 1 FROM core.sessions WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()', [p.h_sid, p.uid]))).rowCount
+  if (!ok) return false
+  setCookie(event, COOKIE, await sessionJwt(p.h_sid, p.uid, p.email), { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: MAX_AGE })
+  return true
 }
 
 // Sessions are looked up on every request; keep each one for 10 seconds to save a database round trip.

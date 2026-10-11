@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
   setOrgContext(f.organization_id)
   if (b.data.ref) { if (f.status !== 'paid' && f.pay_ref === b.data.ref && f.currency !== 'USD' && (await paystackStatus(b.data.ref)) === 'success') await markFeePaid(id, 'paystack'); return { ok: true } }
   if (f.status === 'paid') throw apiError('state', 'This invoice is already paid.', 409)
+  if (f.status !== 'due') throw apiError('state', 'This invoice is not open for payment.', 409)
   const provider = f.currency === 'USD' ? 'stripe' : 'paystack'
   if (!(provider === 'stripe' ? stripeOn() : paystackOn())) throw apiError('unavailable', 'Online payment is not available for this invoice.')
   const reference = 'wm_' + id.replace(/-/g, '').slice(0, 12) + '_' + Date.now().toString(36)

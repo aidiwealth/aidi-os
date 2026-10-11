@@ -13,8 +13,8 @@ export default defineEventHandler(async (event) => {
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Fill in the update.')
   const d = b.data
-  const j = await db().query<{ status: string; title: string; email: string; contact_name: string; link_active: boolean; client_id: string }>(
-    'SELECT j.status, j.title, c.email, c.contact_name, (j.client_token_expires > now()) AS link_active, j.client_id FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id.data])
+  const j = await db().query<{ status: string; title: string; email: string; contact_name: string; link_active: boolean; client_id: string; emails_muted: boolean }>(
+    'SELECT j.status, j.title, c.email, c.contact_name, c.emails_muted, (j.client_token_expires > now()) AS link_active, j.client_id FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id.data])
   const job = j.rows[0]
   if (!job) throw apiError('not_found', 'Job not found', 404)
   const visible = d.kind === 'message' ? true : d.kind === 'note' ? false : d.visible_to_client
@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
     if (d.kind === 'status' && d.status === 'completed' && job.status !== 'completed') { const codes = (await db().query<{ codes: string[] }>('SELECT codes FROM services.jobs WHERE id = $1', [id.data])).rows[0]?.codes ?? []; if (codes.length) await filingsCompleted(job.client_id, codes, job.title).catch((e) => console.error('[job] compliance', e)) }
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   let emailed = false
-  if (visible) {
+  if (visible && !job.emails_muted) { // emails to this client can be switched off on the job page
     try {
       const to = await clientRecipients(job.client_id)
       const link = to.portal ? await portalUrl('/jobs/' + id.data, job.client_id) : await issueClientLink(id.data)
@@ -50,5 +50,5 @@ export default defineEventHandler(async (event) => {
       emailed = true
     } catch (err) { console.error('[services] client email failed for ' + id.data, err) }
   }
-  return { ok: true, emailed }
+  return { ok: true, emailed, muted: job.emails_muted }
 })

@@ -9,8 +9,8 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'team', 'gp')
   const id = String(getRouterParam(event, 'id') ?? '')
   if (!/^[0-9a-f-]{36}$/.test(id)) throw apiError('not_found', 'Job not found', 404)
-  const j = (await db().query<{ title: string; email: string; contact_name: string; client_id: string; client: string }>(
-    'SELECT j.title, c.email, c.contact_name, j.client_id, c.name AS client FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id])).rows[0]
+  const j = (await db().query<{ title: string; email: string; contact_name: string; client_id: string; client: string; emails_muted: boolean }>(
+    'SELECT j.title, c.email, c.contact_name, c.emails_muted, j.client_id, c.name AS client FROM services.jobs j JOIN services.clients c ON c.id = j.client_id WHERE j.id = $1', [id])).rows[0]
   if (!j) throw apiError('not_found', 'Job not found', 404)
   const parts = await readMultipartFormData(event)
   const files = (parts ?? []).filter((p) => p.name === 'file' && p.filename && p.data.length)
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   await db().query('UPDATE services.jobs SET updated_at = now() WHERE id = $1', [id])
   await audit({ event, actorUserId: user.userId, action: 'services.team_upload', objectType: 'job', objectId: id, detail: { files: names.length, visible } })
   let emailed = false
-  if (visible && notify) {
+  if (visible && notify && !j.emails_muted) {
     try {
       const to = await clientRecipients(j.client_id)
       const link = to.portal ? await portalUrl('/jobs/' + id, j.client_id) : await issueClientLink(id)
@@ -46,5 +46,5 @@ export default defineEventHandler(async (event) => {
       emailed = true
     } catch (err) { console.error('[services] upload email failed for ' + id, err) }
   }
-  return { ok: true, files: names.length, emailed }
+  return { ok: true, files: names.length, emailed, muted: j.emails_muted }
 })

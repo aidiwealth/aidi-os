@@ -2,7 +2,6 @@
 // A Finvry subscription invoice, laid out like the Telroi invoice. For Aidi platform staff and admins of the invoiced workspace.
 import { legalFooter } from '~/shared/invoice-brand'
 definePageMeta({ layout: false })
-const brand = useBrand()
 const legal = legalFooter(null)
 const id = useRoute().params.id as string
 interface I { number: string; customer: string; issue_date: string; due_date: string; period_start: string | null; period_end: string | null; currency: string; lines: { description: string; quantity: number; unit_amount: number; amount: number }[]; amount: string; status: string; overdue: boolean; paid_at: string | null; bill_to: { name: string; email: string; address?: string } }
@@ -22,7 +21,7 @@ const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'
       <div class="bar noprint"><button type="button" class="btn secondary" @click="back">← Back</button><span /><button type="button" class="btn secondary" @click="doPrint">Download PDF</button><a v-if="data.payUrl && data.invoice.status !== 'paid'" :href="data.payUrl" class="btn">Pay now</a></div>
       <article class="ti">
         <header class="hd">
-          <div><div class="logo"><BrandMark /></div><h1>{{ data.issuer.issuer_name }}</h1><p class="pre">{{ data.issuer.issuer_address }}</p><p>{{ data.issuer.issuer_email }}</p></div>
+          <div><div class="logo"><img src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"></div><h1>{{ data.issuer.issuer_name }}</h1><p class="pre">{{ data.issuer.issuer_address }}</p><p>{{ data.issuer.issuer_email }}</p></div>
           <div class="rt"><span class="lb">Invoice</span><b class="no">{{ data.invoice.number }}</b>
             <span class="chip" :class="data.invoice.overdue ? 'over' : data.invoice.status">{{ data.invoice.status === 'paid' ? 'Paid ' + short(data.invoice.paid_at) : data.invoice.status === 'void' ? 'Void' : (data.invoice.overdue ? 'Overdue · ' : 'Due ') + short(data.invoice.due_date) }}</span></div>
         </header>
@@ -37,7 +36,7 @@ const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'
           <div v-if="data.invoice.status === 'paid'"><span>Paid</span><span class="m ok">−{{ money(data.invoice.amount) }}</span></div>
           <div class="due"><span>Amount due</span><span class="m">{{ data.invoice.status === 'paid' ? money(0) : money(data.invoice.amount) }}</span></div></div>
         <div v-if="data.invoice.status !== 'paid' && data.issuer.payment_instructions" class="bank"><span class="lb">Pay by transfer</span><p class="pre">{{ data.issuer.payment_instructions }}</p><p class="mut">Please quote {{ data.invoice.number }} with your payment.</p></div>
-        <p v-if="brand.key === 'finvry'" class="legal">{{ legal }}</p>
+        <p class="legal">{{ legal }}</p>
       </article>
     </template>
   </div>
@@ -48,7 +47,7 @@ const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'
 .bar { max-width: 900px; margin: 0 auto 16px; display: flex; gap: 10px; align-items: center; } .bar span { flex: 1; } .bar a.btn { text-decoration: none; }
 .ti { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid var(--c-rule); padding: 48px 56px; }
 .hd { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--c-rule); }
-.logo { margin: 0 0 14px; } .logo :deep(.fvimg) { height: 34px; } .logo :deep(.aw) { width: 78px; height: 31px; }
+.logo { margin: 0 0 14px; } .logo .fvimg { height: 34px; width: auto; display: block; }
 .hd h1 { font-family: var(--font-heading); font-weight: 600; font-size: 17px; color: var(--c-navy); margin: 0 0 6px; } .hd p { margin: 0 0 4px; color: var(--c-ink-soft); font-size: 15px; } .pre { white-space: pre-line; }
 .rt { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .lb { display: block; font-size: 13.5px; color: var(--c-muted); }
 .no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; } .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

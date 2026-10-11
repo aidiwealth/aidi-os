@@ -11,17 +11,28 @@ export async function ensureQuietOwner(orgId: string): Promise<boolean> {
   await addWorkspaceUser(orgId, c.email, c.contact_name || c.name, 'admin')
   return true
 }
-export async function supportSignIn(event: H3Event, staffUserId: string, orgId: string): Promise<{ as: string; name: string; owner_created: boolean }> {
+export async function supportSignIn(event: H3Event, staffUserId: string, orgId: string): Promise<{ as: string; name: string; owner_created: boolean; redirect: string }> {
   const created = await ensureQuietOwner(orgId)
-  const t = (await asPlatform(() => db().query<{ user_id: string; email: string; kind: string; name: string }>(
-    `SELECT u.id AS user_id, u.email, o.kind, o.name FROM core.organizations o JOIN core.memberships m ON m.organization_id = o.id AND m.status = 'active' JOIN core.users u ON u.id = m.user_id AND u.status = 'active'
+  const t = (await asPlatform(() => db().query<{ user_id: string; email: string; kind: string; name: string; brand: string | null }>(
+    `SELECT u.id AS user_id, u.email, o.kind, o.name, o.settings->>'brand' AS brand FROM core.organizations o JOIN core.memberships m ON m.organization_id = o.id AND m.status = 'active' JOIN core.users u ON u.id = m.user_id AND u.status = 'active'
       JOIN core.user_roles r ON r.user_id = u.id AND r.organization_id = o.id AND r.role_code = 'admin' WHERE o.id = $1 ORDER BY m.created_at LIMIT 1`, [orgId]))).rows[0]
   if (!t) throw apiError('no_owner', 'This workspace has no owner yet and no client email to set one up. Add the client\'s email first.', 409)
   if (t.kind !== 'company') throw apiError('protected', 'Support sign-in is for Finvry customer workspaces only.', 400)
-  const current = getCookie(event, 'aidi_os_session')
-  if (current) setCookie(event, RETURN_COOKIE, current, { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: 4 * 3600 })
-  await issueSession(event, t.user_id, t.email, orgId)
-  await asPlatform(() => db().query('UPDATE core.sessions SET impersonated_by = $2, expires_at = least(expires_at, now() + interval \'4 hours\') WHERE id = (SELECT id FROM core.sessions WHERE user_id = $1 AND organization_id = $3 ORDER BY created_at DESC LIMIT 1)', [t.user_id, staffUserId, orgId]))
-  await audit({ event, actorUserId: staffUserId, action: 'platform.support_signin', objectType: 'organization', objectId: orgId, detail: { as: t.email, owner_created_quietly: created } })
-  return { as: t.email, name: t.name, owner_created: created }
+  // The customer's workspace opens on its own product's address (Finvry for Finvry customers), so the team sees exactly
+  // what the customer sees. From another address the session is handed over; the console session here is untouched.
+  const target = t.brand === 'aidi' ? 'aidi' : 'finvry'
+  let redirect = '/'
+  if (target !== hostBrand(event)) {
+    const h = await sessionHandoff(event, t.user_id, t.email, orgId)
+    await asPlatform(() => db().query("UPDATE core.sessions SET impersonated_by = $2, expires_at = least(expires_at, now() + interval '4 hours') WHERE id = $1", [h.sid, staffUserId]))
+    const back = brands()[hostBrand(event)].url
+    redirect = brands()[target].url + '/api/auth/handoff?t=' + encodeURIComponent(h.token) + '&back=' + encodeURIComponent(back)
+  } else {
+    const current = getCookie(event, 'aidi_os_session')
+    if (current) setCookie(event, RETURN_COOKIE, current, { httpOnly: true, secure: !import.meta.dev, sameSite: 'lax', path: '/', maxAge: 4 * 3600 })
+    await issueSession(event, t.user_id, t.email, orgId)
+    await asPlatform(() => db().query('UPDATE core.sessions SET impersonated_by = $2, expires_at = least(expires_at, now() + interval \'4 hours\') WHERE id = (SELECT id FROM core.sessions WHERE user_id = $1 AND organization_id = $3 ORDER BY created_at DESC LIMIT 1)', [t.user_id, staffUserId, orgId]))
+  }
+  await audit({ event, actorUserId: staffUserId, action: 'platform.support_signin', objectType: 'organization', objectId: orgId, detail: { as: t.email, owner_created_quietly: created, on: target } })
+  return { as: t.email, name: t.name, owner_created: created, redirect }
 }

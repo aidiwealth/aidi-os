@@ -36,7 +36,7 @@ const signing = ref(false)
 async function signInAs() {
   if (!confirm('Sign in to ' + (data.value?.client.name ?? 'this client') + '\'s Finvry account as the owner? Their account is set up if needed, without emailing them. You act as them until you return to the console. This is recorded.')) return
   signing.value = true
-  try { await $fetch('/api/services/clients/' + id + '/signin', { method: 'POST' }); window.location.href = '/' } catch (e) { msg.value = err(e); signing.value = false }
+  try { const r = await $fetch<{ redirect?: string }>('/api/services/clients/' + id + '/signin', { method: 'POST' }); window.location.href = r.redirect || '/' } catch (e) { msg.value = err(e); signing.value = false }
 }
 const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/finvry', { method: 'POST', body: { person_id: p.id, send } }), send ? p.name + ' has a Finvry account and was emailed.' : p.name + ' can now sign in to Finvry with their email.')
 const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null; read_by_client: string | null }[]>('/api/services/clients/' + id + '/messages')

@@ -3,7 +3,7 @@
 import { intakeKindFor } from '~/shared/intake'
 import { mdRender } from '~/shared/markdown'
 const id = useRoute().params.id as string
-interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null }
+interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null; emails_muted?: boolean }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null; document_mime: string | null; document_size: number | null }
 interface Person { id: string; name: string; email: string | null; role: string; ownership_pct: number | null; company: string | null }
 interface Company { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string | null; status: string | null; ein: string | null; formation_date: string | null }
@@ -30,10 +30,16 @@ function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { mes
 async function run(fn: () => Promise<unknown>) { busy.value = true; msg.value = ''; ok.value = ''; try { await fn(); await refresh() } catch (e) { msg.value = errText(e) } finally { busy.value = false } }
 
 const tellClient = ref(true)
+// Client emails on/off for this client (all their jobs). Off: updates still show on their job page, no email goes out.
+const muted = computed(() => !!job.value.emails_muted)
+const toggleEmails = () => run(async () => { const m = !muted.value; await $fetch('/api/services/clients/' + job.value.client_id + '/emails', { method: 'POST', body: { muted: m } }); ok.value = m ? 'Emails to ' + (job.value.contact_name || job.value.client) + ' are off. Updates still appear on their job page.' : 'Emails to the client are back on.' })
+const quiet = ' Saved to their job page — emails to this client are off.'
+// Share a file with the client or make it team-only.
+const setShared = (e: Ev, visible: boolean) => run(async () => { const r = await $fetch<{ emailed: boolean; muted: boolean }>('/api/services/' + id + '/files/' + e.id, { method: 'POST', body: { visible } }); ok.value = visible ? (r.muted ? '"' + e.document_title + '" is now visible to the client.' + quiet : r.emailed ? '"' + e.document_title + '" shared and the client emailed.' : '"' + e.document_title + '" shared; the email did not send.') : '"' + e.document_title + '" is now team only.' })
 const setStatus = (s: string) => run(async () => {
   const note = s === 'waiting_client' ? prompt('What do you need from the client? (sent to them)') ?? '' : ''
   const r = await $fetch<{ emailed: boolean }>('/api/services/' + id + '/events', { method: 'POST', body: { kind: 'status', status: s, body: note || undefined, visible_to_client: tellClient.value } })
-  if (tellClient.value) ok.value = r.emailed ? 'Status changed. Client emailed.' : 'Status changed; the client email did not send.'
+  if (tellClient.value) ok.value = muted.value ? 'Status changed.' + quiet : r.emailed ? 'Status changed. Client emailed.' : 'Status changed; the client email did not send.'
 })
 
 // Activity: message the client or leave an internal note, written in a rich editor (Markdown), with optional attachments.
@@ -61,7 +67,7 @@ const addEvent = () => { if (!hasText.value && !ev.files.length) return; return 
     emailed = (await $fetch<{ emailed: boolean }>('/api/services/' + id + '/events', { method: 'POST', body: { kind: ev.kind, body: body.slice(0, 5000) } })).emailed
   }
   const n = ev.files.length
-  ok.value = toClient ? (emailed ? 'Sent to the client' + (n ? ' with ' + n + ' attachment' + (n === 1 ? '' : 's') : '') + '.' : 'Saved; the client email did not send.') : 'Note added' + (n ? ' with ' + n + ' file' + (n === 1 ? '' : 's') : '') + '.'
+  ok.value = toClient ? (muted.value ? 'Message saved.' + quiet : emailed ? 'Sent to the client' + (n ? ' with ' + n + ' attachment' + (n === 1 ? '' : 's') : '') + '.' : 'Saved; the client email did not send.') : 'Note added' + (n ? ' with ' + n + ' file' + (n === 1 ? '' : 's') : '') + '.'
   try { localStorage.removeItem(draftKey(ev.kind)) } catch { /* private mode */ }
   ev.body = ''; ev.files = []
 }) }
@@ -81,7 +87,7 @@ const upload = () => run(async () => {
   for (const f of up.files) fd.append('file', f)
   fd.append('note', up.note); fd.append('visible', up.share ? '1' : '0')
   const r = await $fetch<{ files: number; emailed: boolean }>('/api/services/' + id + '/upload', { method: 'POST', body: fd })
-  ok.value = (r.files === 1 ? 'File uploaded' : r.files + ' files uploaded') + (up.share ? (r.emailed ? ' and shared with the client.' : '; the client email did not send.') : '.')
+  ok.value = (r.files === 1 ? 'File uploaded' : r.files + ' files uploaded') + (up.share ? (muted.value ? ' and visible to the client.' + quiet : r.emailed ? ' and shared with the client.' : '; the client email did not send.') : '.')
   up.files = []; up.note = ''; if (fileInput.value) fileInput.value.value = ''
 })
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + docId + '/download'); window.open(r.url, '_blank') } catch (e) { msg.value = errText(e) } }
@@ -131,7 +137,8 @@ const owners = computed(() => data.value?.people ?? [])
       <div class="stages" role="group" aria-label="Status">
         <button v-for="[k, l] in STATUSES" :key="k" type="button" :class="{ on: job.status === k }" :disabled="busy || job.status === k" @click="setStatus(k)">{{ l }}</button>
       </div>
-      <label class="tell"><input v-model="tellClient" type="checkbox"> Email the client when the status changes</label>
+      <label class="tell"><input v-model="tellClient" type="checkbox"> Show status changes to the client</label>
+      <button type="button" class="mute" :class="{ off: muted }" :disabled="busy" :title="muted ? 'No emails go to this client. Click to turn emails back on.' : 'Click to stop emailing this client while you work.'" @click="toggleEmails"><span class="sw"><i /></span>Client emails {{ muted ? 'off' : 'on' }}</button>
     </div>
     <p v-if="msg" class="flash error" role="alert">{{ msg }}</p><p v-if="ok" class="flash ok" role="status">{{ ok }}</p>
 
@@ -157,7 +164,7 @@ const owners = computed(() => data.value?.people ?? [])
             <template v-if="up.files.length">
               <ul class="queue"><li v-for="(f, k) in up.files" :key="k"><span>{{ f.name }}</span><em>{{ size(f.size) }}</em><button type="button" aria-label="Remove" @click="up.files.splice(k, 1)">×</button></li></ul>
               <textarea v-model="up.note" rows="2" maxlength="2000" placeholder="Note for the client (optional), e.g. Your certificate of formation is attached." />
-              <div class="ur"><label class="chk"><input v-model="up.share" type="checkbox"> Share with the client and email them</label>
+              <div class="ur"><label class="chk"><input v-model="up.share" type="checkbox"> Share with the client{{ muted ? ' (no email — emails are off)' : ' and email them' }}</label>
                 <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Uploading…' : 'Upload ' + (up.files.length === 1 ? 'file' : up.files.length + ' files') }}</button></div>
             </template>
           </form>
@@ -167,7 +174,8 @@ const owners = computed(() => data.value?.people ?? [])
               <div class="fi"><button v-if="f.document_id" type="button" class="link" @click="openDoc(f.document_id)">{{ f.document_title }}</button><span v-else>{{ f.document_title }}</span>
                 <span class="muted">{{ f.kind === 'client_document' ? 'From the client' : (f.by_name ?? 'Team') }} · {{ when(f.created_at) }}<template v-if="f.document_size"> · {{ size(f.document_size) }}</template></span>
                 <span v-if="f.body" class="fnote">{{ f.body }}</span></div>
-              <span v-if="f.kind === 'client_document'" class="tag cl">Client upload</span><span v-else-if="f.visible_to_client" class="tag">Shared</span><span v-else class="tag int">Team only</span>
+              <span v-if="f.kind === 'client_document'" class="tag cl">Client upload</span>
+              <span v-else class="vis"><span class="tag" :class="{ int: !f.visible_to_client }">{{ f.visible_to_client ? 'Client and team' : 'Team only' }}</span><button type="button" class="vt" :disabled="busy" @click="setShared(f, !f.visible_to_client)">{{ f.visible_to_client ? 'Make team only' : 'Share with client' }}</button></span>
             </li>
           </ul>
         </div>
@@ -176,7 +184,7 @@ const owners = computed(() => data.value?.people ?? [])
           <h2>Activity</h2>
           <form class="ev" :class="ev.kind" @submit.prevent="addEvent" @keydown="composerKey">
             <div class="tabs"><button v-for="k in (['message', 'note'] as const)" :key="k" type="button" :class="{ on: ev.kind === k }" @click="ev.kind = k">{{ k === 'message' ? 'Message client' : 'Internal note' }}</button></div>
-            <p class="who2">{{ ev.kind === 'message' ? 'To ' + (job.contact_name || job.client) + ' · ' + job.email + ' — they see it on their job page and get an email.' : 'Only your team sees internal notes.' }}</p>
+            <p class="who2">{{ ev.kind === 'message' ? 'To ' + (job.contact_name || job.client) + ' · ' + job.email + (muted ? ' — shows on their job page; no email (client emails are off).' : ' — they see it on their job page and get an email.') : 'Only your team sees internal notes.' }}</p>
             <ClientOnly>
               <RichEditor v-model="ev.body" compact minimal :min-height="150" :max-length="5000" :placeholder="ev.kind === 'message' ? 'Write to the client… use the toolbar for bold, lists and links' : 'Write a note for the team…'" />
               <template #fallback><div class="edfb" /></template>
@@ -331,4 +339,8 @@ textarea { resize: vertical; }
 .facts { display: flex; flex-direction: column; gap: 12px; } .facts h2 { margin: 0; } .facts label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--c-muted); } .facts small { font-size: 12px; } .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .top { flex-direction: column; } .stages button { padding: 8px 10px; font-size: 12.5px; } }
+.mute { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font: inherit; font-size: 13px; background: #fff; border: 1px solid var(--c-rule-strong); border-radius: 999px; padding: 5px 12px 5px 6px; cursor: pointer; color: var(--c-ink); }
+.mute .sw { width: 30px; height: 18px; border-radius: 999px; background: var(--c-ok); position: relative; transition: background .15s; } .mute .sw i { position: absolute; top: 2px; left: 14px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
+.mute.off { color: var(--c-danger); border-color: rgba(180,35,24,.35); background: #fff7f6; } .mute.off .sw { background: #c9c5ba; } .mute.off .sw i { left: 2px; }
+.vis { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; } .vt { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; } .vt:disabled { color: var(--c-muted); }
 </style>

@@ -55,7 +55,7 @@ export async function bookFee(feeId: string) {
     "SELECT f.kind, f.amount::text, f.tax_amount::text, f.currency, to_char(coalesce(f.paid_on, current_date), 'YYYY-MM-DD') AS paid_on, coalesce(f.entity_id, c.entity_id) AS entity_id, coalesce(c.name, fm.name) AS who, f.period FROM wm.fees f LEFT JOIN wm.clients c ON c.id = f.client_id LEFT JOIN wm.firms fm ON fm.id = f.firm_id WHERE f.id = $1", [feeId])).rows[0]
   if (!f) return
   await db().query('DELETE FROM finance.journal WHERE wm_fee_id = $1', [feeId])
-  const acct = f.kind === 'advisory' ? 'Revenue: Advisory fees' : f.kind === 'subscription' ? 'Revenue: Subscription fees' : 'Revenue: Referral fees'
+  const acct = f.kind === 'advisory' ? 'Revenue: Advisory fees' : f.kind === 'subscription' ? 'Revenue: Subscription fees' : f.kind === 'invoice' ? 'Revenue: Wealth services' : 'Revenue: Referral fees'
   const memo = acct.replace('Revenue: ', '') + ' · ' + (f.who ?? '') + (f.period ? ' · ' + f.period : '')
   const tax = Number(f.tax_amount ?? 0), net = Math.round((Number(f.amount) - tax) * 100) / 100
   await db().query("INSERT INTO finance.journal (entity_id, entry_date, account, debit, credit, currency, memo, wm_fee_id) VALUES ($1,$2,'Cash at bank',$3,0,$4,$5,$6), ($1,$2,$7,0,$8,$4,$5,$6)", [f.entity_id, f.paid_on, f.amount, f.currency, memo, feeId, acct, net])

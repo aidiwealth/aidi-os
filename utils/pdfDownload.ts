@@ -13,5 +13,5 @@ export function invoiceForPdf(inv: Record<string, any>, issuer?: Record<string, 
     issuer: { name: String(iss.issuer_name ?? iss.issuer ?? iss.name ?? ''), address: iss.issuer_address ?? iss.address ?? undefined, email: iss.issuer_email ?? iss.email ?? undefined, phone: iss.phone ?? undefined },
     bill_to: { name: String(inv.bill_to?.name ?? inv.customer ?? inv.client ?? ''), email: inv.bill_to?.email ?? undefined, address: inv.bill_to?.address ?? undefined },
     lines: (inv.lines ?? []).map((l: Record<string, unknown>) => ({ description: String(l.description ?? ''), quantity: Number(l.quantity ?? 1), unit_amount: Number(l.unit_amount ?? l.amount ?? 0), amount: Number(l.amount ?? 0), ...(l.kind ? { kind: String(l.kind) } : {}) })),
-    amount: Number(inv.amount ?? 0), note: inv.note ?? null, payment: (iss.payment_instructions ?? '') || bank || null, period: inv.period_start && inv.period_end ? inv.period_start + ' to ' + inv.period_end : null, footer: inv.legal_footer ?? null }
+    amount: Number(inv.amount ?? 0), note: inv.note ?? null, payment: (iss.payment_instructions ?? '') || bank || null, period: inv.period_start && inv.period_end ? inv.period_start + ' to ' + inv.period_end : null, footer: inv.legal_footer ?? null, brand: inv.brand === 'aidi' ? 'aidi' : 'finvry' }
 }
