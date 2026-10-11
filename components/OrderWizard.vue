@@ -2,18 +2,20 @@
 import { US_STATES } from '~/shared/countries'
 import { INTAKE_FORMS } from '~/shared/intake'
 // Order Aidi's services in four steps: what you need, which services, details, review and pay.
-const props = withDefaults(defineProps<{ preset?: string }>(), { preset: '' })
+// clientId set = the services team ordering on a client's behalf (same steps; prices can be overridden, payment recorded).
+const props = withDefaults(defineProps<{ preset?: string; clientId?: string }>(), { preset: '', clientId: '' })
+const admin = computed(() => !!props.clientId)
 const emit = defineEmits<{ done: [jobId: string] }>()
 interface It { code: string; name: string; description: string | null; price: number | null; currency: string; billing: string }
-const { data } = await useFetch<{ items: It[]; companies: { id: string; name: string; entity_type: string | null; state: string | null; country: string | null; status: string }[] }>('/api/portal/catalog', { key: 'portal:catalog' })
+const { data } = await useFetch<{ items: It[]; companies: { id: string; name: string; entity_type: string | null; state: string | null; country: string | null; status: string }[] }>(props.clientId ? '/api/services/clients/' + props.clientId + '/catalog' : '/api/portal/catalog', { key: props.clientId ? 'cs-catalog-' + props.clientId : 'portal:catalog' })
 const CATS = [
   { key: 'address', title: 'Address and registered agent', blurb: 'A US mailing address, virtual office and registered agent for your company.', codes: ['virtual_office', 'registered_agent'] },
   { key: 'start', title: 'Start a company', blurb: 'Form an LLC or C-Corp in the US, get your EIN, free bylaws, a registered agent and a business address.', codes: ['llc_formation', 'inc_formation', 'ein', 'operating_agreement', 'registered_agent', 'virtual_office'] },
   { key: 'tax', title: 'State and federal filings', blurb: 'Federal returns, state franchise tax and annual reports, filed for you.', codes: ['irs_annual', 'de_franchise', 'ca_state'] },
   { key: 'other', title: 'Something else', blurb: 'Other filings, legal reviews or setup help.', codes: [] as string[] }]
 const step = ref(1); const cat = ref(''); const picked = ref<string[]>([]); const company = ref(''); const notes = ref(''); const msg = ref(''); const busy = ref(false)
-const done = ref<{ quoted: string[]; job_id: string } | null>(null)
-const { data: wal } = await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
+const done = ref<{ quoted: string[]; job_id: string; invoice_id?: string | null } | null>(null)
+const { data: wal } = props.clientId ? { data: ref<{ currency: string; balance_minor: number } | null>(null) } : await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
 const useWallet = ref(false)
 const walletCovers = computed(() => !!wal.value && wal.value.currency === cur.value && wal.value.balance_minor >= total.value * 100 && total.value > 0)
 const known = new Set(CATS.flatMap((c) => c.codes))
@@ -32,7 +34,11 @@ const price = (i: It) => quoted(i) ? (i.price ? 'From ' + money(i.price, i.curre
 const chosen = computed(() => (data.value?.items ?? []).filter((i) => picked.value.includes(i.code)).map((i) => { const alt = (i as It & { alt?: { us: { price: number | null; currency: string }; ng: { price: number | null; currency: string } } }).alt; if (!alt || step.value < 3) return i; const p = /^nigeria$/i.test(vo.country) ? alt.ng : alt.us; return { ...i, price: p.price, currency: p.currency } }))
 const lineAmount = (i: It) => raFree(i) ? 0 : i.code === 'virtual_office' ? (voTerm.value === 'annual' ? 12 : 1) * (i.price ?? 0) : (i.billing === 'monthly' ? 12 : 1) * (i.price ?? 0)
 const lineNote = (i: It) => quoted(i) ? 'Quoted after review' : raFree(i) ? 'Free first year · renews at ' + money(i.price ?? 0, i.currency) + ' / year' : i.code === 'virtual_office' ? (voTerm.value === 'annual' ? 'Billed yearly · renews automatically' : 'Billed monthly · renews automatically') : i.code === 'registered_agent' ? 'Renews yearly · charged automatically' : i.billing === 'monthly' ? 'First 12 months' : i.price === 0 ? 'Included free' : ''
-const total = computed(() => chosen.value.filter((i) => !quoted(i)).reduce((t, i) => t + lineAmount(i), 0))
+// Admin: price overrides (amount charged now per service) and how the order is paid.
+const ov = reactive<Record<string, string>>({})
+const pay = reactive({ mode: 'invoice' as 'invoice' | 'draft' | 'paid' | 'none', paid_on: new Date().toISOString().slice(0, 10), note: '' })
+const lineNow = (i: It) => (admin.value && ov[i.code] !== undefined && ov[i.code] !== '' ? Number(ov[i.code]) || 0 : lineAmount(i))
+const total = computed(() => chosen.value.filter((i) => !quoted(i) || (admin.value && ov[i.code])).reduce((t, i) => t + lineNow(i), 0))
 const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
 function choose(k: string) { cat.value = k; step.value = 2 }
 const forming = computed(() => picked.value.some((c) => c === 'llc_formation' || c === 'inc_formation'))
@@ -81,12 +87,14 @@ const fa = reactive<Record<string, unknown>>({}); const ff = reactive<Record<str
 const filingServices = computed(() => Object.keys(OPT).filter(optOn))
 function pickF(k: string, multi: boolean, ev: Event) { const l = Array.from((ev.target as HTMLInputElement).files ?? []); ff[k] = multi ? [...(ff[k] ?? []), ...l] : l.slice(0, 1) }
 const filingOk = computed(() => !filing.value || FORM.fields.every((f) => !f.required || (f.type === 'file' || f.type === 'files' ? (ff[f.key]?.length ?? 0) > 0 : f.type === 'multi' ? (f.key === 'services' ? filingServices.value.length > 0 : ((fa[f.key] as string[]) ?? []).length > 0) : String(fa[f.key] ?? '').trim().length > 0)))
-async function sendFiling(jobId: string) { const fd = new FormData(); fd.append('answers', JSON.stringify({ ...fa, services: filingServices.value })); for (const [k, l] of Object.entries(ff)) for (const file of l) fd.append(k, file); await $fetch('/api/portal/jobs/' + jobId + '/intake', { method: 'POST', body: fd }) }
+async function sendFiling(jobId: string) { const fd = new FormData(); fd.append('answers', JSON.stringify({ ...fa, services: filingServices.value })); for (const [k, l] of Object.entries(ff)) for (const file of l) fd.append(k, file); await $fetch(admin.value ? '/api/services/' + jobId + '/intake' : ('/api/portal/jobs/' + jobId + '/intake'), { method: 'POST', body: fd }) }
 const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? '')
 async function place() {
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>('/api/portal/order', { method: 'POST', body: { codes: picked.value, vo_term: voTerm.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, virtual_office: wantsVO.value ? { country: vo.country, state: /^nigeria$/i.test(vo.country) ? 'Lagos' : vo.state } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
+  const prices = admin.value ? Object.fromEntries(Object.entries(ov).filter(([, v]) => v !== '' && v != null && !Number.isNaN(Number(v))).map(([k, v]) => [k, Number(v)])) : undefined
+  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>(admin.value ? '/api/services/clients/' + props.clientId + '/order' : '/api/portal/order', { method: 'POST', body: { ...(admin.value ? { prices, payment: pay.mode, paid_on: pay.mode === 'paid' ? pay.paid_on : undefined, paid_note: pay.mode === 'paid' && pay.note ? pay.note : undefined } : {}), codes: picked.value, vo_term: voTerm.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, virtual_office: wantsVO.value ? { country: vo.country, state: /^nigeria$/i.test(vo.country) ? 'Lagos' : vo.state } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
     if (filing.value) { try { await sendFiling(r.job_id) } catch (e) { msg.value = 'Your order was placed, but the filing details did not upload: ' + portalErr(e) + ' You can send them from the request page.' } }
+    if (admin.value) { done.value = r; emit('done', r.job_id); return }
     if (r.invoice_id && useWallet.value && walletCovers.value) { await $fetch('/api/portal/invoices/' + r.invoice_id + '/pay-wallet', { method: 'POST' }); done.value = r; emit('done', r.job_id) }
     else if (r.pay_url) window.location.href = r.pay_url; else { done.value = r; emit('done', r.job_id) } }
   catch (e) { msg.value = portalErr(e) } finally { busy.value = false }
@@ -94,7 +102,8 @@ async function place() {
 </script>
 <template>
   <div v-if="data" class="oz">
-    <div v-if="done" class="fin"><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><h3>Order received</h3><p>We've opened a request for you{{ done.quoted.length ? ' and will send you a quote for ' + done.quoted.join(', ') : '' }}. You'll get an email as it moves, and you can follow it under Services.</p><NuxtLink :to="'/client/jobs/' + done.job_id" class="btn">View the request</NuxtLink></div>
+    <div v-if="done" class="fin"><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><template v-if="admin"><h3>Order logged</h3><p>The job{{ done.invoice_id ? ' and its invoice are' : ' is' }} on the services desk{{ pay.mode === 'invoice' && done.invoice_id ? ', and the invoice was emailed to the client' : pay.mode === 'paid' ? ', marked as paid' : '' }}.</p><NuxtLink :to="'/services/' + done.job_id" class="btn">Open the job</NuxtLink></template>
+      <template v-else><h3>Order received</h3><p>We've opened a request for you{{ done.quoted.length ? ' and will send you a quote for ' + done.quoted.join(', ') : '' }}. You'll get an email as it moves, and you can follow it under Services.</p><NuxtLink :to="'/client/jobs/' + done.job_id" class="btn">View the request</NuxtLink></template></div>
     <template v-else>
       <div class="prog"><div class="pl"><i :style="{ width: ((step - 1) / 3) * 100 + '%' }" /></div><ol><li v-for="(s, i) in STEPS" :key="s" :class="{ on: step === i + 1, ok: step > i + 1 }" @click="step > i + 1 && (step = i + 1)"><span>{{ step > i + 1 ? '✓' : i + 1 }}</span>{{ s }}</li></ol></div>
       <div v-if="step === 1" class="cats">
@@ -113,7 +122,7 @@ async function place() {
                 <label class="label">Country<CountrySelect v-model="nf.country" /></label>
                 <label v-if="isUS" class="label">State<select v-model="nf.state"><option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option></select></label>
                 <label class="label">Backup name (optional)<input v-model="nf.alt_name" maxlength="200" placeholder="In case the first is taken"></label></div>
-              <label class="label">Company name<span class="nrow"><input v-model="nf.name" maxlength="200" :placeholder="nf.entity_type === 'llc' ? 'e.g. Acme Labs LLC' : 'e.g. Acme Labs Inc.'"><button v-if="isUS" type="button" class="btn secondary" :disabled="nf.name.trim().length < 2 || checking" @click="checkName">{{ checking ? 'Checking…' : 'Check name' }}</button></span></label>
+              <label class="label">Company name<span class="nrow"><input v-model="nf.name" maxlength="200" :placeholder="nf.entity_type === 'llc' ? 'e.g. Acme Labs LLC' : 'e.g. Acme Labs Inc.'"><button v-if="isUS && !admin" type="button" class="btn secondary" :disabled="nf.name.trim().length < 2 || checking" @click="checkName">{{ checking ? 'Checking…' : 'Check name' }}</button></span></label>
               <div v-if="nr" class="nres" :class="nr.status"><b>{{ { available: 'Looks available', taken: 'Already taken', similar: 'Similar names exist', unknown: 'Check with the state' }[nr.status] }}</b><span>{{ nr.suggestion }}</span>
                 <span v-for="(i, k) in nr.issues" :key="'i' + k" class="iss">{{ i }}</span>
                 <span v-for="(m, k) in nr.matches" :key="'m' + k" class="mt">{{ m.name }}{{ m.status ? ' · ' + m.status : '' }}{{ m.incorporated ? ' · ' + m.incorporated : '' }}{{ m.exact ? ' · exact match' : '' }}</span>
@@ -139,18 +148,26 @@ async function place() {
                 <input v-if="f.type === 'text'" v-model="(fa[f.key] as string)" maxlength="500"><textarea v-else-if="f.type === 'textarea'" v-model="(fa[f.key] as string)" rows="3" maxlength="3000" />
                 <template v-else-if="f.type === 'file' || f.type === 'files'"><DropZone compact :multiple="f.type === 'files'" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx" @change="pickF(f.key, f.type === 'files', $event)" /><span v-for="x in ff[f.key] ?? []" :key="x.name" class="fl">+ {{ x.name }}</span></template></div></template></div>
             <label class="label">Anything we should know?<textarea v-model="notes" rows="6" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
+          <div v-else-if="admin" class="rev"><h3>Prices and payment</h3><p class="hint">Prices come from your price list. Change any amount for this client — an agreed price, or an old order you are logging. VAT is added where it applies.</p>
+            <div v-for="i in chosen" :key="i.code" class="ovr"><span><b>{{ i.name }}</b><em>{{ quoted(i) ? 'Quoted — enter the price' : 'List: ' + (lineAmount(i) === 0 ? 'Free' : money(lineAmount(i), i.currency)) + (lineNote(i) ? ' · ' + lineNote(i) : '') }}</em></span><label class="ovi">{{ SYM[i.currency] ?? '' }}<input v-model="ov[i.code]" inputmode="decimal" :placeholder="quoted(i) ? '0.00' : String(lineAmount(i))"></label></div>
+            <p class="ql2">How is this paid?</p>
+            <div class="pm"><label :class="{ on: pay.mode === 'invoice' }"><input v-model="pay.mode" type="radio" value="invoice"><b>Email the invoice</b><em>The client pays online or by transfer</em></label>
+              <label :class="{ on: pay.mode === 'paid' }"><input v-model="pay.mode" type="radio" value="paid"><b>Already paid</b><em>Bank transfer or paid earlier — invoice marked paid</em></label>
+              <label :class="{ on: pay.mode === 'draft' }"><input v-model="pay.mode" type="radio" value="draft"><b>Draft invoice</b><em>Review and send it later</em></label>
+              <label :class="{ on: pay.mode === 'none' }"><input v-model="pay.mode" type="radio" value="none"><b>No invoice</b><em>Log the job only (old order settled elsewhere)</em></label></div>
+            <div v-if="pay.mode === 'paid'" class="g2"><label class="label">Paid on<input v-model="pay.paid_on" type="date"></label><label class="label">Note (optional)<input v-model="pay.note" maxlength="300" placeholder="e.g. Bank transfer, ref 0042"></label></div></div>
           <div v-else class="rev"><h3>Review and pay</h3><ServiceNotice compact />
             <div v-if="total" class="pays"><button v-if="walletCovers" type="button" class="pay" :class="{ on: useWallet }" @click="useWallet = true"><AppIcon name="wallet" /><span><b>Wallet</b><em>Balance {{ (SYM[wal!.currency] ?? '') + (wal!.balance_minor / 100).toLocaleString('en-US') }}</em></span></button>
               <button type="button" class="pay" :class="{ on: !useWallet || !walletCovers }" @click="useWallet = false"><AppIcon name="billing" /><span><b>Card or bank transfer</b><em>Secure checkout, or pay from your invoice</em></span></button></div>
             <p class="hint">{{ total ? (chosen.some(quoted) ? 'Quoted items are priced after review and invoiced separately.' : 'You will get a receipt by email.') : 'We will review your request and send you a quote.' }}</p></div>
         </div>
         <aside class="sum"><p class="sl">Your order</p>
-          <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="lineNote(i)">{{ lineNote(i) }}</em></span><b>{{ quoted(i) ? '—' : lineAmount(i) === 0 ? 'Free' : money(lineAmount(i), i.currency) }}</b></div>
+          <div v-for="i in chosen" :key="i.code" class="ln"><span>{{ i.name }}<em v-if="lineNote(i)">{{ lineNote(i) }}</em></span><b>{{ quoted(i) && !(admin && ov[i.code]) ? '—' : lineNow(i) === 0 ? 'Free' : money(lineNow(i), i.currency) }}</b></div>
           <p v-if="!chosen.length" class="emp">Nothing selected yet.</p>
           <div class="tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
           <button v-if="step === 2" type="button" class="btn full" :disabled="!picked.length" @click="step = 3">Continue</button>
           <button v-else-if="step === 3" type="button" class="btn full" :disabled="!detailsOk" @click="step = 4">Review order</button>
-          <button v-else-if="step === 4" type="button" class="btn full" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : total ? (useWallet && walletCovers ? 'Pay from wallet · ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button>
+          <button v-else-if="step === 4" type="button" class="btn full" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : admin ? ({ invoice: 'Create job and email invoice', draft: 'Create job and draft invoice', paid: 'Create job · mark paid', none: 'Create job' } as Record<string, string>)[pay.mode] : total ? (useWallet && walletCovers ? 'Pay from wallet · ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button>
           <button type="button" class="back" @click="step--">← Back</button>
           <p v-if="msg" class="error">{{ msg }}</p></aside>
       </div>
@@ -187,4 +204,6 @@ input:not([type=checkbox]):not([type=radio]) { font: inherit; font-size: 14px; p
 .term { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .term button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; font: inherit; cursor: pointer; text-align: left; } .term button.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f6f8fb; } .term b { font-size: 14px; } .term em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 .fil { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--c-rule); padding: 14px; background: #fbfaf7; } .fil > b { font-size: 14.5px; } .fq { display: flex; flex-direction: column; gap: 6px; } .ql { font-size: 13.5px; font-weight: 500; } .ql em { color: var(--c-danger); font-style: normal; } .op { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .op input { width: auto !important; } .fl { font-size: 12.5px; color: var(--c-blue-deep); }
 .op.sv { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 9px 12px; border: 1px solid var(--c-rule); background: #fff; } .op.sv.on { border-color: var(--c-navy); background: #f6f8fb; } .op.sv.off { opacity: .55; } .op.sv em { font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--c-ink); white-space: nowrap; }
+.ovr { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .ovr span { display: flex; flex-direction: column; } .ovr b { font-size: 14px; } .ovr em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .ovi { display: flex; align-items: center; gap: 6px; font-weight: 600; } .ovi input { width: 130px !important; text-align: right; }
+.ql2 { font-size: 13.5px; font-weight: 600; margin: 16px 0 8px; } .pm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; } .pm label { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; cursor: pointer; } .pm label.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f6f8fb; } .pm input { grid-row: span 2; width: auto !important; } .pm b { font-size: 14px; } .pm em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 </style>

@@ -31,7 +31,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
     <p class="label">Client Services</p>
     <div class="head">
       <h1>Client Services</h1>
-      <button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'New job' }}</button>
+      <div class="hacts"><NuxtLink to="/services/order" class="btn">New order</NuxtLink><button class="btn secondary" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Custom job' }}</button></div>
     </div>
 
     <form v-if="adding" class="card add" @submit.prevent="add">
@@ -91,4 +91,5 @@ tr.late td:first-child { box-shadow: inset 3px 0 0 var(--c-danger); }
 .st { font-size: 13px; } .st[data-s="waiting_client"] { color: var(--c-warn); } .st[data-s="completed"] { color: var(--c-ok); } .st[data-s="cancelled"] { color: var(--c-muted); }
 .red { color: var(--c-danger); } .muted { color: var(--c-muted); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr; } }
+.hacts { display: flex; gap: 8px; } .hacts a.btn { text-decoration: none; }
 </style>
