@@ -5,8 +5,7 @@ const FILING: Record<string, { title: string; category: string; jurisdiction: st
   de_franchise: { title: 'Delaware franchise tax and annual report', category: 'franchise_tax', jurisdiction: 'US-DE', month: 3, day: 1 },
   ca_state: { title: 'California state filing', category: 'annual_return', jurisdiction: 'US-CA', month: 4, day: 15 },
   registered_agent: { title: 'Registered agent renewal', category: 'registered_agent', jurisdiction: 'US' },
-  virtual_office: { title: 'Virtual office renewal', category: 'other', jurisdiction: 'US' },
-  de_mailbox: { title: 'Delaware mailbox renewal', category: 'other', jurisdiction: 'US-DE' } }
+  virtual_office: { title: 'Virtual office renewal', category: 'other', jurisdiction: 'US' } }
 const nextDue = (f: { month?: number; day?: number }) => { const now = new Date(); if (f.month === undefined) return new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10); let d = new Date(Date.UTC(now.getUTCFullYear(), f.month - 1, f.day ?? 1)); if (d <= now) d = new Date(Date.UTC(now.getUTCFullYear() + 1, f.month - 1, f.day ?? 1)); return d.toISOString().slice(0, 10) }
 async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>): Promise<T | null> {
   const ws = (await asPlatform(() => db().query<{ workspace_id: string | null }>('SELECT workspace_id FROM services.clients WHERE id = $1', [clientId]))).rows[0]?.workspace_id

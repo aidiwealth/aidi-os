@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const lines = tx.lines, amount = tx.amount
   const settings = await csBilling()
   const email = d.contact.email.toLowerCase()
-  const virtual = (d.virtual && !!cat.virtual) || picked.some((i) => i.code === 'de_mailbox')
+  const virtual = d.virtual && !!cat.virtual
   const addr = d.address ? [d.address.line1, d.address.line2, [d.address.city, d.address.region, d.address.postal].filter(Boolean).join(' '), d.address.country].filter(Boolean).join('\n') : null
   const summary = ['Formation order', 'State: ' + d.state, 'Type: ' + (d.entity_type === 'llc' ? 'LLC' : 'C-Corp (Inc)'), 'Names in order of preference: ' + names.join(' / '),
     'Management: ' + d.management, 'Registered agent: ' + (d.agent === 'ours' ? 'provided by us' : 'their own — ' + (d.agent_details ?? '')), 'Purpose: ' + (d.purpose || '—'),
@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
     const clientId = existing.rows[0]?.id ?? (await client.query<{ id: string }>("INSERT INTO services.clients (name, kind, contact_name, email, phone, country, status) VALUES ($1,'individual',$2,$3,$4,$5,'lead') RETURNING id",
       [d.contact.name, d.contact.name, email, d.contact.phone || null, d.contact.country || null])).rows[0]!.id
     const co = await client.query<{ id: string }>("INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, address, registered_agent, virtual_office, mailbox, status, notes) VALUES ($1,$2,$3,$4,'United States',$5,$6,$7,$8,'forming',$9) RETURNING id",
-      [clientId, names[0], d.entity_type, d.state, addr, d.agent, d.virtual && !!cat.virtual, picked.some((i) => i.code === 'de_mailbox'), 'Alternative names: ' + (names.slice(1).join(' / ') || '—') + (d.purpose ? '\nPurpose: ' + d.purpose : '')])
+      [clientId, names[0], d.entity_type, d.state, addr, d.agent, d.virtual && !!cat.virtual, false, 'Alternative names: ' + (names.slice(1).join(' / ') || '—') + (d.purpose ? '\nPurpose: ' + d.purpose : '')])
     for (const m of d.members) await client.query("INSERT INTO services.people (client_id, company_id, name, email, role, ownership_pct, address, nationality) VALUES ($1,$2,$3,$4,'owner',$5,$6,$7)", [clientId, co.rows[0]!.id, m.name, m.email?.toLowerCase() ?? null, m.ownership, m.address || null, m.country || null])
     const job = await client.query<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status) VALUES ($1,$2,'company_formation',$3,$4,'new') RETURNING id", [clientId, co.rows[0]!.id, 'Form ' + names[0] + ' (' + d.state + ')', summary])
     const inv = await client.query<{ id: string; number: string }>(

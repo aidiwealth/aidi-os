@@ -29,6 +29,13 @@ const sentLink = ref('')
 function askTax(c: Co) { rq.company_id = c.id; rq.email = data.value?.client.email ?? ''; sentLink.value = '' }
 const sendTax = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/requests', { method: 'POST', body: { client_id: id, ...rq } }); sentLink.value = r.link; rq.company_id = '' }, 'Tax information request sent.')
 const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
+const { data: me } = await useFetch<{ platform: boolean }>('/api/auth/me', { key: 'me' })
+const signing = ref(false)
+async function signInAs() {
+  if (!confirm('Sign in to ' + (data.value?.client.name ?? 'this client') + '\'s Finvry account as the owner? Their account is set up if needed, without emailing them. You act as them until you return to the console. This is recorded.')) return
+  signing.value = true
+  try { await $fetch('/api/services/clients/' + id + '/signin', { method: 'POST' }); window.location.href = '/' } catch (e) { msg.value = err(e); signing.value = false }
+}
 const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/finvry', { method: 'POST', body: { person_id: p.id, send } }), send ? p.name + ' has a Finvry account and was emailed.' : p.name + ' can now sign in to Finvry with their email.')
 const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null; read_by_client: string | null }[]>('/api/services/clients/' + id + '/messages')
 const reply = ref('')
@@ -39,7 +46,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
   <section v-if="data">
     <CsNav />
     <div class="dh"><div><h1>{{ data.client.name }}</h1><p class="muted">{{ data.client.contact_name }} · {{ data.client.email }}{{ data.client.country ? ' · ' + data.client.country : '' }}</p></div>
-      <div class="row"><NuxtLink :to="'/services/invoices/new?client=' + id" class="btn">New invoice</NuxtLink><DeleteButton type="client" :id="id" :name="data.client.name" to="/services/clients" /></div></div>
+      <div class="row"><button v-if="me?.platform" type="button" class="btn secondary" :disabled="signing" :title="'Set up ' + data.client.name + '\'s Finvry account without emailing them, and sign in as the owner'" @click="signInAs">{{ signing ? 'Opening…' : 'Sign in as owner' }}</button><NuxtLink :to="'/services/invoices/new?client=' + id" class="btn">New invoice</NuxtLink><DeleteButton type="client" :id="id" :name="data.client.name" to="/services/clients" /></div></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="tabs"><button v-for="t in (['companies', 'people', 'jobs', 'invoices', 'messages', 'details'] as const)" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : t === 'messages' ? 'Messages' + (msgs?.filter((m) => !m.from_team).length ? ' (' + msgs.filter((m) => !m.from_team).length + ')' : '') : 'Details' }}</button></div>
 
@@ -47,7 +54,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
       <table v-if="data.companies.length" class="table"><thead><tr><th>Company</th><th>Registration</th><th>Services</th><th>Status</th><th /></tr></thead>
         <tbody><tr v-for="c in data.companies" :key="c.id"><td><b class="co">{{ c.name }}</b><span class="sub">{{ TYPES[c.entity_type] }} · {{ [c.jurisdiction, c.country].filter(Boolean).join(', ') }}</span></td>
           <td class="sm">{{ c.ein ? 'EIN ' + c.ein : 'No EIN yet' }}<span class="sub">{{ c.formation_date ? 'Formed ' + c.formation_date : '' }}{{ c.fiscal_year_end ? ' · FYE ' + c.fiscal_year_end : '' }}</span></td>
-          <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : '', c.virtual_office ? 'Virtual office' : '', c.mailbox ? 'Mailbox' : ''].filter(Boolean).join(' · ') || '—' }}</td>
+          <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : '', c.virtual_office || c.mailbox ? 'Virtual office' : ''].filter(Boolean).join(' · ') || '—' }}</td>
           <td><span class="st">{{ c.status }}</span></td><td class="acts"><button class="link" @click="askTax(c)">Request tax info</button> · <button class="link" @click="editCo(c)">Edit</button><DeleteButton type="cs_company" :id="c.id" :name="c.name" link @deleted="refresh()" /></td></tr></tbody></table>
       <EmptyState v-else compact icon="services" title="No companies yet" />
       <form v-if="rq.company_id" class="card frm" @submit.prevent="sendTax">
@@ -73,7 +80,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <label class="label">Fiscal year end<input v-model="co.fiscal_year_end" maxlength="10" placeholder="12-31"></label>
         <label class="label">Registered agent<select v-model="co.registered_agent"><option value="ours">Provided by us</option><option value="theirs">Their own</option><option value="none">None</option></select></label>
         <label v-if="co.registered_agent === 'ours'" class="label">Agent renewal<input v-model="co.agent_renewal" type="date"></label>
-        <div class="flags"><label class="chk"><input v-model="co.virtual_office" type="checkbox"> Virtual office</label><label class="chk"><input v-model="co.mailbox" type="checkbox"> Mailbox</label></div>
+        <div class="flags"><label class="chk"><input v-model="co.virtual_office" type="checkbox"> Virtual office</label></div>
         <label class="label wide">Official address<input v-model="co.address" maxlength="500"></label>
         <label class="label wide">Notes<textarea v-model="co.notes" rows="2" maxlength="3000" /></label>
         <div class="wide row"><button class="btn" type="submit">Save company</button><button class="btn secondary" type="button" @click="editingCo = false">Cancel</button><span v-if="msg" class="error" role="alert">{{ msg }}</span></div>

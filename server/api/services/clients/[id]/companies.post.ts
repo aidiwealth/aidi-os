@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   if (!cid.success || !b.success) throw apiError('invalid', 'Check the company details. An EIN looks like 12-3456789.')
   if (!(await db().query('SELECT 1 FROM services.clients WHERE id = $1', [cid.data])).rowCount) throw apiError('not_found', 'Client not found', 404)
   const d = b.data
-  const vals = [d.name, d.entity_type, d.jurisdiction || null, d.country, d.registration_number || null, d.ein ?? null, d.formation_date ?? null, d.fiscal_year_end || null, d.address || null, d.registered_agent, d.agent_renewal ?? null, d.virtual_office, d.mailbox, d.status, d.notes || null]
+  const vals = [d.name, d.entity_type, d.jurisdiction || null, d.country, d.registration_number || null, d.ein ?? null, d.formation_date ?? null, d.fiscal_year_end || null, d.address || null, d.registered_agent, d.agent_renewal ?? null, d.virtual_office || d.mailbox, false, d.status, d.notes || null]
   const r = d.id
     ? await db().query<{ id: string }>(`UPDATE services.companies SET name=$3, entity_type=$4, jurisdiction=$5, country=$6, registration_number=$7, ein=$8, formation_date=$9, fiscal_year_end=$10, address=$11, registered_agent=$12, agent_renewal=$13, virtual_office=$14, mailbox=$15, status=$16, notes=$17 WHERE id=$1 AND client_id=$2 RETURNING id`, [d.id, cid.data, ...vals])
     : await db().query<{ id: string }>(`INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, registration_number, ein, formation_date, fiscal_year_end, address, registered_agent, agent_renewal, virtual_office, mailbox, status, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`, [cid.data, ...vals])
