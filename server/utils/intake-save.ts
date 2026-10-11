@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import { createHash } from 'node:crypto'
 // Saving a filing form (answers + files) on a job — by the client in Finvry or by the team on their behalf.
 import { randomUUID } from 'node:crypto'
-import { INTAKE_FORMS } from '~/shared/intake'
+import { INTAKE_FORMS, fieldVisible } from '~/shared/intake'
 const EXT: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', heic: 'image/heic', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
 export async function saveIntake(event: H3Event, id: string, clientId: string, kind: 'incorporation' | 'filing', by: string) {
   const parts = (await readMultipartFormData(event)) ?? []
@@ -28,9 +28,10 @@ export async function saveIntake(event: H3Event, id: string, clientId: string, k
     if (f.type === 'file' || f.type === 'files' || f.type === 'secret') continue
     const v = answers[f.key]
     if (f.type === 'multi') clean[f.key] = Array.isArray(v) ? v.filter((x) => typeof x === 'string' && f.options?.includes(x)) : []
+    else if (f.type === 'choice') { if (typeof v === 'string' && (!f.options || f.options.includes(v))) clean[f.key] = v }
     else if (typeof v === 'string') clean[f.key] = v.trim().slice(0, 3000)
   }
-  const missing = form.fields.filter((f) => f.required && !f.showIf && ((f.type === 'file' || f.type === 'files') ? !files.some((x) => x.field === f.key) : f.type === 'multi' ? !(clean[f.key] as string[] | undefined)?.length : !clean[f.key])).map((f) => f.label)
+  const missing = form.fields.filter((f) => f.required && !f.showIf && fieldVisible(f, clean) && ((f.type === 'file' || f.type === 'files') ? !files.some((x) => x.field === f.key) : f.type === 'multi' ? !(clean[f.key] as string[] | undefined)?.length : !clean[f.key])).map((f) => f.label)
   if (missing.length) throw apiError('missing', 'Please complete: ' + missing.join('; '))
   const ssnRaw = typeof answers.ssn === 'string' ? answers.ssn.replace(/\D/g, '') : ''
   if (ssnRaw && ssnRaw.length !== 9) throw apiError('invalid', 'An SSN has 9 digits.')

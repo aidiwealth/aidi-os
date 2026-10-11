@@ -24,6 +24,18 @@ const TEMPLATES = [
   { label: 'Nigeria VAT return (monthly)', title: 'VAT return (FIRS)', category: 'tax', jurisdiction: 'NG', recurrence: 'monthly', md: [0, 21] },
   { label: 'Nigeria PAYE remittance (monthly)', title: 'PAYE remittance', category: 'tax', jurisdiction: 'NG', recurrence: 'monthly', md: [0, 10] },
   { label: 'Insurance renewal', title: 'Insurance renewal', category: 'insurance', jurisdiction: '', recurrence: 'annual', md: null }]
+// Finvry companies: the reminder list follows the services on the price list (same names), with Finvry's price to have it done.
+interface Svc { code: string; name: string; description: string | null; billing: string; price: number | null; currency: string }
+const { data: cat } = await useFetch<{ items: Svc[] }>('/api/portal/catalog', { key: 'portal-catalog', server: false, lazy: true, immediate: company.value })
+const SETUP = ['llc_formation', 'inc_formation', 'ein', 'operating_agreement']
+const SVC_META: Record<string, { category: string; jurisdiction: string; md: number[] | null }> = {
+  irs_annual: { category: 'tax', jurisdiction: 'US', md: [4, 15] }, de_franchise: { category: 'franchise_tax', jurisdiction: 'US-DE', md: [3, 1] }, ca_state: { category: 'annual_return', jurisdiction: 'US-CA', md: [4, 15] },
+  registered_agent: { category: 'registered_agent', jurisdiction: 'US', md: null }, virtual_office: { category: 'other', jurisdiction: 'US', md: null }, annual_report: { category: 'annual_return', jurisdiction: 'US', md: null },
+  boi_report: { category: 'regulatory', jurisdiction: 'US', md: null } }
+const svcTemplates = computed(() => company.value ? (cat.value?.items ?? []).filter((i) => !SETUP.includes(i.code)).map((i) => { const m = SVC_META[i.code] ?? { category: /tax/i.test(i.name) ? 'tax' : /report|return/i.test(i.name) ? 'annual_return' : 'other', jurisdiction: 'US', md: null }
+  return { code: i.code, label: i.name, title: i.name, category: m.category, jurisdiction: m.jurisdiction, recurrence: i.billing === 'annual' ? 'annual' : i.billing === 'monthly' ? 'monthly' : 'none', md: m.md, price: i.price, currency: i.currency, description: i.description } }) : [])
+const pickedSvc = computed(() => (tpl.value.startsWith('s') ? svcTemplates.value[Number(tpl.value.slice(1))] : undefined))
+const svcPrice = (t: { price: number | null; currency: string; recurrence: string }) => t.price == null ? 'priced on request' : new Intl.NumberFormat('en-US', { style: 'currency', currency: t.currency, maximumFractionDigits: 0 }).format(t.price) + (t.recurrence === 'annual' ? ' / year' : t.recurrence === 'monthly' ? ' / month' : '')
 function nextDate(md: number[] | null): string { const now = new Date(); const y = now.getUTCFullYear(); if (!md) return ''; if (md[0] === 0) { let d = new Date(Date.UTC(y, now.getUTCMonth(), md[1])); if (d < now) d = new Date(Date.UTC(y, now.getUTCMonth() + 1, md[1])); return d.toISOString().slice(0, 10) } let d = new Date(Date.UTC(y, md[0]! - 1, md[1])); if (d < now) d = new Date(Date.UTC(y + 1, md[0]! - 1, md[1])); return d.toISOString().slice(0, 10) }
 
 const items = computed(() => (data.value ?? []).filter((o) => o.active))
@@ -50,7 +62,7 @@ const adding = ref(false); const tpl = ref(''); const err = ref('')
 const blank = () => ({ entity_id: entities.value?.[0]?.id ?? '', title: '', category: 'tax', jurisdiction: 'US', recurrence: 'annual', next_due: '', reminder_days: 14, notes: '' })
 const form = reactive(blank())
 function openAdd() { Object.assign(form, blank()); tpl.value = ''; err.value = ''; adding.value = true }
-watch(tpl, (i) => { const t = TEMPLATES[Number(i)]; if (t) Object.assign(form, { title: t.title, category: t.category, jurisdiction: t.jurisdiction, recurrence: t.recurrence, next_due: nextDate(t.md) || form.next_due }) })
+watch(tpl, (i) => { const t = i.startsWith('s') ? svcTemplates.value[Number(i.slice(1))] : TEMPLATES[Number(i)]; if (t) Object.assign(form, { title: t.title, category: t.category, jurisdiction: t.jurisdiction, recurrence: t.recurrence, next_due: nextDate(t.md) || form.next_due }) })
 async function add() { err.value = ''; try { await $fetch('/api/compliance', { method: 'POST', body: { ...form, jurisdiction: form.jurisdiction || undefined, notes: form.notes || undefined, owner_id: null } }); adding.value = false; await refresh() } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
 // mark done
 const doneFor = ref<ObligationRow | null>(null); const doneForm = reactive({ completed_on: today, note: '' })
@@ -103,7 +115,10 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 
     <AppModal :open="adding" title="Add a reminder" @close="adding = false">
       <form id="addf" class="frm" @submit.prevent="add">
-        <label class="label wide">Start from a common filing<select v-model="tpl"><option value="">— Blank —</option><option v-for="(t, i) in TEMPLATES" v-show="showNg || !t.jurisdiction.startsWith('NG')" :key="i" :value="String(i)">{{ t.label }}</option></select></label>
+        <label class="label wide">Start from a common filing<select v-model="tpl"><option value="">— Blank —</option>
+          <optgroup v-if="svcTemplates.length" label="Finvry services"><option v-for="(t, i) in svcTemplates" :key="'s' + i" :value="'s' + i">{{ t.label }}</option></optgroup>
+          <optgroup :label="svcTemplates.length ? 'Other deadlines' : 'Common filings'"><option v-for="(t, i) in TEMPLATES" v-show="(showNg || !t.jurisdiction.startsWith('NG')) && (!svcTemplates.length || !t.jurisdiction.startsWith('US') || t.title.startsWith('Form 1099'))" :key="i" :value="String(i)">{{ t.label }}</option></optgroup></select></label>
+        <div v-if="pickedSvc" class="svh wide"><span>{{ pickedSvc.description }}</span><span>Finvry can do this for you: <b>{{ svcPrice(pickedSvc) }}</b>. <NuxtLink :to="{ path: '/client/order', query: { service: pickedSvc.code } }">Order it →</NuxtLink></span></div>
         <label v-if="!company" class="label wide">Entity<select v-model="form.entity_id" required><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label class="label wide">Title<input v-model="form.title" required maxlength="200"></label>
         <label class="label">Type<select v-model="form.category"><option v-for="(l, k) in CAT" :key="k" :value="k">{{ l }}</option></select></label>
@@ -150,4 +165,5 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .frm .wide { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 6px; } input, select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .side { position: static; order: -1; } .stats { grid-template-columns: 1fr 1fr; } }
+.svh { display: flex; flex-direction: column; gap: 4px; background: var(--c-signal-soft); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); line-height: 1.5; } .svh b { color: var(--c-blue-deep); } .svh a { color: var(--c-blue-deep); font-weight: 500; }
 </style>

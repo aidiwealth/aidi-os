@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { US_STATES } from '~/shared/countries'
-import { INTAKE_FORMS } from '~/shared/intake'
+import { INTAKE_FORMS, fieldVisible } from '~/shared/intake'
 // Order Aidi's services in four steps: what you need, which services, details, review and pay.
 // clientId set = the services team ordering on a client's behalf (same steps; prices can be overridden, payment recorded).
 const props = withDefaults(defineProps<{ preset?: string; clientId?: string }>(), { preset: '', clientId: '' })
@@ -91,7 +91,7 @@ const filing = computed(() => cat.value === 'tax' || picked.value.some((c) => FI
 const fa = reactive<Record<string, unknown>>({}); const ff = reactive<Record<string, File[]>>({})
 const filingServices = computed(() => Object.keys(OPT).filter(optOn))
 function pickF(k: string, multi: boolean, ev: Event) { const l = Array.from((ev.target as HTMLInputElement).files ?? []); ff[k] = multi ? [...(ff[k] ?? []), ...l] : l.slice(0, 1) }
-const filingOk = computed(() => !filing.value || FORM.fields.every((f) => !f.required || (f.type === 'file' || f.type === 'files' ? (ff[f.key]?.length ?? 0) > 0 : f.type === 'multi' ? (f.key === 'services' ? filingServices.value.length > 0 : ((fa[f.key] as string[]) ?? []).length > 0) : String(fa[f.key] ?? '').trim().length > 0)))
+const filingOk = computed(() => !filing.value || FORM.fields.every((f) => !f.required || !fieldVisible(f, fa) || (f.type === 'file' || f.type === 'files' ? (ff[f.key]?.length ?? 0) > 0 : f.type === 'multi' ? (f.key === 'services' ? filingServices.value.length > 0 : ((fa[f.key] as string[]) ?? []).length > 0) : String(fa[f.key] ?? '').trim().length > 0)))
 async function sendFiling(jobId: string) { const fd = new FormData(); fd.append('answers', JSON.stringify({ ...fa, services: filingServices.value })); for (const [k, l] of Object.entries(ff)) for (const file of l) fd.append(k, file); await $fetch(admin.value ? '/api/services/' + jobId + '/intake' : ('/api/portal/jobs/' + jobId + '/intake'), { method: 'POST', body: fd }) }
 const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? '')
 async function place() {
@@ -150,10 +150,11 @@ async function place() {
               <div v-if="voOffice" class="map"><iframe :src="'https://www.google.com/maps?q=' + encodeURIComponent(voOffice.q) + '&output=embed'" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Office location" /><span>{{ voOffice.address }} · <a :href="voOffice.map" target="_blank" rel="noopener">Open in Google Maps</a></span></div>
               <p v-else class="hint">We assign your {{ vo.state }} address when we set it up and share it in your Documents.</p></div>
             <div v-if="filing" class="fil"><b>{{ FORM.title }}</b><p class="hint">{{ FORM.intro }} Our team sees these with your order.</p>
-              <template v-for="f in FORM.fields" :key="f.key"><div class="fq"><span class="ql">{{ f.label }}<em v-if="f.required"> *</em></span><span v-if="f.help" class="hint">{{ f.help }}</span>
+              <template v-for="f in FORM.fields" :key="f.key"><div v-if="fieldVisible(f, fa)" class="fq"><span class="ql">{{ f.label }}<em v-if="f.required"> *</em></span><span v-if="f.help" class="hint">{{ f.help }}</span>
                 <template v-if="f.key === 'services'"><label v-for="o in f.options" :key="o" class="op sv" :class="{ on: optOn(o), off: !optItem(o) }"><input type="checkbox" :checked="optOn(o)" :disabled="!optItem(o)" @change="toggleOpt(o, ($event.target as HTMLInputElement).checked)"><span>{{ o }}</span><em v-if="optItem(o)">{{ price(optItem(o)!) }}</em><em v-else>Not offered</em></label><span class="hint">Ticking a service adds it to your order and the total.</span></template>
                 <label v-for="o in (f.type === 'multi' && f.key !== 'services' ? f.options : [])" :key="o" class="op"><input v-model="(fa[f.key] as string[])" type="checkbox" :value="o"> {{ o }}</label>
-                <input v-if="f.type === 'text'" v-model="(fa[f.key] as string)" maxlength="500"><textarea v-else-if="f.type === 'textarea'" v-model="(fa[f.key] as string)" rows="3" maxlength="3000" />
+                <div v-if="f.type === 'choice'" class="chs"><button v-for="o in f.options" :key="o" type="button" :class="{ on: fa[f.key] === o }" @click="fa[f.key] = o">{{ o }}</button></div>
+                <input v-else-if="f.type === 'text'" v-model="(fa[f.key] as string)" maxlength="500"><textarea v-else-if="f.type === 'textarea'" v-model="(fa[f.key] as string)" rows="3" maxlength="3000" />
                 <template v-else-if="f.type === 'file' || f.type === 'files'"><DropZone compact :multiple="f.type === 'files'" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx" @change="pickF(f.key, f.type === 'files', $event)" /><span v-for="x in ff[f.key] ?? []" :key="x.name" class="fl">+ {{ x.name }}</span></template></div></template></div>
             <label class="label">Anything we should know?<textarea v-model="notes" rows="6" maxlength="2000" placeholder="e.g. company name ideas, state, deadlines, documents you already have" /></label></div>
           <div v-else-if="admin" class="rev"><h3>Prices and payment</h3><p class="hint">Prices come from your price list. Change any amount for this client — an agreed price, or an old order you are logging. VAT is added where it applies.</p>
@@ -227,4 +228,5 @@ input:not([type=checkbox]):not([type=radio]) { font: inherit; font-size: 14px; p
 @media (max-width: 640px) { .orow { grid-template-columns: 1fr 70px 28px; } .orow input[type=email] { grid-column: 1 / -1; grid-row: 2; } }
 .werr { color: var(--c-danger); margin: 4px 0; } .wok { color: var(--c-ok); margin: 4px 0; } .pm label.off { opacity: .55; }
 .idate { max-width: 260px; margin: 10px 0; } .idate em { font-style: normal; font-size: 12px; color: var(--c-muted); font-weight: 400; }
+.chs { display: flex; flex-wrap: wrap; gap: 6px; } .chs button { font: inherit; font-size: 13.5px; padding: 7px 12px; background: #fff; border: 1px solid var(--c-rule-strong); cursor: pointer; } .chs button.on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }
 </style>

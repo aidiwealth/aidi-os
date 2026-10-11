@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { fieldVisible } from '~/shared/intake'
 // Client: fill in the filing form for a job (answers + files).
 const props = defineProps<{ jobId: string }>()
-interface F { key: string; label: string; type: string; options?: string[]; required?: boolean; help?: string; showIf?: [string, string] }
+interface F { key: string; label: string; type: string; options?: string[]; required?: boolean; help?: string; showIf?: [string, string]; hideIf?: [string, string] }
 const { data, refresh } = await useFetch<{ kind: string | null; form?: { title: string; intro: string; fields: F[] }; submitted?: { answers: Record<string, unknown>; files: { field: string; name: string }[]; ssn_last4: string | null; updated_at: string } | null }>(() => '/api/portal/jobs/' + props.jobId + '/intake')
 const a = reactive<Record<string, unknown>>({}); const picked = reactive<Record<string, File[]>>({})
 watch(data, (d) => { if (d?.submitted) Object.assign(a, d.submitted.answers); for (const f of d?.form?.fields ?? []) if (f.type === 'multi' && !Array.isArray(a[f.key])) a[f.key] = [] }, { immediate: true })
 const editing = ref(false); const busy = ref(false); const msg = ref(''); const ok = ref('')
-const visible = (f: F) => !f.showIf || a[f.showIf[0]] === f.showIf[1]
+const visible = (f: F) => fieldVisible(f as Parameters<typeof fieldVisible>[0], a)
 const filesFor = (k: string) => data.value?.submitted?.files.filter((x) => x.field === k) ?? []
 function pick(f: F, ev: Event) { const list = Array.from((ev.target as HTMLInputElement).files ?? []); picked[f.key] = f.type === 'files' ? [...(picked[f.key] ?? []), ...list] : list.slice(0, 1) }
 async function submit() {
