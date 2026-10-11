@@ -1,13 +1,13 @@
 // Services that are filings become compliance deadlines in the company's own workspace: added when ordered, marked filed
 // (and rolled to the next date) when the services team completes the job.
-const FILING: Record<string, { title: string; category: string; jurisdiction: string; month?: number; day?: number }> = {
+export const FILING: Record<string, { title: string; category: string; jurisdiction: string; month?: number; day?: number }> = {
   irs_annual: { title: 'Federal tax return (IRS)', category: 'tax', jurisdiction: 'US', month: 4, day: 15 },
   de_franchise: { title: 'Delaware franchise tax and annual report', category: 'franchise_tax', jurisdiction: 'US-DE', month: 3, day: 1 },
   ca_state: { title: 'California state filing', category: 'annual_return', jurisdiction: 'US-CA', month: 4, day: 15 },
   registered_agent: { title: 'Registered agent renewal', category: 'registered_agent', jurisdiction: 'US' },
   virtual_office: { title: 'Virtual office renewal', category: 'other', jurisdiction: 'US' } }
 const nextDue = (f: { month?: number; day?: number }) => { const now = new Date(); if (f.month === undefined) return new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10); let d = new Date(Date.UTC(now.getUTCFullYear(), f.month - 1, f.day ?? 1)); if (d <= now) d = new Date(Date.UTC(now.getUTCFullYear() + 1, f.month - 1, f.day ?? 1)); return d.toISOString().slice(0, 10) }
-async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>): Promise<T | null> {
+export async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>): Promise<T | null> {
   const ws = (await asPlatform(() => db().query<{ workspace_id: string | null }>('SELECT workspace_id FROM services.clients WHERE id = $1', [clientId]))).rows[0]?.workspace_id
   if (!ws) return null
   const prev = currentOrgId()
@@ -15,7 +15,7 @@ async function inCompany<T>(clientId: string, fn: (orgId: string) => Promise<T>)
   try { return await fn(ws) } finally { setOrgContext(prev) }
 }
 // On order: make sure each filing is on the company's compliance calendar.
-export async function filingsOrdered(clientId: string, codes: string[], opts: { vo_term?: 'monthly' | 'annual'; ra_free?: boolean } = {}): Promise<number> {
+export async function filingsOrdered(clientId: string, codes: string[], opts: { vo_term?: 'monthly' | 'annual'; ra_free?: boolean; start?: string } = {}): Promise<number> {
   const list = codes.filter((c) => FILING[c])
   if (!list.length && !codes.some((c) => c === 'llc_formation' || c === 'inc_formation')) return 0
   return (await inCompany(clientId, async () => {
@@ -24,7 +24,9 @@ export async function filingsOrdered(clientId: string, codes: string[], opts: { 
     for (const c of list) {
       const f = FILING[c]!
       const monthly = c === 'virtual_office' && opts.vo_term !== 'annual'
-      const due = monthly ? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, new Date().getUTCDate())).toISOString().slice(0, 10) : nextDue(f)
+      // An old order logged now (start date in the past): the next renewal counts from when the service really started.
+      const due = opts.start && f.month === undefined ? nextChargeFrom(opts.start, monthly ? 1 : 12)
+        : monthly ? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, new Date().getUTCDate())).toISOString().slice(0, 10) : nextDue(f)
       const note = c === 'registered_agent' ? (opts.ra_free ? 'Free for the first year with your new company. ' : '') + 'Renews automatically each year: charged from your Finvry wallet, or your card on file.'
         : c === 'virtual_office' ? 'Renews automatically ' + (monthly ? 'every month' : 'every year') + ': charged from your Finvry wallet, or your card on file.' : 'Ordered from Aidi in Finvry. Our team handles this filing.'
       const r = await db().query("INSERT INTO compliance.obligations (entity_id, title, category, jurisdiction, recurrence, next_due, reminder_days, notes) SELECT $1,$2,$3,$4,$7,$5,$8,$6 WHERE NOT EXISTS (SELECT 1 FROM compliance.obligations WHERE entity_id = $1 AND title = $2 AND active)", [ent, f.title, f.category, f.jurisdiction, due, note, monthly ? 'monthly' : 'annual', monthly ? 5 : 30])

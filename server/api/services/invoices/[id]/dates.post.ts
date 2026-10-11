@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     for (const l of inv.lines ?? []) {
       if (!l.code || !l.interval) continue
       const months = l.interval === 'month' ? 1 : 12
-      await asPlatform(() => db().query("UPDATE wallet.subscriptions SET next_charge_at = $4 WHERE organization_id = $1 AND client_id = $2 AND code = $3 AND status = 'active'", [inv.workspace_id, inv.client_id, l.code, nextChargeFrom(paidOn, months)]))
+      await setRenewal(inv.client_id, l.code, { started_on: paidOn, next_date: nextChargeFrom(paidOn, months) }).catch(() => {}) // wallet renewal + compliance calendar
     }
   }
   await audit({ event, actorUserId: user.userId, action: 'services.invoice_dates', objectType: 'invoice', objectId: id.data, detail: { ...d, paid_on: paidOn } })

@@ -6,7 +6,7 @@ interface D { client: { id: string; name: string; kind: string; contact_name: st
   companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/services/clients/' + id)
 useHead({ title: () => data.value?.client.name ?? 'Client' })
-const TABS = ['companies', 'people', 'jobs', 'invoices', 'messages', 'details'] as const
+const TABS = ['companies', 'people', 'jobs', 'invoices', 'renewals', 'messages', 'details'] as const
 const qTab = String(useRoute().query.tab ?? '') as typeof TABS[number]
 const tab = ref<typeof TABS[number]>(TABS.includes(qTab) ? qTab : 'companies')
 const msg = ref(''); const ok = ref('')
@@ -32,6 +32,15 @@ function askTax(c: Co) { rq.company_id = c.id; rq.email = data.value?.client.ema
 const sendTax = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/requests', { method: 'POST', body: { client_id: id, ...rq } }); sentLink.value = r.link; rq.company_id = '' }, 'Tax information request sent.')
 const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
 const { data: me } = await useFetch<{ platform: boolean }>('/api/auth/me', { key: 'me' })
+// Recurring services (virtual office, registered agent): correct when they started and the next renewal date.
+interface Rn { code: string; name: string; sub: { id: string; interval: string; amount_minor: number; currency: string; status: string; next_charge_at: string; started_on: string | null } | null; obligation: { id: string; next_due: string; recurrence: string } | null }
+const { data: ren, refresh: rren } = await useFetch<{ workspace: boolean; items: Rn[] }>('/api/services/clients/' + id + '/renewals', { lazy: true, server: false })
+const rd = reactive<Record<string, { started_on: string; next_date: string }>>({})
+watch(ren, (v) => { for (const r of v?.items ?? []) rd[r.code] = { started_on: r.sub?.started_on ?? '', next_date: r.sub?.next_charge_at ?? r.obligation?.next_due ?? '' } }, { immediate: true })
+const todayIso = new Date().toISOString().slice(0, 10)
+const saveRen = (code: string, extra: Record<string, unknown> = {}) => run(async () => { const x = rd[code]!; const r = await $fetch<{ next: string | null }>('/api/services/clients/' + id + '/renewals', { method: 'POST', body: { code, ...extra, ...(extra.status ? {} : { started_on: x.started_on || undefined, next_date: x.next_date || undefined }) } }); await rren(); return r }, extra.status === 'cancelled' ? 'Renewal cancelled.' : extra.status === 'suspended' ? 'Renewal paused.' : extra.status === 'active' ? 'Renewal resumed.' : 'Dates saved. The wallet renewal and the compliance calendar now match.')
+function cancelRen(r: Rn) { if (window.confirm('Cancel ' + r.name + ' renewals for this client?')) saveRen(r.code, { status: 'cancelled' }) }
+function fromStart(r: Rn) { const x = rd[r.code]!; if (!x.started_on) return; const m = (r.sub ? r.sub.interval === 'month' : r.obligation?.recurrence === 'monthly') ? 1 : 12; const b = new Date(x.started_on + 'T00:00:00Z'); for (let k = 1; k < 1200; k++) { const d = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + m * k, Math.min(b.getUTCDate(), 28))); const iso = d.toISOString().slice(0, 10); if (iso >= todayIso) { x.next_date = iso; break } } }
 const signing = ref(false)
 async function signInAs() {
   if (!confirm('Sign in to ' + (data.value?.client.name ?? 'this client') + '\'s Finvry account as the owner? Their account is set up if needed, without emailing them. You act as them until you return to the console. This is recorded.')) return
@@ -50,7 +59,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
     <div class="dh"><div><h1>{{ data.client.name }}</h1><p class="muted">{{ data.client.contact_name }} · {{ data.client.email }}{{ data.client.country ? ' · ' + data.client.country : '' }}</p></div>
       <div class="row"><button v-if="me?.platform" type="button" class="btn secondary" :disabled="signing" :title="'Set up ' + data.client.name + '\'s Finvry account without emailing them, and sign in as the owner'" @click="signInAs">{{ signing ? 'Opening…' : 'Sign in as owner' }}</button><NuxtLink :to="'/services/order?client=' + id" class="btn">New order</NuxtLink><NuxtLink :to="'/services/invoices/new?client=' + id" class="btn secondary">New invoice</NuxtLink><DeleteButton type="client" :id="id" :name="data.client.name" to="/services/clients" /></div></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    <div class="tabs"><button v-for="t in (['companies', 'people', 'jobs', 'invoices', 'messages', 'details'] as const)" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : t === 'messages' ? 'Messages' + (msgs?.filter((m) => !m.from_team).length ? ' (' + msgs.filter((m) => !m.from_team).length + ')' : '') : 'Details' }}</button></div>
+    <div class="tabs"><button v-for="t in TABS" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : t === 'renewals' ? 'Renewals' : t === 'messages' ? 'Messages' + (msgs?.filter((m) => !m.from_team).length ? ' (' + msgs.filter((m) => !m.from_team).length + ')' : '') : 'Details' }}</button></div>
 
     <template v-if="tab === 'companies'">
       <table v-if="data.companies.length" class="table"><thead><tr><th>Company</th><th>Registration</th><th>Services</th><th>Status</th><th /></tr></thead>
@@ -121,6 +130,24 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
       <EmptyState v-else compact icon="services" title="No jobs yet. Create one from Jobs" />
     </template>
 
+    <template v-else-if="tab === 'renewals'">
+      <p class="muted rh">Recurring services renew automatically from the client's wallet (or card) and appear on their compliance calendar. For an old order you logged today, set when the service really started — the next renewal is worked out from it.</p>
+      <p v-if="ren && !ren.workspace" class="muted">This client has no Finvry account yet, so there are no renewals. Use "Sign in as owner" to set one up quietly.</p>
+      <div v-else-if="ren?.items.length" class="rens">
+        <div v-for="r in ren.items" :key="r.code" class="card ren">
+          <div class="rt"><b>{{ r.name }}</b><span class="muted">{{ r.sub ? money(String(r.sub.amount_minor / 100), r.sub.currency) + ' / ' + r.sub.interval : 'On the calendar · not billing yet (charged once its invoice is paid)' }}</span>
+            <span v-if="r.sub" class="st" :class="r.sub.status">{{ r.sub.status === 'suspended' ? 'paused' : r.sub.status }}</span></div>
+          <div class="rg">
+            <label class="label">Service started<input v-model="rd[r.code]!.started_on" type="date" :max="todayIso" @change="fromStart(r)"></label>
+            <label class="label">Next renewal<input v-model="rd[r.code]!.next_date" type="date" :min="todayIso"></label>
+            <button class="btn" type="button" @click="saveRen(r.code)">Save dates</button>
+          </div>
+          <div v-if="r.sub" class="ra"><button v-if="r.sub.status === 'active'" type="button" class="lk" @click="saveRen(r.code, { status: 'suspended' })">Pause renewals</button><button v-else type="button" class="lk" @click="saveRen(r.code, { status: 'active' })">Resume renewals</button><button type="button" class="lk red" @click="cancelRen(r)">Cancel</button></div>
+        </div>
+      </div>
+      <EmptyState v-else-if="ren" compact icon="services" title="No recurring services yet" />
+    </template>
+
     <template v-else-if="tab === 'invoices'">
       <table v-if="data.invoices.length" class="table"><thead><tr><th>Invoice</th><th>Due</th><th class="n">Amount</th><th>Status</th></tr></thead>
         <tbody><tr v-for="i in data.invoices" :key="i.id"><td><NuxtLink :to="'/services/invoices/' + i.id" class="co">{{ i.number }}</NuxtLink></td><td>{{ i.due_date }}</td><td class="n">{{ money(i.amount, i.currency) }}</td><td><span class="st" :class="i.overdue ? 'overdue' : i.status">{{ i.overdue ? 'overdue' : i.status }}</span></td></tr></tbody></table>
@@ -158,4 +185,8 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .tabs { margin: 14px 0 12px; } .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-right: 20px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
 .flags { display: flex; flex-direction: column; gap: 6px; } .acts { white-space: nowrap; } .sm { font-size: 13px; } .sub2 { font-size: 18px; margin: 18px 0 8px; }
 .thread { display: flex; flex-direction: column; gap: 8px; } .msg { background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; max-width: 80%; } .msg.team { align-self: flex-end; border-right: 3px solid var(--c-blue-deep); } .msg p { margin: 4px 0 0; white-space: pre-wrap; }
+.rh { max-width: 760px; margin: 0 0 14px; font-size: 14px; } .rens { display: flex; flex-direction: column; gap: 12px; } .ren { display: flex; flex-direction: column; gap: 12px; }
+.ren .rt { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; } .ren .rt .muted { font-size: 13px; } .rg { display: grid; grid-template-columns: 200px 200px auto; gap: 12px; align-items: end; } .rg .btn { justify-self: start; }
+.ra { display: flex; gap: 16px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); }
+@media (max-width: 640px) { .rg { grid-template-columns: 1fr; } }
 </style>

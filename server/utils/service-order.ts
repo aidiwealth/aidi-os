@@ -76,7 +76,7 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
     }
     invoiceId = inv.id
   }
-  await filingsOrdered(clientId, items.map((i) => i.code), { vo_term: d.vo_term, ra_free: forming }).catch((e) => console.error('[order] compliance', e))
+  await filingsOrdered(clientId, items.map((i) => i.code), { vo_term: d.vo_term, ra_free: forming, start: opts.issue_date }).catch((e) => console.error('[order] compliance', e))
   if (!opts.admin) sendJobClientActivity(null, job.id, c.name, title, actor.name + ' placed an order in Finvry', desc).catch((e) => console.error('[order] alert failed', e))
   return { job_id: job.id, pay_url: invoice, invoice_id: invoiceId, quoted: quoted.map((i) => i.name) }
 }

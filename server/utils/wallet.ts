@@ -112,9 +112,9 @@ export async function subscriptionsFromInvoice(invoiceId: string): Promise<void>
       const yearly = l.interval === 'year' || (l.interval !== 'month' && cat.billing === 'annual')
       const months = l.interval === 'month' ? 1 : yearly ? 12 : Math.max(1, l.quantity)
       const amount = cat.billing === 'monthly' && yearly ? Number(cat.price) * 12 : Number(cat.price)
-      await db().query(`INSERT INTO wallet.subscriptions (organization_id, kind, code, name, client_id, amount_minor, currency, interval, next_charge_at)
-        SELECT $1, 'service', $2, $3, $4, $5, $6, $7, $8::date WHERE NOT EXISTS (SELECT 1 FROM wallet.subscriptions WHERE organization_id = $1 AND code = $2 AND status = 'active')`,
-        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(amount * 100), inv.currency, yearly ? 'year' : 'month', nextChargeFrom(inv.paid_at, months)])
+      await db().query(`INSERT INTO wallet.subscriptions (organization_id, kind, code, name, client_id, amount_minor, currency, interval, next_charge_at, started_on)
+        SELECT $1, 'service', $2, $3, $4, $5, $6, $7, $8::date, $9::date WHERE NOT EXISTS (SELECT 1 FROM wallet.subscriptions WHERE organization_id = $1 AND code = $2 AND status = 'active')`,
+        [inv.workspace_id, l.code, cat.name, inv.client_id, Math.round(amount * 100), inv.currency, yearly ? 'year' : 'month', nextChargeFrom(inv.paid_at, months), inv.paid_at])
     }
   })
 }
