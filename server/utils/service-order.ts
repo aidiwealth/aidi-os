@@ -10,7 +10,7 @@ export const OrderBody = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0
     virtual_office: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional(),
     company_place: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional() })
 export type OrderInput = z.infer<typeof OrderBody>
-export interface OrderOpts { admin?: boolean; prices?: Record<string, number>; payment?: 'online' | 'invoice' | 'draft' | 'paid' | 'none'; paid_on?: string; paid_note?: string }
+export interface OrderOpts { admin?: boolean; prices?: Record<string, number>; payment?: 'online' | 'invoice' | 'draft' | 'paid' | 'none'; paid_on?: string; extra?: { description: string; quantity: number; unit_amount: number }[]; paid_note?: string }
 export async function placeServiceOrder(clientId: string, actor: { name: string; email: string }, d: OrderInput, opts: OrderOpts = {}) {
   const ng = await clientIsNigerian(clientId)
   const items = (await db().query<{ code: string; name: string; price: string | null; price_ngn: string | null; currency: string; billing: string; region: string }>('SELECT code, name, price::text, price_ngn::text, currency, billing, region FROM services.catalog WHERE active AND code = ANY($1)', [d.codes])).rows
@@ -36,9 +36,10 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
   const desc = [(opts.admin ? 'Logged in the services desk by ' : 'Ordered in Finvry by ') + actor.name + ' (' + actor.email + ')', ...(place ? [place] : []), ...(voText ? [voText] : []), ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), d.notes ? '\nNotes: ' + d.notes : ''].join('\n').slice(0, 5000)
   const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [clientId, companyId, SERVICE[items[0]!.code] ?? 'other', title, desc, items.map((i) => i.code)])
   let invoice: string | null = null, invoiceId: string | null = null
-  if (priced.length && opts.payment !== 'none') {
+  const extra = opts.extra ?? []
+  if ((priced.length || extra.length) && opts.payment !== 'none') {
     const settings = await csBilling()
-    const currency = priced[0]!.currency, region = currency === 'NGN' ? 'ng' : 'us'
+    const currency = priced[0]?.currency ?? items[0]?.currency ?? 'USD', region = currency === 'NGN' ? 'ng' : 'us'
     const sym = currency === 'NGN' ? '₦' : '$'
     const raw = priced.filter((i) => i.currency === currency).map((i) => {
       const unit = Number(i.price)
@@ -50,6 +51,8 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
       return { code: i.code, description: i.name + (i.billing === 'monthly' ? ' (first 12 months)' : i.billing === 'annual' ? ' (first year)' : ''), quantity: qty, unit_amount: unit, amount: Math.round(qty * unit * 100) / 100 } })
     // Admin override = the amount charged now for the line (quantity kept, unit price adjusted to match).
     if (opts.prices) for (const l of raw) { const o = opts.prices[l.code]; if (o != null) { l.amount = Math.round(o * 100) / 100; l.unit_amount = Math.round((o / (l.quantity || 1)) * 100) / 100 } }
+    // Custom rows the team added (services not on the price list).
+    for (const x of extra) (raw as { description: string; quantity: number; unit_amount: number; amount: number }[]).push({ description: x.description, quantity: x.quantity, unit_amount: x.unit_amount, amount: Math.round(x.quantity * x.unit_amount * 100) / 100 })
     const tx = await applyTax(raw, taxCountry({ region, currency }), 'services')
     const lines = tx.lines, amount = tx.amount
     const inv = await one<{ id: string }>(
