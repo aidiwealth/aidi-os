@@ -76,7 +76,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <div class="flags"><label class="chk"><input v-model="co.virtual_office" type="checkbox"> Virtual office</label><label class="chk"><input v-model="co.mailbox" type="checkbox"> Mailbox</label></div>
         <label class="label wide">Official address<input v-model="co.address" maxlength="500"></label>
         <label class="label wide">Notes<textarea v-model="co.notes" rows="2" maxlength="3000" /></label>
-        <div class="wide row"><button class="btn" type="submit">Save company</button><button class="btn secondary" type="button" @click="editingCo = false">Cancel</button></div>
+        <div class="wide row"><button class="btn" type="submit">Save company</button><button class="btn secondary" type="button" @click="editingCo = false">Cancel</button><span v-if="msg" class="error" role="alert">{{ msg }}</span></div>
       </form>
     </template>
 
@@ -96,7 +96,7 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
         <label class="label">Ownership (%)<input v-model="pe.ownership_pct" inputmode="decimal"></label>
         <label class="label">Nationality<input v-model="pe.nationality" maxlength="100"></label>
         <label class="label wide">Address<input v-model="pe.address" maxlength="500"></label>
-        <div class="wide row"><button class="btn" type="submit">Save person</button><button class="btn secondary" type="button" @click="editingPe = false">Cancel</button></div>
+        <div class="wide row"><button class="btn" type="submit">Save person</button><button class="btn secondary" type="button" @click="editingPe = false">Cancel</button><span v-if="msg" class="error" role="alert">{{ msg }}</span></div>
       </form>
     </template>
 

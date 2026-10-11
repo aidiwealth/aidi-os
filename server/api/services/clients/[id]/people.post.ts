@@ -1,16 +1,25 @@
 // Add or edit a person at the client (contact, owner, director or officer).
 import { z } from 'zod'
+// Lenient on blanks and formats people type (null fields, "50%", "50 %"); clear message for the field that is wrong.
+const str = (n: number) => z.string().trim().max(n).nullish().transform((v) => v || undefined)
 const Body = z.object({
-  id: z.string().uuid().optional(), name: z.string().trim().min(1).max(200), email: z.string().trim().email().max(254).optional().or(z.literal('').transform(() => undefined)),
-  phone: z.string().trim().max(40).optional(), role: z.enum(['contact', 'owner', 'director', 'officer', 'other']).default('contact'),
-  ownership_pct: z.union([z.coerce.number().min(0).max(100), z.literal('').transform(() => null), z.null()]).optional(), company_id: z.string().uuid().optional().or(z.literal('').transform(() => undefined)),
-  address: z.string().trim().max(500).optional(), nationality: z.string().trim().max(100).optional(), portal_access: z.boolean().default(false)
+  id: z.string().uuid().nullish().or(z.literal('')).transform((v) => v || undefined), name: z.string().trim().min(1, 'Add the name.').max(200),
+  email: z.string().trim().max(254).nullish().transform((v) => v || undefined).refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'Check the email address.'),
+  phone: str(40), role: z.enum(['contact', 'owner', 'director', 'officer', 'other']).default('contact'),
+  ownership_pct: z.union([z.number(), z.string(), z.null()]).optional().transform((v, ctx) => {
+    if (v === null || v === undefined || String(v).trim() === '') return null
+    const n = Number(String(v).replace(/[%\s,]/g, ''))
+    if (!Number.isFinite(n) || n < 0 || n > 100) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Ownership must be a number between 0 and 100.' }); return z.NEVER }
+    return n }),
+  company_id: z.string().uuid().nullish().or(z.literal('')).transform((v) => v || undefined),
+  address: str(500), nationality: str(100), portal_access: z.boolean().nullish().transform((v) => !!v)
 })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'team', 'gp')
   const cid = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = Body.safeParse(await readBody(event))
-  if (!cid.success || !b.success) throw apiError('invalid', 'Add the name; check the email and ownership.')
+  if (!cid.success) throw apiError('invalid', 'Client not found.')
+  if (!b.success) throw apiError('invalid', b.error.issues[0]?.message && !/^(Expected|Invalid|Required)/.test(b.error.issues[0].message) ? b.error.issues[0].message : 'Check ' + (b.error.issues[0]?.path.join('.') || 'the details') + '.')
   const d = b.data
   if (d.portal_access && !d.email) throw apiError('invalid', 'Finvry access needs an email address (sign-in is by emailed code).')
   if (d.company_id && !(await db().query('SELECT 1 FROM services.companies WHERE id = $1 AND client_id = $2', [d.company_id, cid.data])).rowCount) throw apiError('invalid', 'Choose one of this client\'s companies.')
