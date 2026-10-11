@@ -29,7 +29,7 @@ export async function storeChatFile(event: Parameters<typeof readMultipartFormDa
   const id = randomUUID(), key = 'documents/' + id + '.' + ext
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
   const name = (file.filename ?? 'file').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) || 'file'
-  await db().query("INSERT INTO core.documents (id, organization_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, uploaded_by) VALUES ($1,$2,$3,'other','normal',$4,$5,$6,$7,$8)",
+  await db().query("INSERT INTO core.documents (id, organization_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, uploaded_by, area) VALUES ($1,$2,$3,'other','normal',$4,$5,$6,$7,$8,'services')",
     [id, orgId, clientName + ' — ' + name, key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex'), userId])
   return { id, name, size: file.data.length }
 }

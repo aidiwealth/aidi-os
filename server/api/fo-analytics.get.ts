@@ -15,13 +15,13 @@ export default defineEventHandler(async (event) => {
   const docArgs = entity ? [levels, entity] : [levels]
   const docTotals = await one<{ total: number; added: number; restricted: number }>(
     `SELECT count(*)::int AS total, count(*) FILTER (WHERE d.created_at >= ${since})::int AS added, count(*) FILTER (WHERE d.sensitivity <> 'normal')::int AS restricted
-       FROM core.documents d WHERE d.sensitivity = ANY($1::text[]) ${ef}`, docArgs)
+       FROM core.documents d WHERE d.sensitivity = ANY($1::text[]) AND d.area = 'org' ${ef}`, docArgs)
   const docByEntity = await db().query<{ name: string; c: number }>(
     `SELECT coalesce(e.name, 'Not tagged') AS name, count(*)::int AS c FROM core.documents d LEFT JOIN core.entities e ON e.id = d.entity_id
-      WHERE d.sensitivity = ANY($1::text[]) ${ef} GROUP BY 1 ORDER BY 2 DESC LIMIT 8`, docArgs)
+      WHERE d.sensitivity = ANY($1::text[]) AND d.area = 'org' ${ef} GROUP BY 1 ORDER BY 2 DESC LIMIT 8`, docArgs)
   const docSeries = await db().query<{ b: string; v: number }>(
     `SELECT to_char(date_trunc('${bucket}', d.created_at), 'YYYY-MM-DD') AS b, count(*)::int AS v FROM core.documents d
-      WHERE d.sensitivity = ANY($1::text[]) AND d.created_at >= ${since} ${ef} GROUP BY 1 ORDER BY 1`, docArgs)
+      WHERE d.sensitivity = ANY($1::text[]) AND d.area = 'org' AND d.created_at >= ${since} ${ef} GROUP BY 1 ORDER BY 1`, docArgs)
   // Group companies: portfolio companies the group owns (subsidiary) or holds strategically (affiliate)
   const cf = entity ? 'AND c.holding_entity_id = $1' : ''
   const cArgs = entity ? [entity] : []

@@ -7,15 +7,16 @@ const props = withDefaults(defineProps<{ preset?: string; clientId?: string }>()
 const admin = computed(() => !!props.clientId)
 const emit = defineEmits<{ done: [jobId: string] }>()
 interface It { code: string; name: string; description: string | null; price: number | null; currency: string; billing: string }
-const { data } = await useFetch<{ items: It[]; companies: { id: string; name: string; entity_type: string | null; state: string | null; country: string | null; status: string }[] }>(props.clientId ? '/api/services/clients/' + props.clientId + '/catalog' : '/api/portal/catalog', { key: props.clientId ? 'cs-catalog-' + props.clientId : 'portal:catalog' })
+const { data } = await useFetch<{ wallet?: { currency: string; balance_minor: number } | null; items: It[]; companies: { id: string; name: string; entity_type: string | null; state: string | null; country: string | null; status: string }[] }>(props.clientId ? '/api/services/clients/' + props.clientId + '/catalog' : '/api/portal/catalog', { key: props.clientId ? 'cs-catalog-' + props.clientId : 'portal:catalog' })
 const CATS = [
   { key: 'address', title: 'Address and registered agent', blurb: 'A US mailing address, virtual office and registered agent for your company.', codes: ['virtual_office', 'registered_agent'] },
   { key: 'start', title: 'Start a company', blurb: 'Form an LLC or C-Corp in the US, get your EIN, free bylaws, a registered agent and a business address.', codes: ['llc_formation', 'inc_formation', 'ein', 'operating_agreement', 'registered_agent', 'virtual_office'] },
   { key: 'tax', title: 'State and federal filings', blurb: 'Federal returns, state franchise tax and annual reports, filed for you.', codes: ['irs_annual', 'de_franchise', 'ca_state'] },
   { key: 'other', title: 'Something else', blurb: 'Other filings, legal reviews or setup help.', codes: [] as string[] }]
 const step = ref(1); const cat = ref(''); const picked = ref<string[]>([]); const company = ref(''); const notes = ref(''); const msg = ref(''); const busy = ref(false)
-const done = ref<{ quoted: string[]; job_id: string; invoice_id?: string | null } | null>(null)
-const { data: wal } = props.clientId ? { data: ref<{ currency: string; balance_minor: number } | null>(null) } : await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
+const done = ref<{ quoted: string[]; job_id: string; invoice_id?: string | null; wallet_error?: string | null } | null>(null)
+const { data: walP } = props.clientId ? { data: ref<{ currency: string; balance_minor: number } | null>(null) } : await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
+const wal = computed(() => (props.clientId ? data.value?.wallet ?? null : walP.value))
 const useWallet = ref(false)
 const walletCovers = computed(() => !!wal.value && wal.value.currency === cur.value && wal.value.balance_minor >= total.value * 100 && total.value > 0)
 const known = new Set(CATS.flatMap((c) => c.codes))
@@ -36,7 +37,7 @@ const lineAmount = (i: It) => raFree(i) ? 0 : i.code === 'virtual_office' ? (voT
 const lineNote = (i: It) => quoted(i) ? 'Quoted after review' : raFree(i) ? 'Free first year · renews at ' + money(i.price ?? 0, i.currency) + ' / year' : i.code === 'virtual_office' ? (voTerm.value === 'annual' ? 'Billed yearly · renews automatically' : 'Billed monthly · renews automatically') : i.code === 'registered_agent' ? 'Renews yearly · charged automatically' : i.billing === 'monthly' ? 'First 12 months' : i.price === 0 ? 'Included free' : ''
 // Admin: price overrides (amount charged now per service) and how the order is paid.
 const ov = reactive<Record<string, string>>({})
-const pay = reactive({ mode: 'invoice' as 'invoice' | 'draft' | 'paid' | 'none', paid_on: new Date().toISOString().slice(0, 10), note: '' })
+const pay = reactive({ mode: 'invoice' as 'invoice' | 'draft' | 'paid' | 'none' | 'wallet', paid_on: new Date().toISOString().slice(0, 10), note: '' })
 const extra = ref<{ description: string; quantity: string | number; unit_amount: string | number }[]>([])
 const extraTotal = computed(() => extra.value.filter((x) => x.description.trim()).reduce((t, x) => t + (Number(x.quantity) || 0) * (Number(x.unit_amount) || 0), 0))
 const lineNow = (i: It) => (admin.value && ov[i.code] !== undefined && ov[i.code] !== '' ? Number(ov[i.code]) || 0 : lineAmount(i))
@@ -44,6 +45,7 @@ const total = computed(() => chosen.value.filter((i) => !quoted(i) || (admin.val
 const cur = computed(() => chosen.value[0]?.currency ?? 'USD')
 function choose(k: string) { cat.value = k; step.value = 2 }
 const forming = computed(() => picked.value.some((c) => c === 'llc_formation' || c === 'inc_formation'))
+const owners = ref<{ name: string; email: string; pct: string | number }[]>([{ name: '', email: '', pct: '' }])
 const nf = reactive({ name: '', alt_name: '', country: 'United States', state: 'Delaware', entity_type: 'llc' as 'llc' | 'c_corp' })
 watch(picked, (p) => { if (p.includes('inc_formation') && !p.includes('llc_formation')) nf.entity_type = 'c_corp'; else if (p.includes('llc_formation') && !p.includes('inc_formation')) nf.entity_type = 'llc' })
 // Changing the company type swaps the formation service (and its price) in the order.
@@ -94,7 +96,7 @@ const catTitle = computed(() => CATS.find((x) => x.key === cat.value)?.title ?? 
 async function place() {
   busy.value = true; msg.value = ''
   const prices = admin.value ? Object.fromEntries(Object.entries(ov).filter(([, v]) => v !== '' && v != null && !Number.isNaN(Number(v))).map(([k, v]) => [k, Number(v)])) : undefined
-  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string }>(admin.value ? '/api/services/clients/' + props.clientId + '/order' : '/api/portal/order', { method: 'POST', body: { ...(admin.value ? { prices, extra: extra.value.filter((x) => x.description.trim() && x.unit_amount !== '').map((x) => ({ description: x.description.trim(), quantity: Number(x.quantity) || 1, unit_amount: Number(x.unit_amount) || 0 })), payment: pay.mode, paid_on: pay.mode === 'paid' ? pay.paid_on : undefined, paid_note: pay.mode === 'paid' && pay.note ? pay.note : undefined } : {}), codes: picked.value, vo_term: voTerm.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, virtual_office: wantsVO.value ? { country: vo.country, state: /^nigeria$/i.test(vo.country) ? 'Lagos' : vo.state } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
+  try { const r = await $fetch<{ pay_url: string | null; invoice_id: string | null; quoted: string[]; job_id: string; wallet_error?: string | null }>(admin.value ? '/api/services/clients/' + props.clientId + '/order' : '/api/portal/order', { method: 'POST', body: { ...(admin.value ? { prices, extra: extra.value.filter((x) => x.description.trim() && x.unit_amount !== '').map((x) => ({ description: x.description.trim(), quantity: Number(x.quantity) || 1, unit_amount: Number(x.unit_amount) || 0 })), payment: pay.mode, paid_on: pay.mode === 'paid' ? pay.paid_on : undefined, paid_note: pay.mode === 'paid' && pay.note ? pay.note : undefined } : {}), codes: picked.value, vo_term: voTerm.value, company_id: forming.value ? undefined : company.value || undefined, notes: notes.value, formation: forming.value ? { ...nf, name_status: nr.value?.status ?? 'not checked' } : undefined, owners: forming.value ? owners.value.filter((o) => o.name.trim().length > 1).map((o) => ({ name: o.name.trim(), email: o.email.trim(), ownership_pct: o.pct === '' || o.pct == null ? null : Math.min(100, Math.max(0, Number(String(o.pct).replace(/[^0-9.]/g, '')) || 0)) })) : [], virtual_office: wantsVO.value ? { country: vo.country, state: /^nigeria$/i.test(vo.country) ? 'Lagos' : vo.state } : undefined, company_place: !forming.value && sel.value && (!sel.value.state || !sel.value.country) ? cp : undefined } })
     if (filing.value) { try { await sendFiling(r.job_id) } catch (e) { msg.value = 'Your order was placed, but the filing details did not upload: ' + portalErr(e) + ' You can send them from the request page.' } }
     if (admin.value) { done.value = r; emit('done', r.job_id); return }
     if (r.invoice_id && useWallet.value && walletCovers.value) { await $fetch('/api/portal/invoices/' + r.invoice_id + '/pay-wallet', { method: 'POST' }); done.value = r; emit('done', r.job_id) }
@@ -104,7 +106,7 @@ async function place() {
 </script>
 <template>
   <div v-if="data" class="oz">
-    <div v-if="done" class="fin"><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><template v-if="admin"><h3>Order logged</h3><p>The job{{ done.invoice_id ? ' and its invoice are' : ' is' }} on the services desk{{ pay.mode === 'invoice' && done.invoice_id ? ', and the invoice was emailed to the client' : pay.mode === 'paid' ? ', marked as paid' : '' }}.</p><NuxtLink :to="'/services/' + done.job_id" class="btn">Open the job</NuxtLink></template>
+    <div v-if="done" class="fin"><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><template v-if="admin"><h3>Order logged</h3><p v-if="done.wallet_error" class="werr">{{ done.wallet_error }}</p><p v-else-if="pay.mode === 'wallet' && done.invoice_id" class="wok">Paid from the client wallet. The client was emailed a receipt.</p><p>The job{{ done.invoice_id ? ' and its invoice are' : ' is' }} on the services desk{{ pay.mode === 'invoice' && done.invoice_id ? ', and the invoice was emailed to the client' : pay.mode === 'paid' ? ', marked as paid' : '' }}.</p><NuxtLink :to="'/services/' + done.job_id" class="btn">Open the job</NuxtLink></template>
       <template v-else><h3>Order received</h3><p>We've opened a request for you{{ done.quoted.length ? ' and will send you a quote for ' + done.quoted.join(', ') : '' }}. You'll get an email as it moves, and you can follow it under Services.</p><NuxtLink :to="'/client/jobs/' + done.job_id" class="btn">View the request</NuxtLink></template></div>
     <template v-else>
       <div class="prog"><div class="pl"><i :style="{ width: ((step - 1) / 3) * 100 + '%' }" /></div><ol><li v-for="(s, i) in STEPS" :key="s" :class="{ on: step === i + 1, ok: step > i + 1 }" @click="step > i + 1 && (step = i + 1)"><span>{{ step > i + 1 ? '✓' : i + 1 }}</span>{{ s }}</li></ol></div>
@@ -129,6 +131,9 @@ async function place() {
                 <span v-for="(i, k) in nr.issues" :key="'i' + k" class="iss">{{ i }}</span>
                 <span v-for="(m, k) in nr.matches" :key="'m' + k" class="mt">{{ m.name }}{{ m.status ? ' · ' + m.status : '' }}{{ m.incorporated ? ' · ' + m.incorporated : '' }}{{ m.exact ? ' · exact match' : '' }}</span>
                 <a v-if="nr.official_search" :href="nr.official_search" target="_blank" rel="noopener">Search the {{ nf.state }} register yourself →</a></div>
+              <div class="own"><b>Owners</b><p class="hint">Who will own the company. You can add more details later.</p>
+                <div v-for="(o, k) in owners" :key="k" class="orow"><input v-model="o.name" maxlength="200" placeholder="Full name" aria-label="Owner name"><input v-model="o.email" type="email" maxlength="200" placeholder="Email (optional)" aria-label="Owner email"><span class="pct"><input v-model="o.pct" inputmode="decimal" placeholder="Share" aria-label="Ownership %"><i>%</i></span><button v-if="owners.length > 1" type="button" class="rm" aria-label="Remove owner" @click="owners.splice(k, 1)">×</button></div>
+                <button v-if="owners.length < 10" type="button" class="addrow" @click="owners.push({ name: '', email: '', pct: '' })">+ Add another owner</button></div>
             </template>
             <template v-else-if="data.companies.length">
               <label class="label">For which company?<select v-model="company"><option value="">Not specific</option><option v-for="c in data.companies" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
@@ -156,6 +161,7 @@ async function place() {
             <button type="button" class="addx" @click="extra.push({ description: '', quantity: 1, unit_amount: '' })">+ Add a custom item</button>
             <p class="ql2">How is this paid?</p>
             <div class="pm"><label :class="{ on: pay.mode === 'invoice' }"><input v-model="pay.mode" type="radio" value="invoice"><b>Email the invoice</b><em>The client pays online or by transfer</em></label>
+              <label v-if="wal" :class="{ on: pay.mode === 'wallet', off: !walletCovers }"><input v-model="pay.mode" type="radio" value="wallet" :disabled="!walletCovers"><b>Charge client wallet</b><em>Balance {{ (SYM[wal.currency] ?? '') + (wal.balance_minor / 100).toLocaleString('en-US') }}{{ wal.currency !== cur ? ' · wallet is in ' + wal.currency : !walletCovers ? ' · not enough for this order' : ' · paid now, receipt emailed' }}</em></label>
               <label :class="{ on: pay.mode === 'paid' }"><input v-model="pay.mode" type="radio" value="paid"><b>Already paid</b><em>Bank transfer or paid earlier — invoice marked paid</em></label>
               <label :class="{ on: pay.mode === 'draft' }"><input v-model="pay.mode" type="radio" value="draft"><b>Draft invoice</b><em>Review and send it later</em></label>
               <label :class="{ on: pay.mode === 'none' }"><input v-model="pay.mode" type="radio" value="none"><b>No invoice</b><em>Log the job only (old order settled elsewhere)</em></label></div>
@@ -172,7 +178,7 @@ async function place() {
           <div class="tot"><span>Due now</span><b>{{ total ? (SYM[cur] ?? '') + total.toLocaleString('en-US') : '—' }}</b></div>
           <button v-if="step === 2" type="button" class="btn full" :disabled="!picked.length" @click="step = 3">Continue</button>
           <button v-else-if="step === 3" type="button" class="btn full" :disabled="!detailsOk" @click="step = 4">Review order</button>
-          <button v-else-if="step === 4" type="button" class="btn full" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : admin ? ({ invoice: 'Create job and email invoice', draft: 'Create job and draft invoice', paid: 'Create job · mark paid', none: 'Create job' } as Record<string, string>)[pay.mode] : total ? (useWallet && walletCovers ? 'Pay from wallet · ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button>
+          <button v-else-if="step === 4" type="button" class="btn full" :disabled="busy" @click="place">{{ busy ? 'Placing order…' : admin ? ({ invoice: 'Create job and email invoice', draft: 'Create job and draft invoice', paid: 'Create job · mark paid', none: 'Create job', wallet: 'Create job · charge wallet' } as Record<string, string>)[pay.mode] : total ? (useWallet && walletCovers ? 'Pay from wallet · ' : 'Pay ') + (SYM[cur] ?? '') + total.toLocaleString('en-US') : 'Request a quote' }}</button>
           <button type="button" class="back" @click="step--">← Back</button>
           <p v-if="msg" class="error">{{ msg }}</p></aside>
       </div>
@@ -212,4 +218,10 @@ input:not([type=checkbox]):not([type=radio]) { font: inherit; font-size: 14px; p
 .ovr { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .ovr span { display: flex; flex-direction: column; } .ovr b { font-size: 14px; } .ovr em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .ovi { display: flex; align-items: center; gap: 6px; font-weight: 600; } .ovi input { width: 130px !important; text-align: right; }
 .ql2 { font-size: 13.5px; font-weight: 600; margin: 16px 0 8px; } .pm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; } .pm label { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; cursor: pointer; } .pm label.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); background: #f6f8fb; } .pm input { grid-row: span 2; width: auto !important; } .pm b { font-size: 14px; } .pm em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .cx { gap: 8px; } .cx > input:first-child { flex: 1; } .cx .q { width: 60px !important; text-align: center; } .xr { background: none; border: 0; font-size: 20px; color: var(--c-muted); cursor: pointer; } .addx { background: none; border: 0; color: var(--c-blue-deep); font: inherit; font-size: 13.5px; cursor: pointer; padding: 10px 0 0; }
+.own { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; } .own .hint { margin: 0; }
+.orow { display: grid; grid-template-columns: 1.3fr 1.3fr 90px 28px; gap: 8px; align-items: center; } .orow input { width: 100%; }
+.pct { position: relative; } .pct i { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--c-muted); font-size: 13px; }
+.rm { background: none; border: 0; font-size: 20px; color: var(--c-muted); cursor: pointer; } .addrow { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--c-blue-deep); font: inherit; font-size: 13.5px; cursor: pointer; }
+@media (max-width: 640px) { .orow { grid-template-columns: 1fr 70px 28px; } .orow input[type=email] { grid-column: 1 / -1; grid-row: 2; } }
+.werr { color: var(--c-danger); margin: 4px 0; } .wok { color: var(--c-ok); margin: 4px 0; } .pm label.off { opacity: .55; }
 </style>

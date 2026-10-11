@@ -6,7 +6,9 @@ interface D { client: { id: string; name: string; kind: string; contact_name: st
   companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/services/clients/' + id)
 useHead({ title: () => data.value?.client.name ?? 'Client' })
-const tab = ref<'companies' | 'people' | 'jobs' | 'invoices' | 'messages' | 'details'>('companies')
+const TABS = ['companies', 'people', 'jobs', 'invoices', 'messages', 'details'] as const
+const qTab = String(useRoute().query.tab ?? '') as typeof TABS[number]
+const tab = ref<typeof TABS[number]>(TABS.includes(qTab) ? qTab : 'companies')
 const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function run(fn: () => Promise<unknown>, done: string) { msg.value = ''; ok.value = ''; try { await fn(); ok.value = done; await refresh() } catch (e) { msg.value = err(e) } }

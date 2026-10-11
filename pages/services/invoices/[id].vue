@@ -1,15 +1,18 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
-const { data, refresh } = await useFetch<{ invoice: any; online: string[]; link: string }>('/api/services/invoices/' + id)
+const { data, refresh } = await useFetch<{ invoice: any; online: string[]; link: string; wallet: { currency: string; balance_minor: number } | null }>('/api/services/invoices/' + id)
 useHead({ title: () => 'Invoice ' + (data.value?.invoice.number ?? '') })
 const msg = ref(''); const ok = ref(''); const busy = ref(false); const paidOn = ref(new Date().toISOString().slice(0, 10))
 async function act(action: string) {
   if (action === 'void' && !confirm('Void this invoice?')) return
+  if (action === 'charge_wallet' && !confirm('Charge ' + money(data.value!.invoice.amount, data.value!.invoice.currency) + ' to the client wallet now? The client gets a receipt.')) return
   busy.value = true; msg.value = ''; ok.value = ''
-  try { await $fetch('/api/services/invoices/' + id + '/action', { method: 'POST', body: { action, paid_on: action === 'mark_paid' ? paidOn.value : undefined } }); ok.value = action === 'send' ? 'Sent to ' + data.value?.invoice.bill_to.email + '.' : action === 'mark_paid' ? 'Marked as paid.' : 'Voided.'; await refresh() }
+  try { await $fetch('/api/services/invoices/' + id + '/action', { method: 'POST', body: { action, paid_on: action === 'mark_paid' ? paidOn.value : undefined } }); ok.value = action === 'send' ? 'Sent to ' + data.value?.invoice.bill_to.email + '.' : action === 'mark_paid' ? 'Marked as paid.' : action === 'charge_wallet' ? 'Paid from the client wallet. Receipt emailed.' : 'Voided.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = false }
 }
 async function copy() { await navigator.clipboard.writeText(data.value!.link); ok.value = 'Pay link copied.' }
+const money = (v: number | string, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v))
+const walletOk = computed(() => !!data.value?.wallet && data.value.wallet.currency === data.value.invoice.currency && data.value.wallet.balance_minor >= Math.round(Number(data.value.invoice.amount) * 100))
 const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invoiceForPdf(data.value.invoice) })
 </script>
 
@@ -28,6 +31,9 @@ const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invo
     <p v-if="ok" class="ok noprint" role="status">{{ ok }}</p><p v-if="msg" class="error noprint" role="alert">{{ msg }}</p>
     <div v-if="data.invoice.status === 'sent' || data.invoice.status === 'draft'" class="card side noprint">
       <span class="muted sm">{{ data.online.length ? 'The client can pay online by ' + (data.online[0] === 'stripe' ? 'card (Stripe)' : 'card or transfer (Paystack)') + ' or by bank transfer.' : 'Online payment is not set up for this currency; the client pays by bank transfer.' }}</span>
+      <div v-if="data.wallet" class="wrow"><span>Client wallet <b>{{ money(data.wallet.balance_minor / 100, data.wallet.currency) }}</b><em v-if="data.wallet.currency !== data.invoice.currency"> · wallet is in {{ data.wallet.currency }}, invoice in {{ data.invoice.currency }}</em><em v-else-if="!walletOk"> · not enough to cover this invoice</em></span>
+        <button class="btn" :disabled="busy || !walletOk" @click="act('charge_wallet')">Charge wallet {{ money(data.invoice.amount, data.invoice.currency) }}</button></div>
+      <span v-else class="muted sm">No Finvry wallet for this client — they have no Finvry account yet.</span>
       <div class="row"><input v-model="paidOn" type="date" aria-label="Paid on"><button class="btn secondary" :disabled="busy" @click="act('mark_paid')">Mark as paid</button><button class="btn secondary" :disabled="busy" @click="act('void')">Void</button>
         <DeleteButton v-if="data.invoice.status === 'draft'" type="cs_invoice" :id="id" :name="'invoice ' + data.invoice.number" to="/services/invoices" /></div>
     </div>
@@ -44,4 +50,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .side { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; } .sm { font-size: 13px; }
 @media print { .noprint { display: none !important; } }
 .lnk { font-size: 13.5px; color: var(--c-muted); margin: 8px 0; } .lnk a { color: var(--c-blue-deep); }
+.wrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--c-rule); margin-bottom: 10px; font-size: 14px; } .wrow em { font-style: normal; color: var(--c-muted); font-size: 13px; }
 </style>

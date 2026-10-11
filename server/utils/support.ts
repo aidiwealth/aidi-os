@@ -30,7 +30,7 @@ export async function handleSupportMail(m: { message_id: string | null; from_ema
     if (!SAFE.test(mime) || !b64) continue
     const buf = Buffer.from(b64, 'base64'); if (!buf.length || buf.length > 20 * 1024 * 1024) continue
     const id = randomUUID(), key = 'documents/' + id + '.' + (name.split('.').pop() || 'bin').toLowerCase().slice(0, 8)
-    try { await putObject({ key, body: new Uint8Array(buf), contentType: mime }); await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes) VALUES ($1,$2,'other','restricted',$3,$4,$5)", [id, name, key, mime, buf.length]); files.push({ doc_id: id, name, mime, size: buf.length }) } catch (err) { console.error('[support] attachment', (err as Error).message) }
+    try { await putObject({ key, body: new Uint8Array(buf), contentType: mime }); await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, area) VALUES ($1,$2,'other','restricted',$3,$4,$5,'support')", [id, name, key, mime, buf.length]); files.push({ doc_id: id, name, mime, size: buf.length }) } catch (err) { console.error('[support] attachment', (err as Error).message) }
   }
   await db().query('INSERT INTO support.messages (thread_id, direction, from_email, to_email, subject, text_body, html_body, message_id, attachments) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [thread, 'in', m.from_email.toLowerCase(), m.to_email || null, m.subject, m.text || null, m.html || null, mid, JSON.stringify(files)])
   await db().query("UPDATE support.threads SET status = 'open', unread = true, last_message_at = now() WHERE id = $1", [thread])

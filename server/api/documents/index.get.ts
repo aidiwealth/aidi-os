@@ -8,6 +8,6 @@ export default defineEventHandler(async (event): Promise<DocumentRow[]> => {
   const r = await db().query<DocumentRow>(
     `SELECT d.id, d.title, d.kind, d.sensitivity, d.mime_type, d.size_bytes::text, d.created_at, e.name AS entity_name, u.email AS uploaded_by
        FROM core.documents d LEFT JOIN core.entities e ON e.id = d.entity_id LEFT JOIN core.users u ON u.id = d.uploaded_by
-      WHERE d.sensitivity = ANY($1::text[]) ORDER BY d.created_at DESC LIMIT 1000`, [levels])
+      WHERE d.sensitivity = ANY($1::text[]) AND d.area = 'org' ORDER BY d.created_at DESC LIMIT 1000`, [levels])
   return r.rows
 })

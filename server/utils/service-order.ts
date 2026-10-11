@@ -3,10 +3,13 @@
 // renewals and compliance deadlines. The team can override prices and record how it was paid.
 import { z } from 'zod'
 export const SERVICE_FOR_CODE: Record<string, string> = { irs_annual: 'tax_filing', de_franchise: 'annual_compliance', ca_state: 'annual_compliance', registered_agent: 'registered_agent', llc_formation: 'company_formation', inc_formation: 'company_formation', ein: 'company_formation', operating_agreement: 'legal_review' }
-const SERVICE = SERVICE_FOR_CODE
+// The job's service type follows the most significant item in the order (formation first), not whichever came first.
+const RANK = ['company_formation', 'tax_filing', 'annual_compliance', 'registered_agent', 'legal_review']
+export function mainService(codes: string[]) { const s = codes.map((c) => SERVICE_FOR_CODE[c]).filter(Boolean) as string[]; return RANK.find((r) => s.includes(r)) ?? 'other' }
 export const OrderBody = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/)).min(1).max(15), company_id: z.string().uuid().optional(), notes: z.string().trim().max(2000).default(''),
     formation: z.object({ name: z.string().trim().min(2).max(200), alt_name: z.string().trim().max(200).default(''), country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default(''), entity_type: z.enum(['llc', 'c_corp']), name_status: z.string().max(20).default('') }).optional(),
     vo_term: z.enum(['monthly', 'annual']).default('monthly'),
+    owners: z.array(z.object({ name: z.string().trim().min(2).max(200), email: z.string().trim().max(200).default('').refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'Check the owner email.'), ownership_pct: z.number().min(0).max(100).nullable().default(null) })).max(10).default([]),
     virtual_office: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional(),
     company_place: z.object({ country: z.string().trim().min(2).max(100), state: z.string().trim().max(100).default('') }).optional() })
 export type OrderInput = z.infer<typeof OrderBody>
@@ -31,10 +34,13 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
     companyId = (await one<{ id: string }>("INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, status, notes) VALUES ($1,$2,$3,$4,$5,'forming',$6) RETURNING id",
       [clientId, f.name, f.entity_type, f.state || null, f.country, ('Proposed in Finvry.' + (f.alt_name ? ' Backup name: ' + f.alt_name + '.' : '') + (f.name_status ? ' Name check: ' + f.name_status + '.' : '')).slice(0, 3000)])).id
   } else if (companyId && d.company_place) await db().query('UPDATE services.companies SET country = coalesce(country, $2), jurisdiction = coalesce(jurisdiction, nullif($3, \'\')) WHERE id = $1', [companyId, d.company_place.country, d.company_place.state])
+  // The owners entered for a new company are the customer's people on that company.
+  if (d.formation && companyId) for (const o of d.owners) await db().query("INSERT INTO services.people (client_id, company_id, name, email, role, ownership_pct) VALUES ($1,$2,$3,$4,'owner',$5)", [clientId, companyId, o.name, o.email ? o.email.toLowerCase() : null, o.ownership_pct])
+  const ownersText = d.formation && d.owners.length ? 'Owners: ' + d.owners.map((o) => o.name + (o.ownership_pct != null ? ' (' + o.ownership_pct + '%)' : '')).join(', ') : ''
   const voText = d.virtual_office ? 'Virtual office location: ' + (/^nigeria$/i.test(d.virtual_office.country) ? 'Lagos, Nigeria' : (d.virtual_office.state || '') + ', United States') : ''
   const place = d.formation ? 'New company: ' + d.formation.name + ' (' + (d.formation.entity_type === 'llc' ? 'LLC' : 'C-Corp') + ', ' + [d.formation.state, d.formation.country].filter(Boolean).join(', ') + ')' + (d.formation.alt_name ? '; backup name ' + d.formation.alt_name : '') + (d.formation.name_status ? '; name check: ' + d.formation.name_status : '') : ''
-  const desc = [(opts.admin ? 'Logged in the services desk by ' : 'Ordered in Finvry by ') + actor.name + ' (' + actor.email + ')', ...(place ? [place] : []), ...(voText ? [voText] : []), ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), d.notes ? '\nNotes: ' + d.notes : ''].join('\n').slice(0, 5000)
-  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [clientId, companyId, SERVICE[items[0]!.code] ?? 'other', title, desc, items.map((i) => i.code)])
+  const desc = [(opts.admin ? 'Logged in the services desk by ' : 'Ordered in Finvry by ') + actor.name + ' (' + actor.email + ')', ...(place ? [place] : []), ...(ownersText ? [ownersText] : []), ...(voText ? [voText] : []), ...items.map((i) => '- ' + i.name + (i.price && i.billing !== 'quoted' ? '' : ' (to be quoted)')), d.notes ? '\nNotes: ' + d.notes : ''].join('\n').slice(0, 5000)
+  const job = await one<{ id: string }>("INSERT INTO services.jobs (client_id, company_id, service, title, description, status, codes) VALUES ($1,$2,$3,$4,$5,'new',$6) RETURNING id", [clientId, companyId, mainService(items.map((i) => i.code)), title, desc, items.map((i) => i.code)])
   let invoice: string | null = null, invoiceId: string | null = null
   const extra = opts.extra ?? []
   if ((priced.length || extra.length) && opts.payment !== 'none') {

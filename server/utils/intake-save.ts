@@ -19,7 +19,7 @@ export async function saveIntake(event: H3Event, id: string, clientId: string, k
     if (!mime) throw apiError('bad_type', (p.filename ?? 'A file') + ': upload a PDF, image, Excel, CSV or Word file.')
     const docId = randomUUID(), key = 'documents/' + docId + '.' + ext, name = (p.filename ?? 'file').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200) || 'file'
     await putObject({ key, body: new Uint8Array(p.data), contentType: mime })
-    await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6)", [docId, 'Intake — ' + name, key, mime, p.data.length, createHash('sha256').update(p.data).digest('hex')])
+    await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, area) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6,'services')", [docId, 'Intake — ' + name, key, mime, p.data.length, createHash('sha256').update(p.data).digest('hex')])
     if (f.type === 'file') for (let i = files.length - 1; i >= 0; i--) if (files[i]!.field === f.key) files.splice(i, 1)
     files.push({ field: f.key, doc_id: docId, name, mime, size: p.data.length })
   }

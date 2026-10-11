@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
   if (can('entities') || can('documents') || can('compliance') || can('banking') || can('governance')) {
     const fo: Record<string, unknown> = {}
     if (can('entities')) fo.entities = (await one<{ n: number }>("SELECT count(*)::int AS n FROM core.entities WHERE status = 'active'")).n
-    if (can('documents')) fo.documents = (await one<{ n: number }>('SELECT count(*)::int AS n FROM core.documents')).n
+    if (can('documents')) fo.documents = (await one<{ n: number }>("SELECT count(*)::int AS n FROM core.documents WHERE area = 'org'")).n
     if (can('compliance')) {
       const c = await one<{ overdue: number; week: number; month: number }>(
         "SELECT count(*) FILTER (WHERE next_due < current_date)::int AS overdue, count(*) FILTER (WHERE next_due BETWEEN current_date AND current_date + 7)::int AS week, count(*) FILTER (WHERE next_due BETWEEN current_date AND current_date + 30)::int AS month FROM compliance.obligations WHERE active")

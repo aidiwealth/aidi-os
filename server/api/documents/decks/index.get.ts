@@ -9,6 +9,6 @@ export default defineEventHandler(async (event) => {
     const s = deckStats(v)
     out.push({ ...d, url: await deckUrl(d.token), stats: { total: s.total, unique: s.unique, avg_seconds: s.avg_seconds, downloads: s.downloads, last_view: v.reduce<string | null>((a, x) => (!a || x.last_at > a ? x.last_at : a), null) } })
   }
-  const pdfs = (await db().query("SELECT id, title, created_at FROM core.documents WHERE mime_type = 'application/pdf' AND title NOT LIKE 'Update media — %' AND title NOT LIKE 'Intake — %' ORDER BY created_at DESC LIMIT 50")).rows
+  const pdfs = (await db().query("SELECT id, title, created_at FROM core.documents WHERE area = 'org' AND mime_type = 'application/pdf' AND title NOT LIKE 'Update media — %' AND title NOT LIKE 'Intake — %' ORDER BY created_at DESC LIMIT 50")).rows
   return { decks: out, pdfs }
 })
