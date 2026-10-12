@@ -56,7 +56,7 @@ const fxUsd = computed(() => { const r = fxr.value?.rates; if (!r) return null; 
 
     <ClientOnly><BankFeeds class="feeds" /></ClientOnly>
     <div v-if="totals.length" class="kpis">
-      <div v-if="totals.length > 1 && fxUsd !== null" class="card combo"><span>All accounts, in US dollars</span><b>≈ {{ new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fxUsd) }}</b><em>{{ totals.map(([c, v]) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, notation: 'compact' }).format(v)).join(' + ') }} · converted at today's rate</em></div>
+      <StatTile v-if="totals.length > 1 && fxUsd !== null" label="All accounts, in US dollars" icon="money" tone="b" :value="'≈ ' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fxUsd)" :note="totals.map(([c, v]) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, notation: 'compact' }).format(v)).join(' + ') + ' · converted at today\'s rate'" />
       <WalletCard v-for="[c, v] in totals" :key="c" title="Group cash" :label="'Total ' + c" :value="v" :currency="c" sub="latest tied-out statement per account" foot-label="Accounts" :foot-value="String(rows.filter((a) => a.currency === c).length)" />
     </div>
 
@@ -83,8 +83,6 @@ const fxUsd = computed(() => { const r = fxr.value?.rates; if (!r) return null; 
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; grid-column: 1 / -1; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-bottom: 22px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 28px; color: var(--c-navy); }
 .grp { margin-bottom: 18px; } .grp h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 8px; }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); }
 td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .num { text-align: right; } .num b { font-weight: 500; color: var(--c-navy); }
@@ -93,5 +91,4 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr; } }
 .mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
 .feeds { margin: 0 0 16px; }
-.combo { display: flex; flex-direction: column; gap: 4px; justify-content: center; } .combo span { font-size: 12.5px; color: var(--c-muted); } .combo b { font-size: 28px; font-weight: 600; letter-spacing: -.02em; } .combo em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 </style>

@@ -49,11 +49,11 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
     </div>
     <div v-else class="allset"><span class="ck">✓</span><div><b>You're all set</b><span>Nothing needs your attention right now. We'll email you when something does.</span></div></div>
 
-    <div class="stats">
-      <NuxtLink to="/client/invoices" class="st"><span class="si b"><AppIcon name="billing" /></span><span class="sx"><em>Amount due</em><b v-if="data.due.length"><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template></b><b v-else>$0</b></span></NuxtLink>
-      <NuxtLink to="/client/jobs" class="st"><span class="si n"><AppIcon name="company_services" /></span><span class="sx"><em>Open requests</em><b>{{ openJobs.length }}</b></span></NuxtLink>
-      <div class="st"><span class="si" :class="waiting.length ? 'r' : 'g'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span><span class="sx"><em>Waiting on you</em><b :class="{ red: waiting.length }">{{ waiting.length }}</b></span></div>
-      <NuxtLink to="/client/messages" class="st"><span class="si c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v11H8l-4 4V5Z" /></svg></span><span class="sx"><em>Unread messages</em><b>{{ data.unread }}</b></span></NuxtLink>
+    <div class="fx-stats">
+      <StatTile to="/client/invoices" label="Amount due" icon="billing" tone="b"><template v-if="data.due.length"><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template></template><template v-else>$0</template></StatTile>
+      <StatTile to="/client/jobs" label="Open requests" :value="openJobs.length" icon="briefcase" tone="n" />
+      <StatTile label="Waiting on you" :value="waiting.length" icon="clock" :tone="waiting.length ? 'r' : 'g'" :red="!!waiting.length" />
+      <StatTile to="/client/messages" label="Unread messages" :value="data.unread" icon="chat" tone="c" />
     </div>
 
     <div class="two">
@@ -110,9 +110,6 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
 .tdot { width: 9px; height: 9px; border-radius: 50%; flex: none; } .tdot.red { background: var(--c-danger); } .tdot.blue { background: var(--c-blue-deep); } .tdot.amber { background: var(--c-warn); }
 .allset { display: flex; gap: 14px; align-items: center; background: #f1faf4; border: 1px solid #cfe9d8; border-radius: 0; padding: 14px 18px; margin-bottom: 16px; } .allset div { display: flex; flex-direction: column; gap: 2px; } .allset span:not(.ck) { font-size: 13.5px; color: var(--c-ink-soft); }
 .ck { width: 30px; height: 30px; border-radius: 50%; background: var(--c-ok); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; } .ck.sm { width: 20px; height: 20px; font-size: 11px; }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; } .st { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--c-rule); border-radius: 0; padding: 16px; text-decoration: none; color: inherit; transition: border-color .12s; } a.st:hover { border-color: var(--c-navy); }
-.si { width: 42px; height: 42px; border-radius: 0; display: grid; place-items: center; flex: none; } .si :deep(svg), .si svg { width: 21px; height: 21px; } .si.b { background: var(--c-signal-soft); color: var(--c-blue-deep); } .si.n { background: #eef0f6; color: var(--c-navy); } .si.r { background: #fdecef; color: var(--c-danger); } .si.g { background: #e9f6ee; color: var(--c-ok); } .si.c { background: #e6f6fa; color: #0e7490; }
-.sx { display: flex; flex-direction: column; } .sx em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .sx b, .sx :deep(.mny) { font-size: 22px; font-weight: 600; letter-spacing: -.01em; } .sx b.red { color: var(--c-danger); }
 .two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 20px; align-items: start; } .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .sh { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; } .link { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; }
 .job { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--c-rule); border-radius: 0; margin-bottom: 10px; text-decoration: none; color: inherit; transition: border-color .12s, box-shadow .12s; } .job:hover { border-color: var(--c-navy); box-shadow: 0 6px 18px rgba(12,26,46,.06); }
@@ -138,6 +135,6 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; } .tile { text-align: left; background: #fff; border: 1px solid var(--c-rule); border-radius: 0; padding: 16px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: border-color .12s, box-shadow .12s; } .tile:hover { border-color: var(--c-navy); box-shadow: 0 8px 24px rgba(12,26,46,.08); }
 .ti2 { width: 38px; height: 38px; border-radius: 0; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; } .ti2 :deep(svg) { width: 20px; height: 20px; } .tile b { font-size: 15px; } .tile .td { font-size: 13px; color: var(--c-ink-soft); flex: 1; } .tile em { font-style: normal; font-size: 13px; color: var(--c-blue-deep); font-weight: 500; }
 .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; text-decoration: none; }
-@media (max-width: 1000px) { .stats, .tiles { grid-template-columns: 1fr 1fr; } .two { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .tiles { grid-template-columns: 1fr 1fr; } .two { grid-template-columns: 1fr; } }
 .flat { border: 0 !important; padding: 12px 0 !important; border-top: 1px solid var(--c-rule) !important; }
 </style>

@@ -34,12 +34,13 @@ function pie(c: { metrics: string[] }) {
   const m = c.metrics[0]!; const s = props.data.series[m] ?? []
   return props.data.labels.map((l, i) => ({ label: l, value: Math.abs(s[i] ?? 0) })).slice(-6)
 }
+const KI: Record<string, [string, 'b' | 'n' | 'r' | 'g' | 'a' | 'c']> = { revenue: ['money', 'b'], gross_profit: ['money', 'b'], gross_margin: ['chart', 'c'], net_income: ['chart', 'n'], ebitda: ['chart', 'n'], cash: ['billing', 'g'], burn: ['flag', 'a'], opex_total: ['billing', 'a'], runway: ['clock', 'c'] }
 const good = (k: K) => (k.change == null ? '' : (k.key === 'burn' || k.key === 'opex_total' ? k.change <= 0 : k.change >= 0) ? 'up' : 'down')
 </script>
 <template>
   <div class="bv">
-    <div v-if="data.kpis.length" class="kp"><div v-for="k in data.kpis" :key="k.key" class="k"><em>{{ k.label }}</em><b>{{ fmt(k.value, k.unit) }}</b>
-      <i v-if="k.change != null" :class="good(k)">{{ k.change > 0 ? '▲' : k.change < 0 ? '▼' : '' }} {{ k.unit === 'money' ? Math.abs(k.change) + '%' : (k.change > 0 ? '+' : '') + k.change + (k.unit === 'pct' ? ' pts' : ' mo') }} <span>vs prior {{ data.period }}</span></i><i v-else class="na">No prior {{ data.period }}</i></div></div>
+    <div v-if="data.kpis.length" class="fx-stats"><StatTile v-for="k in data.kpis" :key="k.key" :label="k.label" :value="fmt(k.value, k.unit)" :icon="KI[k.key]?.[0] ?? 'chart'" :tone="KI[k.key]?.[1] ?? 'n'" :note-tone="good(k) === 'down' ? 'dn' : good(k) === 'up' ? 'up' : ''">
+      <template #note><template v-if="k.change != null">{{ k.change > 0 ? '▲' : k.change < 0 ? '▼' : '' }} {{ k.unit === 'money' ? Math.abs(k.change) + '%' : (k.change > 0 ? '+' : '') + k.change + (k.unit === 'pct' ? ' pts' : ' mo') }} <span class="vp">vs prior {{ data.period }}</span></template><template v-else>No prior {{ data.period }}</template></template></StatTile></div>
     <div class="ch"><div v-for="(c, i) in data.charts" :key="i" class="card cc"><div class="ct"><b>{{ c.title }}</b>
         <span v-if="editable" class="tsw" role="group" aria-label="Chart type"><button v-for="[t, l] in TYPES" :key="t" type="button" :class="{ on: (c.type ?? 'line') === t }" :title="l" @click="emit('type', i, t)">{{ l }}</button></span>
         <span v-if="(c.type ?? 'line') !== 'pie' && (c.type ?? 'line') !== 'table'" class="lg"><span v-for="(m, j) in c.metrics" :key="m"><i :style="{ background: COLORS[j % 3] }" />{{ metrics[m]?.label ?? m }}</span></span></div>
@@ -55,8 +56,7 @@ const good = (k: K) => (k.change == null ? '' : (k.key === 'burn' || k.key === '
   </div>
 </template>
 <style scoped>
-.kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 26px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.k i { font-style: normal; font-size: 12.5px; font-weight: 500; } .k i span { color: var(--c-muted); font-weight: 400; } .k i.up { color: var(--c-ok); } .k i.down { color: var(--c-danger); } .k i.na { color: var(--c-muted); font-weight: 400; }
+.vp { color: var(--c-muted); }
 .ch { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px; margin-top: 12px; } .cc { display: flex; flex-direction: column; gap: 8px; } .ct { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .ct b { font-size: 15px; } .lg { display: flex; gap: 12px; font-size: 12px; color: var(--c-muted); width: 100%; } .lg span { display: flex; align-items: center; gap: 5px; } .lg i { width: 10px; height: 3px; display: inline-block; }
 .tsw { display: flex; border: 1px solid var(--c-rule); } .tsw button { background: #fff; border: 0; padding: 3px 8px; font: inherit; font-size: 11.5px; cursor: pointer; color: var(--c-ink-soft); } .tsw button.on { background: var(--c-navy); color: #fff; }
 .sv { width: 100%; height: 190px; } .ax { display: flex; justify-content: space-between; font-size: 12px; color: var(--c-muted); } .ax span:nth-child(2) { color: var(--c-ink); font-weight: 600; } .mut { color: var(--c-muted); font-size: 13.5px; }

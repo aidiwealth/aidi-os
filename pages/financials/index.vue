@@ -118,11 +118,11 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <template v-if="rows.length && latest">
       <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
-        <div class="kpis">
-          <div class="kpi"><span class="l">Revenue · {{ lbl(latest.period_end) }}</span><b><Money :value="latest.derived.revenue" :currency="cur" /></b><span class="s" :class="{ up: (change('revenue') ?? 0) > 0, dn: (change('revenue') ?? 0) < 0 }">{{ change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous' }}</span></div>
-          <div class="kpi"><span class="l">Net income</span><b><Money :value="latest.derived.net_income" :currency="cur" /></b><span class="s">EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></span></div>
-          <div class="kpi"><span class="l">Cash</span><b><Money :value="latest.derived.cash" :currency="cur" /></b><span class="s">{{ latest.derived.runway ? latest.derived.runway + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : '—' }}</span></div>
-          <div class="kpi"><span class="l">Gross margin</span><b>{{ pctFmt(latest.derived.gross_margin) }}</b><span class="s">Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</span></div>
+        <div class="fx-stats">
+          <StatTile :label="'Revenue · ' + lbl(latest.period_end)" icon="money" tone="b" :note="change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
+          <StatTile label="Net income" icon="chart" tone="n"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
+          <StatTile label="Cash" icon="billing" tone="g" :note="latest.derived.runway ? latest.derived.runway + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : '—'"><Money :value="latest.derived.cash" :currency="cur" /></StatTile>
+          <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
         <div class="charts">
           <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="rows.length + ' periods'" />
@@ -193,8 +193,6 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 select, input, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .hint { color: var(--c-muted); font-size: 12.5px; margin: 4px 0 8px; } .small { font-size: 12.5px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 12px 0 16px; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .tabs em { font-style: normal; font-size: 12px; background: var(--c-paper-2); padding: 1px 7px; margin-left: 4px; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 0 12px; } .kpi { background: #fff; border: 1px solid var(--c-rule); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
-.kpi .l { font-size: 13px; color: var(--c-muted); } .kpi b { font-size: 28px; font-weight: 600; } .kpi .s { font-size: 12.5px; color: var(--c-muted); } .s.up { color: var(--c-ok); } .s.dn { color: var(--c-danger); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .two h3 { margin: 0 0 10px; }
 .lp { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .lp span:not(:first-child) { text-align: right; } .lp .neg { color: var(--c-danger); } .two .link { margin-top: 10px; }
 .flat { padding: 0; overflow: hidden; margin-bottom: 12px; } .scroll { overflow-x: auto; } .table { width: 100%; border-collapse: collapse; } th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; }
@@ -206,7 +204,7 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .money { display: flex; align-items: center; border: 1px solid var(--c-rule-strong); background: #fff; } .money i { font-style: normal; color: var(--c-muted); font-size: 13px; padding: 0 0 0 9px; } .money input { border: 0; flex: 1; min-width: 0; width: 100%; } .g4 > label, .g4 > * { min-width: 0; } .g4 input, .g4 select { width: 100%; box-sizing: border-box; }
 .kr { display: flex; gap: 8px; } .kr input:first-child { flex: 2; } .kr input { flex: 1; } .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; } .chk input { width: auto; } .mets { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
-@media (max-width: 1000px) { .kpis, .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
 .feeds { margin: 12px 0; }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
 .bdl { text-decoration: none; }

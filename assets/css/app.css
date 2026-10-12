@@ -35,7 +35,7 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 :where(a, button, span, li, div):has(> .fb) { display: inline-flex; align-items: center; gap: 8px; }
 .dn { display: flex !important; align-items: center; gap: 10px; } .dn > span:last-child { display: flex; flex-direction: column; }
 /* Finvry desk pattern (matches the client home): stat grid, calendar date block, soft pills, soft monogram. */
-.fx-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+.fx-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0 20px; }
 .fx-cal { width: 44px; flex: none; border: 1px solid var(--c-rule-strong); background: #fff; text-align: center; display: flex; flex-direction: column; }
 .fx-cal > em { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 0; background: var(--c-paper-2); color: var(--c-muted); }
 .fx-cal > b { font-size: 16px; font-weight: 600; padding: 2px 0 3px; color: var(--c-ink); }

@@ -199,7 +199,6 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .who { display: flex; gap: 16px; align-items: flex-start; } .who .mono { flex: none; width: 52px; height: 52px; background: #eef0f6; color: var(--c-navy); display: grid; place-items: center; font-weight: 700; font-size: 18px; } .who h1 { margin: 0 0 4px; } .who .muted a { color: var(--c-blue-deep); text-decoration: none; }
 .tagl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .tg { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); border: 0; text-transform: capitalize; } .tg.active, .tg.on { background: #e9f6ee; color: #23784a; } .tg.lead { background: #eef4ff; color: #2c5cc5; }
 .tg.sw { cursor: pointer; background: #e9f6ee; color: #23784a; } .tg.sw.off { background: #fdecef; color: #b4234a; }
-.kst { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0 6px; } .kst button { font: inherit; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; } .kst button:hover { border-color: var(--c-navy); } .kst em { font-style: normal; font-size: 12px; color: var(--c-muted); } .kst b { font-size: 22px; font-weight: 600; } .kst b.red { color: var(--c-danger); }
 .mhd .muted { margin: 0 0 10px; font-size: 13.5px; } .chat { padding: 0 !important; height: 560px; display: flex; flex-direction: column; overflow: hidden; } .none { color: var(--c-muted); text-align: center; margin: auto; }
-@media (max-width: 760px) { .kst { grid-template-columns: 1fr 1fr; } }
+
 </style>

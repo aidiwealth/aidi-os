@@ -14,11 +14,11 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
   <section v-if="data">
     <p class="label">Finvry platform</p>
     <div class="head"><h1>Overview</h1><div class="tools"><NuxtLink to="/platform/pipeline?new=1" class="btn secondary">New lead</NuxtLink><NuxtLink to="/platform/customers?new=1" class="btn">New customer</NuxtLink></div></div>
-    <div class="kpis">
-      <div class="kpi"><span class="label">MRR</span><b>{{ usd(data.kpis.mrr) }}</b><span class="sub">ARR {{ usd(data.kpis.arr) }}</span></div>
-      <div class="kpi"><span class="label">This month</span><b class="pos">+{{ usd(data.kpis.newMrr) }}</b><span class="sub" :class="{ neg: data.kpis.churnMrr }">−{{ usd(data.kpis.churnMrr) }} churned</span></div>
-      <div class="kpi"><span class="label">Customers</span><b>{{ data.kpis.active }}</b><span class="sub">{{ data.kpis.trial }} on trial · {{ data.kpis.past_due }} past due</span></div>
-      <div class="kpi"><span class="label">Pipeline</span><b>{{ usd(data.kpis.weighted) }}</b><span class="sub">weighted MRR · {{ data.kpis.pipelineOpen }} open deals ({{ usd(data.kpis.pipeline) }})</span></div>
+    <div class="fx-stats">
+      <StatTile label="MRR" :value="usd(data.kpis.mrr)" :note="'ARR ' + usd(data.kpis.arr)" icon="money" tone="n" />
+      <StatTile label="This month" :value="'+' + usd(data.kpis.newMrr)" pos :note="'−' + usd(data.kpis.churnMrr) + ' churned'" :note-tone="data.kpis.churnMrr ? 'red' : ''" icon="chart" tone="g" />
+      <StatTile label="Customers" :value="data.kpis.active" :note="data.kpis.trial + ' on trial · ' + data.kpis.past_due + ' past due'" icon="users" tone="b" />
+      <StatTile label="Pipeline" :value="usd(data.kpis.weighted)" :note="'weighted MRR · ' + data.kpis.pipelineOpen + ' open deals (' + usd(data.kpis.pipeline) + ')'" icon="briefcase" tone="c" />
     </div>
     <div class="charts">
       <TrendChart title="Monthly recurring revenue" sub="Last 12 months" unit="usd" :points="pts(data.mrrSeries)" :foot="data.kpis.seats + ' seats in use'" />
@@ -41,10 +41,6 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
 
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; } .tools { display: flex; gap: 10px; } .tools .btn { text-decoration: none; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); } .sub { font-size: 12px; color: var(--c-muted); }
-.pos { color: var(--c-ok) !important; } .neg { color: var(--c-danger) !important; }
 .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 16px; } .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 110px 1fr 28px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
@@ -52,5 +48,5 @@ h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color:
 .warn { margin: 14px 0 0; font-size: 13px; } .warn a { color: var(--c-danger); }
 .list { list-style: none; padding: 0; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .list span { color: var(--c-muted); font-size: 12.5px; text-transform: capitalize; white-space: nowrap; } .list span.nc { text-transform: none; }
 .muted { color: var(--c-muted); }
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts, .three { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .charts, .three { grid-template-columns: 1fr; } }
 </style>

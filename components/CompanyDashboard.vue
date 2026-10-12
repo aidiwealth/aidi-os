@@ -31,11 +31,11 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
         <NuxtLink v-if="!s.done" :to="s.to" class="octa" :class="{ pri: data.setup.findIndex((x) => !x.done) === i }">{{ s.cta ?? 'Start' }} →</NuxtLink><span v-else class="odone">Done</span></div></div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi"><span class="l">Revenue{{ data.last ? ' · ' + lbl(data.last.period) : '' }}</span><b><Money :value="data.last?.revenue" :currency="data.currency" /></b><span class="s" :class="{ up: (data.growth ?? 0) > 0, dn: (data.growth ?? 0) < 0 }">{{ data.growth == null ? 'Month-on-month growth appears after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month' }}</span></div>
-      <div class="kpi"><span class="l">Net income</span><b><Money :value="data.last?.net_income" :currency="data.currency" /></b><span class="s">Gross margin {{ data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%' }}</span></div>
-      <div class="kpi"><span class="l">Cash</span><b><Money :value="data.last?.cash" :currency="data.currency" /></b><span class="s">{{ data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Runway appears with cash and burn' }}</span></div>
-      <div class="kpi"><span class="l">Monthly burn</span><b><Money :value="data.last?.burn" :currency="data.currency" /></b><span class="s">Operating costs <Money :value="data.last?.opex_total" :currency="data.currency" /></span></div>
+    <div class="fx-stats">
+      <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Month-on-month growth appears after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
+      <StatTile label="Net income" icon="chart" tone="n" :note="'Gross margin ' + (data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%')"><Money :value="data.last?.net_income" :currency="data.currency" /></StatTile>
+      <StatTile label="Cash" icon="billing" tone="g" :note="data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Runway appears with cash and burn'"><Money :value="data.last?.cash" :currency="data.currency" /></StatTile>
+      <StatTile label="Monthly burn" icon="flag" tone="a"><Money :value="data.last?.burn" :currency="data.currency" /><template #note>Operating costs <Money :value="data.last?.opex_total" :currency="data.currency" /></template></StatTile>
     </div>
 
     <template v-if="data.series.length">
@@ -73,12 +73,10 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 .bar { height: 5px; background: var(--c-paper-2); } .bar i { display: block; height: 100%; background: var(--c-blue-deep); }
 .step { display: flex; align-items: center; gap: 10px; color: var(--c-ink); text-decoration: none; font-size: 14px; padding: 4px 0; } .step.ok { color: var(--c-muted); text-decoration: line-through; }
 .tick { width: 18px; height: 18px; border: 1px solid var(--c-rule-strong); display: grid; place-items: center; font-size: 12px; color: var(--c-ok); } .step.ok .tick { border-color: var(--c-ok); }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; } .kpi { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
-.kpi .l { font-size: 13px; color: var(--c-muted); } .kpi b { font-size: 28px; font-weight: 600; } .kpi .s { font-size: 12.5px; color: var(--c-muted); } .s.up { color: var(--c-ok); } .s.dn { color: var(--c-danger); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .empty { margin-bottom: 12px; } .empty p { color: var(--c-ink-soft); max-width: 680px; } .empty a { text-decoration: none; }
 .three { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; margin-top: 16px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
 .more { display: inline-block; margin-top: 10px; font-size: 13.5px; } .muted { color: var(--c-muted); font-size: 13.5px; }
-@media (max-width: 1000px) { .kpis { grid-template-columns: 1fr 1fr; } .charts, .three { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .charts, .three { grid-template-columns: 1fr; } }
 .feeds { margin-top: 16px; }
 .onb { background: #fff; border: 1px solid var(--c-rule); padding: 24px 26px; margin-bottom: 16px; } .oh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .ol { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--c-blue-deep); } .oh h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; } .oh h2 span { font-size: 14px; font-weight: 400; color: var(--c-muted); margin-left: 8px; }

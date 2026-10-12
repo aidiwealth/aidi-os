@@ -24,12 +24,12 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
       </div>
     </div>
     <template v-if="data">
-      <div class="kpis">
-        <div class="kpi"><span class="label">Open jobs</span><b>{{ data.kpis.open }}</b><span class="sub">{{ data.kpis.clients }} active clients</span></div>
-        <div class="kpi"><span class="label">Overdue</span><b :class="{ red: data.kpis.overdue }">{{ data.kpis.overdue }}</b><span class="sub">past their due date</span></div>
-        <div class="kpi"><span class="label">Waiting on clients</span><b>{{ data.kpis.waiting }}</b><span class="sub">blocked on the client</span></div>
-        <div class="kpi"><span class="label">Turnaround</span><b>{{ data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd' }}</b><span class="sub">average, open to completed</span></div>
-        <div class="kpi"><span class="label">Fees earned</span><b>{{ usd(data.kpis.fees) }}</b><span class="sub">on jobs completed, {{ RANGE[range] }}</span></div>
+      <div class="fx-stats">
+        <StatTile label="Open jobs" :value="data.kpis.open" :note="data.kpis.clients + ' active clients'" icon="briefcase" tone="n" />
+        <StatTile label="Overdue" :value="data.kpis.overdue" :red="!!data.kpis.overdue" note="past their due date" icon="alert" :tone="data.kpis.overdue ? 'r' : 'g'" />
+        <StatTile label="Waiting on clients" :value="data.kpis.waiting" note="blocked on the client" icon="clock" tone="a" />
+        <StatTile label="Turnaround" :value="data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd'" note="average, open to completed" icon="calendar" tone="b" />
+        <StatTile label="Fees earned" :value="usd(data.kpis.fees)" :note="'on jobs completed, ' + RANGE[range]" icon="money" tone="g" />
       </div>
       <div class="charts">
         <TrendChart title="Completed" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.completedSeries)" :foot="data.kpis.completed + ' in ' + RANGE[range]" />
@@ -55,10 +55,6 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 10px; } .filters select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 30px; color: var(--c-navy); line-height: 1.1; }
-.sub { font-size: 12px; color: var(--c-muted); }
 .charts, .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 12px; }
 .bar { display: grid; grid-template-columns: 130px 1fr 28px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
@@ -66,5 +62,5 @@ h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color:
 .list { list-style: none; padding: 0; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); }
 .list em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .list b { font-weight: 500; white-space: nowrap; }
 .red { color: var(--c-danger) !important; } .muted { color: var(--c-muted); }
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts, .three { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .charts, .three { grid-template-columns: 1fr; } }
 </style>

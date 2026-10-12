@@ -23,10 +23,12 @@ function csv() { const rows = data.value?.ledger ?? []; const esc = (s: string) 
     <div class="hd"><div><p class="label">Finvry console</p><h1>Finance</h1><p class="lead">Every top-up, credit and debit across customer wallets.</p></div><button class="btn" @click="openAdj()">Credit or debit a wallet</button></div>
     <p v-if="ok" class="ok">{{ ok }}</p>
     <div v-for="t in data.totals" :key="t.currency" class="sum"><span class="cur">{{ t.currency }}</span>
-      <div class="sc"><span>Wallet float</span><b>{{ m(t.float_minor, t.currency) }}</b><em>held for customers</em></div>
-      <div class="sc"><span>Top-ups this month</span><b class="pos">+{{ m(t.topups_minor, t.currency) }}</b></div>
-      <div class="sc"><span>Debits this month</span><b class="neg">−{{ m(t.debits_minor, t.currency) }}</b><em>services and subscriptions</em></div>
-      <div class="sc"><span>Credits given this month</span><b>{{ m(t.credits_minor, t.currency) }}</b></div></div>
+      <div class="fx-stats">
+        <StatTile label="Wallet float" :value="m(t.float_minor, t.currency)" note="held for customers" icon="money" tone="n" />
+        <StatTile label="Top-ups this month" :value="'+' + m(t.topups_minor, t.currency)" pos icon="inbox" tone="g" />
+        <StatTile label="Debits this month" :value="'−' + m(t.debits_minor, t.currency)" red note="services and subscriptions" icon="billing" tone="r" />
+        <StatTile label="Credits given this month" :value="m(t.credits_minor, t.currency)" icon="check" tone="b" />
+      </div></div>
     <nav class="vt"><button :class="{ on: view === 'ledger' }" @click="view = 'ledger'">Payments &amp; credits</button><button :class="{ on: view === 'renewals' }" @click="view = 'renewals'">Renewals ({{ data.subscriptions.length }})</button><button :class="{ on: view === 'accounts' }" @click="view = 'accounts'">Bank accounts ({{ data.accounts.length }})</button></nav>
     <div v-if="view === 'renewals'" class="box"><table v-if="data.subscriptions.length"><thead><tr><th>Workspace</th><th>What</th><th class="n">Amount</th><th>Next charge</th><th>Status</th></tr></thead><tbody><tr v-for="s in data.subscriptions" :key="s.id"><td>{{ s.workspace }}</td><td>{{ s.name }}<span class="dim"> · {{ s.interval === 'month' ? 'monthly' : 'yearly' }}</span></td><td class="n">{{ m(s.amount_minor, s.currency) }}</td><td>{{ s.next_charge_at }}</td><td><span class="cat" :class="s.status === 'suspended' ? 'admin_debit' : s.failures ? 'service' : 'topup'">{{ s.status === 'suspended' ? 'Suspended' : s.failures ? 'Retrying' : 'Active' }}</span><span v-if="s.last_error" class="dim"> {{ s.last_error }}</span></td></tr></tbody></table><p v-else class="none">No renewals yet.</p></div>
     <div v-else-if="view === 'accounts'" class="box"><table v-if="data.accounts.length"><thead><tr><th>Workspace</th><th>Bank</th><th>Account number</th><th>Account name</th><th class="n">Wallet balance</th></tr></thead><tbody><tr v-for="a in data.accounts" :key="a.organization_id"><td>{{ a.workspace }}<span class="dim"> · {{ a.slug }}</span></td><td>{{ a.bank_name ?? '—' }}</td><td class="mono">{{ a.account_number ?? '—' }}</td><td class="dim">{{ a.account_name ?? '—' }}</td><td class="n">{{ m(a.balance_minor, 'NGN') }}</td></tr></tbody></table><p v-else class="none">No dedicated accounts yet. They are created when a company opens its wallet with Monnify switched on (Settings → Wallet &amp; transfers).</p></div>
@@ -57,8 +59,8 @@ function csv() { const rows = data.value?.ledger ?? []; const esc = (s: string) 
 </template>
 <style scoped>
 .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; } .hd h1 { margin: 0; } .lead { color: var(--c-muted); margin: 4px 0 0; }
-.sum { display: grid; grid-template-columns: 60px repeat(4, 1fr); gap: 10px; margin-bottom: 10px; align-items: stretch; } .cur { display: grid; place-items: center; background: var(--c-navy); color: #fff; font-weight: 600; letter-spacing: .06em; }
-.sc { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; } .sc span { font-size: 12.5px; color: var(--c-muted); } .sc b { font-size: 22px; font-weight: 600; } .sc em { font-style: normal; font-size: 11.5px; color: var(--c-muted); }
+.sum { display: grid; grid-template-columns: 60px 1fr; gap: 10px; margin-bottom: 10px; align-items: stretch; } .cur { display: grid; place-items: center; background: var(--c-navy); color: #fff; font-weight: 600; letter-spacing: .06em; }
+.sum .fx-stats { margin: 0; }
 .pos { color: var(--c-ok); } .neg { color: var(--c-danger); } .bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 10px; align-items: center; }
 .seg { display: flex; border: 1px solid var(--c-rule-strong); } .seg button { background: #fff; border: 0; padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer; } .seg button.on { background: var(--c-navy); color: #fff; } .seg.big button { flex: 1; padding: 10px; }
 select, input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .box { background: #fff; border: 1px solid var(--c-rule); overflow-x: auto; margin-bottom: 18px; } table { width: 100%; border-collapse: collapse; }
@@ -67,5 +69,5 @@ th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted
 .vt { display: flex; gap: 20px; border-bottom: 1px solid var(--c-rule); margin: 16px 0 10px; } .vt button { background: none; border: 0; padding: 9px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .vt .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .mono { font-family: ui-monospace, Menlo, monospace; }
 .lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } h2 { font-size: 20px; margin: 10px 0 10px; } .none { padding: 18px; color: var(--c-muted); margin: 0; }
 .frm { display: flex; flex-direction: column; gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; } .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; } .chk input { width: auto; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); margin: 0; }
-@media (max-width: 1000px) { .sum { grid-template-columns: 1fr 1fr; } .cur { grid-column: 1 / -1; padding: 6px; } }
+@media (max-width: 1000px) { .sum { grid-template-columns: 1fr; } .cur { grid-column: 1 / -1; padding: 6px; } }
 </style>

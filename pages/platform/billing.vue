@@ -66,11 +66,11 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
   <section v-if="data">
     <p class="label">Finvry platform</p>
     <div class="head"><h1>Billing</h1><div class="tools"><button class="btn secondary" type="button" @click="newSub">New subscription</button><button class="btn" type="button" @click="newInv()">New invoice</button></div></div>
-    <div class="kpis">
-      <div class="kpi"><span class="label">MRR</span><b>{{ usd(data.kpis.mrr) }}</b><span class="sub">{{ data.kpis.live }} live subscriptions</span></div>
-      <div class="kpi"><span class="label">ARR</span><b>{{ usd(data.kpis.arr) }}</b></div>
-      <div class="kpi"><span class="label">Outstanding</span><b>{{ usd(data.kpis.outstanding) }}</b><span class="sub">sent, not yet paid</span></div>
-      <div class="kpi"><span class="label">Overdue</span><b :class="{ red: data.kpis.overdue }">{{ usd(data.kpis.overdue) }}</b><span class="sub">{{ data.kpis.overdueCount }} invoice{{ data.kpis.overdueCount === 1 ? '' : 's' }}</span></div>
+    <div class="fx-stats">
+      <StatTile label="MRR" :value="usd(data.kpis.mrr)" :note="data.kpis.live + ' live subscriptions'" icon="money" tone="n" />
+      <StatTile label="ARR" :value="usd(data.kpis.arr)" icon="chart" tone="b" />
+      <StatTile label="Outstanding" :value="usd(data.kpis.outstanding)" note="sent, not yet paid" icon="billing" tone="a" />
+      <StatTile label="Overdue" :value="usd(data.kpis.overdue)" :red="!!data.kpis.overdue" :note="data.kpis.overdueCount + ' invoice' + (data.kpis.overdueCount === 1 ? '' : 's')" icon="alert" :tone="data.kpis.overdue ? 'r' : 'g'" />
     </div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
 
@@ -154,9 +154,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 16px; } .tools { display: flex; gap: 10px; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 26px; color: var(--c-navy); } .sub { display: block; font-size: 12px; color: var(--c-muted); }
+.sub { display: block; font-size: 12px; color: var(--c-muted); }
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin-bottom: 16px; align-items: end; } .frm > label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; } h2 { margin: 0; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .hint { font-size: 12px; color: var(--c-muted); margin: 0; } .row { display: flex; gap: 10px; }
@@ -173,5 +171,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .acts { white-space: nowrap; } .acts .link { margin-left: 10px; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .red { color: var(--c-danger) !important; } .muted { color: var(--c-muted); } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .frm { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .frm { grid-template-columns: 1fr; } }
 </style>

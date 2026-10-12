@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Stat tile in the Finvry client-home style: soft icon square, small label, big number. Clickable when `to` or a click
-// listener is given.
-const props = defineProps<{ label: string; value?: string | number; icon?: string; tone?: 'b' | 'n' | 'r' | 'g' | 'a' | 'c'; to?: string; on?: boolean; red?: boolean; note?: string; clickable?: boolean }>()
+// The one metric box used across Finvry: white flat box, small grey label, big number, small grey note underneath
+// (Overview style), with an optional soft icon square on the left (client-home style). Clickable with `to` or `clickable`.
+const props = defineProps<{ label: string; value?: string | number; icon?: string; tone?: 'b' | 'n' | 'r' | 'g' | 'a' | 'c'; to?: string; on?: boolean; red?: boolean; note?: string; clickable?: boolean; pos?: boolean; noteTone?: 'up' | 'dn' | 'warn' | 'red' | '' }>()
 const P: Record<string, string> = {
   billing: 'M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21V3Zm3 5h4m-4 4h4m-4 4h2',
   briefcase: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16',
@@ -22,15 +22,19 @@ const Link = resolveComponent('NuxtLink')
 const tag = computed(() => (props.to ? Link : props.clickable ? 'button' : 'div'))
 </script>
 <template>
-  <component :is="tag" :to="to" :type="clickable && !to ? 'button' : undefined" class="fx-st" :class="{ on, act: to || clickable }">
-    <span class="fx-si" :class="tone ?? 'n'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="P[icon ?? 'chart']" /></svg></span>
-    <span class="fx-sx"><em>{{ label }}</em><b :class="{ red }"><slot>{{ value }}</slot></b><i v-if="note">{{ note }}</i></span>
+  <component :is="tag" :to="to" :type="clickable && !to ? 'button' : undefined" class="fx-st" :class="{ on, act: to || clickable, ic: icon }">
+    <span v-if="icon" class="fx-si" :class="tone ?? 'n'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="P[icon] ?? P.chart" /></svg></span>
+    <span class="fx-sx"><em>{{ label }}</em><b :class="{ red, pos }"><slot>{{ value }}</slot></b><i v-if="note || $slots.note" :class="noteTone"><slot name="note">{{ note }}</slot></i></span>
   </component>
 </template>
 <style scoped>
-.fx-st { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--c-rule); padding: 16px; text-decoration: none; color: inherit; font: inherit; text-align: left; min-width: 0; transition: border-color .12s; }
+.fx-st { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; text-decoration: none; color: inherit; font: inherit; text-align: left; min-width: 0; transition: border-color .12s; }
 .fx-st.act { cursor: pointer; } .fx-st.act:hover, .fx-st.on { border-color: var(--c-navy); } .fx-st.on { box-shadow: inset 0 -2px 0 var(--c-navy); }
-.fx-si { width: 42px; height: 42px; display: grid; place-items: center; flex: none; } .fx-si svg { width: 21px; height: 21px; }
+.fx-si { width: 44px; height: 44px; display: grid; place-items: center; flex: none; align-self: center; } .fx-si svg { width: 21px; height: 21px; }
 .fx-si.n { background: #eef0f6; color: var(--c-navy); } .fx-si.b { background: var(--c-signal-soft); color: var(--c-blue-deep); } .fx-si.r { background: #fdecef; color: var(--c-danger); } .fx-si.g { background: #e9f6ee; color: var(--c-ok); } .fx-si.a { background: #fff6e6; color: #a5650b; } .fx-si.c { background: #e6f6fa; color: #0e7490; }
-.fx-sx { display: flex; flex-direction: column; min-width: 0; } .fx-sx em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .fx-sx b { font-size: 22px; font-weight: 600; letter-spacing: -.01em; color: var(--c-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fx-sx b.red { color: var(--c-danger); } .fx-sx i { font-style: normal; font-size: 11.5px; color: var(--c-muted); }
+.fx-sx { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.fx-sx em { font-style: normal; font-size: 13px; font-weight: 500; color: var(--c-muted); }
+.fx-sx b { font-family: var(--font-heading); font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fx-sx b.red { color: var(--c-danger); } .fx-sx b.pos { color: var(--c-ok); }
+.fx-sx b :deep(*) { font: inherit; color: inherit; }
+.fx-sx i { font-style: normal; font-size: 12px; color: var(--c-muted); } .fx-sx i.up { color: var(--c-ok); } .fx-sx i.dn, .fx-sx i.red { color: var(--c-danger); } .fx-sx i.warn { color: var(--c-warn); }
 </style>

@@ -27,11 +27,11 @@ void refresh
   <section v-if="data">
     <p class="label">Finvry platform</p>
     <div class="head"><h1>Pipeline</h1><button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'New lead' }}</button></div>
-    <div class="kpis">
-      <div class="kpi"><span class="label">Open deals</span><b>{{ data.kpis.open }}</b></div>
-      <div class="kpi"><span class="label">Pipeline MRR</span><b>{{ usd(data.kpis.pipeline) }}</b><span class="sub">if every open deal closes</span></div>
-      <div class="kpi"><span class="label">Weighted MRR</span><b>{{ usd(data.kpis.weighted) }}</b><span class="sub">by stage probability</span></div>
-      <div class="kpi"><span class="label">Won this month</span><b>{{ data.kpis.wonMonth }}</b><span class="sub">{{ usd(data.kpis.wonMonthValue) }} MRR</span></div>
+    <div class="fx-stats">
+      <StatTile label="Open deals" :value="data.kpis.open" icon="briefcase" tone="n" />
+      <StatTile label="Pipeline MRR" :value="usd(data.kpis.pipeline)" note="if every open deal closes" icon="money" tone="b" />
+      <StatTile label="Weighted MRR" :value="usd(data.kpis.weighted)" note="by stage probability" icon="chart" tone="c" />
+      <StatTile label="Won this month" :value="data.kpis.wonMonth" :note="usd(data.kpis.wonMonthValue) + ' MRR'" icon="check" tone="g" />
     </div>
     <form v-if="adding" class="card frm" @submit.prevent="add">
       <label class="label">Company<input v-model="f.company" required maxlength="200"></label>
@@ -67,9 +67,6 @@ void refresh
 
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 16px; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.kpi { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
-.kpi b { font-weight: 500; letter-spacing: -0.02em; font-size: 26px; color: var(--c-navy); } .sub { font-size: 12px; color: var(--c-muted); }
 .frm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; margin-bottom: 16px; } .frm label { display: flex; flex-direction: column; gap: 6px; } .wide { grid-column: 1 / -1; }
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .row { display: flex; gap: 12px; align-items: center; }
@@ -82,5 +79,5 @@ input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal
 h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color: var(--c-navy); margin: 0 0 10px; }
 .closed ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; } .closed li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; }
 .won { color: var(--c-ok); } .lost { color: var(--c-muted); } .error { color: var(--c-danger); }
-@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .frm { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .frm { grid-template-columns: 1fr; } }
 </style>

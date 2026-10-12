@@ -21,16 +21,23 @@ async function create() {
 async function copy(d: Dk) { await navigator.clipboard.writeText(d.url); copied.value = d.id; setTimeout(() => (copied.value = ''), 1500) }
 const mmss = (s: number) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0')
 const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago' }
-const totals = computed(() => (data.value?.decks ?? []).reduce((a, d) => ({ visits: a.visits + d.stats.total, unique: a.unique + d.stats.unique, downloads: a.downloads + d.stats.downloads }), { visits: 0, unique: 0, downloads: 0 }))
+const totals = computed(() => (data.value?.decks ?? []).reduce((a, d) => ({ visits: a.visits + d.stats.total, unique: a.unique + d.stats.unique, downloads: a.downloads + d.stats.downloads, secs: a.secs + d.stats.avg_seconds * d.stats.total }), { visits: 0, unique: 0, downloads: 0, secs: 0 }))
+const avgAll = computed(() => (totals.value.visits ? Math.round(totals.value.secs / totals.value.visits) : 0))
+const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.last_view).filter(Boolean).sort().pop() ?? null)
 </script>
 <template>
   <section v-if="data">
     <p class="label">Investors</p>
     <div class="head"><div><h1>Decks</h1><p class="lead">Keep a deck for each purpose — your main pitch deck, a demo day version, a one-pager. Each one has its own private link and viewer analytics. The ★ main deck is used on your investor page and in investor updates.</p></div>
       <button class="btn" @click="startNew">+ New deck</button></div>
-    <EmptyState v-if="!data.decks.length" card icon="documents" title="No decks yet" text="Upload your pitch deck as a PDF. You get a private link with viewer analytics, and your investor page shows it automatically." />
+    <div class="fx-stats"><StatTile label="Decks" :value="data.decks.length" icon="doc" tone="n" :note="data.decks.some((d) => d.primary_deck) ? 'Main deck set' : 'No main deck yet'" /><StatTile label="Total visits" :value="totals.visits" icon="chart" tone="b" :note="lastView ? 'Last ' + ago(lastView) : 'No visits yet'" /><StatTile label="Unique visitors" :value="totals.unique" icon="users" tone="c" note="people who opened a link" /><StatTile label="Avg time on deck" :value="mmss(avgAll)" icon="clock" tone="a" note="per visit" /><StatTile label="Downloads" :value="totals.downloads" icon="inbox" tone="g" note="PDF downloads" /></div>
+    <div v-if="!data.decks.length" class="empty">
+      <div class="et"><span class="eic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6V3Zm8 0v4h4M9 12h6m-6 4h6" /></svg></span>
+        <h2>Add your first deck</h2><p>Upload your pitch deck as a PDF. You get a private link to share with investors, and you see who opened it, for how long and which slides they spent time on.</p>
+        <button class="btn" @click="startNew">+ Upload a deck</button></div>
+      <ul class="ep"><li><b>Private tracked link</b><span>One link per deck. Turn on email capture or downloads when you need them.</span></li><li><b>Viewer analytics</b><span>Visits, time spent and per-slide engagement for every viewer.</span></li><li><b>Versions</b><span>Upload a new version anytime; the link stays the same.</span></li><li><b>Investor page</b><span>Your ★ main deck shows on your investor page and in updates.</span></li></ul>
+    </div>
     <template v-else>
-      <div class="kpi"><div><span>Decks</span><b>{{ data.decks.length }}</b></div><div><span>Total visits</span><b>{{ totals.visits }}</b></div><div><span>Unique visitors</span><b>{{ totals.unique }}</b></div><div><span>Downloads</span><b>{{ totals.downloads }}</b></div></div>
       <div class="grid">
         <NuxtLink v-for="d in data.decks" :key="d.id" :to="'/decks/' + d.id" class="dk">
           <div class="dk-top"><span class="thumb" aria-hidden="true"><i /><i /><i /></span><span v-if="d.primary_deck" class="main">★ Main deck</span></div>
@@ -58,10 +65,13 @@ const totals = computed(() => (data.value?.decks ?? []).reduce((a, d) => ({ visi
   </section>
 </template>
 <style scoped>
-.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 6px; } .head h1 { margin: 0; } .lead { color: var(--c-muted); margin: 4px 0 0; max-width: 760px; }
-.kpi { display: flex; gap: 36px; flex-wrap: wrap; margin: 20px 0; } .kpi span { display: block; font-size: 13px; color: var(--c-muted); } .kpi b { font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
-.dk { display: flex; flex-direction: column; gap: 8px; background: #fff; border: 1px solid var(--c-rule); padding: 18px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; text-align: left; font: inherit; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap; margin: 6px 0 4px; } .head h1 { margin: 0; } .lead { color: var(--c-muted); margin: 4px 0 0; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.empty { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); background: #fff; border: 1px solid var(--c-rule); } .et { padding: 36px 40px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; } .et h2 { margin: 4px 0 0; font-size: 22px; } .et p { margin: 0 0 6px; color: var(--c-ink-soft); line-height: 1.55; max-width: 460px; }
+.eic { width: 52px; height: 52px; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; } .eic svg { width: 26px; height: 26px; }
+.ep { list-style: none; margin: 0; padding: 28px 32px; background: var(--c-paper-2); display: flex; flex-direction: column; gap: 18px; border-left: 1px solid var(--c-rule); } .ep li { display: flex; flex-direction: column; gap: 3px; padding-left: 16px; border-left: 2px solid var(--c-blue-deep); } .ep b { font-size: 14.5px; color: var(--c-ink); } .ep span { font-size: 13.5px; color: var(--c-muted); line-height: 1.45; }
+@media (max-width: 900px) { .empty { grid-template-columns: 1fr; } .ep { border-left: 0; border-top: 1px solid var(--c-rule); } .et { padding: 28px 24px; } }
+.dk { display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; text-align: left; font: inherit; }
 .dk:hover { border-color: var(--c-blue-deep); box-shadow: 0 8px 24px rgba(12,26,46,.08); transform: translateY(-1px); }
 .dk-top { display: flex; justify-content: space-between; align-items: flex-start; }
 .thumb { width: 54px; height: 40px; background: var(--c-paper-2); border: 1px solid var(--c-rule); display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 8px; } .thumb i { display: block; height: 3px; background: var(--c-rule-strong); } .thumb i:first-child { width: 70%; background: var(--c-blue-deep); } .thumb i:last-child { width: 50%; }

@@ -76,11 +76,11 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
     <div class="head"><div><h1>Compliance</h1><p class="lead">{{ company ? 'Your filings and renewals. We email you before each deadline.' : 'Filings, renewals and deadlines for every entity. Owners are emailed before each one.' }}</p></div>
       <div class="tools"><NuxtLink v-if="company" to="/client/order" class="btn secondary">Get help filing</NuxtLink><button v-if="canEdit" class="btn" type="button" @click="openAdd">Add reminder</button></div></div>
 
-    <div class="stats">
-      <button class="st" :class="{ on: filter === 'overdue' }" @click="filter = filter === 'overdue' ? 'all' : 'overdue'; pickDay = ''"><span class="si red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16.2v.3" /></svg></span><span class="sx"><em>Overdue</em><b :class="{ red: stats.overdue }">{{ stats.overdue }}</b><i>{{ stats.overdue ? 'Needs action' : 'All clear' }}</i></span></button>
-      <button class="st" :class="{ on: filter === 'soon' }" @click="filter = filter === 'soon' ? 'all' : 'soon'; pickDay = ''"><span class="si amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span><span class="sx"><em>Due in 30 days</em><b>{{ stats.soon }}</b><i>Coming up</i></span></button>
-      <button class="st" :class="{ on: filter === 'later' }" @click="filter = filter === 'later' ? 'all' : 'later'; pickDay = ''"><span class="si blue"><AppIcon name="compliance" /></span><span class="sx"><em>Later</em><b>{{ stats.later }}</b><i>Scheduled</i></span></button>
-      <div class="st static"><span class="si green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span><span class="sx"><em>Done this year</em><b>{{ stats.done }}</b><i>Filed</i></span></div>
+    <div class="fx-stats">
+      <StatTile label="Overdue" :value="stats.overdue" icon="alert" :tone="stats.overdue ? 'r' : 'g'" :red="!!stats.overdue" :note="stats.overdue ? 'Needs action' : 'All clear'" clickable :on="filter === 'overdue'" @click="filter = filter === 'overdue' ? 'all' : 'overdue'; pickDay = ''" />
+      <StatTile label="Due in 30 days" :value="stats.soon" icon="clock" tone="a" note="Coming up" clickable :on="filter === 'soon'" @click="filter = filter === 'soon' ? 'all' : 'soon'; pickDay = ''" />
+      <StatTile label="Later" :value="stats.later" icon="calendar" tone="b" note="Scheduled" clickable :on="filter === 'later'" @click="filter = filter === 'later' ? 'all' : 'later'; pickDay = ''" />
+      <StatTile label="Done this year" :value="stats.done" icon="check" tone="g" note="Filed" />
     </div>
 
     <div class="grid">
@@ -141,10 +141,6 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; } .head h1 { margin: 0; } .lead { color: var(--c-muted); margin: 4px 0 0; } .tools { display: flex; gap: 8px; } .tools a { text-decoration: none; }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; } .st { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; text-align: left; font: inherit; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
-.st:hover:not(.static) { border-color: var(--c-rule-strong); } .st.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); } .st.static { cursor: default; }
-.si { width: 42px; height: 42px; border-radius: 0; display: grid; place-items: center; flex: none; } .si svg, .si :deep(svg) { width: 21px; height: 21px; } .si.red { background: rgba(180,35,24,.08); color: var(--c-danger); } .si.amber { background: rgba(181,71,8,.09); color: var(--c-warn); } .si.blue { background: var(--c-signal-soft); color: var(--c-blue-deep); } .si.green { background: rgba(31,122,77,.1); color: var(--c-ok); }
-.sx { display: flex; flex-direction: column; gap: 1px; } .sx em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .sx b { font-size: 26px; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; color: var(--c-ink); } .sx b.red { color: var(--c-danger); } .sx i { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
 .lh { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--c-rule); margin-bottom: 6px; flex-wrap: wrap; } .tabs { display: flex; gap: 20px; align-items: center; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .dayc { font-size: 12.5px; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 3px 4px 3px 10px; } .dayc button { background: none; border: 0; cursor: pointer; color: inherit; font-size: 15px; } .lh input { font: inherit; font-size: 13.5px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 200px; margin-bottom: 6px; }
@@ -164,6 +160,6 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--c-muted); margin: 12px 0 0; } .legend span { display: flex; align-items: center; gap: 5px; } .legend i { width: 6px; height: 6px; }
 .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .frm .wide { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 6px; } input, select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .error { color: var(--c-danger); margin: 0; }
-@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .side { position: static; order: -1; } .stats { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .side { position: static; order: -1; } }
 .svh { display: flex; flex-direction: column; gap: 4px; background: var(--c-signal-soft); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); line-height: 1.5; } .svh b { color: var(--c-blue-deep); } .svh a { color: var(--c-blue-deep); font-weight: 500; }
 </style>

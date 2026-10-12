@@ -79,11 +79,11 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
     </div>
-    <div v-if="subsActive.length" class="glance">
-      <div class="gl"><em>Next renewal</em><b>{{ nextSub ? fmtM(nextSub.amount_minor) : '—' }}</b><span>{{ nextSub ? nextSub.name + ' · ' + dLong(nextSub.next_charge_at) : '' }}</span></div>
-      <div class="gl"><em>Renewing in the next 90 days</em><b>{{ fmtM(soon90) }}</b><span>{{ subsActive.length }} active service{{ subsActive.length === 1 ? '' : 's' }}</span></div>
-      <div class="gl"><em>Renewals per year</em><b>{{ fmtM(yearly) }}</b><span>All services together</span></div>
-      <div class="gl" :class="short ? 'warn' : 'ok'"><em>Ready for the next renewal?</em><b>{{ short ? 'Top up ' + fmtM(short) : 'Covered' }}</b><span>{{ short ? (data.card ? 'or we charge your card on file' : 'before ' + (nextSub ? dLong(nextSub.next_charge_at) : 'then')) : 'Your balance covers it' }}</span></div>
+    <div v-if="subsActive.length" class="fx-stats">
+      <StatTile label="Next renewal" :value="nextSub ? fmtM(nextSub.amount_minor) : '—'" :note="nextSub ? nextSub.name + ' · ' + dLong(nextSub.next_charge_at) : ''" icon="calendar" tone="n" />
+      <StatTile label="Renewing in the next 90 days" :value="fmtM(soon90)" :note="subsActive.length + ' active service' + (subsActive.length === 1 ? '' : 's')" icon="clock" tone="b" />
+      <StatTile label="Renewals per year" :value="fmtM(yearly)" note="All services together" icon="billing" tone="c" />
+      <StatTile label="Ready for the next renewal?" :value="short ? 'Top up ' + fmtM(short) : 'Covered'" :pos="!short" :note="short ? (data.card ? 'or we charge your card on file' : 'before ' + (nextSub ? dLong(nextSub.next_charge_at) : 'then')) : 'Your balance covers it'" :note-tone="short ? 'warn' : ''" :icon="short ? 'alert' : 'check'" :tone="short ? 'a' : 'g'" />
     </div>
     <div v-if="data.subscriptions.length" class="card subs"><h3>Renewals</h3><p class="mut">Charged from your wallet on the date shown; if the wallet is short we use your card on file. If both fail we try again after 3 days, then {{ data.subscriptions.some((s) => s.kind === 'plan') ? 'move you to the Free plan or ' : '' }}pause the service, and email you each time.</p>
       <div class="subg"><RenewalCard v-for="s in data.subscriptions" :key="s.id" :r="{ code: (s as any).code ?? s.kind, name: s.name, amount_minor: s.amount_minor, currency: s.currency, interval: s.interval, status: s.status, next: s.next_charge_at, started: (s as any).started_on, details: (s as any).details, failures: s.failures, last_error: s.last_error }" /></div></div>
@@ -99,8 +99,6 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
 </template>
 <style scoped>
 .eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .ttl { margin: 0; }
-.glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 22px; } .gl { background: #fff; border: 1px solid var(--c-rule); border-top: 3px solid var(--c-navy); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .gl em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .gl b { font-size: 22px; font-weight: 600; letter-spacing: -.01em; } .gl span { font-size: 12.5px; color: var(--c-muted); } .gl.ok { border-top-color: var(--c-ok); } .gl.ok b { color: var(--c-ok); } .gl.warn { border-top-color: var(--c-warn); background: #fffaf0; } .gl.warn b { color: var(--c-warn); }
-@media (max-width: 900px) { .glance { grid-template-columns: 1fr 1fr; } }
 .lead { color: var(--c-ink-soft); max-width: 720px; } .note { border-left: 3px solid var(--c-blue-deep); margin-bottom: 14px; }
 .top { display: grid; grid-template-columns: minmax(320px, 1.1fr) 1fr; gap: 16px; margin: 16px 0 22px; } .fund { display: flex; flex-direction: column; gap: 10px; } .fund h3 { margin: 0; }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; } .quick button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 9px 4px; font: inherit; font-weight: 500; cursor: pointer; } .quick button.on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
