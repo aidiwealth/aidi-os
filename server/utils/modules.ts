@@ -56,8 +56,9 @@ async function load(): Promise<{ on: Set<string>; plan: Set<string> }> {
   if (hit && Date.now() - hit.at < 30_000) return hit
   let plan = new Set<string>(), off = new Set<string>()
   if (org) {
-    const p = await db().query<{ modules: string[] }>('SELECT p.modules FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = core.current_org()')
-    plan = new Set(p.rows[0]?.modules ?? [])
+    // Plan modules, plus any a Finvry admin granted this workspace on top of its plan (settings.extra_modules).
+    const p = await db().query<{ modules: string[]; extra: unknown }>("SELECT p.modules, o.settings->'extra_modules' AS extra FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = core.current_org()")
+    plan = new Set([...(p.rows[0]?.modules ?? []), ...(Array.isArray(p.rows[0]?.extra) ? (p.rows[0]!.extra as string[]) : [])])
     const r = await db().query<{ code: string; enabled: boolean }>('SELECT code, enabled FROM core.modules')
     off = new Set(r.rows.filter((m) => !m.enabled).map((m) => m.code))
   }

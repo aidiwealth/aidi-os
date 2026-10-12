@@ -25,6 +25,14 @@ async function upload(ev: Event) {
   if (n) ok.value = n === 1 ? 'File sent to our team.' : n + ' files sent to our team.'
   busy.value = false; input.value = ''; note.value = ''; await refresh()
 }
+// Agreements for this request: sign one the team sent, or open a signed copy.
+interface Ag { id: string; title: string; status: string; effective_date: string; signed_at: string | null; signer_name: string | null; body: string | null }
+const { data: ags, refresh: rags } = await useFetch<Ag[]>('/api/portal/agreements', { query: { job: id }, default: () => [] })
+const pending = computed(() => (ags.value ?? []).filter((a) => a.status === 'pending'))
+const signing = ref<Ag | null>(null); const sv = ref({ name: '', kind: 'typed' as 'typed' | 'drawn' | 'uploaded', png: '', agree: false }); const sBusy = ref(false); const sErr = ref('')
+const sReady = computed(() => sv.value.name.trim().length > 1 && !!sv.value.png && sv.value.agree)
+async function signAg() { if (!signing.value) return; sBusy.value = true; sErr.value = ''; try { await $fetch('/api/portal/agreements/' + signing.value.id + '/sign', { method: 'POST', body: sv.value }); signing.value = null; ok.value = 'Signed. A copy is in your email and on this request.'; await Promise.all([rags(), refresh()]) } catch (e) { sErr.value = portalErr(e) } finally { sBusy.value = false } }
+async function openAg(aid: string) { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/portal/agreements/' + aid + '/pdf'); if (w) w.location.href = r.url } catch (e) { w?.close(); msg.value = portalErr(e) } }
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/portal/documents/' + docId); window.open(r.url, '_blank') } catch (e) { msg.value = portalErr(e) } }
 const { data: wal, refresh: rwal } = await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
 const paying = ref('')
@@ -66,6 +74,7 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
     </ol>
     <div v-if="job.status === 'waiting_client'" class="need"><b>We need something from you.</b> Please read the latest message from our team below, then send what is needed.</div>
     <ServiceNotice v-else-if="job.status !== 'completed'" compact />
+    <div v-for="a in pending" :key="a.id" class="sign"><div><b>Please sign: {{ a.title }}</b><span>Effective {{ day(a.effective_date) }}. Our agreement for this request: service levels, fees and refunds.</span></div><button type="button" class="btn" @click="signing = a; sErr = ''">Review and sign</button></div>
     <p v-if="ok" class="flash ok" role="status">{{ ok }}</p><p v-if="msg" class="flash error" role="alert">{{ msg }}</p>
 
     <div class="grid">
@@ -93,6 +102,8 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
       </div>
 
       <aside class="col">
+        <div v-if="(ags ?? []).some((a) => a.status === 'signed')" class="card"><div class="ch"><h2>Agreements</h2></div>
+          <button v-for="a in (ags ?? []).filter((x) => x.status === 'signed')" :key="a.id" type="button" class="agr" @click="openAg(a.id)"><FileBadge name="a.pdf" size="sm" /><span><b>{{ a.title }}</b><em>Signed by {{ a.signer_name }} · {{ day(a.signed_at!) }}</em></span></button></div>
         <div class="card bill">
           <div class="ch"><h2>Billing</h2><NuxtLink to="/client/invoices" class="more">All invoices →</NuxtLink></div>
           <div v-for="i in data.invoices" :key="i.id" class="bi">
@@ -113,6 +124,10 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
         </form>
       </aside>
     </div>
+    <AppModal :open="!!signing" :title="signing?.title ?? ''" wide @close="signing = null">
+      <AgreementSign v-if="signing" v-model="sv" :title="signing.title" :md="signing.body ?? ''" /><p v-if="sErr" class="error">{{ sErr }}</p>
+      <template #foot><button type="button" class="btn secondary" @click="signing = null">Cancel</button><button type="button" class="btn" :disabled="!sReady || sBusy" @click="signAg">{{ sBusy ? 'Signing…' : 'Sign agreement' }}</button></template>
+    </AppModal>
   </section>
 </template>
 
@@ -157,4 +172,6 @@ label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); border-radius: 0; background: #fff; color: var(--c-ink); } textarea { resize: vertical; } form .btn { align-self: flex-start; }
 @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .top { flex-direction: column; } .steps b { display: none; } }
+.sign { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: #eef4ff; border: 1px solid #c9d8f5; padding: 14px 18px; margin: 0 0 16px; } .sign div { display: flex; flex-direction: column; gap: 2px; } .sign span { font-size: 13.5px; color: var(--c-ink-soft); }
+.agr { display: flex; gap: 10px; align-items: center; width: 100%; background: none; border: 0; border-top: 1px solid var(--c-rule); padding: 10px 0; font: inherit; text-align: left; cursor: pointer; } .agr span { display: flex; flex-direction: column; } .agr b { font-weight: 500; } .agr em { font-style: normal; font-size: 12px; color: var(--c-muted); } .agr:hover b { color: var(--c-blue-deep); }
 </style>

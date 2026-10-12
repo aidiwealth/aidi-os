@@ -27,7 +27,13 @@ const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), 
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' }
 function next() { msg.value = ''; if (step.value === 1 && (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))) { msg.value = 'Add your name and a valid email.'; return } if (step.value === 2 && !f.company.trim()) { msg.value = 'Add your company name.'; return } if (step.value === 2 && !f.country) { msg.value = 'Choose your country.'; return } step.value++ }
 watch(() => f.country, () => { if (f.entity_type && !(f.entity_type in TYPES.value)) f.entity_type = '' })
-async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type === 'local' ? 'other' : f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+// Terms of Service and Data Privacy Agreement (Nigerian or California/US versions by country), signed with the account.
+const agDocs = ref<{ code: string; title: string; md: string }[]>([])
+const agree = ref({ name: '', kind: 'typed' as 'typed' | 'drawn' | 'uploaded', png: '', agree: false })
+const agreed = computed(() => agree.value.name.trim().length > 1 && !!agree.value.png && agree.value.agree)
+async function loadAgreements() { try { const r = await $fetch<{ docs: { code: string; title: string; md: string }[] }>('/api/public/agreements', { query: { country: f.country, company: f.company, name: f.name, email: f.email } }); agDocs.value = r.docs; if (!agree.value.name) agree.value.name = f.name } catch { agDocs.value = [] } }
+watch(step, (v) => { if (v === 3) loadAgreements() })
+async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type === 'local' ? 'other' : f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan, agree: agree.value } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // six code boxes: type, paste, backspace
 const digits = ref<string[]>(['', '', '', '', '', '']); const boxes = ref<HTMLInputElement[]>([])
 function onDigit(i: number, e: Event) { const v = (e.target as HTMLInputElement).value.replace(/\D/g, ''); if (v.length > 1) { fill(v); return } digits.value[i] = v; if (v && i < 5) boxes.value[i + 1]?.focus(); sync() }
@@ -76,7 +82,9 @@ const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
           <div class="plans"><label v-for="p in data?.plans ?? []" :key="p.code" class="pc" :class="{ on: f.plan === p.code, pop: p.code === 'company_startup' }"><input v-model="f.plan" type="radio" :value="p.code" class="sr">
             <span class="ph"><b>{{ p.name }}</b><i v-if="p.code === 'company_startup'">Most popular</i></span><span class="pp"><strong>{{ amount(p) }}</strong><em>{{ (ngn ? p.ngn : p.usd) ? '/ month' : p.code === 'company_free' ? 'forever' : '' }}</em></span>
             <ul><li v-for="x in FEATS[p.code] ?? [p.description]" :key="x">{{ x }}</li></ul></label></div>
-          <button class="go" type="submit" :disabled="busy">{{ busy ? 'Creating your account…' : 'Create account' }}</button><button class="back" type="button" @click="step--">← Back</button></form>
+          <div class="agb"><b>Sign our agreements</b><p class="hint">Our Terms of Service and Data Privacy Agreement{{ isNigeria(f.country) ? ' under Nigerian law' : ' under California and US federal law' }}. A signed copy goes to your email and your Finvry Documents.</p>
+            <ClientOnly><AgreementSign v-if="agDocs.length" v-model="agree" compact title="" md="" :docs="agDocs" /></ClientOnly><p v-if="!agDocs.length" class="hint">Loading the agreements…</p></div>
+          <button class="go" type="submit" :disabled="busy || !agreed">{{ busy ? 'Creating your account…' : 'Create account' }}</button><button class="back" type="button" @click="step--">← Back</button></form>
         <form v-else @submit.prevent="verify"><h1>Check your email</h1><p class="hint">We sent a 6-digit code to <b>{{ f.email }}</b>. It expires in 10 minutes.</p>
           <div class="otp" @paste="onPaste"><input v-for="(d, i) in digits" :key="i" :ref="(el) => { if (el) boxes[i] = el as HTMLInputElement }" :value="d" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :aria-label="'Digit ' + (i + 1)" @input="onDigit(i, $event)" @keydown="onKey(i, $event)"></div>
           <button class="go" type="submit" :disabled="busy || f.code.length !== 6">{{ busy ? 'Checking…' : 'Open Finvry' }}</button>
@@ -123,4 +131,5 @@ input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 1
 .error { color: var(--c-danger); margin: 16px 0 0; font-size: 14px; } .foot { margin: 26px 0 0; font-size: 14px; color: var(--c-muted); } .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
 @media (max-width: 900px) { .su { grid-template-columns: 1fr; } .side { padding: 28px 24px; gap: 22px; } .pitch, .trust, .legal, .rail em { display: none; } .rail { flex-direction: row; gap: 8px; } .rail li { border: 0 !important; padding: 0; } .rail b { display: none; } .pane { align-items: flex-start; padding: 32px 20px; } }
 .gate { opacity: .45; pointer-events: none; transition: opacity .4s; }
+.agb { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 4px; padding-top: 16px; border-top: 1px solid #dfe3e9; } .agb > b { font-size: 15px; }
 </style>

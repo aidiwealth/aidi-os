@@ -1,7 +1,7 @@
 import { mdPlain, mdRender } from '../../shared/markdown'
 // Transactional email through Resend. Fails loudly; never reports success it did not get.
-export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry' }): Promise<void> {
-  const extra = { replyTo: input.replyTo, headers: input.headers }
+export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry'; attachments?: { filename: string; content: Uint8Array }[] }): Promise<void> {
+  const extra = { replyTo: input.replyTo, headers: input.headers, attachments: input.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString('base64') })) }
   const { resendApiKey } = useRuntimeConfig()
   // Brand: the workspace's (or, before sign-in, the address's) name, logo, links and sender
   const b = brands()[input.brand ?? await resolveBrand()]
@@ -18,7 +18,7 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html, ...(extra.replyTo ? { reply_to: extra.replyTo } : {}), ...(extra.headers ? { headers: extra.headers } : {}) })
+    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html, ...(extra.replyTo ? { reply_to: extra.replyTo } : {}), ...(extra.headers ? { headers: extra.headers } : {}), ...(extra.attachments?.length ? { attachments: extra.attachments } : {}) })
   })
   if (!res.ok) throw new Error('Resend ' + res.status + ': ' + (await res.text()).slice(0, 300))
 }
@@ -339,4 +339,19 @@ export async function sendSupportReply(to: string, subject: string, bodyHtml: st
   const headers: Record<string, string> = {}
   if (inReplyTo) { headers['In-Reply-To'] = inReplyTo; headers.References = [references, inReplyTo].filter(Boolean).join(' ') }
   await sendEmail({ to, subject, text: bodyText, html: shell(bodyHtml, bodyText.slice(0, 120)), fromName: 'Finvry Support', replyTo: support, headers, brand: 'finvry' })
+}
+
+// A signed agreement: a copy (PDF attached) to the signer, and to the services team.
+export async function sendAgreementCopy(input: { to: string; title: string; who: string; company: string; files: { filename: string; content: Uint8Array }[]; link?: string; team: boolean }): Promise<void> {
+  const head = input.team ? input.who + ' (' + input.company + ') signed the ' + input.title : 'Your signed ' + input.title
+  const body = input.team ? (input.files.length > 1 ? 'Signed copies are' : 'A signed copy is') + ' attached and saved with the client\'s records.' : 'Thank you, ' + input.who + '. ' + (input.files.length > 1 ? 'Signed copies are' : 'A signed copy is') + ' attached for your records, and saved in your Finvry account.'
+  const html = shell(h1(esc(head)) + para(esc(body)) + (input.link ? button(input.team ? 'Open in Finvry →' : 'View in Finvry →', input.link) : ''), head)
+  await sendEmail({ to: input.to, subject: head, text: head + '\n\n' + body + (input.link ? '\n\n' + input.link : ''), html, brand: 'finvry', attachments: input.files })
+}
+
+// Ask a client to sign an agreement for one of their jobs.
+export async function sendAgreementRequest(input: { to: string; contact: string; title: string; jobTitle: string; effective: string; link: string }): Promise<void> {
+  const head = 'Please sign: ' + input.title
+  const html = shell(h1(esc(head)) + para('Hi ' + esc(input.contact || 'there') + ', please review and sign the ' + esc(input.title) + ' for <b>' + esc(input.jobTitle) + '</b>, effective ' + esc(input.effective) + '. It takes a minute: type, draw or upload your signature. You will get a signed copy by email.') + button('Review and sign →', input.link), head)
+  await sendEmail({ to: input.to, subject: head + ' — ' + input.jobTitle, text: head + '\n\n' + input.jobTitle + ', effective ' + input.effective + '\n\n' + input.link, html, brand: 'finvry' })
 }

@@ -64,6 +64,14 @@ async function run(fn: () => Promise<unknown>) { busy.value = true; msg.value = 
 const tellClient = ref(true)
 // Client emails on/off for this client (all their jobs). Off: updates still show on their job page, no email goes out.
 const muted = computed(() => !!job.value.emails_muted)
+// Agreements on this job: the SLA the client signed with the order, or one the team sends (back-dated if needed).
+interface Ag { id: string; title: string; status: string; effective_date: string; signed_at: string | null; signer_name: string | null; signer_email: string | null; signature_kind: string | null; created_at: string }
+const { data: ags, refresh: rags } = await useFetch<Ag[]>('/api/services/' + id + '/agreements', { default: () => [] })
+const ag = reactive({ open: false, effective_date: '', scope: '', notes: '', email: true })
+function openAgSend() { Object.assign(ag, { open: true, effective_date: (job.value.created_at ?? new Date().toISOString()).slice(0, 10), scope: '', notes: '', email: true }) }
+const sendAg = () => run(async () => { const r = await $fetch<{ emailed: boolean }>('/api/services/' + id + '/agreements', { method: 'POST', body: { effective_date: ag.effective_date, scope: ag.scope, notes: ag.notes, email: ag.email } }); ag.open = false; ok.value = 'Agreement sent' + (r.emailed ? ' and emailed to the client.' : '. The client sees it on the request.'); await rags() })
+const withdrawAg = (a: Ag) => { if (window.confirm('Withdraw this unsigned agreement?')) run(async () => { await $fetch('/api/services/agreements/' + a.id, { method: 'DELETE' }); await rags() }) }
+async function openAg(aid: string) { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/services/agreements/' + aid + '/pdf'); if (w) w.location.href = r.url } catch { w?.close() } }
 const toggleEmails = () => run(async () => { const m = !muted.value; await $fetch('/api/services/clients/' + job.value.client_id + '/emails', { method: 'POST', body: { muted: m } }); ok.value = m ? 'Emails to ' + (job.value.contact_name || job.value.client) + ' are off. Updates still appear on their job page.' : 'Emails to the client are back on.' })
 const quiet = ' Saved to their job page — emails to this client are off.'
 // Share a file with the client or make it team-only.
@@ -300,6 +308,13 @@ const owners = computed(() => data.value?.people ?? [])
           </div>
         </div>
 
+        <div class="card agc">
+          <div class="agh"><h2>Agreements</h2><button type="button" class="lk" @click="openAgSend">+ Send agreement</button></div>
+          <div v-for="a in ags ?? []" :key="a.id" class="agr" :class="a.status"><FileBadge name="a.pdf" size="sm" /><span><button v-if="a.status === 'signed'" type="button" class="lk" @click="openAg(a.id)">{{ a.title }}</button><b v-else>{{ a.title }}</b>
+            <em>{{ a.status === 'signed' ? 'Signed by ' + a.signer_name + ' · ' + day(a.signed_at!.slice(0, 10)) : a.status === 'pending' ? 'Waiting for the client · effective ' + day(a.effective_date) : 'Withdrawn' }}</em></span>
+            <button v-if="a.status === 'pending'" type="button" class="lk red" @click="withdrawAg(a)">Withdraw</button></div>
+          <p v-if="!(ags ?? []).length" class="muted small0">No agreement on file. Send the client our Service Level Agreement to sign, dated when the work started.</p>
+        </div>
         <div class="card bill">
           <h2>Billing</h2>
           <div v-for="i in data.invoices" :key="i.id" class="bw">
@@ -325,6 +340,16 @@ const owners = computed(() => data.value?.people ?? [])
         </form>
       </aside>
     </div>
+    <AppModal :open="ag.open" title="Send a service agreement" @close="ag.open = false">
+      <form id="agf" class="agf" @submit.prevent="sendAg">
+        <p class="muted">The client signs our Service Level Agreement for this job from the request in Finvry, or from the job link if they are not on Finvry. The services on this job and their prices are filled in from the price list.</p>
+        <label>Agreement date<input v-model="ag.effective_date" type="date" required :max="new Date().toISOString().slice(0, 10)"><small>Back-date it to when the work started so the agreement covers the whole job.</small></label>
+        <label>Extra scope (optional)<textarea v-model="ag.scope" rows="3" maxlength="5000" placeholder="e.g. Includes preparing and filing the 2025 Delaware franchise tax report." /></label>
+        <label>Notes (optional)<textarea v-model="ag.notes" rows="2" maxlength="2000" placeholder="Shown in the agreement under client notes" /></label>
+        <label class="chk"><input v-model="ag.email" type="checkbox"> Email the client a link to sign</label>
+      </form>
+      <template #foot><button type="button" class="btn secondary" @click="ag.open = false">Cancel</button><button type="submit" form="agf" class="btn" :disabled="busy">{{ busy ? 'Sending…' : 'Send for signature' }}</button></template>
+    </AppModal>
   </section>
   <p v-else-if="error" class="error" role="alert">{{ error.statusCode === 404 ? 'Job not found.' : 'Could not load this job.' }}</p>
 </template>
@@ -421,4 +446,7 @@ textarea { resize: vertical; }
 .oef { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 12px 0 16px; padding: 14px; border: 1px solid var(--c-rule); border-radius: 0; background: #fbfaf7; } .oef .w2 { grid-column: 1 / -1; } .oef .label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--c-muted); }
 .oeh { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted); } .oea { display: flex; justify-content: flex-end; gap: 8px; }
 .voa { display: block; font-style: normal; font-size: 13px; color: var(--c-muted); margin-top: 2px; } .vo { align-items: flex-start; } .h3e { display: flex; justify-content: space-between; align-items: baseline; } .pre { white-space: pre-line; }
+.agc { display: flex; flex-direction: column; gap: 6px; } .agh { display: flex; justify-content: space-between; align-items: baseline; } .agh h2 { margin: 0; } .agr { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--c-rule); } .agr > span { flex: 1; display: flex; flex-direction: column; min-width: 0; } .agr b { font-weight: 500; font-size: 14px; } .agr em { font-style: normal; font-size: 12px; color: var(--c-muted); } .agr.pending em { color: #a5650b; }
+.agc .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .agc .lk.red { color: var(--c-danger); font-size: 12.5px; }
+.agf { display: flex; flex-direction: column; gap: 12px; } .agf label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .agf input, .agf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .agf small { color: var(--c-muted); font-size: 12px; } .agf .chk { flex-direction: row; align-items: center; gap: 8px; } .agf .chk input { width: auto; } .agf .muted { margin: 0; font-size: 13px; }
 </style>

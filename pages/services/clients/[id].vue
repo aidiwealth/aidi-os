@@ -54,6 +54,7 @@ const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients
 const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; read_by_client: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }[]>('/api/services/clients/' + id + '/messages')
 const reply = ref('')
 const sending = ref(false)
+async function delMsgs() { if (!window.confirm('Delete the whole conversation with ' + (data.value?.client.name ?? 'this client') + '? Every message and file shared in it is removed for you and the client. This cannot be undone.')) return; msg.value = ''; ok.value = ''; try { await $fetch('/api/services/clients/' + id + '/messages', { method: 'DELETE' }); ok.value = 'Conversation deleted.'; await rmsgs() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.' } }
 async function sendMsg(body: string, documentId: string | null) { sending.value = true; msg.value = ''; ok.value = ''; try { const r = await $fetch<{ emailed: number }>('/api/services/clients/' + id + '/messages', { method: 'POST', body: { body, document_id: documentId ?? undefined } }); ok.value = data.value?.client.emails_muted ? 'Message saved. Emails to this client are off, so they see it next time they sign in.' : r.emailed ? 'Message sent.' : 'Message saved.'; await rmsgs() } catch (e) { msg.value = err(e) } finally { sending.value = false } }
 const toggleEmails = () => run(async () => { await $fetch('/api/services/clients/' + id + '/emails', { method: 'POST', body: { muted: !data.value?.client.emails_muted } }) }, data.value?.client.emails_muted ? 'Emails to the client are back on.' : 'Emails to this client are off. Messages and updates still appear in their account.')
 const unpaid = computed(() => (data.value?.invoices ?? []).filter((i: { status: string }) => i.status === 'sent').length)
@@ -135,7 +136,7 @@ const inits = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) 
     </template>
 
     <template v-else-if="tab === 'messages'">
-      <div class="mhd"><p class="muted">{{ data.client.on_finvry ? 'They see these under Messages in Finvry' : 'They get these by email (no Finvry account yet)' }}{{ data.client.emails_muted ? ' — emails are off, so nothing is emailed right now.' : ' and get an email for each one.' }} Attach files with the paperclip or by dragging them in.</p></div>
+      <div class="mhd"><p class="muted">{{ data.client.on_finvry ? 'They see these under Messages in Finvry' : 'They get these by email (no Finvry account yet)' }}{{ data.client.emails_muted ? ' — emails are off, so nothing is emailed right now.' : ' and get an email for each one.' }} Attach files with the paperclip or by dragging them in.</p><button v-if="msgs?.length" type="button" class="lk red" @click="delMsgs">Delete conversation</button></div>
       <div class="card chat"><ChatThread :messages="msgs ?? []" side="team" :busy="sending" :upload-url="'/api/services/inbox/file?client=' + id" download-base="/api/services/inbox/doc/" :placeholder="'Write to ' + (data.client.contact_name || data.client.name) + '… (⌘/Ctrl + Enter to send)'" @send="sendMsg">
         <template #empty><p v-if="!msgs?.length" class="none">No messages yet. Start the conversation below.</p></template></ChatThread></div>
     </template>
@@ -199,6 +200,6 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .who { display: flex; gap: 16px; align-items: flex-start; } .who .mono { flex: none; width: 52px; height: 52px; background: #eef0f6; color: var(--c-navy); display: grid; place-items: center; font-weight: 700; font-size: 18px; } .who h1 { margin: 0 0 4px; } .who .muted a { color: var(--c-blue-deep); text-decoration: none; }
 .tagl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .tg { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); border: 0; text-transform: capitalize; } .tg.active, .tg.on { background: #e9f6ee; color: #23784a; } .tg.lead { background: #eef4ff; color: #2c5cc5; }
 .tg.sw { cursor: pointer; background: #e9f6ee; color: #23784a; } .tg.sw.off { background: #fdecef; color: #b4234a; }
-.mhd .muted { margin: 0 0 10px; font-size: 13.5px; } .chat { padding: 0 !important; height: 560px; display: flex; flex-direction: column; overflow: hidden; } .none { color: var(--c-muted); text-align: center; margin: auto; }
+.mhd { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; } .mhd .muted { margin: 0 0 10px; font-size: 13.5px; } .mhd .lk { white-space: nowrap; } .chat { padding: 0 !important; height: 560px; display: flex; flex-direction: column; overflow: hidden; } .none { color: var(--c-muted); text-align: center; margin: auto; }
 
 </style>

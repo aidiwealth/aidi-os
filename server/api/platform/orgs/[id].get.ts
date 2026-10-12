@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!id.success) throw apiError('not_found', 'Not found', 404)
   return await asPlatform(async () => {
     const o = await db().query(
-      `SELECT o.id, o.name, o.slug, o.kind, o.status, o.plan_code, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, o.created_at, coalesce(o.settings->>'brand', 'finvry') AS brand, coalesce((o.settings->>'raise_enabled')::boolean, false) AS raise_enabled, coalesce((o.settings->>'raise_fee_pct')::numeric, 4)::float AS raise_fee_pct,
+      `SELECT o.id, o.name, o.slug, o.kind, o.status, o.plan_code, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, o.created_at, coalesce(o.settings->>'brand', 'finvry') AS brand, coalesce((o.settings->>'raise_enabled')::boolean, false) AS raise_enabled, coalesce((o.settings->>'raise_fee_pct')::numeric, 4)::float AS raise_fee_pct, coalesce(o.settings->'extra_modules', '[]'::jsonb) AS extra_modules, p.modules AS plan_modules,
               p.name AS plan, p.seat_limit, p.storage_gb, p.ai_runs_month, p.price_monthly_usd::text AS price
          FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.id = $1`, [id.data])
     if (!o.rows[0]) throw apiError('not_found', 'Not found', 404)
@@ -25,6 +25,10 @@ export default defineEventHandler(async (event) => {
         WHERE a.organization_id = $1 AND a.action LIKE 'platform.%' ORDER BY a.at DESC LIMIT 20`, [id.data])
     const cards = await db().query("SELECT provider, brand, last4, exp_month, exp_year, is_default FROM platform.payment_methods WHERE organization_id = $1 ORDER BY is_default DESC, created_at DESC", [id.data])
     const stor = await storageOf(id.data)
-    return { storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
+    const paidPlans = (await db().query<{ code: string; name: string; modules: string[] }>("SELECT code, name, modules FROM core.plans WHERE code IN ('company_startup', 'company_scale') ORDER BY sort")).rows
+    const own = new Set((o.rows[0] as { plan_modules: string[] }).plan_modules ?? [])
+    const grantable = MODULES.filter((m) => m.switchable && !own.has(m.code) && paidPlans.some((p) => p.modules.includes(m.code))).map((m) => ({ code: m.code, label: m.label, plans: paidPlans.filter((p) => p.modules.includes(m.code)).map((p) => p.name) }))
+    const agreements = (await db().query("SELECT s.id, s.title, s.version, s.status, s.signed_at, s.signer_name, s.signer_email FROM legal.signatures s LEFT JOIN services.clients c ON c.id = s.client_id WHERE (s.organization_id = $1 OR c.workspace_id = $1) AND s.status <> 'void' ORDER BY coalesce(s.signed_at, s.created_at) DESC", [id.data])).rows
+    return { agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
   })
 })

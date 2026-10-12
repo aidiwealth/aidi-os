@@ -12,6 +12,12 @@ const reply = ref('')
 const state = reactive({ busy: false, msg: '', ok: '' })
 const fileEl = ref<HTMLInputElement | null>(null)
 const over = ref(false)
+interface Ag { id: string; title: string; status: string; effective_date: string; signed_at: string | null; signer_name: string | null; body: string | null }
+const { data: ags, refresh: rags } = await useFetch<Ag[]>('/api/public/job/' + token + '/agreements', { key: 'pub-job-ag-' + token, default: () => [] })
+const signing = ref<Ag | null>(null); const sv = ref({ name: '', kind: 'typed' as 'typed' | 'drawn' | 'uploaded', png: '', agree: false }); const sBusy = ref(false); const sErr = ref('')
+const sReady = computed(() => sv.value.name.trim().length > 1 && !!sv.value.png && sv.value.agree)
+async function signAg() { if (!signing.value) return; sBusy.value = true; sErr.value = ''; try { await $fetch('/api/public/job/' + token + '/agreements/' + signing.value.id, { method: 'POST', body: sv.value }); signing.value = null; state.ok = 'Signed. A copy is in your email.'; await Promise.all([rags(), refresh()]) } catch (e) { sErr.value = errText(e) } finally { sBusy.value = false } }
+async function openAg(aid: string) { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/public/job/' + token + '/agreements/' + aid); if (w) w.location.href = r.url } catch (e) { w?.close(); state.msg = errText(e) } }
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Please try again.' }
 async function send() {
   state.busy = true; state.msg = ''; state.ok = ''
@@ -45,6 +51,12 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
         <ol v-if="data.status !== 'cancelled'" class="steps"><li v-for="s in STEPS" :key="s" :class="{ done: STEPS.indexOf(data.status === 'waiting_client' ? 'in_progress' : data.status) >= STEPS.indexOf(s) }">{{ LABEL[s] }}</li></ol>
       </div>
 
+      <div v-for="a in (ags ?? []).filter((x) => x.status === 'pending')" :key="a.id" class="card sign"><div><b>Please sign: {{ a.title }}</b><span>Effective {{ new Date(a.effective_date + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }}. Our agreement for this request: service levels, fees and refunds.</span></div><button type="button" class="btn" @click="signing = a; sErr = ''">Review and sign</button></div>
+      <div v-if="(ags ?? []).some((a) => a.status === 'signed')" class="card"><h2>Agreements</h2><p v-for="a in (ags ?? []).filter((x) => x.status === 'signed')" :key="a.id" class="b"><button type="button" class="lnk" @click="openAg(a.id)">{{ a.title }}</button> — signed by {{ a.signer_name }}</p></div>
+      <AppModal :open="!!signing" :title="signing?.title ?? ''" wide @close="signing = null">
+        <AgreementSign v-if="signing" v-model="sv" :title="signing.title" :md="signing.body ?? ''" /><p v-if="sErr" class="error">{{ sErr }}</p>
+        <template #foot><button type="button" class="btn secondary" @click="signing = null">Cancel</button><button type="button" class="btn" :disabled="!sReady || sBusy" @click="signAg">{{ sBusy ? 'Signing…' : 'Sign agreement' }}</button></template>
+      </AppModal>
       <div class="card">
         <h2>Reply or send documents</h2>
         <form class="reply" @submit.prevent="send">
@@ -94,4 +106,5 @@ textarea { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid
 .h { margin: 0; font-weight: 500; color: var(--c-navy); } .b { margin: 4px 0 0; white-space: pre-wrap; } .m { margin: 4px 0 0; font-size: 12px; color: var(--c-muted); }
 .error { color: var(--c-danger); margin: 8px 0 0; } .ok { color: var(--c-ok); margin: 8px 0 0; } .muted { color: var(--c-muted); }
  .b.md { white-space: normal; line-height: 1.55; } .md :deep(p) { margin: 0 0 8px; } .md :deep(p:last-child) { margin-bottom: 0; } .md :deep(ul), .md :deep(ol) { margin: 4px 0 8px; padding-left: 20px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(blockquote) { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--c-rule-strong); } .md :deep(h2), .md :deep(h3), .md :deep(h4) { font-size: 15px; margin: 6px 0; }
+.sign { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: #eef4ff; border-color: #c9d8f5; } .sign div { display: flex; flex-direction: column; gap: 2px; } .sign span { font-size: 13.5px; color: var(--c-ink-soft); } .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 </style>
