@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { MSG_CATEGORIES } from '~/shared/message-categories'
 import { mdRender } from '~/shared/markdown'
 // A conversation: messages by day, attachments, a composer with a paperclip (drag a file onto the chat too).
-interface Msg { id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }
+interface Msg { category?: string | null; id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }
 const props = defineProps<{ messages: Msg[]; side: 'team' | 'client'; closed?: boolean; busy?: boolean; uploadUrl: string; downloadBase: string; placeholder?: string }>()
-const emit = defineEmits<{ send: [body: string, documentId: string | null] }>()
+const emit = defineEmits<{ send: [body: string, documentId: string | null, category: string] }>()
+// The team can label a message (state notice, bank notice, mail received…); clients see the label as a tag.
+const cat = ref('general')
 const text = ref(''); const att = ref<{ id: string; name: string } | null>(null); const up = ref(false); const msg = ref(''); const box = ref<HTMLElement | null>(null); const over = ref(false)
 const scroll = () => nextTick(() => { if (box.value) box.value.scrollTop = box.value.scrollHeight })
 watch(() => props.messages.length, scroll); onMounted(scroll)
@@ -12,7 +15,7 @@ async function attach(files: File[]) { const f = files[0]; if (!f) return; up.va
 function pick(e: Event) { attach(Array.from((e.target as HTMLInputElement).files ?? [])); (e.target as HTMLInputElement).value = '' }
 function drop(e: DragEvent) { over.value = false; attach(Array.from(e.dataTransfer?.files ?? [])) }
 const hasText = computed(() => text.value.replace(/[\s\u00a0]|&nbsp;|<br\s*\/?>/g, '').length > 0)
-function send() { if (!hasText.value && !att.value) return; emit('send', hasText.value ? text.value.trim() : '', att.value?.id ?? null); text.value = ''; att.value = null }
+function send() { if (!hasText.value && !att.value) return; emit('send', hasText.value ? text.value.trim() : '', att.value?.id ?? null, cat.value); text.value = ''; att.value = null; cat.value = 'general' }
 function key(e: KeyboardEvent) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() } }
 // Messages are written in the rich editor (Markdown); older plain-text messages keep their line breaks.
 const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(s) ? s : s.replace(/\n/g, '  \n'))
@@ -29,7 +32,7 @@ const size = (b: number | null) => (b ? (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' 
       <template v-for="(m, i) in messages" :key="m.id">
         <div v-if="i === 0 || dayKey(messages[i - 1]!.created_at) !== dayKey(m.created_at)" class="day"><span>{{ dayLabel(m.created_at) }}</span></div>
         <div class="row" :class="{ me: mine(m) }"><span v-if="!mine(m)" class="av">{{ initials(m.author) }}</span>
-          <div class="bub"><span v-if="!mine(m)" class="who">{{ m.author ?? (m.from_team ? 'Aidi team' : 'Client') }}</span><div v-if="m.body" class="mdb" v-html="rich(m.body)" />
+          <div class="bub"><span v-if="m.category && m.category !== 'general'" class="ctag" :data-c="m.category">{{ MSG_CATEGORIES[m.category] ?? m.category }}</span><span v-if="!mine(m)" class="who">{{ m.author ?? (m.from_team ? 'Aidi team' : 'Client') }}</span><div v-if="m.body" class="mdb" v-html="rich(m.body)" />
             <button v-if="m.doc_id" type="button" class="file" @click="open(m.doc_id)"><FileBadge :name="m.doc_name" /><span class="fx"><b>{{ m.doc_name }}</b><em>{{ size(m.doc_size) }} · Open</em></span></button>
             <span class="tm">{{ time(m.created_at) }}</span></div></div>
       </template>
@@ -37,6 +40,7 @@ const size = (b: number | null) => (b ? (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' 
     </div>
     <p v-if="closed" class="closed">This conversation is closed. Sending a message starts a new one.</p>
     <div v-if="att" class="att"><FileBadge :name="att.name" size="sm" /> {{ att.name }} <button type="button" aria-label="Remove" @click="att = null">×</button></div>
+    <div v-if="side === 'team'" class="cbar"><label>Type<select v-model="cat" aria-label="Message type"><option v-for="(l, k) in MSG_CATEGORIES" :key="k" :value="k">{{ l }}</option></select></label><span v-if="cat !== 'general'" class="ctag" :data-c="cat">{{ MSG_CATEGORIES[cat] }}</span><span v-if="cat !== 'general'" class="hint">Shown to the client and in the email subject</span></div>
     <form class="cmp" @submit.prevent="send"><label class="clip" :title="up ? 'Uploading…' : 'Attach a file'"><input type="file" @change="pick"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.5 8.5l-5.8 5.8a2.5 2.5 0 0 1-3.5-3.5l6.4-6.4a1.7 1.7 0 0 1 2.4 2.4l-6.2 6.2" /></svg></label>
       <div class="ed" @keydown="key"><ClientOnly><RichEditor v-model="text" compact minimal :min-height="70" :max-length="5000" :placeholder="up ? 'Uploading…' : placeholder ?? 'Write a message… (⌘/Ctrl + Enter to send)'" /><template #fallback><textarea rows="3" disabled /></template></ClientOnly></div><button class="btn" type="submit" :disabled="busy || up || (!hasText && !att)">Send</button></form>
     <p v-if="msg" class="error">{{ msg }}</p>
@@ -54,4 +58,6 @@ const size = (b: number | null) => (b ? (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' 
 .closed { margin: 0; padding: 8px 16px; font-size: 13px; background: #fbf3e2; color: #7a5410; border-top: 1px solid var(--c-rule); } .att { padding: 6px 16px; font-size: 13px; border-top: 1px solid var(--c-rule); background: #fff; } .att button { background: none; border: 0; cursor: pointer; font-size: 16px; }
 .cmp { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--c-rule); align-items: flex-end; background: #fff; } .ed { flex: 1; min-width: 0; } .ed textarea { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid var(--c-rule-strong); }
 .clip { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--c-rule-strong); cursor: pointer; color: var(--c-ink-soft); } .clip:hover { color: var(--c-blue-deep); border-color: var(--c-blue-deep); } .clip input { position: absolute; inset: 0; opacity: 0; cursor: pointer; } .clip svg { width: 18px; height: 18px; } .error { color: var(--c-danger); margin: 6px 14px; }
+.ctag { display: inline-block; align-self: flex-start; font-size: 11.5px; font-weight: 600; padding: 2px 8px; margin-bottom: 4px; background: #eef4ff; color: #2c5cc5; } .ctag[data-c="state_notice"], .ctag[data-c="tax_notice"], .ctag[data-c="legal"] { background: #fdecef; color: #b4234a; } .ctag[data-c="bank_notice"], .ctag[data-c="billing"] { background: #fff6e6; color: #a5650b; } .ctag[data-c="mail"] { background: #e9f6ee; color: #23784a; }
+.cbar + .cmp { border-top: 0; } .cbar { display: flex; gap: 10px; align-items: center; padding: 8px 16px 0; border-top: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .cbar label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--c-muted); } .cbar select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); background: #fff; } .cbar .ctag { margin: 0; } .cbar .hint { font-size: 12px; color: var(--c-muted); }
 </style>

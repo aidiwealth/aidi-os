@@ -9,7 +9,7 @@ const parts = computed(() => {
   const n = Number(props.value), a = Math.abs(n)
   const [i, d] = a.toFixed(2).split('.')
   const c = compact ? compactNum(n) : null
-  return { s: n < 0 ? '−' : props.sign === 'always' && n > 0 ? '+' : '', sym: SYM[props.currency] ?? props.currency + ' ', i: c ?? Number(i).toLocaleString('en-US'), d: c ? '' : d }
+  return { s: n < 0 ? '−' : props.sign === 'always' && n > 0 ? '+' : '', sym: SYM[props.currency] ?? props.currency + ' ', i: c ?? Number(i).toLocaleString('en-US'), d: c || (compact && d === '00') ? '' : d }
 })
 </script>
 <template><span v-if="parts" class="mny" :class="{ muted }">{{ parts.s }}{{ parts.sym }}{{ parts.i }}<sup v-if="parts.d">.{{ parts.d }}</sup></span><span v-else class="mny muted">—</span></template>

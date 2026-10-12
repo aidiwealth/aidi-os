@@ -38,6 +38,6 @@ const tag = computed(() => (props.to ? Link : props.clickable ? 'button' : 'div'
 .fx-sx { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .fx-sx em { font-style: normal; font-size: 13px; font-weight: 500; color: var(--c-muted); }
 .fx-sx b { font-family: var(--font-heading); font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fx-sx b.red { color: var(--c-danger); } .fx-sx b.pos { color: var(--c-ok); }
-.fx-sx b :deep(*) { font: inherit; color: inherit; }
+.fx-sx b :deep(*) { font-family: inherit; font-weight: inherit; color: inherit; } .fx-sx b :deep(sup) { font-size: .5em; vertical-align: .75em; line-height: 0; margin-left: 1px; } .fx-sx b :deep(.mny) { white-space: nowrap; }
 .fx-sx i { font-style: normal; font-size: 12px; color: var(--c-muted); } .fx-sx i.up { color: var(--c-ok); } .fx-sx i.dn, .fx-sx i.red { color: var(--c-danger); } .fx-sx i.warn { color: var(--c-warn); }
 </style>

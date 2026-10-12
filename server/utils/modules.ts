@@ -32,6 +32,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'entities', group: 'fo', label: 'Entities', to: '/entities', roles: ['gp', 'team', 'family'], api: ['/api/entities/'], pages: ['/entities'], switchable: true },
   { code: 'documents', group: 'fo', label: 'Documents', to: '/documents', roles: ['gp', 'team', 'family'], api: ['/api/documents', '/api/docgen'], pages: ['/documents'], switchable: true },
   { code: 'compliance', group: 'fo', label: 'Compliance', to: '/compliance', roles: ['gp', 'team', 'family'], api: ['/api/compliance', '/api/public/cron/compliance'], pages: ['/compliance'], switchable: true },
+  { code: 'meetings', group: 'fo', label: 'Meeting minutes', to: '/meetings', roles: ['gp', 'team', 'family'], api: ['/api/meetings'], pages: ['/meetings'], switchable: true },
   { code: 'governance', group: 'fo', label: 'Trusts & governance', to: '/governance', roles: ['family', 'gp'], api: ['/api/governance'], pages: ['/governance'], switchable: true },
   { code: 'banking', group: 'fo', label: 'Bank & cash', to: '/banking', roles: ['gp', 'family'], api: ['/api/banking'], pages: ['/banking'], switchable: true },
   { code: 'fo_analytics', group: 'fo', label: 'Analytics', to: '/family-office/analytics', roles: ['gp', 'team', 'family'], api: ['/api/fo-analytics'], pages: ['/family-office'], switchable: true },

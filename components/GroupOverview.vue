@@ -7,6 +7,10 @@ const { data: modsO } = await useFetch<{ code: string; usable: boolean }[]>('/ap
 const has = (c: string) => !!modsO.value?.some((m) => m.code === c && m.usable)
 const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') ? [['cs', 'Client services']] : []), ...(has('wealth_mgmt') ? [['wm', 'Wealth management']] : [])] as [string, string][])
 const otab = ref(String(useRoute().query.tab ?? 'overview'))
+// Recent team meetings for the companies this person is assigned to (meetings they attended first).
+interface Mt { id: string; title: string; kind: string; held_at: string; entity: string | null; status: string; summary: string | null; open_actions: number; mine: number; attended: boolean }
+const { data: mtg } = await useFetch<{ meetings: Mt[]; scoped: boolean }>('/api/meetings/recent', { default: () => ({ meetings: [], scoped: false }), immediate: has('meetings') })
+const mdate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 type Pt = { period: string; value: number }
 interface O {
   name: string; org: string; today: string
@@ -76,7 +80,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
     </div>
 
-    <div class="two">
+    <div class="two" :class="{ w3: has('meetings') }">
       <div class="card att">
         <h2>Needs attention</h2>
         <ul v-if="data.attention.length"><li v-for="(a, i) in data.attention" :key="i"><NuxtLink :to="a.to"><span class="dot" :class="a.tone" />{{ a.text }}<AppIcon name="right" class="go" /></NuxtLink></li></ul>
@@ -90,6 +94,14 @@ const empty = computed(() => !!data.value && !kpis.value.length)
         <h2>Recent activity</h2>
         <ul v-if="data.activity.length" class="tl"><li v-for="(a, i) in data.activity" :key="i"><span class="ic"><AppIcon :name="a.area" /></span><span class="tt"><b>{{ a.text }}</b><em>{{ a.who ?? 'System' }} · {{ ago(a.at) }}</em></span></li></ul>
         <EmptyState v-else compact icon="home" title="No activity yet" />
+      </div>
+      <div v-if="has('meetings')" class="card mtg">
+        <div class="mh"><h2>Team meetings</h2><NuxtLink to="/meetings/new" class="lk">+ Log</NuxtLink></div>
+        <p class="ms">{{ mtg?.scoped ? 'For the companies you are assigned to' : 'Across the group' }} · last 120 days</p>
+        <NuxtLink v-for="m in mtg?.meetings ?? []" :key="m.id" :to="'/meetings/' + m.id" class="mi"><span class="md">{{ mdate(m.held_at) }}</span><span class="mt"><b>{{ m.title }}</b><em>{{ m.entity ?? 'Group' }}{{ m.status === 'draft' ? ' · draft' : '' }}</em><span v-if="m.summary" class="msum">{{ m.summary }}</span>
+          <span v-if="m.open_actions" class="ma">{{ m.open_actions }} open action{{ m.open_actions === 1 ? '' : 's' }}<template v-if="m.mine"> · {{ m.mine }} yours</template></span></span></NuxtLink>
+        <EmptyState v-if="!(mtg?.meetings ?? []).length" compact icon="meetings" title="No meetings logged yet" />
+        <NuxtLink v-if="(mtg?.meetings ?? []).length" to="/meetings" class="lk all">All minutes →</NuxtLink>
       </div>
     </div>
     </template>
@@ -125,7 +137,10 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 .tl .ic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; background: var(--c-paper-2); color: var(--c-blue-deep); } .tl .ic svg { width: 15px; height: 15px; }
 .tt { display: flex; flex-direction: column; } .tt b { font-weight: 500; font-size: 13.5px; color: var(--c-ink); } .tt em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .muted { color: var(--c-muted); }
-@media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two { grid-template-columns: 1fr; } }
+.two.w3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr); }
+.mtg { display: flex; flex-direction: column; } .mh { display: flex; justify-content: space-between; align-items: baseline; } .mh h2 { margin-bottom: 2px !important; } .ms { margin: 0 0 8px; font-size: 12px; color: var(--c-muted); } .mtg .lk { font-size: 13px; color: var(--c-blue-deep); text-decoration: none; } .mtg .all { margin-top: 10px; }
+.mi { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--c-rule); text-decoration: none; color: inherit; } .mi:hover b { color: var(--c-blue-deep); } .md { flex: none; width: 46px; font-size: 12px; font-weight: 600; color: var(--c-muted); padding-top: 2px; } .mt { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .mt b { font-size: 14px; font-weight: 500; } .mt em { font-style: normal; font-size: 12px; color: var(--c-muted); } .msum { font-size: 12.5px; color: var(--c-ink-soft); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .ma { font-size: 11.5px; font-weight: 600; color: #a5650b; }
+@media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two, .two.w3 { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpis, .kpis.n2, .kpis.n3 { grid-template-columns: 1fr; } }
 .wic { width: 64px; height: 64px; border-radius: 50%; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; margin: 0 auto 12px; } .wic :deep(svg) { width: 28px; height: 28px; } .card.none { text-align: center; padding: 44px 24px; }
 .otabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 4px 0 18px; width: fit-content; max-width: 100%; overflow-x: auto; } .otabs button { background: none; border: 0; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .otabs button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }

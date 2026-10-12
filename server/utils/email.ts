@@ -294,10 +294,11 @@ export async function sendInfoRequestEmail(to: string, client: string, company: 
 }
 
 // Client messages.
-export async function sendPortalMessageEmail(to: string, client: string, body: string, link: string | null): Promise<void> {
-  const html = shell(h1('A message from {{FIRM}}') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px 0;margin:0 0 16px;">${jobBody(body)}</div>` +
+export async function sendPortalMessageEmail(to: string, client: string, body: string, link: string | null, category?: string): Promise<void> {
+  const tag = category && category !== 'General' ? category : ''
+  const html = shell((tag ? `<p style="margin:0 0 8px;"><span style="display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;background:#fff6e6;color:#a5650b;">${esc(tag)}</span></p>` : '') + h1(tag ? esc(tag) + ' from {{FIRM}}' : 'A message from {{FIRM}}') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px 0;margin:0 0 16px;">${jobBody(body)}</div>` +
     (link ? button('Reply in your portal →', link) : para('You can reply to this email.')), 'A message from {{FIRM}}')
-  await sendEmail({ to, subject: 'A message from {{FIRM}}' + (client ? ' for ' + client : ''), text: mdPlain(body) + (link ? '\n\nReply in your portal: ' + link : ''), html })
+  await sendEmail({ to, subject: (tag ? tag + ': ' : '') + 'A message from {{FIRM}}' + (client ? ' for ' + client : ''), text: mdPlain(body) + (link ? '\n\nReply in your portal: ' + link : ''), html })
 }
 export async function sendPortalMessageAlert(client: string, who: string, body: string, link: string): Promise<void> {
   const to = await orgNotifyEmails()
