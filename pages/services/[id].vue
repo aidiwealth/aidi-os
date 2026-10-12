@@ -22,6 +22,24 @@ const heading = computed(() => (isOrder.value ? (data.value?.company?.name ?? jo
 const kindLabel = computed(() => (isOrder.value ? 'Order' : SERVICES[job.value.service] ?? 'Job'))
 // Order notes: the description without the lines already shown as service chips.
 const notes = computed(() => (job.value.description ?? '').split('\n').filter((l) => !/^- /.test(l.trim())).join('\n').trim())
+// The order description, read into parts for a clear layout (who placed it, the new company, owners, virtual office, notes).
+const order = computed(() => {
+  const o = { by: null as null | { name: string; email: string; client: boolean }, company: null as null | { name: string; type: string; place: string; check: string; backup: string }, owners: [] as { name: string; pct: number | null }[], vo: '', notes: [] as string[], other: [] as string[] }
+  let inNotes = false
+  for (const raw of (job.value.description ?? '').split('\n')) {
+    const l = raw.trim(); let m: RegExpMatchArray | null
+    if (inNotes) { o.notes.push(raw); continue }
+    if (!l || /^- /.test(l)) continue
+    if ((m = l.match(/^(Logged in the services desk|Ordered in Finvry) by (.+?) \(([^()]+)\)$/))) o.by = { name: m[2]!, email: m[3]!, client: m[1]!.startsWith('Ordered') }
+    else if ((m = l.match(/^New company: (.+?) \(([^)]*)\)(.*)$/))) { const p = m[2]!.split(', '); o.company = { name: m[1]!, type: p[0] ?? '', place: p.slice(1).join(', '), check: m[3]!.match(/name check: ([^;]+)/)?.[1]?.trim() ?? '', backup: m[3]!.match(/backup name:? ([^;]+)/)?.[1]?.trim() ?? '' } }
+    else if ((m = l.match(/^Owners: (.+)$/))) o.owners = m[1]!.split(', ').map((x) => { const k = x.match(/^(.*?)(?: \((\d+(?:\.\d+)?)%\))?$/); return { name: (k?.[1] ?? x).trim(), pct: k?.[2] ? Number(k[2]) : null } })
+    else if ((m = l.match(/^Virtual office location: (.+)$/))) o.vo = m[1]!
+    else if ((m = l.match(/^Notes: ?(.*)$/))) { inNotes = true; if (m[1]) o.notes.push(m[1]) }
+    else o.other.push(raw)
+  }
+  return o
+})
+const CHECK: Record<string, string> = { available: 'Name looks available', taken: 'Name already taken', similar: 'Similar names exist', unknown: 'Check with the state', 'not checked': 'Name not checked yet' }
 const hasIntake = computed(() => !!intakeKindFor(job.value.codes ?? [], job.value.service))
 useHead({ title: () => (data.value ? heading.value : 'Job') })
 
@@ -145,9 +163,22 @@ const owners = computed(() => data.value?.people ?? [])
     <div class="grid">
       <div class="col">
         <RaiseBrief v-if="job.codes?.includes('fundraising')" :job-id="id" />
-        <div v-else-if="notes" class="card">
-          <h2>Order details</h2>
-          <p class="notes" v-html="linkify(notes)" />
+        <div v-else-if="notes" class="card od">
+          <div class="odh"><h2>Order details</h2><span v-if="order.by" class="src" :class="{ cl: order.by.client }">{{ order.by.client ? 'Ordered by the client' : 'Logged by the team' }}</span></div>
+          <p v-if="order.by" class="odby">{{ order.by.name }} · <a :href="'mailto:' + order.by.email">{{ order.by.email }}</a> · {{ day(job.created_at) }}</p>
+          <div v-if="order.company" class="odco">
+            <span class="mono">{{ initials(order.company.name) }}</span>
+            <div class="odci"><span class="lbl">New company</span><b>{{ order.company.name }}</b>
+              <div class="tags"><span v-if="order.company.type" class="tg">{{ order.company.type }}</span><span v-if="order.company.place" class="tg">{{ order.company.place }}</span>
+                <span v-if="order.company.check" class="tg chk" :data-c="order.company.check">{{ CHECK[order.company.check] ?? 'Name check: ' + order.company.check }}</span></div>
+              <span v-if="order.company.backup" class="bk">Backup name: {{ order.company.backup }}</span></div>
+          </div>
+          <dl class="odl">
+            <template v-if="order.owners.length"><dt>Owners</dt><dd><ul class="own"><li v-for="w in order.owners" :key="w.name"><span class="av xs">{{ initials(w.name) }}</span><span class="on">{{ w.name }}</span><span v-if="w.pct != null" class="bar"><i :style="{ width: Math.min(100, w.pct) + '%' }" /></span><b v-if="w.pct != null">{{ w.pct }}%</b></li></ul></dd></template>
+            <template v-if="order.vo"><dt>Virtual office</dt><dd class="vo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>{{ order.vo }}</dd></template>
+            <template v-if="order.notes.length"><dt>Client notes</dt><dd><blockquote class="nq" v-html="linkify(order.notes.join('\n').trim())" /></dd></template>
+            <template v-if="order.other.length"><dt>Also</dt><dd class="notes" v-html="linkify(order.other.join('\n').trim())" /></template>
+          </dl>
         </div>
         <IntakeView v-if="hasIntake" :job-id="id" />
 
@@ -343,4 +374,19 @@ textarea { resize: vertical; }
 .mute .sw { width: 30px; height: 18px; border-radius: 999px; background: var(--c-ok); position: relative; transition: background .15s; } .mute .sw i { position: absolute; top: 2px; left: 14px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
 .mute.off { color: var(--c-danger); border-color: rgba(180,35,24,.35); background: #fff7f6; } .mute.off .sw { background: #c9c5ba; } .mute.off .sw i { left: 2px; }
 .vis { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; } .vt { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; } .vt:disabled { color: var(--c-muted); }
+.od .odh { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .od .odh h2 { margin: 0; }
+.src { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #eef4ff; color: #2c5cc5; } .src.cl { background: #e6f6fa; color: #0e7490; }
+.odby { margin: 6px 0 16px; font-size: 13px; color: var(--c-muted); } .odby a { color: var(--c-blue-deep); text-decoration: none; }
+.odco { display: flex; gap: 14px; align-items: flex-start; padding: 14px; background: var(--c-paper-2); border-radius: 10px; margin-bottom: 14px; }
+.mono { flex: none; width: 44px; height: 44px; border-radius: 10px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+.odci { display: flex; flex-direction: column; gap: 4px; min-width: 0; } .odci .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted); font-weight: 600; } .odci b { font-size: 17px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; } .tg { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #fff; border: 1px solid var(--c-rule); color: var(--c-ink-soft); }
+.tg.chk { border-color: transparent; background: #f1f0ec; color: var(--c-muted); } .tg.chk[data-c="available"] { background: #e9f6ee; color: #23784a; } .tg.chk[data-c="taken"] { background: #fdecef; color: #b4234a; } .tg.chk[data-c="similar"], .tg.chk[data-c="unknown"] { background: #fff6e6; color: #a5650b; }
+.bk { font-size: 12.5px; color: var(--c-muted); }
+.odl { display: grid; grid-template-columns: 130px 1fr; gap: 12px 16px; margin: 0; } .odl dt { font-size: 13px; color: var(--c-muted); padding-top: 4px; } .odl dd { margin: 0; font-size: 14px; }
+.own { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; } .own li { display: grid; grid-template-columns: 28px minmax(0, 1fr) 120px 44px; gap: 10px; align-items: center; } .on { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av.xs { width: 28px; height: 28px; font-size: 11px; background: var(--c-blue-deep); } .bar { height: 6px; border-radius: 999px; background: var(--c-paper-2); overflow: hidden; } .bar i { display: block; height: 100%; background: var(--c-blue-deep); border-radius: 999px; } .own b { text-align: right; font-variant-numeric: tabular-nums; }
+.vo { display: flex; gap: 6px; align-items: center; } .vo svg { width: 16px; height: 16px; color: var(--c-blue-deep); flex: none; }
+.nq { margin: 0; padding: 8px 12px; border-left: 3px solid var(--c-rule-strong); background: #fbfaf7; white-space: pre-wrap; color: var(--c-ink-soft); line-height: 1.55; }
+@media (max-width: 640px) { .odl { grid-template-columns: 1fr; gap: 4px; } .odl dd { margin-bottom: 10px; } .own li { grid-template-columns: 28px 1fr 44px; } .own .bar { display: none; } }
 </style>
