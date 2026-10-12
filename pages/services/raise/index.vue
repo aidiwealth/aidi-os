@@ -17,11 +17,18 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { weekday: 'shor
 <template>
   <section>
     <div class="hd"><div><p class="eyebrow">Services desk</p><h1>Fundraising clients</h1><p class="lead">Companies we raise for. Switch the service on per customer in Console → Customers; the founder's brief lands here.</p></div></div>
-    <div v-if="data?.length" class="kp"><div class="k"><span>Active raises</span><b>{{ data.filter((r) => r.status === 'active').length }}</b><em>{{ data.length }} in total</em></div><div class="k"><span>Total target</span><b>{{ money(sum('target')) }}</b><em>USD raises</em></div><div class="k"><span>Committed</span><b>{{ money(sum('committed')) }}</b></div><div class="k"><span>Closed</span><b>{{ money(sum('closed')) }}</b></div><div class="k"><span>Fees earned</span><b>{{ money(sum('fee')) }}</b><em>on money closed</em></div><div class="k"><span>Upcoming meetings</span><b>{{ upcoming }}</b></div></div>
+    <div v-if="data?.length" class="fx-stats">
+      <StatTile icon="flag" tone="b" label="Active raises" :value="data.filter((r) => r.status === 'active').length" :note="data.length + ' in total'" />
+      <StatTile icon="chart" tone="n" label="Total target (USD)" :value="money(sum('target'))" />
+      <StatTile icon="money" tone="c" label="Committed" :value="money(sum('committed'))" />
+      <StatTile icon="check" tone="g" label="Closed" :value="money(sum('closed'))" />
+      <StatTile icon="billing" tone="a" label="Fees earned" :value="money(sum('fee'))" note="on money closed" />
+      <StatTile icon="calendar" tone="b" label="Upcoming meetings" :value="upcoming" />
+    </div>
     <div v-if="data?.length" class="chips"><button v-for="[k, l] in [['all', 'All'], ['active', 'In progress'], ['intake', 'Getting started'], ['paused', 'Paused'], ['closed', 'Closed']]" :key="k" :class="{ on: filter === k }" @click="filter = k">{{ l }}</button></div>
     <div v-if="list.length" class="grid">
       <NuxtLink v-for="r in list" :key="r.id" :to="'/services/raise/' + r.id" class="rc">
-        <div class="top"><span class="mono">{{ initials(r.client) }}</span><div class="tn"><b>{{ r.client }}</b><span class="sub">{{ r.round || 'Round not set' }} · {{ r.currency }}</span></div><span class="pill" :class="r.status">{{ ST[r.status] ?? r.status }}</span></div>
+        <div class="top"><span class="fx-mono">{{ initials(r.client) }}</span><div class="tn"><b>{{ r.client }}</b><span class="sub">{{ r.round || 'Round not set' }} · {{ r.currency }}</span></div><span class="fx-pill" :class="{ g: r.status === 'active', blue: r.status === 'intake', amber: r.status === 'paused' }">{{ ST[r.status] ?? r.status }}</span></div>
         <div class="prog"><div class="pl"><span><b>{{ pct(r) }}%</b> committed · {{ money(r.totals.committed, r.currency) }}</span><span>Target {{ money(r.totals.target, r.currency) }}</span></div>
           <div class="bar"><i class="c" :style="{ width: share(r, r.totals.closed) + '%' }" /><i class="m" :style="{ width: Math.max(0, share(r, r.totals.committed) - share(r, r.totals.closed)) + '%' }" /></div>
           <div class="lg"><span><i class="c" />Closed</span><span><i class="m" />Committed</span><span><i />To raise</span></div></div>
@@ -35,7 +42,6 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { weekday: 'shor
 </template>
 <style scoped>
 .hd h1 { margin: 0; } .eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .lead { color: var(--c-muted); margin: 4px 0 0; }
-.kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; } .k span { font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .k { border-top: 3px solid var(--c-navy) !important; } .k:nth-child(3) { border-top-color: var(--c-blue-deep) !important; } .k:nth-child(4) { border-top-color: var(--c-ok) !important; } .k:nth-child(5) { border-top-color: #b7791f !important; } .k em { font-style: normal; font-size: 11.5px; color: var(--c-muted); }
 .chips { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; } .chips button { background: #fff; border: 1px solid var(--c-rule); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; } .chips .on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; } .rc { background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 14px; transition: border-color .12s, box-shadow .12s; } .rc:hover { border-color: var(--c-navy); box-shadow: 0 8px 24px rgba(12,26,46,.08); }
 .top { display: flex; align-items: center; gap: 12px; } .tn { flex: 1; min-width: 0; } .top b { font-size: 16.5px; display: block; } .mono { flex: none; width: 42px; height: 42px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; } .sub { font-size: 12.5px; color: var(--c-muted); }
