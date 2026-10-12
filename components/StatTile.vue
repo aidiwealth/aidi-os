@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // The one metric box used across Finvry: white flat box, small grey label, big number, small grey note underneath
 // (Overview style), with an optional soft icon square on the left (client-home style). Clickable with `to` or `clickable`.
-const props = defineProps<{ label: string; value?: string | number; icon?: string; tone?: 'b' | 'n' | 'r' | 'g' | 'a' | 'c'; to?: string; on?: boolean; red?: boolean; note?: string; clickable?: boolean; pos?: boolean; noteTone?: 'up' | 'dn' | 'warn' | 'red' | '' }>()
+const props = defineProps<{ label: string; value?: string | number; icon?: string; tone?: 'b' | 'n' | 'r' | 'g' | 'a' | 'c'; to?: string; on?: boolean; red?: boolean; note?: string; clickable?: boolean; pos?: boolean; noteTone?: 'up' | 'dn' | 'warn' | 'red' | ''; full?: boolean }>()
+import { compactText } from '~/shared/compact'
+provide('compactMoney', true)
+const shown = computed(() => (props.value == null ? props.value : props.full ? String(props.value) : compactText(String(props.value))))
 const P: Record<string, string> = {
   billing: 'M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21V3Zm3 5h4m-4 4h4m-4 4h2',
   briefcase: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16',
@@ -24,7 +27,7 @@ const tag = computed(() => (props.to ? Link : props.clickable ? 'button' : 'div'
 <template>
   <component :is="tag" :to="to" :type="clickable && !to ? 'button' : undefined" class="fx-st" :class="{ on, act: to || clickable, ic: icon }">
     <span v-if="icon" class="fx-si" :class="tone ?? 'n'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="P[icon] ?? P.chart" /></svg></span>
-    <span class="fx-sx"><em>{{ label }}</em><b :class="{ red, pos }"><slot>{{ value }}</slot></b><i v-if="note || $slots.note" :class="noteTone"><slot name="note">{{ note }}</slot></i></span>
+    <span class="fx-sx"><em>{{ label }}</em><b :class="{ red, pos }"><slot>{{ shown }}</slot></b><i v-if="note || $slots.note" :class="noteTone"><slot name="note">{{ note }}</slot></i></span>
   </component>
 </template>
 <style scoped>

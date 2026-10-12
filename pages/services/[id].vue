@@ -399,7 +399,7 @@ textarea { resize: vertical; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .top { flex-direction: column; } .stages button { padding: 8px 10px; font-size: 12.5px; } }
 .mute { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font: inherit; font-size: 13px; background: #fff; border: 1px solid var(--c-rule-strong); border-radius: 0; padding: 5px 12px 5px 6px; cursor: pointer; color: var(--c-ink); }
-.mute .sw { width: 30px; height: 18px; border-radius: 0; background: var(--c-ok); position: relative; transition: background .15s; } .mute .sw i { position: absolute; top: 2px; left: 14px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
+.mute .sw { width: 30px; height: 18px; border-radius: 0; background: var(--c-ok); position: relative; transition: background .15s; } .mute .sw i { position: absolute; top: 2px; left: 14px; width: 14px; height: 14px; border-radius: 0; background: #fff; transition: left .15s; }
 .mute.off { color: var(--c-danger); border-color: rgba(180,35,24,.35); background: #fff7f6; } .mute.off .sw { background: #c9c5ba; } .mute.off .sw i { left: 2px; }
 .vis { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; } .vt { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; } .vt:disabled { color: var(--c-muted); }
 .od .odh { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .od .odh h2 { margin: 0; }
