@@ -1,7 +1,7 @@
 export interface PortfolioRow {
   id: string; name: string; founder_name: string; founder_email: string; latest_period: string | null
   revenue: string | null; cash: string | null; net_burn: string | null; last_request_status: string | null; last_request_period: string | null
-  holder_id: string | null; holder: string | null; relationship: string
+  holder_id: string | null; holder: string | null; relationship: string; finvry: boolean; finvry_new: boolean
 }
 export default defineEventHandler(async (event): Promise<PortfolioRow[]> => {
   await requireRole(event, 'gp', 'team')
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event): Promise<PortfolioRow[]> => {
             (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND period = lp.period AND metric = 'cash') AS cash,
             (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND period = lp.period AND metric = 'net_burn') AS net_burn,
             lr.status AS last_request_status, to_char(lr.period, 'YYYY-MM-DD') AS last_request_period,
-            c.holding_entity_id AS holder_id, he.name AS holder, c.relationship
+            c.holding_entity_id AS holder_id, he.name AS holder, c.relationship, (c.finvry_org_id IS NOT NULL) AS finvry, (c.finvry_new_update IS NOT NULL) AS finvry_new
        FROM portfolio.companies c
        LEFT JOIN core.entities he ON he.id = c.holding_entity_id
        LEFT JOIN LATERAL (SELECT max(period) AS period FROM portfolio.metric_values WHERE company_id = c.id AND coalesce(override_value, founder_value) IS NOT NULL) lp ON true

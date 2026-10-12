@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     return { ok: true, sent: 1 }
   }
   if (b.data.mode === 'publish' || b.data.mode === 'email_publish') await db().query("UPDATE financials.updates SET status = 'published', published_at = coalesce(published_at, now()) WHERE id = $1", [id.data])
-  if (b.data.mode === 'publish') return { ok: true, sent: 0 }
+  if (b.data.mode === 'publish') { if (org.kind === 'company') await notifyPortfolioOfUpdate(org.id, id.data, u.title, org.name).catch((e) => console.error('[updates] portfolio notice', e)); return { ok: true, sent: 0 } }
   const people = await resolveRecipients(u.recipients ?? { lists: [], stages: [], contacts: [], emails: [] })
   if (!people.length) throw apiError('invalid', 'Choose who to send it to in step 2.')
   let sent = 0
@@ -36,5 +36,6 @@ export default defineEventHandler(async (event) => {
   const labels = [...(await db().query<{ name: string }>('SELECT name FROM crm.lists WHERE id = ANY($1::uuid[])', [r.lists])).rows.map((x) => x.name), ...(await db().query<{ name: string }>('SELECT name FROM crm.stages WHERE id = ANY($1::uuid[])', [r.stages])).rows.map((x) => x.name)]
   await db().query('UPDATE financials.updates SET sent_at = coalesce(sent_at, now()), sent_count = (SELECT count(*) FROM financials.update_sends WHERE update_id = $1), sent_to = $2 WHERE id = $1', [id.data, labels])
   await audit({ event, actorUserId: user.userId, action: 'updates.send', objectType: 'update', objectId: id.data, detail: { sent } })
+  if (org.kind === 'company') await notifyPortfolioOfUpdate(org.id, id.data, u.title, org.name).catch((e) => console.error('[updates] portfolio notice', e))
   return { ok: true, sent }
 })

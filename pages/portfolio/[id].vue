@@ -56,6 +56,7 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
     <p class="label">{{ data.company.holder ?? 'No holder' }} · {{ data.company.relationship }} · {{ data.company.founder_name }} · {{ data.company.founder_email }}<template v-if="data.company.deal_id"> · <NuxtLink :to="'/pipeline/' + data.company.deal_id">deal record</NuxtLink></template></p>
     <div class="dh"><h1>{{ data.company.name }}</h1><DeleteButton type="company" :id="id" :name="data.company.name" to="/portfolio" /></div>
 
+    <PortfolioFinvry :company-id="id" @imported="refresh" />
     <div class="top">
       <div class="card insight">
         <h2>What the numbers say</h2>

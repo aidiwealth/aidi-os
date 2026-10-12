@@ -342,6 +342,12 @@ export async function sendSupportReply(to: string, subject: string, bodyHtml: st
   await sendEmail({ to, subject, text: bodyText, html: shell(bodyHtml, bodyText.slice(0, 120)), fromName: 'Finvry Support', replyTo: support, headers, brand: 'finvry' })
 }
 
+// A linked portfolio company sent an investor update on Finvry (to the Aidi OS team holding it).
+export async function sendPortfolioUpdateNotice(to: string, company: string, title: string, link: string): Promise<void> {
+  const html = shell(h1(esc(company) + ' sent an investor update') + para('<b>' + esc(title) + '</b>. Import its figures and notes into the portfolio in one click.') + button('Review and import →', link), company + ' sent an investor update')
+  await sendEmail({ to, subject: company + ' sent an investor update: ' + title, text: company + ' sent "' + title + '". Review and import its figures: ' + link, html, brand: 'aidi' })
+}
+
 // Notice of intent to resign as registered agent (PDF attached).
 export async function sendRaNoticeEmail(input: { to: string; company: string; agent: string; amount: string; due: string; payBy: string; link: string; portal: boolean; file: { filename: string; content: Uint8Array } }): Promise<void> {
   const head = 'Notice of intent to resign as registered agent'

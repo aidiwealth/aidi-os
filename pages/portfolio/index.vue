@@ -4,7 +4,9 @@ useHead({ title: 'Portfolio' })
 const { data, error, refresh } = await useFetch<PortfolioRow[]>('/api/portfolio')
 const { data: candidates, refresh: refreshC } = await useFetch<{ id: string; company: string; founder_name: string | null; email: string | null }[]>('/api/portfolio/candidates')
 const adding = ref(false)
-const form = reactive({ deal_id: '', name: '', founder_name: '', founder_email: '', holding_entity_id: '', relationship: 'investment' })
+const form = reactive({ deal_id: '', name: '', founder_name: '', founder_email: '', holding_entity_id: '', relationship: 'investment', finvry_org_id: '' })
+const fv = ref<{ id: string; name: string } | null>(null); const fvPick = ref(false)
+function pickFinvry(w: { id: string; name: string; owner_name: string | null; owner_email: string | null }) { fv.value = w; form.finvry_org_id = w.id; fvPick.value = false; if (!form.name) form.name = w.name; if (!form.founder_name && w.owner_name) form.founder_name = w.owner_name; if (!form.founder_email && w.owner_email) form.founder_email = w.owner_email }
 const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
 const funds = computed(() => (entities.value ?? []).filter((e) => e.kind === 'fund' || e.kind === 'spv'))
 const holder = ref('')
@@ -29,6 +31,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
     <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select><button class="btn" type="button" @click="adding = true">Add company</button></div></div>
     <AppModal :open="adding" title="Add a portfolio company" @close="adding = false"><form class="mfrm" @submit.prevent="add">
       <label v-if="candidates?.length" class="label">From an Invested deal<select v-model="form.deal_id"><option value="">— Add by hand —</option><option v-for="c in candidates" :key="c.id" :value="c.id">{{ c.company }}</option></select></label>
+      <div class="label">Finvry workspace (optional)<span v-if="fv" class="fvp"><b>{{ fv.name }}</b><button type="button" class="lkb" @click="fv = null; form.finvry_org_id = ''">Remove</button></span><button v-else-if="!fvPick" type="button" class="lkb" @click="fvPick = true">If the company uses Finvry, link it to import its investor updates</button><FinvryPicker v-if="fvPick && !fv" @pick="pickFinvry" /></div>
       <label class="label">Company<input v-model="form.name" required maxlength="200"></label>
       <label class="label">Founder name<input v-model="form.founder_name" required maxlength="200"></label>
       <label class="label">Founder email<input v-model="form.founder_email" type="email" required maxlength="254"></label>
@@ -44,7 +47,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
       <thead><tr><th>Company</th><th>Held by</th><th>Latest month</th><th>Revenue</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
-          <td><NuxtLink :to="'/portfolio/' + r.id" class="co">{{ r.name }}</NuxtLink><span class="sub">{{ r.founder_name }}</span></td>
+          <td><NuxtLink :to="'/portfolio/' + r.id" class="co">{{ r.name }}</NuxtLink><NuxtLink v-if="r.finvry_new" :to="'/portfolio/' + r.id" class="fvn" title="New investor update on Finvry: import its figures">New update</NuxtLink><span class="sub">{{ r.founder_name }}{{ r.finvry ? ' · on Finvry' : '' }}</span></td>
           <td>{{ r.holder ?? '—' }}<span class="sub">{{ REL[r.relationship] }}</span></td>
           <td>{{ mon(r.latest_period) }}</td><td>{{ usd(r.revenue) }}</td><td>{{ usd(r.cash) }}</td><td>{{ runway(r) }}</td>
           <td class="muted">{{ r.last_request_status ? STATUS[r.last_request_status] + ' · ' + mon(r.last_request_period) : 'None yet' }}</td>
@@ -55,6 +58,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 </template>
 
 <style scoped>
+.fvp { display: flex; gap: 10px; align-items: center; font-size: 14px; } .lkb { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .fvn { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; text-decoration: none; }
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; }
 .tools { display: flex; gap: 10px; align-items: center; }
 .add { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; margin-bottom: 20px; }
