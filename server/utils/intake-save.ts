@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { randomUUID } from 'node:crypto'
 import { INTAKE_FORMS, fieldVisible } from '~/shared/intake'
 const EXT: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', heic: 'image/heic', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
-export async function saveIntake(event: H3Event, id: string, clientId: string, kind: 'incorporation' | 'filing', by: string) {
+export async function saveIntake(event: H3Event, id: string, clientId: string, kind: 'incorporation' | 'filing', by: string, team = false) {
   const parts = (await readMultipartFormData(event)) ?? []
   let answers: Record<string, unknown> = {}
   try { answers = JSON.parse(parts.find((p) => p.name === 'answers')?.data.toString('utf8') ?? '{}') } catch { throw apiError('invalid', 'Could not read the form.') }
@@ -32,11 +32,12 @@ export async function saveIntake(event: H3Event, id: string, clientId: string, k
     else if (typeof v === 'string') clean[f.key] = v.trim().slice(0, 3000)
   }
   const missing = form.fields.filter((f) => f.required && !f.showIf && fieldVisible(f, clean) && ((f.type === 'file' || f.type === 'files') ? !files.some((x) => x.field === f.key) : f.type === 'multi' ? !(clean[f.key] as string[] | undefined)?.length : !clean[f.key])).map((f) => f.label)
-  if (missing.length) throw apiError('missing', 'Please complete: ' + missing.join('; '))
+  if (missing.length && !team) throw apiError('missing', 'Please complete: ' + missing.join('; ')) // the team may save partial details
   const ssnRaw = typeof answers.ssn === 'string' ? answers.ssn.replace(/\D/g, '') : ''
   if (ssnRaw && ssnRaw.length !== 9) throw apiError('invalid', 'An SSN has 9 digits.')
   if (prev) await db().query('UPDATE services.intakes SET answers = $2, files = $3, ssn_enc = coalesce($4, ssn_enc), ssn_last4 = coalesce($5, ssn_last4), submitted_by = $6, updated_at = now() WHERE id = $1', [prev.id, JSON.stringify(clean), JSON.stringify(files), ssnRaw ? encryptText(ssnRaw) : null, ssnRaw ? ssnRaw.slice(-4) : null, by])
   else await db().query('INSERT INTO services.intakes (client_id, job_id, kind, answers, files, ssn_enc, ssn_last4, submitted_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [clientId, id, kind, JSON.stringify(clean), JSON.stringify(files), ssnRaw ? encryptText(ssnRaw) : null, ssnRaw ? ssnRaw.slice(-4) : null, by])
-  await db().query("INSERT INTO services.job_events (job_id, kind, body, visible_to_client) VALUES ($1, 'client_message', $2, true)", [id, (prev ? 'Updated' : 'Submitted') + ' the ' + form.title.toLowerCase() + ' (' + files.length + ' file' + (files.length === 1 ? '' : 's') + ').'])
-  await db().query("UPDATE services.jobs SET updated_at = now(), status = CASE WHEN status = 'waiting_client' THEN 'in_progress' ELSE status END WHERE id = $1", [id])
+  if (team) await db().query("INSERT INTO services.job_events (job_id, kind, body, visible_to_client) VALUES ($1, 'note', $2, false)", [id, (prev ? 'Corrected' : 'Filled in') + ' the ' + form.title.toLowerCase() + ' for the client (' + by + ').'])
+  else await db().query("INSERT INTO services.job_events (job_id, kind, body, visible_to_client) VALUES ($1, 'client_message', $2, true)", [id, (prev ? 'Updated' : 'Submitted') + ' the ' + form.title.toLowerCase() + ' (' + files.length + ' file' + (files.length === 1 ? '' : 's') + ').'])
+  await db().query("UPDATE services.jobs SET updated_at = now(), status = CASE WHEN status = 'waiting_client' AND NOT $2 THEN 'in_progress' ELSE status END WHERE id = $1", [id, team])
 }

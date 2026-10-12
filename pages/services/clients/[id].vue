@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { US_STATES } from '~/shared/countries'
 const id = useRoute().params.id as string
 interface Co { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; registration_number: string | null; ein: string | null; formation_date: string | null; fiscal_year_end: string | null; address: string | null; registered_agent: string; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string; notes: string | null }
 interface Pe { id: string; name: string; email: string | null; phone: string | null; role: string; ownership_pct: string | null; company_id: string | null; company: string | null; address: string | null; nationality: string | null; portal_access: boolean }
@@ -33,12 +34,12 @@ const sendTax = () => run(async () => { const r = await $fetch<{ link: string; e
 const RQ: Record<string, string> = { sent: 'Sent', in_progress: 'In progress', submitted: 'Submitted', cancelled: 'Cancelled' }
 const { data: me } = await useFetch<{ platform: boolean }>('/api/auth/me', { key: 'me' })
 // Recurring services (virtual office, registered agent): correct when they started and the next renewal date.
-interface Rn { code: string; name: string; sub: { id: string; interval: string; amount_minor: number; currency: string; status: string; next_charge_at: string; started_on: string | null } | null; obligation: { id: string; next_due: string; recurrence: string } | null }
+interface Rn { code: string; name: string; sub: { id: string; interval: string; amount_minor: number; currency: string; status: string; next_charge_at: string; started_on: string | null; details?: Record<string, string> } | null; obligation: { id: string; next_due: string; recurrence: string } | null }
 const { data: ren, refresh: rren } = await useFetch<{ workspace: boolean; items: Rn[] }>('/api/services/clients/' + id + '/renewals', { lazy: true, server: false })
-const rd = reactive<Record<string, { started_on: string; next_date: string }>>({})
-watch(ren, (v) => { for (const r of v?.items ?? []) rd[r.code] = { started_on: r.sub?.started_on ?? '', next_date: r.sub?.next_charge_at ?? r.obligation?.next_due ?? '' } }, { immediate: true })
+const rd = reactive<Record<string, { started_on: string; next_date: string; country: string; state: string; address: string }>>({})
+watch(ren, (v) => { for (const r of v?.items ?? []) rd[r.code] = { started_on: r.sub?.started_on ?? '', next_date: r.sub?.next_charge_at ?? r.obligation?.next_due ?? '', country: r.sub?.details?.country ?? 'United States', state: r.sub?.details?.state ?? '', address: r.sub?.details?.address ?? '' } }, { immediate: true })
 const todayIso = new Date().toISOString().slice(0, 10)
-const saveRen = (code: string, extra: Record<string, unknown> = {}) => run(async () => { const x = rd[code]!; const r = await $fetch<{ next: string | null }>('/api/services/clients/' + id + '/renewals', { method: 'POST', body: { code, ...extra, ...(extra.status ? {} : { started_on: x.started_on || undefined, next_date: x.next_date || undefined }) } }); await rren(); return r }, extra.status === 'cancelled' ? 'Renewal cancelled.' : extra.status === 'suspended' ? 'Renewal paused.' : extra.status === 'active' ? 'Renewal resumed.' : 'Dates saved. The wallet renewal and the compliance calendar now match.')
+const saveRen = (code: string, extra: Record<string, unknown> = {}) => run(async () => { const x = rd[code]!; const r = await $fetch<{ next: string | null }>('/api/services/clients/' + id + '/renewals', { method: 'POST', body: { code, ...extra, ...(extra.status ? {} : { started_on: x.started_on || undefined, next_date: x.next_date || undefined, ...(code === 'virtual_office' ? { details: { country: x.country, state: x.country === 'Nigeria' ? 'Lagos' : x.state, address: x.address } } : {}) }) } }); await rren(); return r }, extra.status === 'cancelled' ? 'Renewal cancelled.' : extra.status === 'suspended' ? 'Renewal paused.' : extra.status === 'active' ? 'Renewal resumed.' : 'Saved. The wallet renewal and the compliance calendar now match.')
 function cancelRen(r: Rn) { if (window.confirm('Cancel ' + r.name + ' renewals for this client?')) saveRen(r.code, { status: 'cancelled' }) }
 function fromStart(r: Rn) { const x = rd[r.code]!; if (!x.started_on) return; const m = (r.sub ? r.sub.interval === 'month' : r.obligation?.recurrence === 'monthly') ? 1 : 12; const b = new Date(x.started_on + 'T00:00:00Z'); for (let k = 1; k < 1200; k++) { const d = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + m * k, Math.min(b.getUTCDate(), 28))); const iso = d.toISOString().slice(0, 10); if (iso >= todayIso) { x.next_date = iso; break } } }
 const signing = ref(false)
@@ -140,7 +141,12 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
           <div class="rg">
             <label class="label">Service started<input v-model="rd[r.code]!.started_on" type="date" :max="todayIso" @change="fromStart(r)"></label>
             <label class="label">Next renewal<input v-model="rd[r.code]!.next_date" type="date" :min="todayIso"></label>
-            <button class="btn" type="button" @click="saveRen(r.code)">Save dates</button>
+            <button class="btn" type="button" @click="saveRen(r.code)">Save</button>
+          </div>
+          <div v-if="r.code === 'virtual_office'" class="rg vo">
+            <label class="label">Country<select v-model="rd[r.code]!.country"><option>United States</option><option>Nigeria</option></select></label>
+            <label class="label">State<select v-if="rd[r.code]!.country === 'United States'" v-model="rd[r.code]!.state"><option value="">—</option><option v-for="st in US_STATES" :key="st" :value="st">{{ st }}</option></select><input v-else value="Lagos" disabled></label>
+            <label class="label wv">Street address<textarea v-model="rd[r.code]!.address" rows="2" maxlength="500" placeholder="The address assigned to this client" /></label>
           </div>
           <div v-if="r.sub" class="ra"><button v-if="r.sub.status === 'active'" type="button" class="lk" @click="saveRen(r.code, { status: 'suspended' })">Pause renewals</button><button v-else type="button" class="lk" @click="saveRen(r.code, { status: 'active' })">Resume renewals</button><button type="button" class="lk red" @click="cancelRen(r)">Cancel</button></div>
         </div>
@@ -187,6 +193,6 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .thread { display: flex; flex-direction: column; gap: 8px; } .msg { background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; max-width: 80%; } .msg.team { align-self: flex-end; border-right: 3px solid var(--c-blue-deep); } .msg p { margin: 4px 0 0; white-space: pre-wrap; }
 .rh { max-width: 760px; margin: 0 0 14px; font-size: 14px; } .rens { display: flex; flex-direction: column; gap: 12px; } .ren { display: flex; flex-direction: column; gap: 12px; }
 .ren .rt { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; } .ren .rt .muted { font-size: 13px; } .rg { display: grid; grid-template-columns: 200px 200px auto; gap: 12px; align-items: end; } .rg .btn { justify-self: start; }
-.ra { display: flex; gap: 16px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); }
+.rg.vo { grid-template-columns: 200px 200px 1fr; } .rg.vo textarea, .rg input, .rg select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .ra { display: flex; gap: 16px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); }
 @media (max-width: 640px) { .rg { grid-template-columns: 1fr; } }
 </style>

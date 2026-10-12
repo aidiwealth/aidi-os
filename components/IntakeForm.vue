@@ -20,7 +20,10 @@ async function submit() {
 </script>
 <template>
   <div v-if="data?.kind && data.form" class="card ik">
-    <template v-if="data.submitted && !editing"><div class="ih"><div><b>{{ data.form.title }}</b><p class="mut">Sent {{ new Date(data.submitted.updated_at).toLocaleString('en-GB') }} · {{ data.submitted.files.length }} file{{ data.submitted.files.length === 1 ? '' : 's' }}{{ data.submitted.ssn_last4 ? ' · SSN ending ' + data.submitted.ssn_last4 : '' }}</p></div><button class="btn secondary sm" @click="editing = true">Update or add files</button></div><p v-if="ok" class="ok">{{ ok }}</p></template>
+    <template v-if="data.submitted && !editing">
+      <IntakeSummary :form="data.form" :answers="data.submitted.answers" :files="data.submitted.files" :ssn-last4="data.submitted.ssn_last4" :at="data.submitted.updated_at" client />
+      <div class="ifoot"><span class="mut">Need to change something or add a document? Send an update — our team sees it straight away.</span><button class="btn secondary sm" @click="editing = true">Update or add files</button></div>
+      <p v-if="ok" class="ok">{{ ok }}</p></template>
     <form v-else class="ifm" @submit.prevent="submit"><div class="ih"><div><b>{{ data.form.title }}</b><p class="mut">{{ data.form.intro }}</p></div></div>
       <template v-for="f in data.form.fields" :key="f.key"><div v-if="visible(f)" class="fq"><span class="ql">{{ f.label }}<em v-if="f.required"> *</em></span><span v-if="f.help" class="mut">{{ f.help }}</span>
         <label v-for="o in (f.type === 'choice' ? f.options : [])" :key="o" class="op"><input v-model="a[f.key]" type="radio" :value="o"> {{ o }}</label>
@@ -34,7 +37,7 @@ async function submit() {
   </div>
 </template>
 <style scoped>
-.ik { margin: 12px 0; } .ih { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; } .ih b { font-size: 15.5px; } .mut { color: var(--c-muted); font-size: 12.5px; margin: 2px 0 0; display: block; }
+.ik { margin: 0; border-radius: 10px; } .ifoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--c-rule); } .ifoot .mut { margin: 0; font-size: 13px; } .ih { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; } .ih b { font-size: 15.5px; } .mut { color: var(--c-muted); font-size: 12.5px; margin: 2px 0 0; display: block; }
 .ifm { display: flex; flex-direction: column; gap: 14px; } .fq { display: flex; flex-direction: column; gap: 6px; } .ql { font-size: 14px; font-weight: 500; } .ql em { color: var(--c-danger); font-style: normal; } .op { display: flex; gap: 8px; align-items: center; font-size: 14px; } .op input { width: auto; }
 input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--c-rule-strong); background: #fff; } .fl { font-size: 12.5px; color: var(--c-ok); } .fl.new { color: var(--c-blue-deep); }
 .row { display: flex; gap: 8px; } .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; } .ok { color: var(--c-ok); margin: 6px 0 0; } .error { color: var(--c-danger); margin: 0; }

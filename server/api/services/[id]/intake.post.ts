@@ -7,6 +7,6 @@ export default defineEventHandler(async (event) => {
   if (!j) throw apiError('not_found', 'Not found', 404)
   const kind = intakeKindFor(j.codes ?? [], j.service)
   if (!kind) throw apiError('invalid', 'This job does not need a form.')
-  await saveIntake(event, id, j.client_id, kind, user.email)
+  await saveIntake(event, id, j.client_id, kind, user.email, true)
   return { ok: true }
 })

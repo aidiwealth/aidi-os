@@ -2,11 +2,12 @@
 // A services job: what was ordered, the customer and their company, files, activity and billing.
 import { intakeKindFor } from '~/shared/intake'
 import { mdRender } from '~/shared/markdown'
+import { US_STATES } from '~/shared/countries'
 const id = useRoute().params.id as string
 interface Job { codes?: string[]; id: string; title: string; service: string; description: string | null; status: string; priority: string; due_date: string | null; fee_usd: string | null; owner_id: string | null; company_id: string | null; created_at: string; link_active: boolean | null; client_token_expires: string | null; client_id: string; client: string; contact_name: string; email: string; phone: string | null; country: string | null; emails_muted?: boolean }
 interface Ev { id: string; kind: string; body: string | null; from_status: string | null; to_status: string | null; visible_to_client: boolean; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null; document_mime: string | null; document_size: number | null }
 interface Person { id: string; name: string; email: string | null; role: string; ownership_pct: number | null; company: string | null }
-interface Company { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string | null; status: string | null; ein: string | null; formation_date: string | null }
+interface Company { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string | null; status: string | null; ein: string | null; formation_date: string | null; address: string | null; virtual_office: boolean | null }
 interface Inv { id: string; number: string; currency: string; amount: string; tax_amount: string; status: string; paid_via: string | null; issue_date: string; overdue: boolean }
 const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[]; invoices: Inv[]; wallet: { currency: string; balance_minor: number } | null; people: Person[]; company: Company | null; items: { code: string; name: string; billing: string }[] }>('/api/services/' + id)
 const { data: team } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
@@ -24,7 +25,7 @@ const kindLabel = computed(() => (isOrder.value ? 'Order' : SERVICES[job.value.s
 const notes = computed(() => (job.value.description ?? '').split('\n').filter((l) => !/^- /.test(l.trim())).join('\n').trim())
 // The order description, read into parts for a clear layout (who placed it, the new company, owners, virtual office, notes).
 const order = computed(() => {
-  const o = { by: null as null | { name: string; email: string; client: boolean }, company: null as null | { name: string; type: string; place: string; check: string; backup: string }, owners: [] as { name: string; pct: number | null }[], vo: '', notes: [] as string[], other: [] as string[] }
+  const o = { by: null as null | { name: string; email: string; client: boolean }, company: null as null | { name: string; type: string; place: string; check: string; backup: string }, owners: [] as { name: string; pct: number | null }[], vo: '', voAddr: '', notes: [] as string[], other: [] as string[] }
   let inNotes = false
   for (const raw of (job.value.description ?? '').split('\n')) {
     const l = raw.trim(); let m: RegExpMatchArray | null
@@ -33,11 +34,24 @@ const order = computed(() => {
     if ((m = l.match(/^(Logged in the services desk|Ordered in Finvry) by (.+?) \(([^()]+)\)$/))) o.by = { name: m[2]!, email: m[3]!, client: m[1]!.startsWith('Ordered') }
     else if ((m = l.match(/^New company: (.+?) \(([^)]*)\)(.*)$/))) { const p = m[2]!.split(', '); o.company = { name: m[1]!, type: p[0] ?? '', place: p.slice(1).join(', '), check: m[3]!.match(/name check: ([^;]+)/)?.[1]?.trim() ?? '', backup: m[3]!.match(/backup name:? ([^;]+)/)?.[1]?.trim() ?? '' } }
     else if ((m = l.match(/^Owners: (.+)$/))) o.owners = m[1]!.split(', ').map((x) => { const k = x.match(/^(.*?)(?: \((\d+(?:\.\d+)?)%\))?$/); return { name: (k?.[1] ?? x).trim(), pct: k?.[2] ? Number(k[2]) : null } })
-    else if ((m = l.match(/^Virtual office location: (.+)$/))) o.vo = m[1]!
+    else if ((m = l.match(/^Virtual office location: (.+?)(?: — (.+))?$/))) { o.vo = m[1]!; o.voAddr = m[2] ?? '' }
     else if ((m = l.match(/^Notes: ?(.*)$/))) { inNotes = true; if (m[1]) o.notes.push(m[1]) }
     else o.other.push(raw)
   }
   return o
+})
+// Edit the order: the new company and the virtual office (state / address).
+const hasVO = computed(() => !!order.value.vo || (job.value.codes ?? []).includes('virtual_office'))
+const oe = reactive({ open: false, name: '', entity_type: 'llc', jurisdiction: '', country: 'United States', ein: '', status: 'forming', vo_country: 'United States', vo_state: '', vo_address: '' })
+function editOrder() {
+  const c = data.value?.company, vo = order.value.vo, ng = /nigeria/i.test(vo)
+  const parts = vo.split(', ')
+  Object.assign(oe, { open: true, name: c?.name ?? order.value.company?.name ?? '', entity_type: c?.entity_type ?? 'llc', jurisdiction: c?.jurisdiction ?? '', country: c?.country ?? 'United States', ein: c?.ein ?? '', status: c?.status ?? 'forming',
+    vo_country: ng ? 'Nigeria' : 'United States', vo_state: ng ? '' : (parts.length > 1 ? parts.slice(0, -1).join(', ') : parts[0] ?? ''), vo_address: order.value.voAddr || c?.address || '' })
+}
+const saveOrder = () => run(async () => {
+  await $fetch('/api/services/' + id + '/order-details', { method: 'POST', body: { ...(data.value?.company ? { company: { name: oe.name, entity_type: oe.entity_type, jurisdiction: oe.jurisdiction, country: oe.country, ein: oe.ein, status: oe.status } } : {}), ...(hasVO.value ? { vo: { country: oe.vo_country, state: oe.vo_state, address: oe.vo_address } } : {}) } })
+  oe.open = false; ok.value = 'Order details updated.'
 })
 const CHECK: Record<string, string> = { available: 'Name looks available', taken: 'Name already taken', similar: 'Similar names exist', unknown: 'Check with the state', 'not checked': 'Name not checked yet' }
 const hasIntake = computed(() => !!intakeKindFor(job.value.codes ?? [], job.value.service))
@@ -163,8 +177,22 @@ const owners = computed(() => data.value?.people ?? [])
     <div class="grid">
       <div class="col">
         <RaiseBrief v-if="job.codes?.includes('fundraising')" :job-id="id" />
-        <div v-else-if="notes" class="card od">
-          <div class="odh"><h2>Order details</h2><span v-if="order.by" class="src" :class="{ cl: order.by.client }">{{ order.by.client ? 'Ordered by the client' : 'Logged by the team' }}</span></div>
+        <div v-else-if="notes || oe.open" class="card od">
+          <div class="odh"><h2>Order details</h2><span class="odr"><span v-if="order.by" class="src" :class="{ cl: order.by.client }">{{ order.by.client ? 'Ordered by the client' : 'Logged by the team' }}</span><button v-if="(data.company || hasVO) && !oe.open" type="button" class="lk2" @click="editOrder">Edit</button></span></div>
+          <form v-if="oe.open" class="oef" @submit.prevent="saveOrder">
+            <template v-if="data.company"><p class="oeh">Company</p>
+              <label class="label w2">Company name<input v-model="oe.name" required maxlength="200"></label>
+              <label class="label">Type<select v-model="oe.entity_type"><option value="llc">LLC</option><option value="c_corp">C-Corp</option><option value="s_corp">S-Corp</option><option value="ltd">Limited (Ltd)</option><option value="plc">PLC</option><option value="other">Other</option></select></label>
+              <label class="label">Status<select v-model="oe.status"><option value="forming">Forming</option><option value="active">Active</option><option value="dissolved">Dissolved</option></select></label>
+              <label class="label">Country<CountrySelect v-model="oe.country" /></label>
+              <label class="label">State<select v-if="/^united states$/i.test(oe.country)" v-model="oe.jurisdiction"><option value="">—</option><option v-for="st in US_STATES" :key="st" :value="st">{{ st }}</option></select><input v-else v-model="oe.jurisdiction" maxlength="100" placeholder="State or region"></label>
+              <label class="label">EIN<input v-model="oe.ein" maxlength="10" placeholder="12-3456789"></label></template>
+            <template v-if="hasVO"><p class="oeh">Virtual office</p>
+              <label class="label">Country<select v-model="oe.vo_country"><option>United States</option><option>Nigeria</option></select></label>
+              <label class="label">State<select v-if="oe.vo_country === 'United States'" v-model="oe.vo_state"><option value="" disabled>Choose</option><option v-for="st in US_STATES" :key="st" :value="st">{{ st }}</option></select><input v-else value="Lagos" disabled></label>
+              <label class="label w2">Street address<textarea v-model="oe.vo_address" rows="2" maxlength="500" placeholder="The address we assigned, e.g. 8 The Green, Suite B, Dover, DE 19901" /></label></template>
+            <div class="w2 oea"><button type="button" class="btn secondary" @click="oe.open = false">Cancel</button><button class="btn" :disabled="busy">Save changes</button></div>
+          </form>
           <p v-if="order.by" class="odby">{{ order.by.name }} · <a :href="'mailto:' + order.by.email">{{ order.by.email }}</a> · {{ day(job.created_at) }}</p>
           <div v-if="order.company" class="odco">
             <span class="mono">{{ initials(order.company.name) }}</span>
@@ -175,7 +203,7 @@ const owners = computed(() => data.value?.people ?? [])
           </div>
           <dl class="odl">
             <template v-if="order.owners.length"><dt>Owners</dt><dd><ul class="own"><li v-for="w in order.owners" :key="w.name"><span class="av xs">{{ initials(w.name) }}</span><span class="on">{{ w.name }}</span><span v-if="w.pct != null" class="bar"><i :style="{ width: Math.min(100, w.pct) + '%' }" /></span><b v-if="w.pct != null">{{ w.pct }}%</b></li></ul></dd></template>
-            <template v-if="order.vo"><dt>Virtual office</dt><dd class="vo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>{{ order.vo }}</dd></template>
+            <template v-if="order.vo"><dt>Virtual office</dt><dd class="vo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg><span>{{ order.vo }}<em v-if="order.voAddr" class="voa">{{ order.voAddr }}</em></span></dd></template>
             <template v-if="order.notes.length"><dt>Client notes</dt><dd><blockquote class="nq" v-html="linkify(order.notes.join('\n').trim())" /></dd></template>
             <template v-if="order.other.length"><dt>Also</dt><dd class="notes" v-html="linkify(order.other.join('\n').trim())" /></template>
           </dl>
@@ -251,13 +279,14 @@ const owners = computed(() => data.value?.people ?? [])
             <li v-if="job.country"><span>Country</span>{{ job.country }}</li>
           </ul>
           <template v-if="data.company">
-            <h3>Company</h3>
+            <h3 class="h3e">Company<button type="button" class="lk2" @click="editOrder">Edit</button></h3>
             <ul class="kv">
               <li><span>Name</span><b>{{ data.company.name }}</b></li>
               <li><span>Type</span>{{ TYPES[data.company.entity_type] ?? data.company.entity_type }}</li>
               <li><span>Registered in</span>{{ [data.company.jurisdiction, data.company.country].filter(Boolean).join(', ') || '—' }}</li>
               <li v-if="data.company.status"><span>Status</span><span class="cap">{{ data.company.status }}</span></li>
               <li v-if="data.company.ein"><span>EIN</span>{{ data.company.ein }}</li>
+              <li v-if="data.company.address"><span>{{ data.company.virtual_office ? 'Business address' : 'Address' }}</span><span class="pre">{{ data.company.address }}</span></li>
             </ul>
           </template>
           <h3>Owners</h3>
@@ -389,4 +418,8 @@ textarea { resize: vertical; }
 .vo { display: flex; gap: 6px; align-items: center; } .vo svg { width: 16px; height: 16px; color: var(--c-blue-deep); flex: none; }
 .nq { margin: 0; padding: 8px 12px; border-left: 3px solid var(--c-rule-strong); background: #fbfaf7; white-space: pre-wrap; color: var(--c-ink-soft); line-height: 1.55; }
 @media (max-width: 640px) { .odl { grid-template-columns: 1fr; gap: 4px; } .odl dd { margin-bottom: 10px; } .own li { grid-template-columns: 28px 1fr 44px; } .own .bar { display: none; } }
+.odr { display: flex; gap: 10px; align-items: center; } .lk2 { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
+.oef { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 12px 0 16px; padding: 14px; border: 1px solid var(--c-rule); border-radius: 10px; background: #fbfaf7; } .oef .w2 { grid-column: 1 / -1; } .oef .label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--c-muted); }
+.oeh { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted); } .oea { display: flex; justify-content: flex-end; gap: 8px; }
+.voa { display: block; font-style: normal; font-size: 13px; color: var(--c-muted); margin-top: 2px; } .vo { align-items: flex-start; } .h3e { display: flex; justify-content: space-between; align-items: baseline; } .pre { white-space: pre-line; }
 </style>
