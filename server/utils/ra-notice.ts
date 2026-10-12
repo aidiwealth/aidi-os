@@ -150,13 +150,20 @@ async function sendRaNotice(c: Cand): Promise<boolean> {
       for (const e of to.emails) { try { await sendRaNoticeEmail({ to: e, company, agent, amount: money, due: long(new Date(c.due + 'T12:00:00Z')), payBy: long(payBy), link, portal: to.portal, file: { filename: file, content: bytes } }); emailed++ } catch (err) { console.error('[ra notice] email failed', err) } }
     }
     await db().query('UPDATE services.ra_notices SET document_id = $2, thread_id = $3, emailed = $4 WHERE id = $1', [nid, id, thread, emailed])
+    // 30 days unpaid: the agent resigns. Pause the registered agent renewal (no further charges), mark the company and
+    // stop the renewal reminders. The team undoes this by setting the agent back to ours and resuming the renewal.
+    const on = today.toISOString().slice(0, 10)
+    await db().query("UPDATE wallet.subscriptions SET status = 'suspended', last_error = $2, details = details || $3::jsonb, updated_at = now() WHERE client_id = $1 AND code = 'registered_agent' AND status <> 'cancelled'", [c.client_id, 'Registered agent resigned on ' + fmt(on) + ' (renewal unpaid)', JSON.stringify({ paused: 'resigned', paused_on: on })])
+    const ids = co ? [co.id] : ours.map((x) => x.id)
+    if (ids.length) await db().query("UPDATE services.companies SET registered_agent = 'none', agent_resigned_on = $2 WHERE id = ANY($1::uuid[]) AND registered_agent = 'ours'", [ids, on])
+    await db().query("UPDATE compliance.obligations o SET active = false FROM core.entities e WHERE e.id = o.entity_id AND e.organization_id = (SELECT workspace_id FROM services.clients WHERE id = $1) AND o.active AND (o.service_code = 'registered_agent' OR o.category = 'registered_agent')", [c.client_id])
     return true
   } catch (e) { await db().query('DELETE FROM services.ra_notices WHERE id = $1', [nid]); throw e }
 }
 
 // A suspended registered agent renewal starts again on its own once the client's wallet covers it.
 export async function resumeRaRenewals(): Promise<number> {
-  const subs = (await db().query<{ id: string; organization_id: string; name: string; amount_minor: string; currency: string; interval: string; overdue_since: string }>("SELECT id, organization_id, name, amount_minor::text, currency, interval, to_char(overdue_since, 'YYYY-MM-DD') AS overdue_since FROM wallet.subscriptions WHERE code = 'registered_agent' AND status = 'suspended' AND overdue_since IS NOT NULL AND amount_minor > 0")).rows
+  const subs = (await db().query<{ id: string; organization_id: string; name: string; amount_minor: string; currency: string; interval: string; overdue_since: string }>("SELECT id, organization_id, name, amount_minor::text, currency, interval, to_char(overdue_since, 'YYYY-MM-DD') AS overdue_since FROM wallet.subscriptions WHERE code = 'registered_agent' AND status = 'suspended' AND overdue_since IS NOT NULL AND amount_minor > 0 AND coalesce(details->>'paused', '') NOT IN ('resigned', 'arrears')")).rows
   let n = 0
   for (const s of subs) {
     const w = await walletOf(s.organization_id), amt = Number(s.amount_minor)
@@ -168,4 +175,38 @@ export async function resumeRaRenewals(): Promise<number> {
     } catch (e) { console.error('[ra resume] failed', s.id, e) }
   }
   return n
+}
+
+// A client who still owes for an earlier period of a recurring service (virtual office, registered agent) for 30 days
+// or more: pause the next renewal so we don't charge for a new period. A virtual office resumes by itself once those
+// invoices are paid; a registered agent has resigned by then (see the notice) and the team restarts it.
+const ARREARS: Record<string, string> = { registered_agent: '%registered agent%', virtual_office: '%virtual%' }
+export async function pauseForArrears(): Promise<{ paused: number; resumed: number }> {
+  const out = { paused: 0, resumed: 0 }
+  for (const [code, like] of Object.entries(ARREARS)) {
+    const owe = `SELECT i.number FROM services.invoices i WHERE i.client_id = s.client_id AND i.status = 'sent' AND i.due_date <= current_date - 30
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(i.lines) l WHERE l->>'description' ILIKE '${like}' OR (${code === 'virtual_office' ? "l->>'description' ILIKE '%mailbox%' OR l->>'description' ILIKE '%business address%'" : 'false'})) ORDER BY i.due_date LIMIT 1`
+    const hit = (await db().query<{ id: string; client_id: string; name: string; number: string }>(`SELECT s.id, s.client_id, s.name, o.number FROM wallet.subscriptions s CROSS JOIN LATERAL (${owe}) o WHERE s.code = $1 AND s.status = 'active' AND s.client_id IS NOT NULL`, [code])).rows
+    for (const s of hit) {
+      await db().query("UPDATE wallet.subscriptions SET status = 'suspended', last_error = $2, details = details || $3::jsonb, updated_at = now() WHERE id = $1", [s.id, 'Renewal paused: invoice ' + s.number + ' is unpaid', JSON.stringify({ paused: 'arrears', invoice: s.number })])
+      out.paused++
+      if (code === 'virtual_office') { try { await arrearsMessage(s.client_id, s.name, s.number) } catch (e) { console.error('[arrears] message failed', e) } }
+    }
+    if (code === 'virtual_office') {
+      const back = await db().query(`UPDATE wallet.subscriptions s SET status = 'active', last_error = NULL, details = details - 'paused' - 'invoice', updated_at = now()
+        WHERE s.code = $1 AND s.status = 'suspended' AND s.details->>'paused' = 'arrears' AND NOT EXISTS (${owe})`, [code])
+      out.resumed += back.rowCount ?? 0
+    }
+  }
+  return out
+}
+async function arrearsMessage(clientId: string, service: string, invoice: string): Promise<void> {
+  const cl = (await db().query<{ organization_id: string; name: string; emails_muted: boolean }>('SELECT organization_id, name, emails_muted FROM services.clients WHERE id = $1', [clientId])).rows[0]
+  if (!cl) return
+  const finvry = brands().finvry.url
+  const body = '**' + service + ' renewal paused**\n\nInvoice ' + invoice + ' for an earlier period of your ' + service + ' is more than 30 days overdue, so we have paused the next renewal. Pay the invoice under Invoices in Finvry and the renewal restarts automatically.'
+  const thread = await postMessage({ orgId: cl.organization_id, clientId, fromTeam: true, body, category: 'billing', subject: service + ' renewal paused' })
+  if (cl.emails_muted) return
+  const to = await clientRecipients(clientId)
+  for (const e of to.emails) { try { await sendPortalMessageEmail(e, cl.name, body, to.portal ? finvry + '/client/messages?thread=' + thread : finvry + '/client/invoices', 'Billing') } catch (err) { console.error('[arrears] email failed', err) } }
 }

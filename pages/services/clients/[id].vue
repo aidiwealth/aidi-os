@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { US_STATES } from '~/shared/countries'
 const id = useRoute().params.id as string
-interface Co { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; registration_number: string | null; ein: string | null; formation_date: string | null; fiscal_year_end: string | null; address: string | null; registered_agent: string; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string; notes: string | null }
+interface Co { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; registration_number: string | null; ein: string | null; formation_date: string | null; fiscal_year_end: string | null; address: string | null; registered_agent: string; agent_resigned_on?: string | null; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string; notes: string | null }
 interface Pe { id: string; name: string; email: string | null; phone: string | null; role: string; ownership_pct: string | null; company_id: string | null; company: string | null; address: string | null; nationality: string | null; portal_access: boolean }
 interface D { client: { id: string; name: string; kind: string; contact_name: string; email: string; phone: string | null; country: string | null; address: string | null; notes: string | null; status: string; emails_muted?: boolean; on_finvry?: boolean }
   companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
@@ -81,7 +81,7 @@ const inits = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) 
       <table v-if="data.companies.length" class="table"><thead><tr><th>Company</th><th>Registration</th><th>Services</th><th>Status</th><th /></tr></thead>
         <tbody><tr v-for="c in data.companies" :key="c.id"><td><b class="co">{{ c.name }}</b><span class="sub">{{ TYPES[c.entity_type] }} · {{ [c.jurisdiction, c.country].filter(Boolean).join(', ') }}</span></td>
           <td class="sm">{{ c.ein ? 'EIN ' + c.ein : 'No EIN yet' }}<span class="sub">{{ c.formation_date ? 'Formed ' + c.formation_date : '' }}{{ c.fiscal_year_end ? ' · FYE ' + c.fiscal_year_end : '' }}</span></td>
-          <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : '', c.virtual_office || c.mailbox ? 'Virtual office' : ''].filter(Boolean).join(' · ') || '—' }}</td>
+          <td class="sm">{{ [c.registered_agent === 'ours' ? 'Registered agent' + (c.agent_renewal ? ' (renews ' + c.agent_renewal + ')' : '') : c.agent_resigned_on ? 'Registered agent resigned ' + c.agent_resigned_on + ' (unpaid)' : '', c.virtual_office || c.mailbox ? 'Virtual office' : ''].filter(Boolean).join(' · ') || '—' }}</td>
           <td><span class="st">{{ c.status }}</span></td><td class="acts"><button class="link" @click="askTax(c)">Request tax info</button> · <button class="link" @click="editCo(c)">Edit</button><DeleteButton type="cs_company" :id="c.id" :name="c.name" link @deleted="refresh()" /></td></tr></tbody></table>
       <EmptyState v-else compact icon="services" title="No companies yet" />
       <form v-if="rq.company_id" class="card frm" @submit.prevent="sendTax">

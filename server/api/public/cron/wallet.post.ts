@@ -6,12 +6,14 @@ export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig().cronSecret
   const given = getRequestHeader(event, 'x-cron-secret') ?? ''
   if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) throw apiError('forbidden', 'Forbidden', 403)
-  const out = { charged: 0, carded: 0, retry: 0, suspended: 0, reminded: 0, ra_resumed: 0, ra_notices: 0 }
+  const out = { charged: 0, carded: 0, retry: 0, suspended: 0, reminded: 0, ra_resumed: 0, ra_notices: 0, arrears_paused: 0, arrears_resumed: 0 }
   const plans = await asPlatform(() => db().query<{ id: string }>("SELECT o.id FROM core.organizations o WHERE o.kind = 'company' AND o.plan_code <> 'company_free' AND o.status <> 'closed' AND NOT EXISTS (SELECT 1 FROM wallet.subscriptions s WHERE s.organization_id = o.id AND s.kind = 'plan' AND s.status <> 'cancelled')"))
   for (const p of plans.rows) await syncPlanSubscription(p.id)
   const url = brands().finvry.url
   const notify = async (orgId: string, subject: string, heading: string, body: string, cta: string, link: string) => { setOrgContext(orgId); for (const to of await orgNotifyEmails()) await sendWalletNotice(to, subject, heading, body, cta, link).catch((e) => console.error('[wallet cron] email failed', e)); setOrgContext(null) }
   const money = (minor: number, c: string) => (c === 'NGN' ? '₦' : '$') + (minor / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })
+  // Owed for an earlier period of a virtual office or registered agent: pause the next renewal before charging it.
+  try { const a = await asPlatform(() => pauseForArrears()); out.arrears_paused = a.paused; out.arrears_resumed = a.resumed } catch (e) { console.error('[cron] arrears', e) }
   // reminders
   const soon = (await asPlatform(() => db().query<Sub>("SELECT id, organization_id, kind, code, name, client_id, amount_minor::text, currency, interval, to_char(next_charge_at, 'YYYY-MM-DD') AS next_charge_at, failures, to_char(reminded_for, 'YYYY-MM-DD') AS reminded_for FROM wallet.subscriptions WHERE status = 'active' AND next_charge_at BETWEEN current_date + 1 AND current_date + 3 AND (reminded_for IS NULL OR reminded_for <> next_charge_at)"))).rows
   for (const s of soon) {
