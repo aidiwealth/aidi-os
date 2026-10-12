@@ -22,7 +22,7 @@ const foot = computed(() => {
 
 <template>
   <div class="pub" :style="accent">
-    <header v-if="kind !== 'c'" class="pub-top" :style="band">
+    <header v-if="kind !== 'c' && kind !== 'd'" class="pub-top" :style="band">
       <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ ['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? 'Ventures' : 'Group' }}</span></template>
       <img v-else-if="br?.logo_url" :src="br.logo_url" :alt="title" class="pub-logo">
       <span v-else-if="title" class="pub-name">{{ title }}</span>

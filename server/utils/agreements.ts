@@ -323,7 +323,12 @@ export async function signedAgreementPdf(input: { title: string; md: string; com
   const base = await legalPdf(input.company, [{ title: input.title, md: input.md }, ...(input.extra ?? [])])
   const hash = createHash('sha256').update(base).digest('hex')
   const pdf = await PDFDocument.load(base), reg = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  // Finvry logo at the top of every page.
+  const lg = LOGO_PNG.finvry, logo = await pdf.embedPng(Buffer.from(lg.b64, 'base64')), lh = 18, lw = lh * lg.w / lg.h
+  const stamp = (pg: ReturnType<typeof pdf.addPage>) => pg.drawImage(logo, { x: 72, y: 792 - 50, width: lw, height: lh })
+  for (const pg of pdf.getPages()) stamp(pg)
   const p = pdf.addPage([612, 792]), ink = rgb(0.1, 0.1, 0.12), clean = (s: string) => s.replace(/[^\x20-\x7E]/g, '')
+  stamp(p)
   p.drawText('Electronic signature certificate', { x: 72, y: 700, size: 18, font: bold, color: rgb(0.05, 0.1, 0.18) })
   const rows: [string, string][] = [['Document', clean(input.title).slice(0, 70)], ['Effective date', input.effective], ['Signed by', clean(input.signer.name)], ['Email', clean(input.signer.email)], ['Signature method', input.kind === 'typed' ? 'Typed name' : input.kind === 'drawn' ? 'Drawn signature' : input.kind === 'uploaded' ? 'Uploaded signature image' : 'Accepted electronically'], ['Signed at', input.signedAt.toUTCString()], ['IP address', clean(input.ip)], ['Device', clean(input.ua).slice(0, 80)], ['Document fingerprint (SHA-256)', hash.slice(0, 32)], ['', hash.slice(32)]]
   let y = 660; for (const [k, v] of rows) { if (k) p.drawText(k, { x: 72, y, size: 9, font: bold, color: ink }); p.drawText(v, { x: 250, y, size: 9, font: reg, color: ink }); y -= 18 }

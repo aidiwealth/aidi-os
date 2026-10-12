@@ -5,14 +5,16 @@ export async function raiseView(programId: string, forClient: boolean) {
   const p = (await db().query<Record<string, unknown> & { id: string; fee_pct: string; target: string | null; currency: string }>("SELECT p.*, c.name AS client, c.email AS client_email FROM services.raise_programs p JOIN services.clients c ON c.id = p.client_id WHERE p.id = $1", [programId])).rows[0]
   if (!p) return null
   const inv = (await db().query<{ id: string; name: string; firm: string | null; email: string | null; ticket: string | null; committed: string | null; status: string; next_step: string | null; notes: string | null; terms: string | null; visible: boolean; updated_at: string }>(
-    'SELECT id, name, firm, email, ticket, committed, status, next_step, notes, terms, visible, updated_at FROM services.raise_investors WHERE program_id = $1 ' + (forClient ? 'AND visible ' : '') + 'ORDER BY sort, created_at', [programId])).rows
+    'SELECT id, name, firm, email, ticket, committed, status, next_step, notes, terms, visible, updated_at, deal_id FROM services.raise_investors WHERE program_id = $1 ' + (forClient ? 'AND visible ' : '') + 'ORDER BY sort, created_at', [programId])).rows
   const meetings = (await db().query("SELECT m.id, m.title, m.starts_at, m.minutes, m.location, m.agenda, m.investor_id, i.name AS investor FROM services.raise_meetings m LEFT JOIN services.raise_investors i ON i.id = m.investor_id WHERE m.program_id = $1 ORDER BY m.starts_at", [programId])).rows
   const n = (x: string | null) => (x == null ? 0 : Number(x))
   const committed = inv.filter((i) => ['committed', 'closed'].includes(i.status)).reduce((a, i) => a + n(i.committed ?? i.ticket), 0)
   const closed = inv.filter((i) => i.status === 'closed').reduce((a, i) => a + n(i.committed ?? i.ticket), 0)
   const pipeline = inv.filter((i) => !['passed'].includes(i.status)).reduce((a, i) => a + n(i.ticket), 0)
   const fee = Math.round(closed * Number(p.fee_pct)) / 100
-  return { program: p, investors: inv, meetings, totals: { target: n(p.target), committed, closed, pipeline, fee, fee_pct: Number(p.fee_pct), count: inv.length, active: inv.filter((i) => !['passed', 'closed'].includes(i.status)).length } }
+  // Founders never see an investor's contact details (the team keeps them).
+  const shown = forClient ? inv.map((i) => ({ ...i, email: null, deal_id: undefined })) : inv
+  return { program: p, investors: shown, meetings, totals: { target: n(p.target), committed, closed, pipeline, fee, fee_pct: Number(p.fee_pct), count: inv.length, active: inv.filter((i) => !['passed', 'closed'].includes(i.status)).length } }
 }
 export async function emailRaiseMeeting(to: string, client: string, m: { title: string; starts_at: string; minutes: number; location: string | null; agenda: string | null; investor: string | null }, kind: 'new' | 'day' | 'hour', toInvestor = false) {
   const when = new Date(m.starts_at).toUTCString().replace(':00 GMT', ' UTC')

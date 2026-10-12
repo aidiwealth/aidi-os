@@ -2,7 +2,7 @@
 // A fundraising pipeline: stages with totals on the left; investors with stage, amount and primary contact.
 const id = useRoute().params.id as string
 interface St { id: string; name: string; color: string; kind: string; sort: number; total: number; n: number }
-interface Dl { id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
+interface Dl { added_by_team?: boolean; id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
 const calOpen = ref(false)
 const sugg = ref<string[]>([]); let sgT: ReturnType<typeof setTimeout> | undefined
 function suggest() { clearTimeout(sgT); const q = dl.investor; sgT = setTimeout(async () => { if (q.trim().length < 2) { sugg.value = []; return } try { sugg.value = await $fetch<string[]>('/api/crm/investors/suggest', { query: { q } }) } catch { sugg.value = [] } }, 200) }
@@ -48,10 +48,10 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
       <p v-if="msg" class="error">{{ msg }}</p>
       <div v-if="sel.length" class="bulk"><b>{{ sel.length }} selected</b><select v-model="bulkTo"><option value="">Move to stage…</option><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></div>
       <div class="box"><table v-if="list.length"><thead><tr><th class="ck" /><th>Investor</th><th>Stage</th><th class="n">Amount</th><th>Primary contact</th><th>Next meeting</th></tr></thead>
-        <tbody><tr v-for="d in list" :key="d.id" @click="openDeal(d)"><td class="ck" @click.stop><input v-model="sel" type="checkbox" :value="d.id" aria-label="Select"></td><td><b>{{ d.investor }}</b></td>
+        <tbody><tr v-for="d in list" :key="d.id" @click="openDeal(d)"><td class="ck" @click.stop><input v-model="sel" type="checkbox" :value="d.id" aria-label="Select"></td><td><b>{{ d.investor }}</b><span v-if="d.added_by_team" class="vf" title="Introduced by the Finvry fundraising team, who keep the contact details">Via Finvry</span></td>
           <td @click.stop><select class="stsel" :class="st(d.stage_id)?.color" :value="d.stage_id" @change="move(($event.target as HTMLSelectElement).value, [d.id])"><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></td>
           <td class="n">{{ d.amount != null ? money(d.amount) : '—' }}</td>
-          <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">—</span></td><td><span v-if="d.next_meeting" class="nm">{{ new Date(d.next_meeting).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span><span v-else class="mut">—</span></td></tr></tbody></table>
+          <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">{{ d.added_by_team ? 'Kept by Finvry' : '—' }}</span></td><td><span v-if="d.next_meeting" class="nm">{{ new Date(d.next_meeting).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span><span v-else class="mut">—</span></td></tr></tbody></table>
         <EmptyState v-else icon="pipeline" :title="data.deals.length ? 'No investors in this stage' : 'No investors yet'" :text="data.deals.length ? 'Pick another stage on the left.' : 'Add the funds and angels you are talking to, with their primary contact.'"><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></EmptyState></div>
     </div>
     <AppModal :open="dl.open" :title="dl.id ? dl.investor : 'New investor'" @close="dl.open = false">
@@ -94,4 +94,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; bor
 .sp { flex: 1; } .btn.sm { padding: 5px 10px; font-size: 12.5px; align-self: flex-start; } .mut { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1000px) { .pl { grid-template-columns: 1fr; } .side { position: static; } }
 .nm { font-size: 12.5px; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 2px 8px; white-space: nowrap; }
+.vf { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 7px; background: var(--c-signal-soft); color: var(--c-blue-deep); white-space: nowrap; }
 </style>

@@ -25,14 +25,14 @@ const Link = resolveComponent('NuxtLink')
 const tag = computed(() => (props.to ? Link : props.clickable ? 'button' : 'div'))
 </script>
 <template>
-  <component :is="tag" :to="to" :type="clickable && !to ? 'button' : undefined" class="fx-st" :class="{ on, act: to || clickable, ic: icon }">
+  <component :is="tag" :to="to" :type="clickable && !to ? 'button' : undefined" class="fx-st" :class="{ 'fx-on': on, 'fx-act': to || clickable, 'fx-ic': !!icon }">
     <span v-if="icon" class="fx-si" :class="tone ?? 'n'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="P[icon] ?? P.chart" /></svg></span>
     <span class="fx-sx"><em>{{ label }}</em><b :class="{ red, pos }"><slot>{{ shown }}</slot></b><i v-if="note || $slots.note" :class="noteTone"><slot name="note">{{ note }}</slot></i></span>
   </component>
 </template>
 <style scoped>
 .fx-st { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; text-decoration: none; color: inherit; font: inherit; text-align: left; min-width: 0; transition: border-color .12s; }
-.fx-st.act { cursor: pointer; } .fx-st.act:hover, .fx-st.on { border-color: var(--c-navy); } .fx-st.on { box-shadow: inset 0 -2px 0 var(--c-navy); }
+.fx-st.fx-act { cursor: pointer; } .fx-st.fx-act:hover, .fx-st.fx-on { border-color: var(--c-navy); } .fx-st.fx-on { box-shadow: inset 0 -2px 0 var(--c-navy); }
 .fx-si { width: 44px; height: 44px; display: grid; place-items: center; flex: none; align-self: center; } .fx-si svg { width: 21px; height: 21px; }
 .fx-si.n { background: #eef0f6; color: var(--c-navy); } .fx-si.b { background: var(--c-signal-soft); color: var(--c-blue-deep); } .fx-si.r { background: #fdecef; color: var(--c-danger); } .fx-si.g { background: #e9f6ee; color: var(--c-ok); } .fx-si.a { background: #fff6e6; color: #a5650b; } .fx-si.c { background: #e6f6fa; color: #0e7490; }
 .fx-sx { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
