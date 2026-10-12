@@ -2,8 +2,8 @@
 // Services tracker: every client request by status, and every client's compliance calendar, with actions.
 useHead({ title: 'Tracker' })
 interface J { id: string; title: string; service: string; status: string; priority: string; due_date: string | null; created_at: string; updated_at: string; completed_at: string | null; client_id: string; client: string; owner: string | null }
-interface O { id: string; title: string; category: string; jurisdiction: string | null; recurrence: string; next_due: string; days_left: number; client_id: string; client: string; company: string; last_done: string | null; last_note: string | null }
-const { data, refresh } = await useFetch<{ jobs: J[]; compliance: O[]; done: { id: string; title: string; completed_on: string; note: string | null; company: string }[] }>('/api/services/tracker')
+interface O { id: string; service_code: string | null; reminder_days: number; notes: string | null; title: string; category: string; jurisdiction: string | null; recurrence: string; next_due: string; days_left: number; client_id: string; client: string; company: string; last_done: string | null; last_note: string | null }
+const { data, refresh } = await useFetch<{ jobs: J[]; compliance: O[]; done: { id: string; title: string; completed_on: string; note: string | null; company: string }[]; clients: { id: string; name: string; has_workspace: boolean }[]; services: { code: string; name: string; billing: string }[] }>('/api/services/tracker')
 const tab = ref<'overview' | 'requests' | 'compliance'>('overview'); const q = ref(''); const st = ref(''); const cf = ref<'all' | 'overdue' | 'soon' | 'later'>('all')
 const ST: Record<string, string> = { new: 'New', in_progress: 'In progress', waiting_client: 'Waiting on client', completed: 'Done', cancelled: 'Cancelled' }
 const jobs = computed(() => data.value?.jobs ?? []); const comp = computed(() => data.value?.compliance ?? [])
@@ -20,10 +20,28 @@ const msg = ref(''); const ok = ref(''); const busy = ref('')
 async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'done' && !confirm('Mark "' + o.title + '" for ' + o.company + ' as filed?')) return; busy.value = o.id + action; msg.value = ''; ok.value = ''
   try { const r = await $fetch<{ sent?: number; job_id?: string }>('/api/services/tracker/action', { method: 'POST', body: { obligation_id: o.id, action } }); ok.value = action === 'remind' ? 'Reminder sent to ' + (r.sent ?? 0) + ' people at ' + o.company + '.' : action === 'job' ? 'Job opened.' : 'Marked filed; the next deadline is set.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = '' } }
+// Add a filing or renewal to a client's calendar (tied to a service), or edit / remove one.
+const todayIso = new Date().toISOString().slice(0, 10)
+const blankF = () => ({ id: '', client_id: '', service_code: '', title: '', recurrence: 'annual', next_due: '', reminder_days: 30, notes: '', state: 'todo' as 'todo' | 'filed', filed_on: todayIso, create_job: true })
+const cal = reactive({ open: false, ...blankF() })
+function openAdd(clientId = '') { Object.assign(cal, blankF(), { open: true, client_id: clientId }) }
+function openEdit(o: O) { Object.assign(cal, blankF(), { open: true, id: o.id, client_id: o.client_id, service_code: o.service_code ?? '', title: o.title, recurrence: o.recurrence, next_due: o.next_due, reminder_days: o.reminder_days ?? 30, notes: o.notes ?? '', create_job: false }) }
+watch(() => cal.service_code, (c) => { if (cal.id) return; const s = data.value?.services.find((x) => x.code === c); if (s) { cal.title = s.name; cal.recurrence = s.billing === 'monthly' ? 'monthly' : s.billing === 'one_time' ? 'none' : 'annual' } })
+const calPast = computed(() => !!cal.next_due && cal.next_due < todayIso)
+const calClient = computed(() => data.value?.clients.find((c) => c.id === cal.client_id))
+async function saveCal(remove = false) {
+  if (remove && !confirm('Remove "' + cal.title + '" from this client\'s calendar?')) return
+  busy.value = 'cal'; msg.value = ''; ok.value = ''
+  try {
+    const r = await $fetch<{ job_id?: string | null; workspace_created?: boolean }>('/api/services/tracker/obligation', { method: 'POST', body: { id: cal.id || undefined, remove, client_id: cal.client_id || undefined, service_code: cal.service_code, title: cal.title, recurrence: cal.recurrence, next_due: cal.next_due, reminder_days: cal.reminder_days, notes: cal.notes, filed_on: !cal.id && calPast.value && cal.state === 'filed' ? cal.filed_on : undefined, create_job: !cal.id && cal.create_job && !(calPast.value && cal.state === 'filed') } })
+    ok.value = remove ? 'Removed from the client\'s calendar.' : cal.id ? 'Calendar item updated.' : 'Added to ' + (calClient.value?.name ?? 'the client') + '\'s calendar' + (r.job_id ? ' and a job opened' : '') + '.' + (r.workspace_created ? ' Their Finvry account was set up quietly (no email sent).' : '')
+    cal.open = false; tab.value = 'compliance'; await refresh()
+  } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = '' }
+}
 </script>
 <template>
   <section v-if="data">
-    <p class="label">Services desk</p><div class="hd"><h1>Tracker</h1><input v-model="q" placeholder="Search client, company or filing" aria-label="Search"></div>
+    <p class="label">Services desk</p><div class="hd"><h1>Tracker</h1><div class="hr"><input v-model="q" placeholder="Search client, company or filing" aria-label="Search"><button class="btn" type="button" @click="openAdd()">+ Add to client calendar</button></div></div>
     <div class="kp"><button class="k" @click="tab = 'requests'; st = 'new'"><em>New requests</em><b>{{ k.fresh }}</b></button><button class="k" @click="tab = 'requests'; st = ''"><em>Open requests</em><b>{{ k.open }}</b></button><button class="k" @click="tab = 'requests'; st = 'waiting_client'"><em>Waiting on client</em><b>{{ k.waiting }}</b></button>
       <div class="k"><em>Done this month</em><b class="g">{{ k.doneMonth }}</b></div><button class="k" @click="tab = 'compliance'; cf = 'overdue'"><em>Filings overdue</em><b :class="{ r: k.overdue }">{{ k.overdue }}</b></button><button class="k" @click="tab = 'compliance'; cf = 'soon'"><em>Filings due in 30 days</em><b>{{ k.soon }}</b></button></div>
     <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'requests' }" @click="tab = 'requests'">Requests <em>{{ jobs.length }}</em></button><button :class="{ on: tab === 'compliance' }" @click="tab = 'compliance'">Client compliance <em>{{ comp.length }}</em></button></nav>
@@ -56,11 +74,29 @@ async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'do
     <template v-else>
       <div class="chips"><button v-for="[f, l] in [['all', 'All'], ['overdue', 'Overdue'], ['soon', 'Next 30 days'], ['later', 'Later']]" :key="f" :class="{ on: cf === f }" @click="cf = f as 'all'">{{ l }}</button></div>
       <div class="box"><table v-if="comps.length"><thead><tr><th>Filing</th><th>Company</th><th>Due</th><th>Last filed</th><th /></tr></thead>
-        <tbody><tr v-for="o in comps" :key="o.id"><td><b>{{ o.title }}</b><span class="sub">{{ o.jurisdiction ?? '' }} · {{ o.recurrence }}</span></td><td>{{ o.company }}<span class="sub">{{ o.client }}</span></td>
+        <tbody><tr v-for="o in comps" :key="o.id"><td><b>{{ o.title }}</b><span class="sub">{{ o.service_code ? 'Finvry service · ' : '' }}{{ o.jurisdiction ?? '' }} · {{ o.recurrence }}</span></td><td>{{ o.company }}<span class="sub">{{ o.client }}</span></td>
           <td><span class="pill" :class="tone(o.days_left)">{{ when(o.days_left) }}</span><span class="sub">{{ day(o.next_due) }}</span></td><td class="mut">{{ day(o.last_done) }}</td>
-          <td class="acts"><button class="btn secondary sm" :disabled="!!busy" @click="act(o, 'remind')">{{ busy === o.id + 'remind' ? 'Sending…' : 'Remind' }}</button><button class="btn secondary sm" :disabled="!!busy" @click="act(o, 'job')">Create job</button><button class="btn sm" :disabled="!!busy" @click="act(o, 'done')">Mark filed</button></td></tr></tbody></table>
+          <td class="acts"><button class="lk" :disabled="!!busy" @click="openEdit(o)">Edit</button><button class="btn secondary sm" :disabled="!!busy" @click="act(o, 'remind')">{{ busy === o.id + 'remind' ? 'Sending…' : 'Remind' }}</button><button class="btn secondary sm" :disabled="!!busy" @click="act(o, 'job')">Create job</button><button class="btn sm" :disabled="!!busy" @click="act(o, 'done')">Mark filed</button></td></tr></tbody></table>
         <EmptyState v-else icon="compliance" title="No filings match" text="Clients' compliance calendars appear here once their Finvry workspace is linked." /></div>
     </template>
+    <AppModal :open="cal.open" :title="cal.id ? 'Edit calendar item' : 'Add to a client\'s compliance calendar'" @close="cal.open = false">
+      <form id="calf" class="cf" @submit.prevent="saveCal()">
+        <label class="label w">Client<select v-model="cal.client_id" required :disabled="!!cal.id"><option value="" disabled>Choose a client</option><option v-for="c in data.clients" :key="c.id" :value="c.id">{{ c.name }}{{ c.has_workspace ? '' : ' (no Finvry account yet)' }}</option></select></label>
+        <p v-if="calClient && !calClient.has_workspace && !cal.id" class="hint w">This client has no Finvry account yet. One is set up quietly when you save — no email is sent.</p>
+        <label class="label w">Service<select v-model="cal.service_code"><option value="">Other (not on the price list)</option><option v-for="s in data.services" :key="s.code" :value="s.code">{{ s.name }}</option></select></label>
+        <label class="label w">Title on their calendar<input v-model="cal.title" maxlength="200" required placeholder="e.g. Federal Annual Filing"></label>
+        <label class="label">Due date<input v-model="cal.next_due" type="date" required></label>
+        <label class="label">Repeats<select v-model="cal.recurrence"><option value="annual">Every year</option><option value="quarterly">Every quarter</option><option value="monthly">Every month</option><option value="none">One-off</option></select></label>
+        <div v-if="calPast && !cal.id" class="past w"><span class="label">This date has passed</span>
+          <label :class="{ on: cal.state === 'todo' }"><input v-model="cal.state" type="radio" value="todo"><b>Still to file</b><em>Shows as overdue on their calendar</em></label>
+          <label :class="{ on: cal.state === 'filed' }"><input v-model="cal.state" type="radio" value="filed"><b>Already filed</b><em>Logged as filed; the calendar moves to the next date</em></label>
+          <label v-if="cal.state === 'filed'" class="label">Filed on<input v-model="cal.filed_on" type="date" :max="todayIso"></label></div>
+        <label class="label">Remind them<select v-model.number="cal.reminder_days"><option :value="7">1 week before</option><option :value="14">2 weeks before</option><option :value="30">1 month before</option><option :value="60">2 months before</option></select></label>
+        <label class="label w">Note (they see it on the item)<textarea v-model="cal.notes" rows="2" maxlength="3000" placeholder="e.g. We file this for you each year." /></label>
+        <label v-if="!cal.id && !(calPast && cal.state === 'filed')" class="chk w"><input v-model="cal.create_job" type="checkbox"> Open a job for the team to do this filing</label>
+      </form>
+      <template #foot><button v-if="cal.id" class="btn secondary danger" type="button" :disabled="busy === 'cal'" @click="saveCal(true)">Remove</button><span class="sp" /><button class="btn secondary" type="button" @click="cal.open = false">Cancel</button><button class="btn" type="submit" form="calf" :disabled="busy === 'cal'">{{ busy === 'cal' ? 'Saving…' : cal.id ? 'Save' : 'Add to calendar' }}</button></template>
+    </AppModal>
   </section>
 </template>
 <style scoped>
@@ -75,4 +111,9 @@ async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'do
 .pill { font-size: 12px; font-weight: 500; padding: 3px 10px; white-space: nowrap; background: var(--c-paper-2); color: var(--c-ink-soft); } .pill.red { background: rgba(180,35,24,.08); color: var(--c-danger); } .pill.amber { background: rgba(181,71,8,.09); color: var(--c-warn); } .pill.blue { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pill.g { background: rgba(31,122,77,.1); color: var(--c-ok); }
 .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .kp { grid-template-columns: repeat(3, 1fr); } .ov { grid-template-columns: 1fr; } }
+.hr { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .cf .w { grid-column: 1 / -1; } .cf .label { display: flex; flex-direction: column; gap: 6px; } .cf input, .cf select, .cf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; width: 100%; }
+.cf .hint { margin: -4px 0 0; font-size: 12.5px; color: var(--c-muted); } .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; } .chk input { width: auto; }
+.past { display: flex; flex-direction: column; gap: 6px; } .past > label:not(.label) { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; border: 1px solid var(--c-rule); padding: 9px 12px; cursor: pointer; font-size: 14px; } .past > label.on { border-color: var(--c-navy); } .past input[type=radio] { width: auto; grid-row: span 2; } .past em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.lk { background: none; border: 0; padding: 0 6px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .sp { flex: 1; } .danger { color: var(--c-danger); }
 </style>
