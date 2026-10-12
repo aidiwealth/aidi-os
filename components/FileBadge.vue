@@ -18,7 +18,7 @@ const t = computed(() => {
 </script>
 <template><span class="fb" :class="size" :data-t="t" :title="t + ' file'">{{ t }}</span></template>
 <style scoped>
-.fb { flex: none; display: inline-grid; place-items: center; font-weight: 700; letter-spacing: .02em; color: #fff; background: #7b8794; line-height: 1; }
+.fb { flex: none; display: inline-grid !important; place-items: center; text-align: center; font-weight: 700; letter-spacing: .02em; color: #fff; background: #7b8794; line-height: 1; }
 .fb.sm { width: 28px; height: 30px; font-size: 8.5px; } .fb.md { width: 36px; height: 40px; font-size: 10px; } .fb.lg { width: 46px; height: 50px; font-size: 12px; }
 .fb[data-t="PDF"] { background: #d0473d; } .fb[data-t="DOC"] { background: #2f6fd6; } .fb[data-t="XLS"], .fb[data-t="CSV"] { background: #23854f; } .fb[data-t="PPT"] { background: #d4762c; }
 .fb[data-t="IMG"] { background: #8a5cd1; } .fb[data-t="ZIP"] { background: #6b5b3e; } .fb[data-t="TXT"] { background: #5b6b7d; } .fb[data-t="VID"], .fb[data-t="AUD"] { background: #b0336f; }

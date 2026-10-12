@@ -14,7 +14,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
 </script>
 
 <template>
-  <article class="ti">
+  <article class="ti" data-nosearch>
     <header class="hd">
       <div><div class="logo"><img v-if="brand === 'finvry'" src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"><span v-else class="aw" aria-label="Aidi"><AidiWordmark /></span></div><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
       <div class="rt"><span class="lb">Invoice</span><b class="no">{{ inv.number }}</b><span class="chip" :class="inv.status">{{ chip }}</span></div>

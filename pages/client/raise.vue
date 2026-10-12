@@ -7,10 +7,14 @@ interface P { program: { id: string; status: string; currency: string; target: s
 const { data, refresh } = await useFetch<{ enabled: boolean; fee_pct?: number; programs?: P[]; labels?: Record<string, string> }>('/api/portal/raise')
 const sel = ref(''); watchEffect(() => { if (data.value?.programs?.length && !data.value.programs.some((p) => p.program.id === sel.value)) sel.value = data.value.programs[0]!.program.id })
 const cur = computed(() => data.value?.programs?.find((p) => p.program.id === sel.value) ?? null)
-const blank = () => ({ id: '', target: '' as string | number, currency: 'USD', round: 'Pre-seed', instrument: 'SAFE', valuation: '' as string | number, raised_so_far: '' as string | number, use_of_funds: '', traction: '', deck_url: '', target_investors: '', timeline: '', agree_fee: false })
+const blank = () => ({ id: '', target: '' as string | number, currency: 'USD', round: 'Pre-seed', instrument: 'SAFE', valuation: '' as string | number, raised_so_far: '' as string | number, use_of_funds: '', traction: '', deck_url: '', deck_id: '', deck_title: '', target_investors: '', timeline: '', agree_fee: false })
 const f = reactive(blank()); const editing = ref(false)
 function start() { Object.assign(f, blank()); editing.value = true }
 function edit() { const i = (cur.value?.program.intake ?? {}) as Record<string, unknown>; Object.assign(f, blank(), Object.fromEntries(Object.entries(i).map(([k, v]) => [k, v ?? ''])), { id: cur.value!.program.id, agree_fee: true }); editing.value = true }
+const { data: deckList } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; url: string }[] }>('/api/documents/decks', { default: () => ({ decks: [] }) })
+const decks = computed(() => deckList.value?.decks ?? [])
+const deckPick = computed({ get: () => (f.deck_id ? f.deck_id : f.deck_url ? 'link' : ''), set: (v: string) => { if (v === 'link' || v === '') { f.deck_id = ''; f.deck_title = ''; if (v === '') f.deck_url = '' } else { const d = decks.value.find((x) => x.id === v); if (d) { f.deck_id = d.id; f.deck_title = d.title; f.deck_url = d.url } } } })
+watch(() => editing.value, (on) => { if (on && !f.id && !f.deck_url && decks.value.length) deckPick.value = (decks.value.find((d) => d.primary_deck) ?? decks.value[0])!.id })
 const msg = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function submit() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/portal/raise/intake', { method: 'POST', body: { ...f, id: f.id || undefined } }); editing.value = false; await refresh(); sel.value = r.id } catch (e) { msg.value = err(e) } finally { busy.value = false } }
@@ -28,7 +32,7 @@ const checks = computed(() => [
   { t: 'Amount and round', ok: n(f.target) > 0 && !!f.round && !!f.instrument },
   { t: 'Use of funds', ok: plain(f.use_of_funds).length > 20 },
   { t: 'Traction', ok: plain(f.traction).length > 20 },
-  { t: 'Deck or deck link', ok: true },
+  { t: 'Deck linked', ok: !!f.deck_url },
   { t: 'Target investors', ok: plain(f.target_investors).length > 3 },
   { t: 'Timeline', ok: !!f.timeline.trim() },
 ])
@@ -71,7 +75,9 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
           <div class="sec"><div class="sh"><span class="no">4</span><div><h3>Investors and timing</h3><p>Who you would like to meet, and when you need to close. We add our own matches on top.</p></div></div>
             <AiWrite v-model="f.target_investors" purpose="raise" field="target_investors" :context="{ ...f, id: '', deck_url: '' }" />
             <ClientOnly><RichEditor v-model="f.target_investors" :min-height="140" :max-length="3000" placeholder="Funds or angels you would like an intro to, one per line, and any you have already spoken to." /></ClientOnly>
-            <div class="g2"><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="Leave blank to use your deck in Decks"></label><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div></div>
+            <div class="g2"><div class="label">Deck<select v-model="deckPick"><option value="">No deck yet</option><option v-for="d in decks" :key="d.id" :value="d.id">{{ d.primary_deck ? '★ ' : '' }}{{ d.title }}</option><option value="link">Paste a link instead…</option></select>
+                <input v-if="deckPick === 'link'" v-model="f.deck_url" maxlength="500" placeholder="https://">
+                <span class="hint">{{ f.deck_id ? 'We share your tracked deck link, so you see every investor who opens it in Decks.' : decks.length ? 'Pick one of your decks to track who opens it.' : '' }}<NuxtLink v-if="!decks.length" to="/decks">Upload a deck in Decks →</NuxtLink></span></div><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div></div>
           <div class="sec agreebox"><label class="agree"><input v-model="f.agree_fee" type="checkbox"> <span>I agree to a success fee of <b>{{ data.fee_pct }}%</b> of the money closed through this service. No fee is due if nothing closes.</span></label>
             <div class="row"><button class="btn" :disabled="busy || !f.agree_fee">{{ busy ? 'Saving…' : f.id ? 'Save changes' : 'Start my raise' }}</button><button v-if="editing && data.programs?.length" type="button" class="btn secondary" @click="editing = false">Cancel</button></div></div>
         </form>
@@ -130,4 +136,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; bor
 .mt { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .dt { flex: none; width: 44px; border: 1px solid var(--c-rule-strong); text-align: center; display: flex; flex-direction: column; } .dt b { font-size: 17px; padding: 3px 0 0; } .dt span { font-size: 10.5px; text-transform: uppercase; background: var(--c-paper-2); padding: 2px 0; }
 .mb { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .mb a { color: var(--c-blue-deep); font-size: 13px; } .empty { padding: 12px; background: var(--c-paper-2); } .past { opacity: .7; } summary { cursor: pointer; font-size: 13px; margin-top: 10px; }
 @media (max-width: 1000px) { .cols, .lay, .g3, .g2, .steps { grid-template-columns: 1fr; } .steps li + li { padding-left: 0; border-left: 0; border-top: 1px solid var(--c-rule); padding-top: 12px; } .side { position: static; } }
+.hint { font-size: 12px; color: var(--c-muted); } .hint a { color: var(--c-blue-deep); text-decoration: none; }
 </style>

@@ -6,6 +6,12 @@ const { data: meD } = await useFetch<{ roles: string[]; org: { kind: string } | 
 const canDelete = computed(() => !!meD.value?.roles.includes('admin'))
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Files from Finvry services (shared by our team or uploaded by you on a request or in messages), view-only here.
+interface SvcDoc { id: string; title: string; size_bytes: string | null; mime_type: string | null; kind: string; reason: string | null; created_at: string; job_id: string | null; job: string | null }
+const svc = ref<SvcDoc[]>([])
+onMounted(async () => { if (meD.value?.org?.kind !== 'company') return; try { const r = await $fetch<SvcDoc[]>('/api/portal/documents'); const seen = new Set<string>(); svc.value = r.filter((d) => !seen.has(d.id) && !!seen.add(d.id)) } catch { svc.value = [] } })
+const svcBusy = ref('')
+async function openSvc(id: string) { svcBusy.value = id; const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/portal/documents/' + id); if (w) w.location.href = r.url; else window.location.href = r.url } catch { w?.close() } finally { svcBusy.value = '' } }
 const LEVELS = [
   { v: 'normal', label: 'Normal: team, GPs, family', roles: ['admin', 'gp', 'team', 'family'] },
   { v: 'family', label: 'Family only', roles: ['admin', 'family'] },
@@ -111,6 +117,14 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
         </tr>
       </tbody>
     </table>
+    <template v-if="svc.length">
+      <div class="svh"><h2>From Finvry services</h2><p class="muted">Documents our team shared with you and files you sent us on your requests and in messages.</p></div>
+      <table class="table">
+        <thead><tr><th>Title</th><th>Request</th><th>From</th><th>Size</th><th>Added</th></tr></thead>
+        <tbody><tr v-for="d in svc" :key="d.id"><td><span class="dn"><FileBadge :name="d.title" :mime="d.mime_type" size="sm" /><span><button class="link" :disabled="svcBusy === d.id" @click="openSvc(d.id)">{{ d.title.split(' — ').pop() }}</button><span v-if="d.reason" class="sub">{{ d.reason.replace(/[#*_>`]/g, '').slice(0, 120) }}</span></span></span></td>
+          <td><NuxtLink v-if="d.job_id" :to="'/client/jobs/' + d.job_id" class="link">{{ d.job }}</NuxtLink><NuxtLink v-else to="/client/messages" class="link">Messages</NuxtLink></td><td>{{ d.kind === 'document' ? 'Finvry team' : 'You' }}</td><td>{{ d.size_bytes ? size(d.size_bytes) : "—" }}</td><td class="muted">{{ date(d.created_at) }}</td></tr></tbody>
+      </table>
+    </template>
   </section>
 </template>
 
@@ -140,5 +154,6 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 @media (max-width: 900px) { .up { grid-template-columns: 1fr; } }
 .dh { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .dh h1 { margin: 0; } .dh a { text-decoration: none; }
 .dha { display: flex; gap: 8px; } .dha a { text-decoration: none; }
+.svh { margin: 32px 0 12px; } .svh h2 { margin: 0 0 4px; font-size: 19px; } .svh p { margin: 0; font-size: 13.5px; }
 .dstor { float: right; width: 300px; margin: 0 0 8px 16px; } @media (max-width: 800px) { .dstor { float: none; width: auto; } }
 </style>

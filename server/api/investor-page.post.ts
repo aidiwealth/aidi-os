@@ -1,7 +1,7 @@
 // Save and publish (or unpublish) the investor page.
 import { z } from 'zod'
 const url = z.string().trim().max(500).refine((v) => v === '' || /^https?:\/\//i.test(v), 'Links must start with http:// or https://')
-const Body = z.object({ slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/), published: z.boolean(), headline: z.string().trim().max(200).default(''), about: z.string().trim().max(3000).default(''),
+const Body = z.object({ slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/), published: z.boolean(), headline: z.string().trim().max(200).default(''), about: z.string().trim().max(60000).default(''),
   website: url.default(''), deck_url: url.default(''), contact_email: z.string().trim().max(254).default(''), metrics: z.array(z.string()).max(8), period_type: z.enum(['month', 'quarter', 'year']), logo_id: z.string().uuid().nullable().optional(), cover_id: z.string().uuid().nullable().optional(), board_id: z.string().uuid().nullable().optional(), deck_id: z.string().uuid().nullable().optional(), room: z.boolean().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
