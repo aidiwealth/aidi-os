@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig().cronSecret
   const given = getRequestHeader(event, 'x-cron-secret') ?? ''
   if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) throw apiError('forbidden', 'Forbidden', 403)
-  const out = { charged: 0, carded: 0, retry: 0, suspended: 0, reminded: 0 }
+  const out = { charged: 0, carded: 0, retry: 0, suspended: 0, reminded: 0, ra_resumed: 0, ra_notices: 0 }
   const plans = await asPlatform(() => db().query<{ id: string }>("SELECT o.id FROM core.organizations o WHERE o.kind = 'company' AND o.plan_code <> 'company_free' AND o.status <> 'closed' AND NOT EXISTS (SELECT 1 FROM wallet.subscriptions s WHERE s.organization_id = o.id AND s.kind = 'plan' AND s.status <> 'cancelled')"))
   for (const p of plans.rows) await syncPlanSubscription(p.id)
   const url = brands().finvry.url
@@ -39,18 +39,18 @@ export default defineEventHandler(async (event) => {
     }
     if (paid) {
       await asPlatform(async () => {
-        await db().query("UPDATE wallet.subscriptions SET next_charge_at = next_charge_at + CASE WHEN interval = 'month' THEN interval '1 month' ELSE interval '1 year' END, failures = 0, last_error = NULL, updated_at = now() WHERE id = $1", [s.id])
+        await db().query("UPDATE wallet.subscriptions SET next_charge_at = coalesce(overdue_since, next_charge_at) + CASE WHEN interval = 'month' THEN interval '1 month' ELSE interval '1 year' END, failures = 0, last_error = NULL, overdue_since = NULL, updated_at = now() WHERE id = $1", [s.id])
         if (s.kind === 'plan') await db().query("UPDATE core.organizations SET status = 'active', trial_ends_at = NULL WHERE id = $1 AND status IN ('trial','past_due')", [s.organization_id])
       })
       continue
     }
     if (s.failures < 1) {
-      await asPlatform(() => db().query("UPDATE wallet.subscriptions SET failures = failures + 1, last_error = $2, next_charge_at = current_date + 3, updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)]))
+      await asPlatform(() => db().query("UPDATE wallet.subscriptions SET failures = failures + 1, last_error = $2, overdue_since = coalesce(overdue_since, next_charge_at), next_charge_at = current_date + 3, updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)]))
       await notify(s.organization_id, 'We could not charge ' + s.name, 'Payment for ' + s.name + ' did not go through', 'We tried to collect ' + money(amt, s.currency) + ' from your wallet and card on file (' + why + '). We will try again in 3 days. Top up your wallet or update your card to avoid ' + (s.kind === 'plan' ? 'moving to the Free plan.' : 'the service being paused.'), 'Top up your wallet', url + '/wallet')
       out.retry++; continue
     }
     await asPlatform(async () => {
-      await db().query("UPDATE wallet.subscriptions SET status = 'suspended', last_error = $2, updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)])
+      await db().query("UPDATE wallet.subscriptions SET status = 'suspended', last_error = $2, overdue_since = coalesce(overdue_since, next_charge_at), updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)])
       if (s.kind === 'plan') await db().query("UPDATE core.organizations SET plan_code = 'company_free', status = 'active', trial_ends_at = NULL, settings = settings || '{\"trial_used\": \"true\"}'::jsonb WHERE id = $1", [s.organization_id])
       else if (s.client_id) await db().query("INSERT INTO services.jobs (organization_id, client_id, service, title, description, status, priority) SELECT organization_id, id, 'other', $2, $3, 'new', 'high' FROM services.clients WHERE id = $1", [s.client_id, ('Paused for non-payment: ' + s.name).slice(0, 200), 'Automatic renewal failed twice (' + why + '). The service is paused until the customer pays.'])
     })
@@ -59,5 +59,8 @@ export default defineEventHandler(async (event) => {
       s.kind === 'plan' ? 'Choose a plan' : 'Top up your wallet', url + (s.kind === 'plan' ? '/settings?s=plan' : '/wallet'))
     out.suspended++
   }
+  // Registered agent: resume a paused renewal once the wallet covers it; formal notice when 30 days overdue.
+  try { out.ra_resumed = await asPlatform(() => resumeRaRenewals()) } catch (e) { console.error('[cron] ra resume', e) }
+  try { out.ra_notices = await asPlatform(() => runRaNotices()) } catch (e) { console.error('[cron] ra notices', e) }
   return { ok: true, ...out }
 })

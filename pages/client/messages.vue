@@ -9,6 +9,7 @@ const busy = ref(false); const msg = ref('')
 async function send(body: string, documentId: string | null) { busy.value = true; msg.value = ''; try { const r = await $fetch<{ thread: string }>('/api/portal/messages', { method: 'POST', body: { body, document_id: documentId ?? undefined, thread_id: data.value?.thread?.status === 'open' ? data.value.thread.id : undefined } }); sel.value = r.thread; await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } finally { busy.value = false } }
 async function resolve() { if (!data.value?.thread || !confirm('Mark this conversation as resolved?')) return; await $fetch('/api/portal/threads/' + data.value.thread.id + '/close', { method: 'POST' }); await refresh() }
 function fresh() { sel.value = ''; if (data.value) { data.value.thread = null; data.value.messages = [] } }
+const plain = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/(\*\*|__|\*|`)/g, '').replace(/^\s*(#{1,6}|>)\s+/gm, '').replace(/\s+/g, ' ').trim()
 const when = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 </script>
 <template>
@@ -16,10 +17,10 @@ const when = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'nume
     <ClientTabs />
     <div class="wrap">
       <aside class="hist"><button class="btn sm" @click="fresh">+ New conversation</button><p class="hl">Conversations</p>
-        <button v-for="t in data.threads" :key="t.id" class="ti" :class="{ on: data.thread?.id === t.id }" @click="sel = t.id"><b>{{ t.subject }}</b><span v-if="t.category && t.category !== 'general'" class="ctag" :data-c="t.category">{{ MSG_CATEGORIES[t.category] ?? t.category }}</span><span><i :class="t.status">{{ t.status === 'open' ? 'Open' : 'Closed' }}</i> · {{ when(t.last_message_at) }}</span></button>
+        <button v-for="t in data.threads" :key="t.id" class="ti" :class="{ on: data.thread?.id === t.id }" @click="sel = t.id"><b>{{ plain(t.subject) }}</b><span v-if="t.category && t.category !== 'general'" class="ctag" :data-c="t.category">{{ MSG_CATEGORIES[t.category] ?? t.category }}</span><span><i :class="t.status">{{ t.status === 'open' ? 'Open' : 'Closed' }}</i> · {{ when(t.last_message_at) }}</span></button>
         <p v-if="!data.threads.length" class="mut">Your conversations with us appear here.</p></aside>
       <div class="chat">
-        <header><span class="av">A</span><div><b>{{ data.thread?.subject ?? 'New conversation' }} <span v-if="data.thread?.category && data.thread.category !== 'general'" class="ctag" :data-c="data.thread.category">{{ MSG_CATEGORIES[data.thread.category] }}</span></b><span>{{ data.thread ? (data.thread.status === 'open' ? 'Open · we usually reply within one business day, and by email' : 'Closed ' + (data.thread.closed_at ? when(data.thread.closed_at) : '')) : 'Ask us anything about your company, filings, invoices or an order.' }}</span></div>
+        <header><span class="av">A</span><div><b>{{ data.thread ? plain(data.thread.subject) : 'New conversation' }} <span v-if="data.thread?.category && data.thread.category !== 'general'" class="ctag" :data-c="data.thread.category">{{ MSG_CATEGORIES[data.thread.category] }}</span></b><span>{{ data.thread ? (data.thread.status === 'open' ? 'Open · we usually reply within one business day, and by email' : 'Closed ' + (data.thread.closed_at ? when(data.thread.closed_at) : '')) : 'Ask us anything about your company, filings, invoices or an order.' }}</span></div>
           <button v-if="data.thread?.status === 'open'" class="btn secondary sm" @click="resolve">Mark resolved</button></header>
         <ChatThread :messages="data.messages" side="client" :closed="data.thread?.status === 'closed'" :busy="busy" :default-category="data.thread?.category" upload-url="/api/portal/messages/file" download-base="/api/portal/documents/" @send="send">
           <template #empty><p v-if="!data.messages.length" class="none">Write your message below. You can attach documents with the paperclip or by dragging them here.</p></template></ChatThread>

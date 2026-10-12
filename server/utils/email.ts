@@ -342,6 +342,16 @@ export async function sendSupportReply(to: string, subject: string, bodyHtml: st
   await sendEmail({ to, subject, text: bodyText, html: shell(bodyHtml, bodyText.slice(0, 120)), fromName: 'Finvry Support', replyTo: support, headers, brand: 'finvry' })
 }
 
+// Notice of intent to resign as registered agent (PDF attached).
+export async function sendRaNoticeEmail(input: { to: string; company: string; agent: string; amount: string; due: string; payBy: string; link: string; portal: boolean; file: { filename: string; content: Uint8Array } }): Promise<void> {
+  const head = 'Notice of intent to resign as registered agent'
+  const html = shell(`<p style="margin:0 0 8px;"><span style="display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;background:#fdecef;color:#b4234a;">Legal notice</span></p>` + h1(esc(head)) +
+    para('Payment of <b>' + esc(input.amount) + '</b> for the Registered Agent service for <b>' + esc(input.company) + '</b> was due on ' + esc(input.due) + ' and remains unpaid.') +
+    para('This is a formal notice that ' + esc(input.agent) + ', the registered agent for ' + esc(input.company) + ', intends to resign as registered agent. Without a registered agent, the status and/or standing of ' + esc(input.company) + ' may be adversely affected.') +
+    para('<b>Please pay by ' + esc(input.payBy) + '.</b> The notice is attached. If you have recently submitted payment, please disregard this notice.') + button(input.portal ? 'Open in Finvry →' : 'Pay now →', input.link), head)
+  await sendEmail({ to: input.to, subject: 'Legal notice: ' + head + ' — ' + input.company, brand: 'finvry', text: head + '\n\nPayment of ' + input.amount + ' for the Registered Agent service for ' + input.company + ' was due on ' + input.due + ' and remains unpaid. This is a formal notice that ' + input.agent + ', the registered agent for ' + input.company + ', intends to resign as registered agent. Please pay by ' + input.payBy + '. The notice is attached. If you have recently submitted payment, please disregard this notice.\n\n' + input.link, html, attachments: [input.file] })
+}
+
 // A signed agreement: a copy (PDF attached) to the signer, and to the services team.
 export async function sendAgreementCopy(input: { to: string; title: string; who: string; company: string; files: { filename: string; content: Uint8Array }[]; link?: string; team: boolean }): Promise<void> {
   const head = input.team ? input.who + ' (' + input.company + ') signed the ' + input.title : 'Your signed ' + input.title

@@ -23,6 +23,15 @@ const sumUsd = computed(() => (it.cost !== '' || it.fee !== '' ? Number(it.cost 
 const sumNgn = computed(() => (it.cost_ngn !== '' || it.fee_ngn !== '' ? Number(it.cost_ngn || 0) + Number(it.fee_ngn || 0) : null))
 async function saveItem() { msg.value = ''; try { await $fetch('/api/services/catalog', { method: 'POST', body: { ...it, id: it.id || undefined } }); editing.value = false; await ri() } catch (e) { msg.value = err(e) } }
 const BILL: Record<string, string> = { one_time: 'One-time', annual: 'Per year', monthly: 'Per month', quoted: 'Quoted (from)' }
+// Registered agent: the default for Finvry companies, and a different agent for any US state.
+interface Ag { name: string; address: string }
+const { data: ra, refresh: rra } = await useFetch<{ default: Ag; states: Record<string, Ag>; us_states: string[] }>('/api/services/ra-agents')
+const rf = reactive({ default: { name: '', address: '' } as Ag, rows: [] as { state: string; name: string; address: string }[] })
+watch(ra, (v) => { if (v) { rf.default = { ...v.default }; rf.rows = Object.entries(v.states).map(([state, a]) => ({ state, ...a })).sort((a, b) => a.state.localeCompare(b.state)) } }, { immediate: true })
+const freeStates = (cur: string) => (ra.value?.us_states ?? []).filter((x) => x === cur || !rf.rows.some((r) => r.state === x))
+function addState() { const st = freeStates('')[0]; if (st) rf.rows.push({ state: st, name: '', address: '' }) }
+const raSaving = ref(false), raOk = ref(''), raErr = ref('')
+async function saveRa() { raSaving.value = true; raOk.value = ''; raErr.value = ''; try { await $fetch('/api/services/ra-agents', { method: 'POST', body: { default: rf.default, states: Object.fromEntries(rf.rows.filter((r) => r.name.trim()).map((r) => [r.state, { name: r.name, address: r.address }])) } }); raOk.value = 'Saved. New notices and client pages use these agents.'; await rra() } catch (e) { raErr.value = err(e) } finally { raSaving.value = false } }
 const money = (v: string | null, c: string) => (v === null ? 'Set price' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v)))
 </script>
 
@@ -57,6 +66,14 @@ const money = (v: string | null, c: string) => (v === null ? 'Set price' : new I
         <div class="wide row"><button class="btn" type="submit">Save service</button><button class="btn secondary" type="button" @click="editing = false">Cancel</button></div>
       </form>
     </div>
+    <form v-if="ra" class="card ra" @submit.prevent="saveRa">
+      <div class="ch"><h2>Registered agent</h2><button v-if="isAdmin" type="button" class="btn secondary" @click="addState">+ Agent for a state</button></div>
+      <p class="muted sm">Who serves as registered agent for companies that use ours. The default applies to every state unless you set a different agent for that state. Clients see the agent's name on their company, and it is named in registered agent notices.</p>
+      <table class="t"><thead><tr><th>State</th><th>Registered agent</th><th>Address (optional)</th><th /></tr></thead>
+        <tbody><tr><td><b>All states (default)</b></td><td><input v-model="rf.default.name" maxlength="200" required :disabled="!isAdmin"></td><td><input v-model="rf.default.address" maxlength="500" :disabled="!isAdmin" placeholder="Shown on notices if set"></td><td /></tr>
+          <tr v-for="(r, i) in rf.rows" :key="i"><td><select v-model="r.state" :disabled="!isAdmin"><option v-for="st in freeStates(r.state)" :key="st" :value="st">{{ st }}</option></select></td><td><input v-model="r.name" maxlength="200" :disabled="!isAdmin" placeholder="Agent's legal name"></td><td><input v-model="r.address" maxlength="500" :disabled="!isAdmin"></td><td class="acts"><button v-if="isAdmin" type="button" class="link" @click="rf.rows.splice(i, 1)">Remove</button></td></tr></tbody></table>
+      <div v-if="isAdmin" class="row rab"><button class="btn" type="submit" :disabled="raSaving">{{ raSaving ? 'Saving…' : 'Save registered agents' }}</button><span v-if="raOk" class="okb">{{ raOk }}</span><span v-if="raErr" class="error">{{ raErr }}</span></div>
+    </form>
     <form class="card frm" @submit.prevent="save">
       <h2 class="wide">Invoices</h2>
       <label class="label">Invoice number prefix<input v-model="f.prefix" required maxlength="10" :disabled="!isAdmin"></label>
@@ -93,5 +110,6 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 .ngp { color: var(--c-muted); font-size: 12.5px; }
 .frow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .btn.done { background: var(--c-ok); border-color: var(--c-ok); } .okb { color: var(--c-ok); font-weight: 500; font-size: 13.5px; }
+.ra .t input, .ra .t select { width: 100%; } .ra .t td { vertical-align: middle; } .rab { margin-top: 12px; }
 .lhint { font-style: normal; font-size: 12px; color: var(--c-muted); font-weight: 400; }
 </style>

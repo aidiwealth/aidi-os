@@ -4,5 +4,7 @@ export default defineEventHandler(async (event) => {
   const companies = await db().query(
     `SELECT id, name, entity_type, jurisdiction, country, ein, address, registered_agent, to_char(agent_renewal, 'YYYY-MM-DD') AS agent_renewal, virtual_office, mailbox, status,
             to_char(formation_date, 'YYYY-MM-DD') AS formation_date FROM services.companies WHERE client_id = $1 ORDER BY name`, [u.clientId])
-  return { name: u.name, email: u.email, client: u.client, companies: companies.rows, workspace: await publicWorkspace() }
+  const ra = await raAgents()
+  const rows = (companies.rows as { jurisdiction: string | null; registered_agent: string }[]).map((c) => ({ ...c, agent_name: c.registered_agent === 'ours' ? agentFor(ra, c.jurisdiction).name : null }))
+  return { name: u.name, email: u.email, client: u.client, companies: rows, workspace: await publicWorkspace() }
 })

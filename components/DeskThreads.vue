@@ -35,6 +35,9 @@ async function setStatus(s: 'open' | 'closed') { msg.value = ''; try { await $fe
 async function setMeta(m: { subject?: string; category?: string }) { msg.value = ''; try { await $fetch('/api/services/inbox/' + cur.value + '/meta', { method: 'POST', body: m }); await done() } catch (e) { msg.value = err(e) } }
 function rename() { const s = window.prompt('Conversation subject', conv.value?.thread.subject ?? ''); if (s && s.trim()) setMeta({ subject: s.trim() }) }
 async function del() { if (!conv.value || !window.confirm('Delete "' + conv.value.thread.subject + '" with ' + conv.value.thread.client + '? Its messages and files are removed for you and the client. This cannot be undone.')) return; msg.value = ''; try { await $fetch('/api/services/inbox/' + cur.value, { method: 'DELETE' }); cur.value = ''; await rlist(); emit('changed') } catch (e) { msg.value = err(e) } }
+// Previews and subjects as plain text: no Markdown marks (**, #, >, links) or HTML.
+const plain = (s: string | null | undefined) => (s ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|\*|_|~~|`)/g, '').replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '').replace(/\s+/g, ' ').trim()
+const initials = (n: string) => n.split(/\s+/).filter((w) => !/^(llc|inc|ltd|limited|corp)\.?$/i.test(w)).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?'
 const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 1000; return s < 3600 ? Math.max(1, Math.round(s / 60)) + 'm' : s < 86400 ? Math.round(s / 3600) + 'h' : s < 86400 * 30 ? Math.round(s / 86400) + 'd' : new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value && !composing.value) rconv() }, 30000) }); onBeforeUnmount(() => clearInterval(timer))
@@ -47,10 +50,12 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value && !composi
       <div class="fl"><input v-model="q" :placeholder="clientId ? 'Search conversations' : 'Search client or subject'" aria-label="Search"><select v-model="cat" aria-label="Type"><option value="">All types</option><option v-for="(l, k) in MSG_CATEGORIES" :key="k" :value="k">{{ l }}</option></select></div>
       <div class="items">
         <button v-for="t in shown" :key="t.id" type="button" class="it" :class="{ on: !composing && cur === t.id, un: t.unread }" @click="pick(t.id)">
-          <span class="r1"><b>{{ clientId ? t.subject : t.client }}</b><em>{{ ago(t.last_message_at) }}</em></span>
-          <span v-if="!clientId" class="sj">{{ t.subject }}</span>
-          <span class="tg"><span v-if="t.category !== 'general'" class="ctag" :data-c="t.category">{{ MSG_CATEGORIES[t.category] ?? t.category }}</span><span v-if="t.status === 'closed'" class="cl">Closed</span><span class="nm">{{ t.n }} message{{ t.n === 1 ? '' : 's' }}</span></span>
-          <span class="lm">{{ t.last?.replace(/<[^>]+>/g, ' ') }}</span><i v-if="t.unread" class="dot">{{ t.unread }}</i></button>
+          <span v-if="!clientId" class="av" aria-hidden="true">{{ initials(t.client) }}</span>
+          <span class="bd">
+            <span class="r1"><b>{{ clientId ? plain(t.subject) : t.client }}</b><em>{{ ago(t.last_message_at) }}</em></span>
+            <span v-if="!clientId" class="sj">{{ plain(t.subject) }}</span>
+            <span class="lm"><span v-if="t.category !== 'general'" class="ctag" :data-c="t.category">{{ MSG_CATEGORIES[t.category] ?? t.category }}</span><span v-if="t.status === 'closed'" class="cl">Closed</span><span class="pv">{{ plain(t.last) || 'Shared a document' }}</span></span>
+          </span><i v-if="t.unread" class="dot">{{ t.unread }}</i></button>
         <EmptyState v-if="!shown.length" icon="cs_inbox" :title="status === 'open' ? 'All caught up' : 'No conversations'" :text="clientId ? 'Start one with + New message.' : status === 'open' ? 'New client messages land here.' : ''" />
       </div>
     </aside>
@@ -71,7 +76,7 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value && !composi
     </div>
 
     <div v-else-if="conv && cur" class="cv">
-      <header><div class="hi"><b>{{ conv.thread.subject }} <button type="button" class="lk sm" @click="rename">Rename</button></b>
+      <header><div class="hi"><b>{{ plain(conv.thread.subject) }} <button type="button" class="lk sm" @click="rename">Rename</button></b>
         <span>{{ clientId ? (conv.thread.status === 'open' ? 'Open' : 'Closed') : conv.thread.client + (conv.thread.client_email ? ' · ' + conv.thread.client_email : '') }}<template v-if="!clientId"> · <NuxtLink :to="'/services/clients/' + conv.thread.client_id">Client file</NuxtLink></template></span></div>
         <label class="ty">Type<select :value="conv.thread.category" aria-label="Conversation type" @change="setMeta({ category: ($event.target as HTMLSelectElement).value })"><option v-for="(l, k) in MSG_CATEGORIES" :key="k" :value="k">{{ l }}</option></select></label>
         <button v-if="conv.thread.status === 'open'" type="button" class="btn secondary sm" @click="setStatus('closed')">Close</button><button v-else type="button" class="btn secondary sm" @click="setStatus('open')">Reopen</button><button type="button" class="btn secondary sm danger" @click="del">Delete</button></header>
@@ -86,11 +91,12 @@ onMounted(() => { timer = setInterval(() => { rlist(); if (cur.value && !composi
 .ls { border-right: 1px solid var(--c-rule); display: flex; flex-direction: column; min-height: 0; } .top { padding: 10px; border-bottom: 1px solid var(--c-rule); } .top .btn { width: 100%; }
 .lt { display: flex; border-bottom: 1px solid var(--c-rule); } .lt button { flex: 1; background: none; border: 0; padding: 10px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-muted); border-bottom: 2px solid transparent; } .lt .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .fl { display: grid; grid-template-columns: 1fr 120px; gap: 6px; padding: 10px; border-bottom: 1px solid var(--c-rule); } .fl input, .fl select { font: inherit; font-size: 13px; padding: 7px 8px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; }
-.items { overflow-y: auto; flex: 1; } .it { position: relative; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--c-rule); padding: 11px 14px; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 3px; } .it.on { background: var(--c-signal-soft); box-shadow: inset 3px 0 0 var(--c-navy); } .it:hover { background: #fafaf8; }
-.r1 { display: flex; justify-content: space-between; gap: 8px; } .r1 b { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .it.un .r1 b, .it.un .sj { font-weight: 700; } .r1 em { font-style: normal; font-size: 12px; color: var(--c-muted); flex: none; } .sj { font-size: 13px; }
-.tg { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .tg .ctag { margin: 0; } .cl { font-size: 11.5px; background: var(--c-paper-2); color: var(--c-muted); padding: 2px 7px; } .nm { font-size: 11.5px; color: var(--c-muted); }
-.lm { font-size: 12.5px; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 26px; }
-.dot { position: absolute; right: 12px; bottom: 12px; min-width: 18px; height: 18px; background: #d93a3a; color: #fff; font-style: normal; font-size: 11px; font-weight: 600; display: grid; place-items: center; padding: 0 5px; }
+.items { overflow-y: auto; flex: 1; } .it { position: relative; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--c-rule); padding: 12px 14px; cursor: pointer; font: inherit; display: flex; gap: 11px; align-items: flex-start; }
+.av { width: 32px; height: 32px; flex: none; background: var(--c-paper-2); color: var(--c-navy); font-size: 12px; font-weight: 600; display: grid; place-items: center; letter-spacing: .02em; } .it.on .av { background: var(--c-navy); color: #fff; }
+.bd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .it.on { background: var(--c-signal-soft); box-shadow: inset 3px 0 0 var(--c-navy); } .it:hover { background: #fafaf8; }
+.r1 { display: flex; justify-content: space-between; gap: 8px; } .r1 b { font-size: 13.5px; font-weight: 600; color: var(--c-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .r1 em { font-style: normal; font-size: 11.5px; color: var(--c-muted); flex: none; } .sj { font-size: 13px; color: var(--c-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .it.un .sj { font-weight: 600; color: var(--c-ink); } .it.un .r1 em { color: var(--c-navy); font-weight: 600; }
+.lm { display: flex; gap: 6px; align-items: center; min-width: 0; font-size: 12.5px; color: var(--c-muted); padding-right: 24px; margin-top: 2px; } .lm .ctag { flex: none; font-size: 10.5px; padding: 1px 6px; } .cl { flex: none; font-size: 10.5px; font-weight: 600; background: var(--c-paper-2); color: var(--c-muted); padding: 1px 6px; } .pv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { position: absolute; right: 14px; bottom: 13px; min-width: 18px; height: 18px; background: #d93a3a; color: #fff; font-style: normal; font-size: 11px; font-weight: 600; display: grid; place-items: center; padding: 0 5px; }
 .cv { display: flex; flex-direction: column; min-width: 0; min-height: 0; } .cv header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--c-rule); flex-wrap: wrap; } .hi { flex: 1; min-width: 200px; display: flex; flex-direction: column; } .hi span { font-size: 12.5px; color: var(--c-muted); } .hi a { color: var(--c-blue-deep); }
 .ty { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-muted); } .ty select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .nh { justify-content: space-between; } .x { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--c-muted); }
