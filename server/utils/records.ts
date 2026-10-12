@@ -57,8 +57,7 @@ export const RECORDS: Record<string, RecordType> = {
     children: ['DELETE FROM services.people WHERE client_id = $1', 'DELETE FROM services.companies WHERE client_id = $1'] },
   cs_company: { table: 'services.companies', module: 'services', roles: ['admin'], name: 'name', blockers: [['SELECT count(*) FROM services.invoices WHERE company_id = $1', 'invoice']] },
   cs_person: { table: 'services.people', module: 'services', roles: ['admin'], name: 'name' },
-  cs_invoice: { table: 'services.invoices', module: 'services', roles: ['admin'], name: "'invoice ' || number", children: ['DELETE FROM services.invoice_payments WHERE invoice_id = $1'],
-    guard: { sql: "SELECT 1 FROM services.invoices WHERE id = $1 AND status IN ('sent','paid')", message: 'Sent and paid invoices are kept as a record. Void it instead.' } },
+  cs_invoice: { table: 'services.invoices', module: 'services', roles: ['admin'], name: "'invoice ' || number", children: ['DELETE FROM services.invoice_payments WHERE invoice_id = $1'] }, // admins can delete any services invoice (e.g. old or duplicate ones); payments on it go with it
   info_request: { table: 'services.info_requests', module: 'services', roles: ['admin'], name: "tax_year || ' tax information request'" },
   catalog: { table: 'services.catalog', module: 'services', roles: ['admin'], name: 'name' },
   job: { table: 'services.jobs', module: 'services', roles: ['admin', 'gp'], name: 'title', children: ['DELETE FROM services.job_events WHERE job_id = $1'] },

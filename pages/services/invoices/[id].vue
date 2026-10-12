@@ -31,6 +31,7 @@ const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invo
       <NuxtLink to="/services/invoices" class="btn secondary">← Invoices</NuxtLink>
       <div class="row">
         <button v-if="data.invoice.status !== 'void'" class="btn secondary" :class="{ on: dt.open }" @click="openDates">Change dates</button>
+        <DeleteButton type="cs_invoice" :id="id" :name="'invoice ' + data.invoice.number + (data.invoice.status === 'paid' ? ' (marked paid' + (data.invoice.paid_via === 'wallet' ? ' from the wallet — the amount is not refunded' : '') + ')' : '')" to="/services/invoices" />
         <button class="btn secondary" @click="doPrint">Download PDF</button>
         <button v-if="data.invoice.status !== 'draft' && data.invoice.status !== 'void'" class="btn secondary" @click="copy">Copy pay link</button>
         <NuxtLink v-if="data.invoice.status === 'draft' || data.invoice.status === 'sent'" :to="{ path: '/services/invoices/new', query: { edit: id } }" class="btn secondary">Edit invoice</NuxtLink>
@@ -50,8 +51,7 @@ const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invo
       <div v-if="data.wallet" class="wrow"><span>Client wallet <b>{{ money(data.wallet.balance_minor / 100, data.wallet.currency) }}</b><em v-if="data.wallet.currency !== data.invoice.currency"> · wallet is in {{ data.wallet.currency }}, invoice in {{ data.invoice.currency }}</em><em v-else-if="!walletOk"> · not enough to cover this invoice</em></span>
         <button class="btn" :disabled="busy || !walletOk" @click="act('charge_wallet')">Charge wallet {{ money(data.invoice.amount, data.invoice.currency) }}</button></div>
       <span v-else class="muted sm">No Finvry wallet for this client — they have no Finvry account yet.</span>
-      <div class="row"><input v-model="paidOn" type="date" aria-label="Paid on"><button class="btn secondary" :disabled="busy" @click="act('mark_paid')">Mark as paid</button><button class="btn secondary" :disabled="busy" @click="act('void')">Void</button>
-        <DeleteButton v-if="data.invoice.status === 'draft'" type="cs_invoice" :id="id" :name="'invoice ' + data.invoice.number" to="/services/invoices" /></div>
+      <div class="row"><input v-model="paidOn" type="date" aria-label="Paid on"><button class="btn secondary" :disabled="busy" @click="act('mark_paid')">Mark as paid</button><button class="btn secondary" :disabled="busy" @click="act('void')">Void</button></div>
     </div>
     <ClientInvoice :inv="data.invoice" />
   </section>
