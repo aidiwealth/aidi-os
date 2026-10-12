@@ -2,6 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
+  await requireQb()
   rateLimit('fin_extract', user.userId, 30, 60 * 60 * 1000)
   const b = z.object({ subject: z.string().max(80), period_type: z.enum(['month', 'quarter', 'year']), period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose the period first.')

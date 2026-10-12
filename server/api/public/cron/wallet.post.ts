@@ -22,6 +22,10 @@ export default defineEventHandler(async (event) => {
   // charges
   const due = (await asPlatform(() => db().query<Sub>("SELECT id, organization_id, kind, code, name, client_id, amount_minor::text, currency, interval, to_char(next_charge_at, 'YYYY-MM-DD') AS next_charge_at, failures, NULL AS reminded_for FROM wallet.subscriptions WHERE status = 'active' AND next_charge_at <= current_date ORDER BY next_charge_at LIMIT 500"))).rows
   for (const s of due) {
+    // Plans: refresh the price first (a partner discount may have started or ended).
+    if (s.kind === 'plan') { await repricePlan(s.organization_id).catch((e) => console.error('[cron] reprice', e)); const cur = (await asPlatform(() => db().query<{ amount_minor: string }>('SELECT amount_minor::text FROM wallet.subscriptions WHERE id = $1', [s.id]))).rows[0]; if (cur) s.amount_minor = cur.amount_minor }
+    // Nothing to collect (a 100% discount): move to the next period.
+    if (Number(s.amount_minor) === 0) { await asPlatform(() => db().query("UPDATE wallet.subscriptions SET next_charge_at = next_charge_at + CASE WHEN interval = 'month' THEN interval '1 month' ELSE interval '1 year' END, failures = 0, last_error = NULL, updated_at = now() WHERE id = $1", [s.id])); continue }
     const amt = Number(s.amount_minor), cat = s.kind === 'plan' ? 'subscription' : 'service'
     const reason = s.name + ' (' + (s.interval === 'month' ? 'monthly' : 'yearly') + ')'
     const ref = 'sub:' + s.id + ':' + s.next_charge_at

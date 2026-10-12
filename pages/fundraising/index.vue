@@ -78,7 +78,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <div class="fx-stats"><StatTile label="Investors in play" :value="main?.in_play ?? 0" icon="users" tone="n" /><StatTile label="Data room files" :value="data.files.length" icon="doc" tone="b" />
         <StatTile label="Data room views" :value="data.links.reduce((t, l) => t + l.views, 0)" icon="chart" tone="c" /><StatTile label="Time spent" :value="mins(data.links.reduce((t, l) => t + l.seconds, 0))" icon="clock" tone="g" /></div>
       <div class="two"><div class="card"><h3>Recent data room activity</h3><div v-for="(a, i) in data.activity.slice(0, 8)" :key="i" class="li"><span><b>{{ a.viewer_email ?? 'Someone' }}</b> opened {{ a.file ?? 'the room' }}<em> · via {{ a.link }}</em></span><span class="mut">{{ when(a.started_at) }}{{ a.seconds ? ' · ' + mins(a.seconds) : '' }}</span></div><p v-if="!data.activity.length" class="mut">No views yet. Share your data room to start tracking.</p></div>
-        <div class="card"><h3>Next steps</h3><button class="nx" @click="go('room'); up.open = true"><b>Upload your deck</b><span>Then share tracked links with investors</span></button><button class="nx" @click="newMemo()"><b>Write your deal memo with AI</b><span>From your numbers and a few notes</span></button><button class="nx" @click="newSafe()"><b>Create a SAFE</b><span>Post-money cap, discount, MFN</span></button></div></div>
+        <div class="card"><h3>Next steps</h3><NuxtLink to="/fundraising/prospects" class="nx fnd"><b>Find investors and grants</b><span>Matched to your location, stage and sector · add them to a pipeline</span></NuxtLink><button class="nx" @click="go('room'); up.open = true"><b>Upload your deck</b><span>Then share tracked links with investors</span></button><button class="nx" @click="newMemo()"><b>Write your deal memo with AI</b><span>From your numbers and a few notes</span></button><button class="nx" @click="newSafe()"><b>Create a SAFE</b><span>Post-money cap, discount, MFN</span></button></div></div>
     </template>
 
     <template v-else-if="tab === 'room'">
@@ -209,4 +209,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 9px 10px; bor
 @media (max-width: 1000px) { .two, .g2 { grid-template-columns: 1fr; } }
 .adk { display: flex; flex-direction: column; gap: 10px; } .adk select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 .ndaroom { margin: 0 0 12px; }
+.nx.fnd { text-decoration: none; color: inherit; background: var(--c-signal-soft); } .nx.fnd b { color: var(--c-blue-deep); }
 </style>

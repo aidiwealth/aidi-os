@@ -2,12 +2,13 @@
 // Nigeria is billed in naira, everywhere else in US dollars. We then email a sign-in code to prove the address.
 import { z } from 'zod'
 const Body = z.object({ website: z.string().max(0).optional(), name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254),
-  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_free', 'company_startup', 'company_scale']), turnstile_token: z.string().max(4000).optional(), agree: SignBody })
+  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_free', 'company_startup', 'company_scale']), turnstile_token: z.string().max(4000).optional(), agree: SignBody, partner_code: z.string().trim().max(40).optional() })
 export default defineEventHandler(async (event) => {
   rateLimit('signup_ip', clientIp(event), 5, 60 * 60 * 1000)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', b.error.issues.some((i) => i.path[0] === 'agree') ? 'Please sign the Terms of Service and Data Privacy Agreement to continue.' : 'Add your name, a valid email, your company and country.')
   checkSignaturePng(b.data.agree.png, true)
+  if (b.data.partner_code) await partnerForCode(b.data.partner_code) // a wrong code stops sign-up with a clear message
   const d = b.data
   if (d.website) throw apiError('invalid', 'Please try again.')
   await verifyHuman(d.turnstile_token, clientIp(event))
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
     { invite: false, settings: { country: d.country, currency: nigeria ? 'NGN' : 'USD', public_name: d.company, entity_type: d.entity_type ?? '', state: d.state, ...(d.plan === 'company_free' ? {} : { trial_used: 'true' }) } })
   if (d.entity_type && d.entity_type !== 'other') { setOrgContext(ws.id); try { await seedCompanyCompliance(d.entity_type, d.state) } catch (err) { console.error('[signup] compliance seed failed', err) } finally { setOrgContext(null) } }
   await syncPlanSubscription(ws.id).catch((e) => console.error('[signup] plan charge setup failed', e))
+  if (d.partner_code) { try { await redeemPartnerCode(ws.id, d.partner_code) } catch (err) { console.error('[signup] partner code', err) } }
   // Terms of Service and Data Privacy Agreement: signed copies in the new workspace's Documents and with our team.
   try { await signSignupAgreements({ orgId: ws.id, ng: nigeria, company: d.company, signer: { name: d.agree.name, email }, sig: d.agree, ip: clientIp(event), ua: getHeader(event, 'user-agent') ?? '' }) } catch (err) { console.error('[signup] agreements failed', err) }
   try { await startLogin(email, clientIp(event)) } catch (err) { console.error('[signup] code email failed', err); return { ok: true, id: ws.id, emailed: false } }

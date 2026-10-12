@@ -120,16 +120,38 @@ export async function subscriptionsFromInvoice(invoiceId: string): Promise<void>
 }
 
 // A plan change: keep the plan's recurring charge in step (amount in the company's currency; first charge at trial end).
+// The workspace's active partner discount, if any (set when a partner code is redeemed; ends after its months).
+export async function planDiscount(orgId: string): Promise<{ pct: number; name: string; until: string | null } | null> {
+  const d = (await asPlatform(() => db().query<{ d: { pct?: number; name?: string; until?: string | null } | null }>("SELECT settings->'partner_discount' AS d FROM core.organizations WHERE id = $1", [orgId]))).rows[0]?.d
+  if (!d?.pct || d.pct < 1) return null
+  if (d.until && d.until < new Date().toISOString().slice(0, 10)) return null
+  return { pct: Math.min(100, d.pct), name: d.name ?? 'Partner', until: d.until ?? null }
+}
+// Re-price a workspace's plan subscription (e.g. when a discount ends) without touching its schedule or failures.
+export async function repricePlan(orgId: string): Promise<void> {
+  await asPlatform(async () => {
+    const o = (await db().query<{ plan_code: string }>('SELECT plan_code FROM core.organizations WHERE id = $1', [orgId])).rows[0]; if (!o) return
+    const cur = (await walletOf(orgId)).currency
+    const p = (await db().query<{ name: string; usd: string | null; ngn: string | null }>('SELECT name, price_monthly_usd::text AS usd, price_monthly_ngn::text AS ngn FROM core.plans WHERE code = $1', [o.plan_code])).rows[0]; if (!p) return
+    const list = Number(cur === 'NGN' ? p.ngn : p.usd); if (!list) return
+    const disc = await planDiscount(orgId), price = disc ? Math.round(list * (100 - disc.pct)) / 100 : list
+    await db().query("UPDATE wallet.subscriptions SET amount_minor = $2, name = $3, updated_at = now() WHERE organization_id = $1 AND kind = 'plan' AND status = 'active' AND code = $4", [orgId, Math.round(price * 100), p.name + ' plan' + (disc ? ' (' + disc.pct + '% off · ' + disc.name + ')' : ''), o.plan_code])
+  })
+}
 export async function syncPlanSubscription(orgId: string): Promise<void> {
   await asPlatform(async () => {
     const o = (await db().query<{ plan_code: string; status: string; trial_ends_at: string | null; currency: string }>("SELECT plan_code, status, to_char(trial_ends_at, 'YYYY-MM-DD') AS trial_ends_at, CASE WHEN settings->>'currency' = 'NGN' THEN 'NGN' ELSE 'USD' END AS currency FROM core.organizations WHERE id = $1", [orgId])).rows[0]
     if (!o) return
     o.currency = (await walletOf(orgId)).currency
     const p = (await db().query<{ name: string; usd: string | null; ngn: string | null }>('SELECT name, price_monthly_usd::text AS usd, price_monthly_ngn::text AS ngn FROM core.plans WHERE code = $1', [o.plan_code])).rows[0]
-    const price = p ? Number(o.currency === 'NGN' ? p.ngn : p.usd) : 0
-    if (!o.plan_code.startsWith('company_') || !price) { await db().query("UPDATE wallet.subscriptions SET status = 'cancelled', updated_at = now() WHERE organization_id = $1 AND kind = 'plan' AND status <> 'cancelled'", [orgId]); return }
-    const r = await db().query("UPDATE wallet.subscriptions SET code = $2, name = $3, amount_minor = $4, currency = $5, status = 'active', failures = 0, updated_at = now() WHERE organization_id = $1 AND kind = 'plan' AND status <> 'cancelled'", [orgId, o.plan_code, p!.name + ' plan', Math.round(price * 100), o.currency])
-    if (!r.rowCount) await db().query("INSERT INTO wallet.subscriptions (organization_id, kind, code, name, amount_minor, currency, interval, next_charge_at) VALUES ($1,'plan',$2,$3,$4,$5,'month', coalesce($6::date, current_date))", [orgId, o.plan_code, p!.name + ' plan', Math.round(price * 100), o.currency, o.trial_ends_at])
+    const list = p ? Number(o.currency === 'NGN' ? p.ngn : p.usd) : 0
+    // A partner discount (VC, incubator, accelerator…) lowers the monthly price while it lasts.
+    const disc = await planDiscount(orgId)
+    const price = disc ? Math.round(list * (100 - disc.pct)) / 100 : list
+    const label = p ? p.name + ' plan' + (disc ? ' (' + disc.pct + '% off · ' + disc.name + ')' : '') : ''
+    if (!o.plan_code.startsWith('company_') || !list) { await db().query("UPDATE wallet.subscriptions SET status = 'cancelled', updated_at = now() WHERE organization_id = $1 AND kind = 'plan' AND status <> 'cancelled'", [orgId]); return }
+    const r = await db().query("UPDATE wallet.subscriptions SET code = $2, name = $3, amount_minor = $4, currency = $5, status = 'active', failures = 0, updated_at = now() WHERE organization_id = $1 AND kind = 'plan' AND status <> 'cancelled'", [orgId, o.plan_code, label, Math.round(price * 100), o.currency])
+    if (!r.rowCount) await db().query("INSERT INTO wallet.subscriptions (organization_id, kind, code, name, amount_minor, currency, interval, next_charge_at) VALUES ($1,'plan',$2,$3,$4,$5,'month', coalesce($6::date, current_date))", [orgId, o.plan_code, label, Math.round(price * 100), o.currency, o.trial_ends_at])
   })
 }
 

@@ -11,6 +11,12 @@ const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug
 onMounted(() => { const k = data.value?.nda?.key; if (data.value?.gated && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s && s !== nda.value) goNda(s) } })
 function signed(id: string) { goNda(id) }
 useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · Investor relations' : 'Investor relations'), meta: [{ name: 'description', content: () => data.value?.headline ?? '' }] })
+// Link previews (WhatsApp, LinkedIn, X, iMessage…): the company's logo, or the Finvry card when it has none.
+const pageUrl = useRequestURL()
+const ogImage = computed(() => (data.value as { og_image?: string | null } | null)?.og_image || pageUrl.origin + '/brand/finvry-og.png')
+const ogTitle = computed(() => (data.value ? data.value.company + ' · Investor relations' : 'Investor relations'))
+const ogDesc = computed(() => data.value?.headline || (data.value ? 'Investor information for ' + data.value.company + ', on Finvry.' : 'Investor relations on Finvry.'))
+useSeoMeta({ ogType: 'website', ogSiteName: 'Finvry', ogTitle, ogDescription: ogDesc, ogUrl: pageUrl.origin + pageUrl.pathname, ogImage, ogImageAlt: () => ((data.value as { og_image?: string | null } | null)?.og_image ? data.value!.company + ' logo' : 'Finvry'), twitterCard: () => ((data.value as { og_image?: string | null } | null)?.og_image ? 'summary' : 'summary_large_image'), twitterTitle: ogTitle, twitterDescription: ogDesc, twitterImage: ogImage })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const pct = (k: string) => k === 'gross_margin'
 const fmt = (k: string, v: number | null | undefined) => v == null ? (k === 'runway' ? 'Cash-flow positive' : '—') : pct(k) ? v + '%' : k === 'runway' ? v + ' months' : (SYM[data.value?.currency ?? 'USD'] ?? '') + Math.round(v).toLocaleString('en-US')

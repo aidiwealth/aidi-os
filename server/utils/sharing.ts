@@ -1,5 +1,5 @@
 // Branding, watermark and NDA for a company's shared pages; short-link lookups.
-export const RESERVED_HANDLES = new Set(['api', '_nuxt', 'c', 'd', 'u', 'login', 'start', 'unsub', 'client', 'platform', 'settings', 'team', 'wallet', 'updates', 'contacts', 'fundraising', 'financials', 'investor-page', 'compliance', 'documents', 'modules',
+export const RESERVED_HANDLES = new Set(['api', 'partners', '_nuxt', 'c', 'd', 'u', 'login', 'start', 'unsub', 'client', 'platform', 'settings', 'team', 'wallet', 'updates', 'contacts', 'fundraising', 'financials', 'investor-page', 'compliance', 'documents', 'modules',
   'report', 'job', 'pay', 'lp', 'bill', 'info', 'formation', 'share', 'invoice', 'services', 'client-services', 'pipeline', 'portfolio', 'funds', 'entities', 'governance', 'banking', 'credit', 'analytics', 'directory', 'deals', 'family-office', 'admin', 'help', 'about', 'pricing', 'finvry', 'aidi'])
 export const DEFAULT_NDA = `MUTUAL NON-DISCLOSURE AGREEMENT
 
