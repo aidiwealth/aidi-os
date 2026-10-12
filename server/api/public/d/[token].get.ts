@@ -7,7 +7,10 @@ export default defineEventHandler(async (event) => {
   setOrgContext(l.organization_id)
   const b = await brandingOf(l.organization_id)
   const company = (await currentOrg())!.name
-  const base = { company, branding: b, workspace: await publicWorkspace(), require_email: l.require_email, allow_download: l.allow_download, watermark: b.watermark }
+  // The company's logo: the one on its investor page, else the data room branding logo.
+  const pl = (await db().query<{ logo_id: string | null }>('SELECT logo_id FROM financials.public_pages LIMIT 1')).rows[0]?.logo_id ?? null
+  const logo = pl ? brands().finvry.url + '/api/public/media/' + pl : b.logo_url
+  const base = { company, logo, branding: b, workspace: await publicWorkspace(), require_email: l.require_email, allow_download: l.allow_download, watermark: b.watermark }
   if (ndaOn(b, 'room') && !(await ndaSigned(l.organization_id, getQuery(event).nda))) return { ...base, nda: { required: true, text: b.nda_text, key: b.org_key }, files: [] }
   const files = await db().query('SELECT f.id, f.title, f.folder, f.is_deck, d.mime_type, d.size_bytes FROM fundraise.files f JOIN core.documents d ON d.id = f.document_id WHERE cardinality($1::uuid[]) = 0 OR f.id = ANY($1::uuid[]) ORDER BY f.is_deck DESC, f.folder, f.sort, f.created_at', [l.file_ids])
   return { ...base, nda: { required: false, text: '', key: b.org_key }, files: files.rows }

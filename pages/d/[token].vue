@@ -8,7 +8,7 @@ const api = '/api/public/d/' + encodeURIComponent(ref0)
 interface Fi { id: string; title: string; folder: string; is_deck: boolean; mime_type: string; size_bytes: number }
 const nda = ref(String(useRoute().query.nda ?? ''))
 const goNda = (id: string) => { const u = new URL(window.location.href); u.searchParams.set('nda', id); window.location.replace(u.toString()) }
-const { data, error, refresh } = await useFetch<{ company: string; require_email: boolean; allow_download: boolean; watermark: boolean; nda: { required: boolean; text: string; key: string }; files: Fi[] }>(() => api + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-d-' + ref0 + (nda.value ? '-' + nda.value : '') })
+const { data, error, refresh } = await useFetch<{ company: string; logo?: string | null; require_email: boolean; allow_download: boolean; watermark: boolean; nda: { required: boolean; text: string; key: string }; files: Fi[] }>(() => api + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-d-' + ref0 + (nda.value ? '-' + nda.value : '') })
 useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · Data room' : 'Data room'), meta: [{ name: 'robots', content: 'noindex' }] })
 const email = ref(''); const entered = ref(false); const msg = ref('')
 onMounted(() => { const e = localStorage.getItem('finvry-dr-email'); if (e) { email.value = e; entered.value = true } const k = data.value?.nda?.key; if (data.value?.nda?.required && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s && s !== nda.value) goNda(s) } })
@@ -33,10 +33,11 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
 </script>
 <template>
   <section class="wrap">
+    <div v-if="!error && data?.nda.required && data.logo" class="brand"><span class="lg"><img :src="data.logo" :alt="data.company"></span></div>
     <div v-if="error" class="card"><h1>{{ error.statusCode === 410 ? 'This link is no longer active' : 'This link is not valid' }}</h1><p class="mut">Ask the company for a new link.</p></div>
     <NdaGate v-else-if="data && data.nda.required" :company="data.company" :text="data.nda.text" kind="room" :ref-key="ref0" :org-key="data.nda.key" @signed="signed" />
     <template v-else-if="data">
-      <p class="label">Data room</p><h1>{{ data.company }}</h1>
+      <div class="brand"><span v-if="data.logo" class="lg"><img :src="data.logo" :alt="data.company"></span><div><p class="label">Data room</p><h1>{{ data.company }}</h1></div></div>
       <form v-if="data.require_email && !entered" class="card gate" @submit.prevent="enter"><b>Enter your email to view</b><p class="mut">{{ data.company }} will see that you viewed their documents.</p><div class="row"><input v-model="email" type="email" required placeholder="you@fund.com"><button class="btn" type="submit">View documents</button></div><p v-if="msg" class="error">{{ msg }}</p></form>
       <template v-else>
         <p v-if="data.watermark" class="wmn">Documents are watermarked with your email and today's date, including downloads.</p>
@@ -67,4 +68,5 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
 .side button:hover { background: var(--c-paper-2); } .side button.on { background: var(--c-signal-soft); color: var(--c-blue-deep); font-weight: 600; } .side em { font-style: normal; font-size: 12px; color: var(--c-muted); background: #fff; border: 1px solid var(--c-rule); padding: 0 7px; border-radius: 0; }
 .main .grp:first-child h2 { margin-top: 0; }
 @media (max-width: 800px) { .dr { grid-template-columns: 1fr; gap: 12px; } .side { position: static; flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--c-rule); padding: 0 0 8px; } .side button { white-space: nowrap; } }
+.brand { display: flex; align-items: center; gap: 16px; margin: 4px 0 18px; } .brand h1 { margin: 2px 0 0; } .lg { width: 64px; height: 64px; flex: none; border: 1px solid var(--c-rule); background: #fff; display: grid; place-items: center; padding: 6px; } .lg img { max-width: 100%; max-height: 100%; object-fit: contain; }
 </style>
