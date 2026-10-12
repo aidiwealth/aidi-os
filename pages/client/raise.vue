@@ -20,49 +20,107 @@ const upcoming = computed(() => (cur.value?.meetings ?? []).filter((m) => new Da
 const past = computed(() => (cur.value?.meetings ?? []).filter((m) => new Date(m.starts_at) <= new Date()).reverse())
 const pct = computed(() => (cur.value?.totals.target ? Math.min(100, Math.round((cur.value.totals.committed / cur.value.totals.target) * 100)) : 0))
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const n = (v: unknown) => Number(String(v ?? '').replace(/[^0-9.]/g, '')) || 0
+const feeEst = computed(() => Math.round(n(f.target) * Number(data.value?.fee_pct ?? 0) / 100))
+const left = computed(() => Math.max(0, n(f.target) - n(f.raised_so_far)))
+const plain = (s: string) => s.replace(/<[^>]+>|[#*_>`\-]/g, '').trim()
+const checks = computed(() => [
+  { t: 'Amount and round', ok: n(f.target) > 0 && !!f.round && !!f.instrument },
+  { t: 'Use of funds', ok: plain(f.use_of_funds).length > 20 },
+  { t: 'Traction', ok: plain(f.traction).length > 20 },
+  { t: 'Deck or deck link', ok: true },
+  { t: 'Target investors', ok: plain(f.target_investors).length > 3 },
+  { t: 'Timeline', ok: !!f.timeline.trim() },
+])
+const done = computed(() => checks.value.filter((c) => c.ok).length)
+const STEPS = [
+  { h: 'Share your brief', p: 'Tell us how much you are raising, on what terms, and why. You can edit it any time.' },
+  { h: 'We build your list', p: 'Our team matches you with investors who back your stage, sector and cheque size.' },
+  { h: 'Intros and meetings', p: 'We make warm introductions and book meetings. You see each one here, with reminders.' },
+  { h: 'Close the round', p: 'We help with follow-ups, terms and paperwork until the money lands.' },
+]
+const day = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numeric' })
+const mon = (s: string) => new Date(s).toLocaleDateString('en-GB', { month: 'short' })
+const time = (s: string) => new Date(s).toLocaleTimeString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 const ST: Record<string, string> = { intake: 'Getting started', active: 'In progress', paused: 'Paused', closed: 'Closed' }
 </script>
 <template>
-  <section v-if="data">
+  <section v-if="data" class="rz">
     <p class="label">Investors</p>
-    <div class="hd"><h1>Fundraise with us</h1><button v-if="data.enabled && !editing && data.programs?.length" class="btn" @click="start">+ Start a new raise</button></div>
+    <div class="hd"><div><h1>Fundraise with us</h1><p class="lead">A team that runs your raise end to end, while you keep building.</p></div><button v-if="data.enabled && !editing && data.programs?.length" class="btn" @click="start">+ Start a new raise</button></div>
     <p v-if="msg" class="error">{{ msg }}</p>
-    <div v-if="!data.enabled" class="card"><p>Managed fundraising isn't switched on for your company. Message our team from Inbox if you'd like us to run your raise.</p></div>
+    <div v-if="!data.enabled" class="card off"><h2>Managed fundraising is not on for your company yet</h2><p>Message our team from Inbox and we will switch it on and set up a call about your round.</p><NuxtLink to="/client/messages" class="btn secondary">Message our team</NuxtLink></div>
     <template v-else-if="editing || !data.programs?.length">
-      <p class="lead">Our team runs your raise: we build the investor list, make introductions, set up meetings and help you close. You see every step here. Our success fee is {{ data.fee_pct }}% of the money you close through us.</p>
-      <form class="card frm" @submit.prevent="submit"><h2>{{ f.id ? 'Edit your raise' : 'Your raise' }}</h2>
-        <div class="g3"><label class="label">Amount you are raising *<input v-model="f.target" inputmode="decimal" required placeholder="e.g. 500000"></label><label class="label">Currency<select v-model="f.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
-          <label class="label">Round *<select v-model="f.round"><option>Pre-seed</option><option>Seed</option><option>Series A</option><option>Bridge</option><option>Debt</option></select></label>
-          <label class="label">Instrument *<select v-model="f.instrument"><option>SAFE</option><option>Priced equity</option><option>Convertible note</option><option>Debt</option></select></label><label class="label">Valuation or cap<input v-model="f.valuation" inputmode="decimal"></label><label class="label">Raised so far<input v-model="f.raised_so_far" inputmode="decimal"></label></div>
-        <div class="label">How you will use the money *<ClientOnly><RichEditor v-model="f.use_of_funds" compact :min-height="110" :max-length="3000" placeholder="e.g. a list of where the money goes" /></ClientOnly></div>
-        <div class="label">Traction (revenue, users, growth)<ClientOnly><RichEditor v-model="f.traction" compact :min-height="110" :max-length="3000" placeholder="Revenue, growth, customers, retention…" /></ClientOnly></div>
-        <div class="g2"><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="Leave blank to use your deck in Decks"></label><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div>
-        <div class="label">Investors you would like us to approach<ClientOnly><RichEditor v-model="f.target_investors" compact :min-height="80" :max-length="3000" placeholder="One per line, or a short note" /></ClientOnly></div>
-        <label class="agree"><input v-model="f.agree_fee" type="checkbox"> I agree to a success fee of {{ data.fee_pct }}% of the money closed through this service.</label>
-        <div class="row"><button class="btn" :disabled="busy || !f.agree_fee">{{ busy ? 'Saving…' : f.id ? 'Save changes' : 'Start my raise' }}</button><button v-if="editing && data.programs?.length" type="button" class="btn secondary" @click="editing = false">Cancel</button></div></form>
+      <div v-if="!f.id" class="hero">
+        <div class="hx"><h2>How it works</h2><p>You tell us about the round. We find the right investors, make introductions, book meetings and help you close. Every investor and meeting shows up on this page as it happens.</p></div>
+        <ol class="steps"><li v-for="(s, i) in STEPS" :key="s.h"><span class="no">{{ i + 1 }}</span><b>{{ s.h }}</b><p>{{ s.p }}</p></li></ol>
+        <div class="fee"><b>{{ data.fee_pct }}%</b><span>success fee, only on money you close through us. Nothing to pay up front.</span></div>
+      </div>
+      <div class="lay">
+        <form class="frm" @submit.prevent="submit">
+          <div class="sec"><div class="sh"><span class="no">1</span><div><h3>{{ f.id ? 'Edit your round' : 'The round' }}</h3><p>The headline numbers investors ask about first.</p></div></div>
+            <div class="g3"><label class="label">Amount you are raising *<input v-model="f.target" inputmode="decimal" required placeholder="e.g. 500000"></label><label class="label">Currency<select v-model="f.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
+              <label class="label">Round *<select v-model="f.round"><option>Pre-seed</option><option>Seed</option><option>Series A</option><option>Bridge</option><option>Debt</option></select></label>
+              <label class="label">Instrument *<select v-model="f.instrument"><option>SAFE</option><option>Priced equity</option><option>Convertible note</option><option>Debt</option></select></label><label class="label">Valuation or cap<input v-model="f.valuation" inputmode="decimal" placeholder="Optional"></label><label class="label">Raised so far<input v-model="f.raised_so_far" inputmode="decimal" placeholder="Committed or in the bank"></label></div></div>
+          <div class="sec"><div class="sh"><span class="no">2</span><div><h3>Use of funds *</h3><p>Where the money goes and what it gets you. Investors want to see the milestones this round buys, e.g. hires, product, markets and runway in months.</p></div></div>
+            <ClientOnly><RichEditor v-model="f.use_of_funds" :min-height="180" :max-length="3000" placeholder="e.g. 40% engineering (3 hires), 30% growth in Lagos and Nairobi, 30% working capital. 18 months of runway." /></ClientOnly></div>
+          <div class="sec"><div class="sh"><span class="no">3</span><div><h3>Traction</h3><p>Proof it is working: revenue, users, growth rate, retention, key customers or partners. Numbers beat adjectives.</p></div></div>
+            <ClientOnly><RichEditor v-model="f.traction" :min-height="180" :max-length="3000" placeholder="e.g. $40k MRR, growing 15% month on month. 1,200 paying users, 92% retained after 3 months." /></ClientOnly></div>
+          <div class="sec"><div class="sh"><span class="no">4</span><div><h3>Investors and timing</h3><p>Who you would like to meet, and when you need to close. We add our own matches on top.</p></div></div>
+            <ClientOnly><RichEditor v-model="f.target_investors" :min-height="140" :max-length="3000" placeholder="Funds or angels you would like an intro to, one per line, and any you have already spoken to." /></ClientOnly>
+            <div class="g2"><label class="label">Deck link<input v-model="f.deck_url" maxlength="500" placeholder="Leave blank to use your deck in Decks"></label><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div></div>
+          <div class="sec agreebox"><label class="agree"><input v-model="f.agree_fee" type="checkbox"> <span>I agree to a success fee of <b>{{ data.fee_pct }}%</b> of the money closed through this service. No fee is due if nothing closes.</span></label>
+            <div class="row"><button class="btn" :disabled="busy || !f.agree_fee">{{ busy ? 'Saving…' : f.id ? 'Save changes' : 'Start my raise' }}</button><button v-if="editing && data.programs?.length" type="button" class="btn secondary" @click="editing = false">Cancel</button></div></div>
+        </form>
+        <aside class="side">
+          <div class="pane"><p class="cap">Your round</p><b class="big">{{ n(f.target) ? money(n(f.target), f.currency) : '—' }}</b><span class="s">{{ f.round }} · {{ f.instrument }}</span>
+            <dl><div><dt>Raised so far</dt><dd>{{ money(n(f.raised_so_far), f.currency) }}</dd></div><div><dt>Still to raise</dt><dd>{{ money(left, f.currency) }}</dd></div><div><dt>Fee if fully closed</dt><dd>{{ money(feeEst, f.currency) }}</dd></div></dl></div>
+          <div class="pane"><p class="cap">Brief strength · {{ done }}/{{ checks.length }}</p><div class="bar"><i :style="{ width: (done / checks.length) * 100 + '%' }" /></div>
+            <ul class="ck"><li v-for="c in checks" :key="c.t" :class="{ ok: c.ok }"><span>{{ c.ok ? '✓' : '○' }}</span>{{ c.t }}</li></ul></div>
+          <div class="pane tips"><p class="cap">Tips</p><ul><li>Lead with your strongest number.</li><li>Tie every use of funds to a milestone.</li><li>Name investors you already know; warm intros convert best.</li></ul></div>
+        </aside>
+      </div>
     </template>
     <template v-else-if="cur">
       <nav v-if="(data.programs?.length ?? 0) > 1" class="rtabs"><button v-for="p in data.programs" :key="p.program.id" :class="{ on: sel === p.program.id }" @click="sel = p.program.id">{{ p.program.round }} · {{ money(p.program.target, p.program.currency) }}</button></nav>
-      <div class="sub"><p class="lead">{{ cur.program.round }} · {{ cur.program.instrument }} · <span class="pst" :class="cur.program.status">{{ ST[cur.program.status] }}</span></p>
+      <div class="banner"><div><p class="cap">{{ cur.program.round }} · {{ cur.program.instrument }}</p><h2>{{ money(cur.totals.target) }} round <span class="pst" :class="cur.program.status">{{ ST[cur.program.status] }}</span></h2>
+          <div class="prog"><div class="bar big"><i :style="{ width: pct + '%' }" /></div><span>{{ money(cur.totals.committed) }} committed · {{ pct }}% of target</span></div></div>
         <div class="row"><button v-if="cur.program.status !== 'closed'" class="btn secondary" @click="edit">Edit brief</button><button class="btn secondary danger" @click="del">Delete raise</button></div></div>
-      <div class="kp"><div class="k"><span>Target</span><b>{{ money(cur.totals.target) }}</b></div><div class="k"><span>Committed</span><b>{{ money(cur.totals.committed) }}</b><div class="bar"><i :style="{ width: pct + '%' }" /></div><em>{{ pct }}% of target</em></div><div class="k"><span>Closed</span><b>{{ money(cur.totals.closed) }}</b></div><div class="k"><span>Investors in play</span><b>{{ cur.totals.active }}</b><em>{{ cur.totals.count }} on the list</em></div><div class="k"><span>Success fee ({{ cur.totals.fee_pct }}%)</span><b>{{ money(cur.totals.fee) }}</b><em>on money closed</em></div></div>
-      <div class="cols"><div class="card"><h2>Investors</h2><RaiseTable :investors="cur.investors" :labels="data.labels ?? {}" :currency="cur.program.currency" /></div>
-        <aside class="card"><h2>Meetings</h2><div v-for="m in upcoming" :key="m.id" class="mt"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }} ({{ m.minutes }} min)</span><a v-if="m.location && /^https?:/.test(m.location)" :href="m.location" target="_blank">Join link</a><span v-else-if="m.location" class="s">{{ m.location }}</span><div v-if="m.agenda" class="s ag" v-html="mdRender(m.agenda)" /></div>
-          <p v-if="!upcoming.length" class="s">No meetings scheduled yet. You get an email when we book one, and reminders a day and an hour before.</p>
-          <details v-if="past.length"><summary>Past meetings ({{ past.length }})</summary><div v-for="m in past" :key="m.id" class="mt past"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }}</span></div></details></aside></div>
+      <div class="kp"><div class="k t1"><span>Committed</span><b>{{ money(cur.totals.committed) }}</b><em>{{ pct }}% of target</em></div><div class="k t2"><span>Closed</span><b>{{ money(cur.totals.closed) }}</b><em>money in the bank</em></div><div class="k t3"><span>Investors in play</span><b>{{ cur.totals.active }}</b><em>{{ cur.totals.count }} on the list</em></div><div class="k t4"><span>Meetings booked</span><b>{{ upcoming.length }}</b><em>{{ past.length }} held</em></div><div class="k t5"><span>Success fee ({{ cur.totals.fee_pct }}%)</span><b>{{ money(cur.totals.fee) }}</b><em>on money closed</em></div></div>
+      <div class="cols"><div class="card"><h2>Investors</h2><p class="s">Everyone we are talking to for this round and where each conversation stands.</p><RaiseTable :investors="cur.investors" :labels="data.labels ?? {}" :currency="cur.program.currency" /></div>
+        <aside class="card"><h2>Meetings</h2><div v-for="m in upcoming" :key="m.id" class="mt"><div class="dt"><b>{{ day(m.starts_at) }}</b><span>{{ mon(m.starts_at) }}</span></div><div class="mb"><b>{{ m.title }}</b><span class="s">{{ time(m.starts_at) }} · {{ m.minutes }} min{{ m.investor ? ' · ' + m.investor : '' }}</span><a v-if="m.location && /^https?:/.test(m.location)" :href="m.location" target="_blank">Join link →</a><span v-else-if="m.location" class="s">{{ m.location }}</span><div v-if="m.agenda" class="s ag mdb" v-html="mdRender(m.agenda)" /></div></div>
+          <p v-if="!upcoming.length" class="s empty">No meetings scheduled yet. You get an email when we book one, and reminders a day and an hour before.</p>
+          <details v-if="past.length"><summary>Past meetings ({{ past.length }})</summary><div v-for="m in past" :key="m.id" class="mt past"><div class="dt"><b>{{ day(m.starts_at) }}</b><span>{{ mon(m.starts_at) }}</span></div><div class="mb"><b>{{ m.title }}</b><span class="s">{{ m.investor ?? '' }}</span></div></div></details></aside></div>
     </template>
   </section>
 </template>
 <style scoped>
-.hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; } h1 { margin: 0 0 6px; } .lead { color: var(--c-ink-soft); max-width: 780px; } .frm { display: flex; flex-direction: column; gap: 12px; max-width: 900px; } .frm h2 { margin: 0; }
-.g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .g2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
-.agree { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .agree input { width: auto; } .row { display: flex; gap: 8px; } .error { color: var(--c-danger); }
-.rtabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 10px 0; width: fit-content; max-width: 100%; overflow-x: auto; } .rtabs button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .rtabs .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
-.sub { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .pst { font-size: 12.5px; font-weight: 600; padding: 3px 9px; background: var(--c-paper-2); } .pst.active { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pst.closed { background: rgba(31,122,77,.1); color: var(--c-ok); }
-.kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px; display: flex; flex-direction: column; gap: 4px; } .k span { font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; } .k em { font-style: normal; font-size: 12px; color: var(--c-muted); } .bar { height: 6px; background: var(--c-paper-2); } .bar i { display: block; height: 100%; background: var(--c-ok); }
-.cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; } .cols h2 { margin: 0 0 8px; font-size: 16px; } .mt { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .mt a { color: var(--c-blue-deep); font-size: 13px; } .s { font-size: 12.5px; color: var(--c-muted); } .past { opacity: .7; }
-@media (max-width: 1000px) { .cols, .g3, .g2 { grid-template-columns: 1fr; } }
-div.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-/* fields fit */
-input, select, textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
+.hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; } h1 { margin: 0 0 4px; } .lead { color: var(--c-ink-soft); max-width: 780px; margin: 0; } .error { color: var(--c-danger); }
+.cap { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); margin: 0 0 6px; font-weight: 600; } .s { font-size: 12.5px; color: var(--c-muted); }
+.off { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 16px; } .off h2 { margin: 0; font-size: 17px; } .off p { margin: 0; }
+.hero { margin: 18px 0; background: var(--c-ink, #0c1a2e); color: #fff; padding: 22px 24px; display: grid; gap: 18px; } .hx h2 { margin: 0 0 6px; font-size: 18px; color: #fff; } .hx p { margin: 0; opacity: .82; max-width: 760px; line-height: 1.5; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid rgba(255,255,255,.18); } .steps li { padding: 14px 16px 0 0; display: flex; flex-direction: column; gap: 4px; } .steps li + li { padding-left: 16px; border-left: 1px solid rgba(255,255,255,.18); } .steps b { font-size: 14px; } .steps p { margin: 0; font-size: 13px; opacity: .75; line-height: 1.45; }
+.steps .no { width: 24px; height: 24px; border: 1px solid rgba(255,255,255,.5); display: grid; place-items: center; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.fee { display: flex; gap: 12px; align-items: baseline; background: rgba(255,255,255,.08); padding: 10px 14px; } .fee b { font-size: 22px; } .fee span { font-size: 13.5px; opacity: .85; }
+.lay { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; margin-top: 18px; }
+.frm { display: flex; flex-direction: column; gap: 0; background: #fff; border: 1px solid var(--c-rule); } .sec { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; } .sec + .sec { border-top: 1px solid var(--c-rule); }
+.sh { display: flex; gap: 12px; align-items: flex-start; } .sh h3 { margin: 0 0 2px; font-size: 15.5px; } .sh p { margin: 0; font-size: 13px; color: var(--c-muted); line-height: 1.45; max-width: 640px; } .sec .no { flex: none; width: 26px; height: 26px; background: var(--c-blue-deep, #1d4ed8); color: #fff; display: grid; place-items: center; font-size: 12.5px; font-weight: 600; }
+.g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .g2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; box-sizing: border-box; max-width: 100%; min-width: 0; border-radius: 0; }
+.agreebox { background: var(--c-paper-2); } .agree { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; } .agree input { width: auto; margin-top: 3px; } .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 16px; } .pane { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; } .pane .big { display: block; font-size: 26px; font-weight: 600; }
+.pane dl { margin: 12px 0 0; display: flex; flex-direction: column; } .pane dl div { display: flex; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .pane dt { color: var(--c-muted); } .pane dd { margin: 0; font-weight: 600; }
+.ck { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--c-muted); } .ck li { display: flex; gap: 8px; } .ck li.ok { color: var(--c-ink); } .ck li.ok span { color: var(--c-ok); font-weight: 700; }
+.tips ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft); display: flex; flex-direction: column; gap: 6px; }
+.bar { height: 6px; background: var(--c-paper-2); } .bar.big { height: 10px; } .bar i { display: block; height: 100%; background: var(--c-ok); }
+.rtabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0 0; width: fit-content; max-width: 100%; overflow-x: auto; } .rtabs button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .rtabs .on { background: #fff; font-weight: 600; }
+.banner { margin: 14px 0; background: #fff; border: 1px solid var(--c-rule); border-left: 4px solid var(--c-blue-deep, #1d4ed8); padding: 18px 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; } .banner > div:first-child { flex: 1; min-width: 260px; } .banner h2 { margin: 0 0 12px; font-size: 22px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.prog { display: flex; flex-direction: column; gap: 6px; max-width: 560px; } .prog span { font-size: 13px; color: var(--c-muted); }
+.pst { font-size: 12px; font-weight: 600; padding: 3px 9px; background: var(--c-paper-2); } .pst.active { background: var(--c-signal-soft); color: var(--c-blue-deep); } .pst.closed { background: rgba(31,122,77,.1); color: var(--c-ok); }
+.kp { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 0 0 14px; } .k { background: #fff; border: 1px solid var(--c-rule); border-top: 3px solid var(--c-rule-strong); padding: 14px; display: flex; flex-direction: column; gap: 4px; } .k span { font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 22px; font-weight: 600; } .k em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.k.t1 { border-top-color: var(--c-ok); } .k.t2 { border-top-color: #0f766e; } .k.t3 { border-top-color: var(--c-blue-deep, #1d4ed8); } .k.t4 { border-top-color: #b45309; } .k.t5 { border-top-color: #6b7280; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; } .cols h2 { margin: 0 0 4px; font-size: 16px; } .cols .card > .s { margin: 0 0 10px; }
+.mt { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .dt { flex: none; width: 44px; border: 1px solid var(--c-rule-strong); text-align: center; display: flex; flex-direction: column; } .dt b { font-size: 17px; padding: 3px 0 0; } .dt span { font-size: 10.5px; text-transform: uppercase; background: var(--c-paper-2); padding: 2px 0; }
+.mb { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .mb a { color: var(--c-blue-deep); font-size: 13px; } .empty { padding: 12px; background: var(--c-paper-2); } .past { opacity: .7; } summary { cursor: pointer; font-size: 13px; margin-top: 10px; }
+@media (max-width: 1000px) { .cols, .lay, .g3, .g2, .steps { grid-template-columns: 1fr; } .steps li + li { padding-left: 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.18); padding-top: 12px; } .side { position: static; } }
 </style>

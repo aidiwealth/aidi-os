@@ -106,7 +106,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       <thead><tr><th>Title</th><th>Entity</th><th>Type</th><th>Access</th><th>Size</th><th>Added</th></tr></thead>
       <tbody>
         <tr v-for="d in shown" :key="d.id">
-          <td><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></td>
+          <td><span class="dn"><FileBadge :name="d.title" :mime="d.mime_type" size="sm" /><span><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></span></span></td>
           <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ levelName(d.sensitivity) }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
         </tr>
       </tbody>

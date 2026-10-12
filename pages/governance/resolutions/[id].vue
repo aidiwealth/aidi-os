@@ -40,7 +40,7 @@ const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.d
         <p v-if="data.resolution.kind === 'distribution'" class="dist">Distribution of <b>{{ money(data.resolution.amount, data.resolution.currency) }}</b> to <b>{{ data.resolution.beneficiary }}</b></p>
         <p v-if="data.resolution.meeting_date" class="muted">Meeting held {{ data.resolution.meeting_date }}</p>
         <div class="body">{{ data.resolution.body }}</div>
-        <p v-if="data.document" class="att">Supporting document: <button type="button" class="link" @click="openDoc(data.document.id)">{{ data.document.title }}</button></p>
+        <p v-if="data.document" class="att">Supporting document: <button type="button" class="link" @click="openDoc(data.document.id)"><FileBadge :name="data.document.title" :mime="(data.document as any).mime_type" size="sm" />{{ data.document.title }}</button></p>
       </div>
       <div class="col">
         <div v-if="data.canSign" class="card">

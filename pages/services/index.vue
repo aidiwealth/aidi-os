@@ -5,9 +5,15 @@ const { data, error } = await useFetch<JobRow[]>('/api/services')
 const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients')
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
 const STATUS: Record<string, string> = { new: 'New', in_progress: 'In progress', waiting_client: 'Waiting on client', completed: 'Completed', cancelled: 'Cancelled' }
-const filter = ref<'open' | 'overdue' | 'all'>('open')
-const rows = computed(() => (data.value ?? []).filter((r) => filter.value === 'all' || (filter.value === 'overdue' ? r.overdue : !['completed', 'cancelled'].includes(r.status))))
-const counts = computed(() => ({ open: (data.value ?? []).filter((r) => !['completed', 'cancelled'].includes(r.status)).length, overdue: (data.value ?? []).filter((r) => r.overdue).length }))
+const filter = ref<'open' | 'new' | 'waiting' | 'overdue' | 'done' | 'all'>('open')
+const q = ref('')
+const isOpen = (r: JobRow) => !['completed', 'cancelled'].includes(r.status)
+const rows = computed(() => (data.value ?? []).filter((r) => (filter.value === 'all' || (filter.value === 'overdue' ? r.overdue : filter.value === 'new' ? r.status === 'new' : filter.value === 'waiting' ? r.status === 'waiting_client' : filter.value === 'done' ? r.status === 'completed' : isOpen(r)))
+  && (!q.value || (r.title + ' ' + r.client + ' ' + (r.owner ?? '')).toLowerCase().includes(q.value.toLowerCase()))))
+const counts = computed(() => { const l = data.value ?? []; return { open: l.filter(isOpen).length, new: l.filter((r) => r.status === 'new').length, waiting: l.filter((r) => r.status === 'waiting_client').length, overdue: l.filter((r) => r.overdue).length, done: l.filter((r) => r.status === 'completed').length, all: l.length } })
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('')
+const left = (d: string | null) => (d ? Math.round((new Date(d + 'T12:00:00').getTime() - Date.now()) / 864e5) : null)
+const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 60 ? Math.max(1, m) + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago' }
 const adding = ref(false)
 const form = reactive({ client_id: '', name: '', contact_name: '', email: '', phone: '', country: '', service: 'company_formation', title: '', description: '', priority: 'normal', due_date: '', fee_usd: '', provider_entity_id: '' })
 const msg = ref('')
@@ -28,9 +34,8 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 <template>
   <section>
     <CsNav />
-    <p class="label">Client Services</p>
     <div class="head">
-      <h1>Client Services</h1>
+      <div><p class="eyebrow">Services desk</p><h1>Jobs</h1><p class="lead">Every client order and request, with its status, due date and who is on it.</p></div>
       <div class="hacts"><NuxtLink to="/services/order" class="btn">New order</NuxtLink><button class="btn secondary" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Custom job' }}</button></div>
     </div>
 
@@ -53,30 +58,41 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
       <p v-if="msg" class="error" role="alert">{{ msg }}</p>
     </form>
 
-    <div class="tabs">
-      <button :class="{ on: filter === 'open' }" @click="filter = 'open'">Open ({{ counts.open }})</button>
-      <button :class="{ on: filter === 'overdue' }" @click="filter = 'overdue'">Overdue ({{ counts.overdue }})</button>
-      <button :class="{ on: filter === 'all' }" @click="filter = 'all'">All</button>
+    <div class="kpi">
+      <button v-for="[k, l, tone] in ([['open', 'Open', 'n'], ['new', 'New', 'b'], ['waiting', 'Waiting on client', 'a'], ['overdue', 'Overdue', 'r'], ['done', 'Completed', 'g']] as const)" :key="k" type="button" :class="{ on: filter === k }" @click="filter = k"><em>{{ l }}</em><b :class="tone">{{ counts[k] }}</b></button>
     </div>
+    <div class="bar"><div class="chips"><button v-for="[k, l] in ([['open', 'Open'], ['new', 'New'], ['waiting', 'Waiting on client'], ['overdue', 'Overdue'], ['done', 'Completed'], ['all', 'All']] as const)" :key="k" type="button" :class="{ on: filter === k }" @click="filter = k">{{ l }} <i>{{ counts[k] }}</i></button></div>
+      <input v-model="q" placeholder="Search job, client or owner" aria-label="Search"></div>
     <p v-if="error" class="error" role="alert">Could not load jobs.</p>
-    <p v-else-if="!rows.length" class="muted">No jobs here.</p>
-    <table v-else class="table">
-      <thead><tr><th>Job</th><th>Client</th><th>Status</th><th>Due</th><th>Owner</th></tr></thead>
-      <tbody>
-        <tr v-for="r in rows" :key="r.id" :class="{ late: r.overdue }">
-          <td><NuxtLink :to="'/services/' + r.id" class="co">{{ r.title }}</NuxtLink><span class="sub">{{ SERVICES[r.service] }}<template v-if="r.priority === 'high'"> · <b class="hi">High</b></template><template v-if="r.provider"> · {{ r.provider }}</template></span></td>
-          <td>{{ r.client }}</td>
-          <td><span class="st" :data-s="r.status">{{ STATUS[r.status] }}</span></td>
-          <td :class="{ red: r.overdue }">{{ day(r.due_date) }}<span v-if="r.overdue" class="sub red">Overdue</span></td>
-          <td class="muted">{{ r.owner ?? '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else-if="!rows.length" class="empty"><b>No jobs here</b><span>Try another filter, or start a new order.</span></div>
+    <div v-else class="list">
+      <NuxtLink v-for="r in rows" :key="r.id" :to="'/services/' + r.id" class="row" :class="{ late: r.overdue }">
+        <span class="mono">{{ initials(r.client) }}</span>
+        <div class="jt"><b>{{ r.title.replace(/^Order: /, '') }}</b><span>{{ r.client }} · {{ SERVICES[r.service] ?? 'Order' }}<template v-if="r.provider"> · {{ r.provider }}</template></span></div>
+        <span class="pill" :data-s="r.status">{{ STATUS[r.status] }}</span>
+        <span v-if="r.priority === 'high'" class="hi">High</span><span v-else />
+        <span class="due" :class="{ red: r.overdue }"><em>Due</em>{{ day(r.due_date) }}<i v-if="r.due_date && isOpen(r)">{{ r.overdue ? Math.abs(left(r.due_date) ?? 0) + 'd overdue' : 'in ' + left(r.due_date) + 'd' }}</i></span>
+        <span class="own"><span v-if="r.owner" class="av" :title="r.owner">{{ initials(r.owner) }}</span><span v-else class="un">Unassigned</span><em>{{ ago(r.updated_at) }}</em></span>
+      </NuxtLink>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin: 4px 0 18px; } .eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .head h1 { margin: 0; } .lead { margin: 6px 0 0; color: var(--c-muted); font-size: 14.5px; }
+.kpi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; } .kpi button { font: inherit; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; } .kpi button:hover, .kpi button.on { border-color: var(--c-navy); } .kpi button.on { box-shadow: inset 0 -3px 0 var(--c-navy); }
+.kpi em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .kpi b { font-size: 26px; font-weight: 600; letter-spacing: -.02em; } .kpi b.b { color: #2c5cc5; } .kpi b.a { color: var(--c-warn); } .kpi b.r { color: var(--c-danger); } .kpi b.g { color: var(--c-ok); }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; } .bar input { min-width: 260px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips button { font: inherit; font-size: 13px; background: #fff; border: 1px solid var(--c-rule); padding: 6px 12px; cursor: pointer; } .chips button.on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); } .chips i { font-style: normal; opacity: .65; margin-left: 4px; }
+.list { background: #fff; border: 1px solid var(--c-rule); } .row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 150px 50px 150px 150px; gap: 14px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--c-rule); text-decoration: none; color: inherit; transition: background .12s; } .row:last-child { border-bottom: 0; } .row:hover { background: #fbfaf7; } .row.late { box-shadow: inset 3px 0 0 var(--c-danger); }
+.mono { width: 40px; height: 40px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.jt { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .jt b { font-weight: 600; color: var(--c-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .jt span { font-size: 13px; color: var(--c-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { justify-self: start; font-size: 12px; font-weight: 600; padding: 4px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); white-space: nowrap; } .pill[data-s="new"] { background: #eef4ff; color: #2c5cc5; } .pill[data-s="in_progress"] { background: #fff6e6; color: #a5650b; } .pill[data-s="waiting_client"] { background: #fdecef; color: #b4234a; } .pill[data-s="completed"] { background: #e9f6ee; color: #23784a; }
+.hi { font-size: 11px; font-weight: 700; color: var(--c-danger); text-transform: uppercase; letter-spacing: .04em; }
+.due { display: flex; flex-direction: column; gap: 1px; font-size: 13.5px; } .due em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .due i { font-style: normal; font-size: 12px; color: var(--c-blue-deep); font-weight: 500; } .due.red, .due.red i { color: var(--c-danger); }
+.own { display: flex; align-items: center; gap: 8px; justify-content: flex-end; } .own em { font-style: normal; font-size: 12px; color: var(--c-muted); } .av { width: 28px; height: 28px; border-radius: 50%; background: var(--c-blue-deep); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 600; } .un { font-size: 12px; color: var(--c-muted); }
+.empty { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 40px; background: #fff; border: 1px solid var(--c-rule); color: var(--c-muted); } .empty b { color: var(--c-ink); }
+@media (max-width: 1000px) { .kpi { grid-template-columns: repeat(3, 1fr); } .row { grid-template-columns: 40px 1fr auto; } .row > .hi, .row > .due, .row > .own, .row > span:empty { display: none; } }
 .add { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; margin-bottom: 20px; }
 .add label { display: flex; flex-direction: column; gap: 6px; } .add .wide { grid-column: 1 / -1; }
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }

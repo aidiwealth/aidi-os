@@ -43,7 +43,7 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
         <p v-if="msg" class="error">{{ msg }}</p>
         <div v-if="data.files.length" class="dr"><nav class="side" aria-label="Folders"><button :class="{ on: folder === 'all' }" @click="folder = 'all'"><span>All documents</span><em>{{ data.files.length }}</em></button><button v-for="[g, list] in allGroups" :key="'n' + g" :class="{ on: folder === g }" @click="folder = g"><span>{{ g }}</span><em>{{ list.length }}</em></button></nav><div class="main">
         <div v-for="[g, list] in groups" :key="g" class="grp"><h2>{{ g }}</h2>
-          <div v-for="f in list" :key="f.id" class="card fi"><span class="ic">{{ badge(f) }}</span><span class="ft"><b>{{ f.title }}</b><em>{{ size(f.size_bytes) }}</em></span>
+          <div v-for="f in list" :key="f.id" class="card fi"><FileBadge :name="f.title" :mime="f.mime_type" size="lg" /><span class="ft"><b>{{ f.title }}</b><em>{{ size(f.size_bytes) }}</em></span>
             <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download && (!data.watermark || f.mime_type.includes('pdf'))" class="btn secondary" @click="open(f, true)">Download</button></div></div>
         </div></div><!-- /dr -->
         <EmptyState v-if="!data.files.length" compact icon="documents" title="No documents shared yet" />
@@ -63,8 +63,8 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
 .vb { overflow: auto !important; padding: 16px 0; } .vimg { max-width: 100%; display: block; margin: 0 auto; } .vnone { padding: 40px; text-align: center; } .vnone .mut { color: var(--c-muted); font-size: 13.5px; }
 .dr { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 8px; }
 .side { position: sticky; top: 90px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--c-rule); padding-right: 14px; }
-.side button { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: none; border: 0; padding: 9px 12px; font: inherit; font-size: 14px; text-align: left; cursor: pointer; color: var(--c-ink-soft); border-radius: 6px; }
-.side button:hover { background: var(--c-paper-2); } .side button.on { background: var(--c-signal-soft); color: var(--c-blue-deep); font-weight: 600; } .side em { font-style: normal; font-size: 12px; color: var(--c-muted); background: #fff; border: 1px solid var(--c-rule); padding: 0 7px; border-radius: 10px; }
+.side button { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: none; border: 0; padding: 9px 12px; font: inherit; font-size: 14px; text-align: left; cursor: pointer; color: var(--c-ink-soft); border-radius: 0; }
+.side button:hover { background: var(--c-paper-2); } .side button.on { background: var(--c-signal-soft); color: var(--c-blue-deep); font-weight: 600; } .side em { font-style: normal; font-size: 12px; color: var(--c-muted); background: #fff; border: 1px solid var(--c-rule); padding: 0 7px; border-radius: 0; }
 .main .grp:first-child h2 { margin-top: 0; }
 @media (max-width: 800px) { .dr { grid-template-columns: 1fr; gap: 12px; } .side { position: static; flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--c-rule); padding: 0 0 8px; } .side button { white-space: nowrap; } }
 </style>

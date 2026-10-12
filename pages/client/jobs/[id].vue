@@ -16,7 +16,7 @@ const STEPS = [['new', 'Received'], ['in_progress', 'In progress'], ['completed'
 const stepAt = computed(() => (job.value.status === 'completed' ? 2 : job.value.status === 'new' ? 0 : 1))
 const TYPES: Record<string, string> = { llc: 'LLC', c_corp: 'C-Corp', s_corp: 'S-Corp', ltd: 'Limited', plc: 'PLC' }
 
-const text = ref(''); const note = ref(''); const msg = ref(''); const ok = ref(''); const busy = ref(false)
+const text = ref(''); const hasText = computed(() => text.value.replace(/[\s\u00a0]|&nbsp;|<br\s*\/?>/g, '').length > 0); const note = ref(''); const msg = ref(''); const ok = ref(''); const busy = ref(false)
 async function send() { busy.value = true; msg.value = ''; ok.value = ''; try { await $fetch('/api/portal/jobs/' + id + '/message', { method: 'POST', body: { body: text.value } }); text.value = ''; ok.value = 'Message sent. We will reply here and by email.'; await refresh() } catch (e) { msg.value = portalErr(e) } finally { busy.value = false } }
 async function upload(ev: Event) {
   const input = ev.target as HTMLInputElement
@@ -74,7 +74,7 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
 
         <div v-if="files.length" class="card">
           <div class="ch"><h2>Files</h2><span class="muted">{{ files.length }}</span></div>
-          <ul class="files"><li v-for="f in files" :key="f.id"><span class="ft" :data-t="ext(fname(f))">{{ ext(fname(f)) }}</span>
+          <ul class="files"><li v-for="f in files" :key="f.id"><FileBadge :name="fname(f)" />
             <div class="fi"><button type="button" class="link" @click="openDoc(f.document_id!)">{{ fname(f) }}</button><span class="muted">{{ f.kind === 'client_document' ? 'You sent this' : 'From our team' }} · {{ when(f.created_at) }}</span></div>
             <button type="button" class="dlb" @click="openDoc(f.document_id!)">Download</button></li></ul>
         </div>
@@ -84,8 +84,8 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
           <ul v-if="updates.length" class="tline">
             <li v-for="e in updates" :key="e.id" :data-kind="e.kind" :class="{ me: e.from_client }">
               <p class="h">{{ label(e) }}<span class="m">{{ when(e.created_at) }}</span></p>
-              <p v-if="e.body && e.from_client" class="b">{{ e.body }}</p><div v-else-if="e.body" class="b md" v-html="rich(e.body)" />
-              <button v-if="e.document_id" type="button" class="doc" @click="openDoc(e.document_id)">📎 {{ fname(e) }}</button>
+              <div v-if="e.body" class="b md" v-html="rich(e.body)" />
+              <button v-if="e.document_id" type="button" class="doc" @click="openDoc(e.document_id)"><FileBadge :name="fname(e)" size="sm" />{{ fname(e) }}</button>
             </li>
           </ul>
           <p v-else class="muted">No updates yet. We will post every step here and email you.</p>
@@ -108,8 +108,8 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
         </div>
         <form class="card" @submit.prevent="send">
           <h2>Message our team</h2>
-          <textarea v-model="text" rows="4" maxlength="5000" required placeholder="Ask a question or tell us something about this request" />
-          <button class="btn" type="submit" :disabled="busy || !text.trim()">Send message</button>
+          <div @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send"><ClientOnly><RichEditor v-model="text" compact minimal :min-height="110" :max-length="5000" placeholder="Ask a question or tell us something about this request" /><template #fallback><textarea rows="4" disabled /></template></ClientOnly></div>
+          <button class="btn" type="submit" :disabled="busy || !hasText">Send message</button>
         </form>
       </aside>
     </div>
@@ -120,10 +120,10 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
 .back { display: inline-block; margin-bottom: 14px; color: var(--c-muted); text-decoration: none; font-size: 14px; }
 .top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; } .tl1 { min-width: 0; flex: 1; }
 .eyebrow { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 13px; color: var(--c-muted); }
-.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--c-paper-2); color: var(--c-ink-soft); }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 0; background: var(--c-paper-2); color: var(--c-ink-soft); }
 .pill[data-s="new"] { background: #eef4ff; color: #2c5cc5; } .pill[data-s="in_progress"] { background: #fff6e6; color: #a5650b; } .pill[data-s="waiting_client"] { background: #fdecef; color: #b4234a; } .pill[data-s="completed"] { background: #e9f6ee; color: #23784a; }
 h1 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); line-height: 1.15; letter-spacing: -.02em; } .sub { margin: 6px 0 0; color: var(--c-muted); }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; } .chip { font-size: 13px; padding: 5px 11px; border: 1px solid var(--c-rule-strong); border-radius: 999px; background: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; } .chip { font-size: 13px; padding: 5px 11px; border: 1px solid var(--c-rule-strong); border-radius: 0; background: #fff; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 32px; margin: 16px 0 0; } .meta div { display: flex; flex-direction: column; gap: 2px; } .meta dt { font-size: 12px; color: var(--c-muted); } .meta dd { margin: 0; font-size: 14px; font-weight: 500; }
 .del { background: none; border: 0; color: var(--c-danger); font: inherit; font-size: 13px; cursor: pointer; padding: 0; white-space: nowrap; }
 .steps { list-style: none; display: flex; margin: 22px 0 14px; padding: 0; counter-reset: s; }
@@ -132,15 +132,15 @@ h1 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); line-height: 1.15; letter-s
 .steps .dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 600; background: #fff; border: 2px solid var(--c-rule-strong); flex: none; }
 .steps li.done .dot { background: var(--c-ok); border-color: var(--c-ok); color: #fff; } .steps li.done b { color: var(--c-ink); font-weight: 500; }
 .steps li.now .dot { border-color: var(--c-navy); color: var(--c-navy); box-shadow: 0 0 0 4px rgba(12,26,46,.08); } .steps li.now b { color: var(--c-navy); font-weight: 600; }
-.need { background: #fdecef; color: #8f1d3b; padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 4px; } .need b { color: #b4234a; }
+.need { background: #fdecef; color: #8f1d3b; padding: 12px 16px; border-radius: 0; font-size: 14px; margin-bottom: 4px; } .need b { color: #b4234a; }
 .flash { margin: 10px 0 0; font-size: 14px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 20px; align-items: start; margin-top: 18px; }
-.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; } .card { border-radius: 10px; display: flex; flex-direction: column; gap: 10px; }
+.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; } .card { border-radius: 0; display: flex; flex-direction: column; gap: 10px; }
 h2 { margin: 0; font-size: 17px; } .ch { display: flex; justify-content: space-between; align-items: baseline; } .muted { color: var(--c-muted); font-size: 13px; } .more { font-size: 13px; color: var(--c-blue-deep); text-decoration: none; }
 .files { list-style: none; margin: 0; padding: 0; } .files li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--c-rule); }
-.ft { flex: none; width: 36px; height: 40px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; background: #7b8794; } .ft[data-t="PDF"] { background: #d0473d; } .ft[data-t="IMG"] { background: #8a5cd1; } .ft[data-t="XLS"] { background: #23854f; } .ft[data-t="DOC"] { background: #2f6fd6; }
+.ft { flex: none; width: 36px; height: 40px; border-radius: 0; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; background: #7b8794; } .ft[data-t="PDF"] { background: #d0473d; } .ft[data-t="IMG"] { background: #8a5cd1; } .ft[data-t="XLS"] { background: #23854f; } .ft[data-t="DOC"] { background: #2f6fd6; }
 .fi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .link { background: none; border: 0; padding: 0; font: inherit; font-weight: 500; color: var(--c-ink); cursor: pointer; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .link:hover { color: var(--c-blue-deep); }
-.dlb { background: none; border: 1px solid var(--c-rule-strong); border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--c-blue-deep); }
+.dlb { background: none; border: 1px solid var(--c-rule-strong); border-radius: 0; padding: 5px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--c-blue-deep); }
 .tline { list-style: none; padding: 0; margin: 4px 0 0; }
 .tline li { position: relative; padding: 0 0 16px 20px; border-left: 2px solid var(--c-rule); margin-left: 5px; } .tline li:last-child { padding-bottom: 0; }
 .tline li::before { content: ''; position: absolute; left: -6px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--c-blue); }
@@ -148,13 +148,13 @@ h2 { margin: 0; font-size: 17px; } .ch { display: flex; justify-content: space-b
 .h { margin: 0; font-weight: 500; font-size: 14px; color: var(--c-navy); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .h .m { font-size: 12px; font-weight: 400; color: var(--c-muted); }
 .b { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; } .b.md { white-space: normal; line-height: 1.55; }
 .md :deep(p) { margin: 0 0 8px; } .md :deep(p:last-child) { margin-bottom: 0; } .md :deep(ul), .md :deep(ol) { margin: 4px 0 8px; padding-left: 20px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(blockquote) { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--c-rule-strong); }
-.doc { margin-top: 8px; background: var(--c-paper-2); border: 0; border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
-.bill .bi { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--c-rule); border-radius: 8px; }
+.doc { margin-top: 8px; background: var(--c-paper-2); border: 0; border-radius: 0; padding: 6px 10px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
+.bill .bi { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--c-rule); border-radius: 0; }
 .bt { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-decoration: none; color: var(--c-ink); } .bt div { display: flex; flex-direction: column; } .bt .muted { font-size: 12px; }
 .amt { font-variant-numeric: tabular-nums; } .amt.paid { color: var(--c-ok); } .amt.over { color: var(--c-danger); }
 .pay { display: flex; gap: 8px; flex-wrap: wrap; } .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; text-decoration: none; }
 label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--c-muted); }
-input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); border-radius: 6px; background: #fff; color: var(--c-ink); } textarea { resize: vertical; } form .btn { align-self: flex-start; }
+input, textarea { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); border-radius: 0; background: #fff; color: var(--c-ink); } textarea { resize: vertical; } form .btn { align-self: flex-start; }
 @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .top { flex-direction: column; } .steps b { display: none; } }
 </style>

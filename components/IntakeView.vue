@@ -51,7 +51,7 @@ async function save() {
   </div>
 </template>
 <style scoped>
-.iv { border-radius: 10px; } .muted { color: var(--c-muted); font-size: 13px; }
+.iv { border-radius: 0; } .muted { color: var(--c-muted); font-size: 13px; }
 .ft { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--c-rule); } .okm { color: var(--c-ok); font-size: 13px; }
 .empty { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .empty > div { display: flex; flex-direction: column; gap: 2px; }
 .ivf { display: flex; flex-direction: column; gap: 14px; } .ivh { display: flex; flex-direction: column; gap: 2px; } .ivh h2 { margin: 0; font-size: 17px; }

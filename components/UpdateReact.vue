@@ -19,6 +19,6 @@ onMounted(async () => {
     <p v-if="sent" class="ok">Thanks. {{ company }} has your note.</p><p v-if="msg" class="error">{{ msg }}</p></div>
 </template>
 <style scoped>
-.ur { margin: 18px 0; display: flex; flex-direction: column; gap: 10px; } .em { display: flex; gap: 8px; flex-wrap: wrap; } .em button { font-size: 22px; line-height: 1; padding: 8px 12px; background: #fff; border: 1px solid var(--c-rule); border-radius: 20px; cursor: pointer; transition: transform .1s; } .em button:hover { transform: scale(1.08); } .em button.on { background: var(--c-signal-soft); border-color: var(--c-blue-deep); }
+.ur { margin: 18px 0; display: flex; flex-direction: column; gap: 10px; } .em { display: flex; gap: 8px; flex-wrap: wrap; } .em button { font-size: 22px; line-height: 1; padding: 8px 12px; background: #fff; border: 1px solid var(--c-rule); border-radius: 0; cursor: pointer; transition: transform .1s; } .em button:hover { transform: scale(1.08); } .em button.on { background: var(--c-signal-soft); border-color: var(--c-blue-deep); }
 .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 13.5px; padding: 0; align-self: flex-start; } .nt { display: flex; flex-direction: column; gap: 8px; } .nt textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .btn.sm { align-self: flex-start; height: 32px; padding: 0 12px; font-size: 13px; } .ok { color: var(--c-ok); margin: 0; } .error { color: var(--c-danger); margin: 0; }
 </style>

@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const s = await walletSettings()
   const va = (await db().query('SELECT bank_name, account_number, account_name, accounts FROM wallet.virtual_accounts LIMIT 1')).rows[0] ?? null
   const card = await cardOnFile(org.id, w.currency)
-  const subs = await db().query("SELECT id, kind, name, amount_minor::float AS amount_minor, currency, interval, to_char(next_charge_at, 'YYYY-MM-DD') AS next_charge_at, status, failures, last_error FROM wallet.subscriptions WHERE status <> 'cancelled' ORDER BY next_charge_at")
+  const subs = await db().query("SELECT id, kind, code, name, amount_minor::float AS amount_minor, currency, interval, to_char(next_charge_at, 'YYYY-MM-DD') AS next_charge_at, to_char(started_on, 'YYYY-MM-DD') AS started_on, details, status, failures, last_error FROM wallet.subscriptions WHERE status <> 'cancelled' ORDER BY next_charge_at")
   const transfer = w.currency === 'NGN' ? (monnifyOn(s) ? { mode: 'monnify', account: va } : s.bank_ngn?.account_number ? { mode: 'manual', bank: s.bank_ngn } : null) : (s.bank_usd?.account_number ? { mode: 'manual', bank: s.bank_usd } : null)
   return { country: String((org.settings as Record<string, unknown>).country ?? ''), transfer, reference: org.slug, card: card ? { brand: card.brand, last4: card.last4 } : null, subscriptions: subs.rows, company: org.name, plan: org.plan_code, currency: w.currency, balance_minor: w.balance_minor, min_minor: MIN_TOPUP[w.currency] ?? 1000, ledger: ledger.rows, pending: pending.n, canTopup: providersFor(w.currency).length > 0, provider: w.currency === 'NGN' ? 'Paystack' : 'Stripe', user: user.email }
 })

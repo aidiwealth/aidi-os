@@ -48,8 +48,8 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
       <div class="card">
         <h2>Reply or send documents</h2>
         <form class="reply" @submit.prevent="send">
-          <textarea v-model="reply" rows="3" maxlength="5000" placeholder="Write a message to the team" required />
-          <button class="btn" type="submit" :disabled="state.busy">Send</button>
+          <ClientOnly><RichEditor v-model="reply" compact minimal :min-height="100" :max-length="5000" placeholder="Write a message to the team" /><template #fallback><textarea rows="3" disabled /></template></ClientOnly>
+          <button class="btn" type="submit" :disabled="state.busy || !reply.replace(/[\s\u00a0]|&nbsp;/g, '')">Send</button>
         </form>
         <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Upload a document"
           @click="fileEl?.click()" @keydown.enter.prevent="fileEl?.click()" @keydown.space.prevent="fileEl?.click()"
@@ -66,8 +66,7 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
           <li v-for="e in data.events" :key="e.id" :data-kind="e.kind">
             <p class="h">{{ WHAT[e.kind] ?? 'Update' }}<template v-if="e.kind === 'status' && e.to_status">: {{ LABEL[e.to_status] }}</template></p>
             <p v-if="e.has_document" class="b"><a :href="'/api/public/job/' + token + '/file/' + e.id">{{ e.document_title }}</a></p>
-            <p v-if="e.body && e.kind === 'client_message'" class="b">{{ e.body }}</p>
-            <div v-else-if="e.body" class="b md" v-html="rich(e.body)" />
+            <div v-if="e.body" class="b md" v-html="rich(e.body)" />
             <p class="m">{{ when(e.created_at) }}</p>
           </li>
         </ul>

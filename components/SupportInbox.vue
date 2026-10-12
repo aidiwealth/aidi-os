@@ -29,7 +29,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
         <iframe v-if="m.direction === 'in' && m.html_body" class="hf" sandbox="allow-popups allow-popups-to-escape-sandbox" :srcdoc="frame(m.html_body)" referrerpolicy="no-referrer" />
         <pre v-else-if="m.direction === 'in'" class="tx">{{ m.text_body }}</pre>
         <div v-else class="md" v-html="m.html_body" />
-        <div v-if="m.attachments?.length" class="att"><button v-for="a in m.attachments" :key="a.doc_id" type="button" @click="openDoc(a.doc_id)">📎 {{ a.name }}</button></div></article></div>
+        <div v-if="m.attachments?.length" class="att"><button v-for="a in m.attachments" :key="a.doc_id" type="button" @click="openDoc(a.doc_id)" class="fa"><FileBadge :name="a.name" :mime="(a as any).mime" size="sm" />{{ a.name }}</button></div></article></div>
       <footer><ClientOnly><RichEditor v-model="reply" :min-height="140" compact placeholder="Write your reply…" /></ClientOnly><div class="fr"><span class="mut sm">Sent from Finvry Support · replies come back to support@finvry.com</span><button class="btn" :disabled="busy || !reply.trim()" @click="send">{{ busy ? 'Sending…' : 'Send reply' }}</button></div><p v-if="msg" class="error">{{ msg }}</p></footer>
     </section>
     <section v-else class="cv empty"><p class="mut">Choose a conversation.</p></section>

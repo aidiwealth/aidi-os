@@ -3,7 +3,7 @@ import { US_STATES } from '~/shared/countries'
 const id = useRoute().params.id as string
 interface Co { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; registration_number: string | null; ein: string | null; formation_date: string | null; fiscal_year_end: string | null; address: string | null; registered_agent: string; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string; notes: string | null }
 interface Pe { id: string; name: string; email: string | null; phone: string | null; role: string; ownership_pct: string | null; company_id: string | null; company: string | null; address: string | null; nationality: string | null; portal_access: boolean }
-interface D { client: { id: string; name: string; kind: string; contact_name: string; email: string; phone: string | null; country: string | null; address: string | null; notes: string | null; status: string }
+interface D { client: { id: string; name: string; kind: string; contact_name: string; email: string; phone: string | null; country: string | null; address: string | null; notes: string | null; status: string; emails_muted?: boolean; on_finvry?: boolean }
   companies: Co[]; people: Pe[]; jobs: { id: string; title: string; service: string; status: string; due_date: string | null }[]; invoices: { id: string; number: string; currency: string; amount: string; status: string; due_date: string; overdue: boolean }[]; requests: { id: string; tax_year: number; status: string; sent_to: string; company: string | null; submitted_at: string | null }[] }
 const { data, refresh } = await useFetch<D>('/api/services/clients/' + id)
 useHead({ title: () => data.value?.client.name ?? 'Client' })
@@ -40,6 +40,8 @@ const rd = reactive<Record<string, { started_on: string; next_date: string; coun
 watch(ren, (v) => { for (const r of v?.items ?? []) rd[r.code] = { started_on: r.sub?.started_on ?? '', next_date: r.sub?.next_charge_at ?? r.obligation?.next_due ?? '', country: r.sub?.details?.country ?? 'United States', state: r.sub?.details?.state ?? '', address: r.sub?.details?.address ?? '' } }, { immediate: true })
 const todayIso = new Date().toISOString().slice(0, 10)
 const saveRen = (code: string, extra: Record<string, unknown> = {}) => run(async () => { const x = rd[code]!; const r = await $fetch<{ next: string | null }>('/api/services/clients/' + id + '/renewals', { method: 'POST', body: { code, ...extra, ...(extra.status ? {} : { started_on: x.started_on || undefined, next_date: x.next_date || undefined, ...(code === 'virtual_office' ? { details: { country: x.country, state: x.country === 'Nigeria' ? 'Lagos' : x.state, address: x.address } } : {}) }) } }); await rren(); return r }, extra.status === 'cancelled' ? 'Renewal cancelled.' : extra.status === 'suspended' ? 'Renewal paused.' : extra.status === 'active' ? 'Renewal resumed.' : 'Saved. The wallet renewal and the compliance calendar now match.')
+function confirmCancel(r: Rn) { return window.confirm('Cancel ' + r.name + ' for this client? It stops renewing and leaves their calendar.') }
+const saveRen2 = (r: Rn, v: { started_on: string; next_date: string; country: string; state: string; address: string }) => { rd[r.code] = { ...v }; return saveRen(r.code) }
 function cancelRen(r: Rn) { if (window.confirm('Cancel ' + r.name + ' renewals for this client?')) saveRen(r.code, { status: 'cancelled' }) }
 function fromStart(r: Rn) { const x = rd[r.code]!; if (!x.started_on) return; const m = (r.sub ? r.sub.interval === 'month' : r.obligation?.recurrence === 'monthly') ? 1 : 12; const b = new Date(x.started_on + 'T00:00:00Z'); for (let k = 1; k < 1200; k++) { const d = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + m * k, Math.min(b.getUTCDate(), 28))); const iso = d.toISOString().slice(0, 10); if (iso >= todayIso) { x.next_date = iso; break } } }
 const signing = ref(false)
@@ -49,17 +51,25 @@ async function signInAs() {
   try { const r = await $fetch<{ redirect?: string }>('/api/services/clients/' + id + '/signin', { method: 'POST' }); window.location.href = r.redirect || '/' } catch (e) { msg.value = err(e); signing.value = false }
 }
 const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients/' + id + '/finvry', { method: 'POST', body: { person_id: p.id, send } }), send ? p.name + ' has a Finvry account and was emailed.' : p.name + ' can now sign in to Finvry with their email.')
-const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string; created_at: string; author: string | null; read_by_client: string | null }[]>('/api/services/clients/' + id + '/messages')
+const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; read_by_client: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }[]>('/api/services/clients/' + id + '/messages')
 const reply = ref('')
-const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + id + '/messages', { method: 'POST', body: { body: reply.value } }); reply.value = ''; await rmsgs() }, 'Message sent.')
+const sending = ref(false)
+async function sendMsg(body: string, documentId: string | null) { sending.value = true; msg.value = ''; ok.value = ''; try { const r = await $fetch<{ emailed: number }>('/api/services/clients/' + id + '/messages', { method: 'POST', body: { body, document_id: documentId ?? undefined } }); ok.value = data.value?.client.emails_muted ? 'Message saved. Emails to this client are off, so they see it next time they sign in.' : r.emailed ? 'Message sent.' : 'Message saved.'; await rmsgs() } catch (e) { msg.value = err(e) } finally { sending.value = false } }
+const toggleEmails = () => run(async () => { await $fetch('/api/services/clients/' + id + '/emails', { method: 'POST', body: { muted: !data.value?.client.emails_muted } }) }, data.value?.client.emails_muted ? 'Emails to the client are back on.' : 'Emails to this client are off. Messages and updates still appear in their account.')
+const unpaid = computed(() => (data.value?.invoices ?? []).filter((i: { status: string }) => i.status === 'sent').length)
+const openJobs = computed(() => (data.value?.jobs ?? []).filter((j: { status: string }) => !['completed', 'cancelled'].includes(j.status)).length)
+const inits = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('')
 </script>
 
 <template>
   <section v-if="data">
     <CsNav />
-    <div class="dh"><div><h1>{{ data.client.name }}</h1><p class="muted">{{ data.client.contact_name }} · {{ data.client.email }}{{ data.client.country ? ' · ' + data.client.country : '' }}</p></div>
+    <div class="dh"><div class="who"><span class="mono">{{ inits(data.client.name) }}</span><div><h1>{{ data.client.name }}</h1>
+        <p class="muted"><b>{{ data.client.contact_name }}</b> · <a :href="'mailto:' + data.client.email">{{ data.client.email }}</a>{{ data.client.phone ? ' · ' + data.client.phone : '' }}{{ data.client.country ? ' · ' + data.client.country : '' }}</p>
+        <div class="tagl"><span class="tg" :class="data.client.status">{{ data.client.status }}</span><span class="tg" :class="{ on: data.client.on_finvry }">{{ data.client.on_finvry ? 'On Finvry' : 'No Finvry account' }}</span><button type="button" class="tg sw" :class="{ off: data.client.emails_muted }" :title="data.client.emails_muted ? 'Turn emails back on' : 'Stop emailing this client'" @click="toggleEmails">{{ data.client.emails_muted ? 'Emails off' : 'Emails on' }}</button></div></div></div>
       <div class="row"><button v-if="me?.platform" type="button" class="btn secondary" :disabled="signing" :title="'Set up ' + data.client.name + '\'s Finvry account without emailing them, and sign in as the owner'" @click="signInAs">{{ signing ? 'Opening…' : 'Sign in as owner' }}</button><NuxtLink :to="'/services/order?client=' + id" class="btn">New order</NuxtLink><NuxtLink :to="'/services/invoices/new?client=' + id" class="btn secondary">New invoice</NuxtLink><DeleteButton type="client" :id="id" :name="data.client.name" to="/services/clients" /></div></div>
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
+    <div class="kst"><button type="button" @click="tab = 'jobs'"><em>Open jobs</em><b>{{ openJobs }}</b></button><button type="button" @click="tab = 'invoices'"><em>Unpaid invoices</em><b :class="{ red: unpaid }">{{ unpaid }}</b></button><button type="button" @click="tab = 'companies'"><em>Companies</em><b>{{ data.companies.length }}</b></button><button type="button" @click="tab = 'messages'"><em>Messages</em><b>{{ msgs?.length ?? 0 }}</b></button></div>
     <div class="tabs"><button v-for="t in TABS" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'companies' ? 'Companies (' + data.companies.length + ')' : t === 'people' ? 'People (' + data.people.length + ')' : t === 'jobs' ? 'Jobs (' + data.jobs.length + ')' : t === 'invoices' ? 'Invoices (' + data.invoices.length + ')' : t === 'renewals' ? 'Renewals' : t === 'messages' ? 'Messages' + (msgs?.filter((m) => !m.from_team).length ? ' (' + msgs.filter((m) => !m.from_team).length + ')' : '') : 'Details' }}</button></div>
 
     <template v-if="tab === 'companies'">
@@ -120,10 +130,9 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
     </template>
 
     <template v-else-if="tab === 'messages'">
-      <form class="card frm" @submit.prevent="sendMsg"><label class="label wide">Message to the client<textarea v-model="reply" rows="3" maxlength="5000" required /></label>
-        <div class="wide row"><button class="btn" type="submit">Send</button><span class="muted sm">Clients on Finvry see it under Services and get an email; otherwise it goes to their main email.</span></div></form>
-      <div class="thread"><div v-for="m in msgs ?? []" :key="m.id" class="msg" :class="{ team: m.from_team }"><span class="sub">{{ m.from_team ? (m.author ?? 'Team') : (m.author ?? 'Client') }} · {{ new Date(m.created_at).toLocaleString('en-GB') }}{{ m.from_team && m.read_by_client ? ' · read' : '' }}</span><p>{{ m.body }}</p></div>
-        <EmptyState v-if="!msgs?.length" compact icon="services" title="No messages yet" /></div>
+      <div class="mhd"><p class="muted">{{ data.client.on_finvry ? 'They see these under Messages in Finvry' : 'They get these by email (no Finvry account yet)' }}{{ data.client.emails_muted ? ' — emails are off, so nothing is emailed right now.' : ' and get an email for each one.' }} Attach files with the paperclip or by dragging them in.</p></div>
+      <div class="card chat"><ChatThread :messages="msgs ?? []" side="team" :busy="sending" :upload-url="'/api/services/inbox/file?client=' + id" download-base="/api/services/inbox/doc/" :placeholder="'Write to ' + (data.client.contact_name || data.client.name) + '… (⌘/Ctrl + Enter to send)'" @send="sendMsg">
+        <template #empty><p v-if="!msgs?.length" class="none">No messages yet. Start the conversation below.</p></template></ChatThread></div>
     </template>
     <template v-else-if="tab === 'jobs'">
       <table v-if="data.jobs.length" class="table"><thead><tr><th>Job</th><th>Status</th><th>Due</th></tr></thead>
@@ -135,21 +144,8 @@ const sendMsg = () => run(async () => { await $fetch('/api/services/clients/' + 
       <p class="muted rh">Recurring services renew automatically from the client's wallet (or card) and appear on their compliance calendar. For an old order you logged today, set when the service really started — the next renewal is worked out from it.</p>
       <p v-if="ren && !ren.workspace" class="muted">This client has no Finvry account yet, so there are no renewals. Use "Sign in as owner" to set one up quietly.</p>
       <div v-else-if="ren?.items.length" class="rens">
-        <div v-for="r in ren.items" :key="r.code" class="card ren">
-          <div class="rt"><b>{{ r.name }}</b><span class="muted">{{ r.sub ? money(String(r.sub.amount_minor / 100), r.sub.currency) + ' / ' + r.sub.interval : 'On the calendar · not billing yet (charged once its invoice is paid)' }}</span>
-            <span v-if="r.sub" class="st" :class="r.sub.status">{{ r.sub.status === 'suspended' ? 'paused' : r.sub.status }}</span></div>
-          <div class="rg">
-            <label class="label">Service started<input v-model="rd[r.code]!.started_on" type="date" :max="todayIso" @change="fromStart(r)"></label>
-            <label class="label">Next renewal<input v-model="rd[r.code]!.next_date" type="date" :min="todayIso"></label>
-            <button class="btn" type="button" @click="saveRen(r.code)">Save</button>
-          </div>
-          <div v-if="r.code === 'virtual_office'" class="rg vo">
-            <label class="label">Country<select v-model="rd[r.code]!.country"><option>United States</option><option>Nigeria</option></select></label>
-            <label class="label">State<select v-if="rd[r.code]!.country === 'United States'" v-model="rd[r.code]!.state"><option value="">—</option><option v-for="st in US_STATES" :key="st" :value="st">{{ st }}</option></select><input v-else value="Lagos" disabled></label>
-            <label class="label wv">Street address<textarea v-model="rd[r.code]!.address" rows="2" maxlength="500" placeholder="The address assigned to this client" /></label>
-          </div>
-          <div v-if="r.sub" class="ra"><button v-if="r.sub.status === 'active'" type="button" class="lk" @click="saveRen(r.code, { status: 'suspended' })">Pause renewals</button><button v-else type="button" class="lk" @click="saveRen(r.code, { status: 'active' })">Resume renewals</button><button type="button" class="lk red" @click="cancelRen(r)">Cancel</button></div>
-        </div>
+        <RenewalCard v-for="r in ren.items" :key="r.code" editable :r="{ code: r.code, name: r.name, amount_minor: r.sub?.amount_minor, currency: r.sub?.currency, interval: r.sub?.interval ?? (r.obligation?.recurrence === 'monthly' ? 'month' : 'year'), status: r.sub?.status ?? null, next: r.sub?.next_charge_at ?? r.obligation?.next_due ?? null, started: r.sub?.started_on ?? null, details: r.sub?.details ?? null, calendarOnly: !r.sub }"
+          @save="(v) => saveRen2(r, v)" @status="(st) => (st !== 'cancelled' || confirmCancel(r)) && saveRen(r.code, { status: st })" />
       </div>
       <EmptyState v-else-if="ren" compact icon="services" title="No recurring services yet" />
     </template>
@@ -191,8 +187,14 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .tabs { margin: 14px 0 12px; } .tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 2px; margin-right: 20px; cursor: pointer; color: var(--c-muted); } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); }
 .flags { display: flex; flex-direction: column; gap: 6px; } .acts { white-space: nowrap; } .sm { font-size: 13px; } .sub2 { font-size: 18px; margin: 18px 0 8px; }
 .thread { display: flex; flex-direction: column; gap: 8px; } .msg { background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; max-width: 80%; } .msg.team { align-self: flex-end; border-right: 3px solid var(--c-blue-deep); } .msg p { margin: 4px 0 0; white-space: pre-wrap; }
-.rh { max-width: 760px; margin: 0 0 14px; font-size: 14px; } .rens { display: flex; flex-direction: column; gap: 12px; } .ren { display: flex; flex-direction: column; gap: 12px; }
+.rh { max-width: 760px; margin: 0 0 14px; font-size: 14px; } .rens { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; } .ren { display: flex; flex-direction: column; gap: 12px; }
 .ren .rt { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; } .ren .rt .muted { font-size: 13px; } .rg { display: grid; grid-template-columns: 200px 200px auto; gap: 12px; align-items: end; } .rg .btn { justify-self: start; }
 .rg.vo { grid-template-columns: 200px 200px 1fr; } .rg.vo textarea, .rg input, .rg select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .ra { display: flex; gap: 16px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); }
 @media (max-width: 640px) { .rg { grid-template-columns: 1fr; } }
+.who { display: flex; gap: 16px; align-items: flex-start; } .who .mono { flex: none; width: 52px; height: 52px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; } .who h1 { margin: 0 0 4px; } .who .muted a { color: var(--c-blue-deep); text-decoration: none; }
+.tagl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .tg { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); border: 0; text-transform: capitalize; } .tg.active, .tg.on { background: #e9f6ee; color: #23784a; } .tg.lead { background: #eef4ff; color: #2c5cc5; }
+.tg.sw { cursor: pointer; background: #e9f6ee; color: #23784a; } .tg.sw.off { background: #fdecef; color: #b4234a; }
+.kst { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0 6px; } .kst button { font: inherit; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; } .kst button:hover { border-color: var(--c-navy); } .kst em { font-style: normal; font-size: 12px; color: var(--c-muted); } .kst b { font-size: 22px; font-weight: 600; } .kst b.red { color: var(--c-danger); }
+.mhd .muted { margin: 0 0 10px; font-size: 13.5px; } .chat { padding: 0 !important; height: 560px; display: flex; flex-direction: column; overflow: hidden; } .none { color: var(--c-muted); text-align: center; margin: auto; }
+@media (max-width: 760px) { .kst { grid-template-columns: 1fr 1fr; } }
 </style>

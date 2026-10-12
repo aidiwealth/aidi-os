@@ -31,12 +31,20 @@ const { data: me } = await useFetch<{ org: { kind: string } | null }>('/api/auth
 const invoicePays = computed(() => (data.value?.ledger ?? []).filter((l) => l.kind === 'debit' && (l.reference ?? '').startsWith('invoice:')).slice(0, 8))
 const LABEL: Record<string, string> = { topup: 'Top-ups', admin_credit: 'Credits from Finvry', refund: 'Refunds', service: 'Services', subscription: 'Subscription', admin_debit: 'Adjustments' }
 const byCat = computed(() => { const m = new Map<string, number>(); for (const l of data.value?.ledger ?? []) if (l.kind === 'debit') m.set(l.category, (m.get(l.category) ?? 0) + l.amount_minor / 100); return [...m.entries()].map(([k, v]) => ({ label: LABEL[k] ?? k, value: v })) })
+// At a glance: the next renewal, what renews in the next 90 days, and whether the balance covers it.
+const subsActive = computed(() => (data.value?.subscriptions ?? []).filter((x) => x.status === 'active').sort((a, b) => a.next_charge_at.localeCompare(b.next_charge_at)))
+const nextSub = computed(() => subsActive.value[0] ?? null)
+const soon90 = computed(() => { const lim = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10); return subsActive.value.filter((x) => x.next_charge_at <= lim).reduce((t, x) => t + x.amount_minor, 0) })
+const yearly = computed(() => subsActive.value.reduce((t, x) => t + (x.interval === 'month' ? x.amount_minor * 12 : x.amount_minor), 0))
+const fmtM = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.currency ?? 'USD', maximumFractionDigits: minor % 100 ? 2 : 0 }).format(minor / 100)
+const dLong = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.value.amount_minor - data.value.balance_minor) : 0))
 </script>
 <template>
   <section v-if="data">
     <template v-if="me?.org?.kind === 'company'"><ClientTabs /><BillingTabs /></template>
-    <p class="label">Company</p><h1>Wallet</h1>
-    <p class="lead">Top up once and pay for Aidi services, filings and renewals from your balance. Every movement is listed below.</p>
+    <p class="eyebrow">Billing</p><h1 class="ttl">Wallet</h1>
+    <p class="lead">Top up once and pay for services, filings and renewals from your balance. Every movement is listed below.</p>
     <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
     <p v-if="returned && data.pending" class="card note">Payment received; we're confirming it with {{ data.provider }}. Your balance updates in a moment.</p>
     <div class="top">
@@ -71,8 +79,14 @@ const byCat = computed(() => { const m = new Map<string, number>(); for (const l
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
     </div>
+    <div v-if="subsActive.length" class="glance">
+      <div class="gl"><em>Next renewal</em><b>{{ nextSub ? fmtM(nextSub.amount_minor) : '—' }}</b><span>{{ nextSub ? nextSub.name + ' · ' + dLong(nextSub.next_charge_at) : '' }}</span></div>
+      <div class="gl"><em>Renewing in the next 90 days</em><b>{{ fmtM(soon90) }}</b><span>{{ subsActive.length }} active service{{ subsActive.length === 1 ? '' : 's' }}</span></div>
+      <div class="gl"><em>Renewals per year</em><b>{{ fmtM(yearly) }}</b><span>All services together</span></div>
+      <div class="gl" :class="short ? 'warn' : 'ok'"><em>Ready for the next renewal?</em><b>{{ short ? 'Top up ' + fmtM(short) : 'Covered' }}</b><span>{{ short ? (data.card ? 'or we charge your card on file' : 'before ' + (nextSub ? dLong(nextSub.next_charge_at) : 'then')) : 'Your balance covers it' }}</span></div>
+    </div>
     <div v-if="data.subscriptions.length" class="card subs"><h3>Renewals</h3><p class="mut">Charged from your wallet on the date shown; if the wallet is short we use your card on file. If both fail we try again after 3 days, then {{ data.subscriptions.some((s) => s.kind === 'plan') ? 'move you to the Free plan or ' : '' }}pause the service, and email you each time.</p>
-      <div v-for="s in data.subscriptions" :key="s.id" class="sr"><span><b>{{ s.name }}</b><em> · {{ s.interval === 'month' ? 'monthly' : 'yearly' }}</em></span><span class="mono">{{ (s.currency === 'NGN' ? '₦' : '$') + (s.amount_minor / 100).toLocaleString('en-US') }}</span><span :class="{ red: s.status === 'suspended' || s.failures }">{{ s.status === 'suspended' ? 'Paused · ' + (s.last_error ?? 'payment failed') : s.failures ? 'Retrying ' + s.next_charge_at : 'Next ' + new Date(s.next_charge_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) }}</span></div></div>
+      <div class="subg"><RenewalCard v-for="s in data.subscriptions" :key="s.id" :r="{ code: (s as any).code ?? s.kind, name: s.name, amount_minor: s.amount_minor, currency: s.currency, interval: s.interval, status: s.status, next: s.next_charge_at, started: (s as any).started_on, details: (s as any).details, failures: s.failures, last_error: s.last_error }" /></div></div>
     <AppModal :open="notice.open" title="Tell us about your transfer" @close="notice.open = false">
       <form id="ntf" class="nt" @submit.prevent="sendNotice(); notice.open = false"><label class="label">Amount sent ({{ data.currency }})<input v-model="notice.amount" inputmode="decimal" required></label><label class="label">Date sent<input v-model="notice.sent_on" type="date" required></label><label class="label">Note (optional)<input v-model="notice.note" maxlength="500" placeholder="e.g. sent from Zuri Labs GTBank account"></label></form>
       <template #foot><button class="btn secondary" @click="notice.open = false">Cancel</button><button class="btn" type="submit" form="ntf">Send</button></template>
@@ -84,6 +98,9 @@ const byCat = computed(() => { const m = new Map<string, number>(); for (const l
   </section>
 </template>
 <style scoped>
+.eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .ttl { margin: 0; }
+.glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 22px; } .gl { background: #fff; border: 1px solid var(--c-rule); border-top: 3px solid var(--c-navy); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .gl em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .gl b { font-size: 22px; font-weight: 600; letter-spacing: -.01em; } .gl span { font-size: 12.5px; color: var(--c-muted); } .gl.ok { border-top-color: var(--c-ok); } .gl.ok b { color: var(--c-ok); } .gl.warn { border-top-color: var(--c-warn); background: #fffaf0; } .gl.warn b { color: var(--c-warn); }
+@media (max-width: 900px) { .glance { grid-template-columns: 1fr 1fr; } }
 .lead { color: var(--c-ink-soft); max-width: 720px; } .note { border-left: 3px solid var(--c-blue-deep); margin-bottom: 14px; }
 .top { display: grid; grid-template-columns: minmax(320px, 1.1fr) 1fr; gap: 16px; margin: 16px 0 22px; } .fund { display: flex; flex-direction: column; gap: 10px; } .fund h3 { margin: 0; }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; } .quick button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 9px 4px; font: inherit; font-weight: 500; cursor: pointer; } .quick button.on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
@@ -91,7 +108,7 @@ label.label { display: flex; flex-direction: column; gap: 6px; } input { font: i
 .flow, .mix { margin-bottom: 22px; } .tabs2 { display: flex; border: 1px solid var(--c-rule-strong); } .tabs2 button { flex: 1; background: #fff; border: 0; padding: 8px; font: inherit; font-size: 13.5px; cursor: pointer; } .tabs2 button.on { background: var(--c-navy); color: #fff; }
 .acct { display: grid; grid-template-columns: 130px 1fr; gap: 8px 10px; background: var(--c-paper-2); padding: 12px 14px; font-size: 14px; } .acct span { color: var(--c-muted); } .acct b { font-weight: 500; } .mono { font-family: ui-monospace, Menlo, monospace; }
 .cp { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-size: 12px; color: var(--c-blue-deep); cursor: pointer; } .kyc { display: flex; gap: 8px; } .kyc select { font: inherit; padding: 8px; border: 1px solid var(--c-rule-strong); } .kyc input { flex: 1; } .okm { color: var(--c-ok); font-size: 13.5px; margin: 0; }
-.subs { margin-bottom: 22px; } .subs h3 { margin: 0 0 4px; } .sr { display: grid; grid-template-columns: 1fr auto 220px; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; align-items: center; } .sr em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .sr span:last-child { text-align: right; color: var(--c-ink-soft); font-size: 13px; } .nt { display: flex; flex-direction: column; gap: 12px; } .mix { max-width: 640px; } .error { color: var(--c-danger); margin: 0; }
+.subs { margin-bottom: 22px; } .subg { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-top: 12px; } .subs h3 { margin: 0 0 4px; } .sr { display: grid; grid-template-columns: 1fr auto 220px; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; align-items: center; } .sr em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .sr span:last-child { text-align: right; color: var(--c-ink-soft); font-size: 13px; } .nt { display: flex; flex-direction: column; gap: 12px; } .mix { max-width: 640px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
 .ip { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; font-size: 14px; } .ipr { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--c-rule); padding: 4px 0; } .ip a { color: var(--c-blue-deep); font-size: 13px; }
 .lcn { background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; font-size: 13.5px; color: var(--c-ink-soft); margin: 0 0 14px; }

@@ -87,7 +87,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
               <p class="tl-head">
                 <template v-if="e.kind === 'stage'">Moved {{ stageLabel(e.from_stage) }} → <b>{{ stageLabel(e.to_stage) }}</b></template>
                 <template v-else-if="e.kind === 'meeting'">Meeting · {{ e.meeting_at ? when(e.meeting_at) : '' }}</template>
-                <template v-else-if="e.kind === 'document'">Document · <button v-if="e.document_id" type="button" class="link" @click="openDoc(e.document_id)">{{ e.document_title }}</button><span v-else>{{ e.document_title }}</span></template>
+                <template v-else-if="e.kind === 'document'">Document · <button v-if="e.document_id" type="button" class="link" @click="openDoc(e.document_id)"><FileBadge :name="e.document_title" size="sm" />{{ e.document_title }}</button><span v-else>{{ e.document_title }}</span></template>
                 <template v-else-if="e.kind === 'ic_vote'">IC vote</template>
                 <template v-else>Note</template>
               </p>

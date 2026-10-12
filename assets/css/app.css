@@ -30,3 +30,7 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 #main section > p.label:first-child { display: none; }
 .kpi b, .stat b { letter-spacing: -0.02em; }
 .kpi b, .status b, .price b, .due b, .bal b, .big, .v, figcaption b, .stat b { font-family: var(--font-heading); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* File-type tags next to file names: keep the tag and the name on one line. */
+:where(a, button, span, li, div):has(> .fb) { display: inline-flex; align-items: center; gap: 8px; }
+.dn { display: flex !important; align-items: center; gap: 10px; } .dn > span:last-child { display: flex; flex-direction: column; }

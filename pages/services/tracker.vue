@@ -14,7 +14,10 @@ const counts = computed(() => Object.fromEntries(Object.keys(ST).map((s) => [s, 
 const reqs = computed(() => jobs.value.filter((j) => (!st.value || j.status === st.value) && (!q.value || (j.title + ' ' + j.client).toLowerCase().includes(q.value.toLowerCase()))))
 const comps = computed(() => comp.value.filter((o) => (cf.value === 'all' || (cf.value === 'overdue' ? o.days_left < 0 : cf.value === 'soon' ? o.days_left >= 0 && o.days_left <= 30 : o.days_left > 30)) && (!q.value || (o.title + ' ' + o.company + ' ' + o.client).toLowerCase().includes(q.value.toLowerCase()))))
 const tone = (n: number) => (n < 0 ? 'red' : n <= 7 ? 'amber' : n <= 30 ? 'blue' : 'grey')
-const when = (n: number) => (n < 0 ? Math.abs(n) + 'd overdue' : n === 0 ? 'Today' : 'In ' + n + 'd')
+const span = (n: number) => (n >= 365 ? (n / 365).toFixed(n >= 730 ? 0 : 1) + ' yr' : n >= 60 ? Math.round(n / 30) + ' mo' : n + ' d')
+const when = (n: number) => (n < 0 ? span(Math.abs(n)) + ' overdue' : n === 0 ? 'Today' : 'In ' + span(n))
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('')
+const mon = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short' }); const dd = (d: string) => new Date(d + 'T12:00:00').getDate()
 const day = (d: string | null) => (d ? new Date(d.length === 10 ? d + 'T00:00:00Z' : d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const msg = ref(''); const ok = ref(''); const busy = ref('')
 async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'done' && !confirm('Mark "' + o.title + '" for ' + o.company + ' as filed?')) return; busy.value = o.id + action; msg.value = ''; ok.value = ''
@@ -41,7 +44,7 @@ async function saveCal(remove = false) {
 </script>
 <template>
   <section v-if="data">
-    <p class="label">Services desk</p><div class="hd"><h1>Tracker</h1><div class="hr"><input v-model="q" placeholder="Search client, company or filing" aria-label="Search"><button class="btn" type="button" @click="openAdd()">+ Add to client calendar</button></div></div>
+    <div class="hd"><div><p class="eyebrow">Services desk</p><h1>Tracker</h1><p class="lead">Requests from clients and every client's filing calendar, in one place.</p></div><div class="hr"><input v-model="q" placeholder="Search client, company or filing" aria-label="Search"><button class="btn" type="button" @click="openAdd()">+ Add to client calendar</button></div></div>
     <div class="kp"><button class="k" @click="tab = 'requests'; st = 'new'"><em>New requests</em><b>{{ k.fresh }}</b></button><button class="k" @click="tab = 'requests'; st = ''"><em>Open requests</em><b>{{ k.open }}</b></button><button class="k" @click="tab = 'requests'; st = 'waiting_client'"><em>Waiting on client</em><b>{{ k.waiting }}</b></button>
       <div class="k"><em>Done this month</em><b class="g">{{ k.doneMonth }}</b></div><button class="k" @click="tab = 'compliance'; cf = 'overdue'"><em>Filings overdue</em><b :class="{ r: k.overdue }">{{ k.overdue }}</b></button><button class="k" @click="tab = 'compliance'; cf = 'soon'"><em>Filings due in 30 days</em><b>{{ k.soon }}</b></button></div>
     <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'requests' }" @click="tab = 'requests'">Requests <em>{{ jobs.length }}</em></button><button :class="{ on: tab === 'compliance' }" @click="tab = 'compliance'">Client compliance <em>{{ comp.length }}</em></button></nav>
@@ -49,17 +52,17 @@ async function saveCal(remove = false) {
 
     <div v-if="tab === 'overview'" class="ov">
       <div class="card"><h3>Needs attention</h3>
-        <div v-for="o in comp.filter((x) => x.days_left < 0).slice(0, 6)" :key="o.id" class="li"><span><b>{{ o.title }}</b><em>{{ o.company }}</em></span><span class="pill red">{{ when(o.days_left) }}</span></div>
-        <div v-for="j in jobs.filter((x) => x.status === 'waiting_client').slice(0, 6)" :key="j.id" class="li"><span><NuxtLink :to="'/services/' + j.id"><b>{{ j.title }}</b></NuxtLink><em>{{ j.client }}</em></span><span class="pill amber">Waiting on client</span></div>
+        <div v-for="o in comp.filter((x) => x.days_left < 0).slice(0, 6)" :key="o.id" class="li"><span class="cal red"><em>{{ mon(o.next_due) }}</em><b>{{ dd(o.next_due) }}</b></span><span class="lt"><b>{{ o.title }}</b><em>{{ o.company }} · due {{ day(o.next_due) }}</em></span><span class="la"><span class="pill red">{{ when(o.days_left) }}</span><span class="qa"><button type="button" :disabled="!!busy" @click="act(o, 'job')">Create job</button><button type="button" :disabled="!!busy" @click="act(o, 'done')">Mark filed</button><button type="button" @click="openEdit(o)">Edit</button></span></span></div>
+        <div v-for="j in jobs.filter((x) => x.status === 'waiting_client').slice(0, 6)" :key="j.id" class="li"><span class="mono">{{ initials(j.client) }}</span><span class="lt"><NuxtLink :to="'/services/' + j.id"><b>{{ j.title }}</b></NuxtLink><em>{{ j.client }}</em></span><span class="pill amber">Waiting on client</span></div>
         <EmptyState v-if="!k.overdue && !k.waiting" compact icon="compliance" title="Nothing needs attention" /></div>
       <div class="card"><h3>Due in the next 30 days</h3>
-        <div v-for="o in comp.filter((x) => x.days_left >= 0 && x.days_left <= 30).slice(0, 10)" :key="o.id" class="li"><span><b>{{ o.title }}</b><em>{{ o.company }} · {{ day(o.next_due) }}</em></span><span class="pill" :class="tone(o.days_left)">{{ when(o.days_left) }}</span></div>
+        <div v-for="o in comp.filter((x) => x.days_left >= 0 && x.days_left <= 30).slice(0, 10)" :key="o.id" class="li"><span class="cal" :class="tone(o.days_left)"><em>{{ mon(o.next_due) }}</em><b>{{ dd(o.next_due) }}</b></span><span class="lt"><b>{{ o.title }}</b><em>{{ o.company }}</em></span><span class="pill" :class="tone(o.days_left)">{{ when(o.days_left) }}</span></div>
         <EmptyState v-if="!k.soon" compact icon="compliance" title="No filings due soon" /></div>
       <div class="card"><h3>Recently filed</h3>
-        <div v-for="d in data.done.slice(0, 10)" :key="d.id" class="li"><span><b>{{ d.title }}</b><em>{{ d.company }}{{ d.note ? ' · ' + d.note : '' }}</em></span><span class="pill g">{{ day(d.completed_on) }}</span></div>
+        <div v-for="d in data.done.slice(0, 10)" :key="d.id" class="li"><span class="ck">✓</span><span class="lt"><b>{{ d.title }}</b><em class="cl">{{ d.company }}{{ d.note ? ' · ' + d.note.replace(/^Filed by Aidi: ?/, '') : '' }}</em></span><span class="pill g">{{ day(d.completed_on) }}</span></div>
         <EmptyState v-if="!data.done.length" compact icon="compliance" title="Nothing filed in the last 90 days" /></div>
       <div class="card"><h3>New requests</h3>
-        <div v-for="j in jobs.filter((x) => x.status === 'new').slice(0, 8)" :key="j.id" class="li"><span><NuxtLink :to="'/services/' + j.id"><b>{{ j.title }}</b></NuxtLink><em>{{ j.client }} · {{ day(j.created_at) }}</em></span><span class="pill blue">New</span></div>
+        <div v-for="j in jobs.filter((x) => x.status === 'new').slice(0, 8)" :key="j.id" class="li"><span class="mono">{{ initials(j.client) }}</span><span class="lt"><NuxtLink :to="'/services/' + j.id"><b>{{ j.title }}</b></NuxtLink><em>{{ j.client }} · {{ day(j.created_at) }}</em></span><span class="pill blue">New</span></div>
         <EmptyState v-if="!k.fresh" compact icon="services" title="No new requests" /></div>
     </div>
 
@@ -100,7 +103,12 @@ async function saveCal(remove = false) {
   </section>
 </template>
 <style scoped>
-.hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .hd h1 { margin: 0; } .hd input { font: inherit; font-size: 13.5px; padding: 8px 11px; border: 1px solid var(--c-rule-strong); min-width: 280px; }
+.hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; } .hd h1 { margin: 0; } .eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .lead { margin: 6px 0 0; color: var(--c-muted); font-size: 14.5px; }
+.k { border-top: 3px solid var(--c-rule-strong) !important; } .k:nth-child(1) { border-top-color: #2c5cc5 !important; } .k:nth-child(2) { border-top-color: var(--c-navy) !important; } .k:nth-child(3) { border-top-color: var(--c-warn) !important; } .k:nth-child(4) { border-top-color: var(--c-ok) !important; } .k:nth-child(5) { border-top-color: var(--c-danger) !important; } .k:nth-child(6) { border-top-color: var(--c-blue-deep) !important; }
+.li { display: grid !important; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; } .lt { display: flex; flex-direction: column; min-width: 0; } .lt b { font-size: 14px; font-weight: 600; color: var(--c-ink); } .lt em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .lt a { text-decoration: none; } .cl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal { width: 40px; border: 1px solid var(--c-rule-strong); text-align: center; display: flex; flex-direction: column; background: #fff; } .cal em { font-style: normal; font-size: 9.5px; font-weight: 700; text-transform: uppercase; color: #fff; background: #a3a3a8; padding: 1px 0; } .cal b { font-size: 15px; padding: 2px 0; } .cal.red em { background: var(--c-danger); } .cal.amber em { background: var(--c-warn); } .cal.blue em { background: var(--c-blue-deep); }
+.mono { width: 40px; height: 40px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; } .ck { width: 40px; height: 40px; background: #e9f6ee; color: #23784a; display: grid; place-items: center; font-weight: 700; }
+.la { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; } .qa { display: flex; gap: 10px; opacity: 0; transition: opacity .12s; } .li:hover .qa { opacity: 1; } .qa button { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--c-blue-deep); cursor: pointer; } .hd input { font: inherit; font-size: 13.5px; padding: 8px 11px; border: 1px solid var(--c-rule-strong); min-width: 280px; }
 .kp { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; text-align: left; font: inherit; display: flex; flex-direction: column; gap: 3px; cursor: pointer; } button.k:hover { border-color: var(--c-navy); }
 .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 26px; font-weight: 600; letter-spacing: -.02em; } .k b.r { color: var(--c-danger); } .k b.g { color: var(--c-ok); }
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin-bottom: 14px; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .tabs em { font-style: normal; font-size: 12px; background: var(--c-paper-2); padding: 1px 7px; margin-left: 4px; }

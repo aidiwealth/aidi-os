@@ -66,7 +66,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
           <ul class="hist"><li v-for="h in data.history" :key="h.id">
             <b>Due {{ day(h.due_date) }}</b> · done {{ day(h.completed_on) }}<template v-if="h.by_name"> by {{ h.by_name }}</template>
             <span v-if="h.note">{{ h.note }}</span>
-            <button v-if="h.document_id" type="button" class="link" @click="openDoc(h.document_id)">{{ h.document_title }}</button>
+            <button v-if="h.document_id" type="button" class="link" @click="openDoc(h.document_id)"><FileBadge :name="h.document_title" size="sm" />{{ h.document_title }}</button>
           </li></ul>
           <EmptyState v-if="!data.history.length" compact icon="compliance" title="Not completed yet" />
         </div>

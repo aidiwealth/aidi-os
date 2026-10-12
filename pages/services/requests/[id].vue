@@ -25,7 +25,7 @@ const ST: Record<string, string> = { sent: 'Sent, not started', in_progress: 'Cl
       <h2>{{ sec }}</h2>
       <div v-for="q in qs" :key="q.id" class="qa">
         <span class="ql">{{ q.label }}</span>
-        <div v-if="q.type === 'file'"><template v-if="files(q.id).length"><button v-for="f in files(q.id)" :key="f.id" class="file" @click="open(f.id)">{{ f.title.split(' — ').pop() }}</button></template><span v-else class="muted">No file</span></div>
+        <div v-if="q.type === 'file'"><template v-if="files(q.id).length"><button v-for="f in files(q.id)" :key="f.id" class="file" @click="open(f.id)"><FileBadge :name="f.title" size="sm" />{{ f.title.split(' — ').pop() }}</button></template><span v-else class="muted">No file</span></div>
         <table v-else-if="q.type === 'shareholders' && Array.isArray(data.request.answers[q.id])" class="mini"><tr v-for="(r, i) in data.request.answers[q.id]" :key="i"><td><b>{{ r.name }}</b> {{ r.ownership ? r.ownership + '%' : '' }}</td><td>{{ r.country }}</td><td>{{ r.contact }}</td><td>{{ r.tax_id }}</td><td>{{ r.address }}</td></tr></table>
         <table v-else-if="q.type === 'accounts' && Array.isArray(data.request.answers[q.id])" class="mini"><tr v-for="(r, i) in data.request.answers[q.id]" :key="i"><td>{{ r.bank }}</td><td>{{ r.last4 ? '•••• ' + r.last4 : '' }}</td><td>{{ r.highest ? '$' + r.highest : '' }}</td></tr></table>
         <p v-else class="ans">{{ show(data.request.answers[q.id]) }}</p>

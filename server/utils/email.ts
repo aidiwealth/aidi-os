@@ -156,8 +156,8 @@ export async function sendJobClientActivity(ownerEmail: string | null, jobId: st
   const to = ownerEmail ? [ownerEmail] : (await orgNotifyEmails())
   if (!to.length) return
   const link = '{{APP_URL}}' + '/services/' + jobId
-  const html = shell(h1(esc(client) + ' ' + esc(what)) + para(esc(jobTitle)) + (body ? para(esc(body).replace(/\n/g, '<br>')) : '') + button('Open the job →', link), client + ' ' + what)
-  for (const addr of to) await sendEmail({ to: addr, subject: client + ' ' + what + ' — ' + jobTitle, text: client + ' ' + what + '\n\n' + body + '\n\n' + link, html })
+  const html = shell(h1(esc(client) + ' ' + esc(what)) + para(esc(jobTitle)) + (body ? jobBody(body) : '') + button('Open the job →', link), client + ' ' + what)
+  for (const addr of to) await sendEmail({ to: addr, subject: client + ' ' + what + ' — ' + jobTitle, text: client + ' ' + what + '\n\n' + mdPlain(body) + '\n\n' + link, html })
 }
 
 // Compliance reminders: one email per person listing what is due soon or overdue.
@@ -295,14 +295,14 @@ export async function sendInfoRequestEmail(to: string, client: string, company: 
 
 // Client messages.
 export async function sendPortalMessageEmail(to: string, client: string, body: string, link: string | null): Promise<void> {
-  const html = shell(h1('A message from {{FIRM}}') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(body)}</div>` +
+  const html = shell(h1('A message from {{FIRM}}') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px 0;margin:0 0 16px;">${jobBody(body)}</div>` +
     (link ? button('Reply in your portal →', link) : para('You can reply to this email.')), 'A message from {{FIRM}}')
-  await sendEmail({ to, subject: 'A message from {{FIRM}}' + (client ? ' for ' + client : ''), text: body + (link ? '\n\nReply in your portal: ' + link : ''), html })
+  await sendEmail({ to, subject: 'A message from {{FIRM}}' + (client ? ' for ' + client : ''), text: mdPlain(body) + (link ? '\n\nReply in your portal: ' + link : ''), html })
 }
 export async function sendPortalMessageAlert(client: string, who: string, body: string, link: string): Promise<void> {
   const to = await orgNotifyEmails()
-  const html = shell(h1(esc(who) + ' (' + esc(client) + ') sent a message') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px;margin:0 0 16px;white-space:pre-wrap;font-size:14px;">${esc(body)}</div>` + button('Open the client →', link), 'Client message')
-  for (const addr of to) await sendEmail({ to: addr, subject: 'Message from ' + who + ' (' + client + ')', text: body + '\n\n' + link, html })
+  const html = shell(h1(esc(who) + ' (' + esc(client) + ') sent a message') + `<div style="border-left:3px solid ${BRAND.blue};padding:8px 14px 0;margin:0 0 16px;">${jobBody(body)}</div>` + button('Open the client →', link), 'Client message')
+  for (const addr of to) await sendEmail({ to: addr, subject: 'Message from ' + who + ' (' + client + ')', text: mdPlain(body) + '\n\n' + link, html })
 }
 
 // A pipeline meeting is coming up.

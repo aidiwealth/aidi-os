@@ -152,7 +152,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-link:hover { background: rgba(15,17,21,.05); color: var(--c-ink); }
 .sb-link.on { background: var(--c-signal-soft); color: var(--c-signal); }
 .sb-icon { width: 18px; height: 18px; flex: none; }
-.sb-badge { margin-left: auto; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 10px; background: #d93a3a; color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; line-height: 1; } .collapsed .sb-badge { position: absolute; margin: 0; transform: translate(14px, -10px); min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
+.sb-badge { margin-left: auto; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 0; background: #d93a3a; color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; line-height: 1; } .collapsed .sb-badge { position: absolute; margin: 0; transform: translate(14px, -10px); min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
 .sb-lock { width: 13px; height: 13px; margin-left: auto; color: var(--c-muted); flex: none; } .sb-link.lockd .sb-label { opacity: .75; }
 .sb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .sb-label, .collapsed .sb-note { display: none; } .collapsed .sb-link { justify-content: center; padding: 9px 0; }
