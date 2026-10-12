@@ -3,6 +3,7 @@ import { COUNTRIES } from '~/shared/countries'
 // Find investors and grants for your round: ranked by fit with your location, stage, sector and amount. Pick the ones
 // you like and add them to a pipeline (or start a new one).
 useHead({ title: 'Find investors and grants' })
+const FTABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['find', 'Find investors & grants'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs'], ['nda', 'NDAs']] as const
 interface P { id: string; kind: 'investor' | 'grant'; name: string; type: string; regions: string[]; stages: string[]; sectors: string[]; min_usd: number | null; max_usd: number | null; website: string | null; description: string | null; how_to_apply: string | null; deadline: string | null; score: number; reasons: string[]; in_pipeline: boolean }
 interface D { query: { country: string; stage: string; sectors: string[]; amount: number | null; kind: string }; items: P[]; pipelines: { id: string; name: string; target: number | null; currency: string; status: string }[]; stages: Record<string, string>; sector_labels: Record<string, string>; types: Record<string, string>; company: string; currency: string }
 const f = reactive({ country: '', stage: '', sectors: [] as string[], amount: '' as string | number, kind: '' })
@@ -34,8 +35,9 @@ async function doAdd() {
 </script>
 <template>
   <section v-if="data" class="pz">
-    <NuxtLink to="/fundraising" class="back">← Fundraising</NuxtLink>
-    <div class="hd"><div><h1>Find investors and grants</h1><p class="lead">Funds, accelerators and non-dilutive grants that fit {{ data.company }}: where you are, your stage and sector, and how much you are raising. Add the ones you like to a pipeline and track every conversation.</p></div></div>
+    <div class="hd"><div><h1>Fundraising</h1></div></div>
+    <nav class="tabs"><NuxtLink v-for="[k, l] in FTABS" :key="k" :to="k === 'find' ? '/fundraising/prospects' : '/fundraising?t=' + k" :class="{ on: k === 'find' }">{{ l }}</NuxtLink></nav>
+    <div class="hd"><div><h2 class="h2">Find investors and grants</h2><p class="lead">Funds, accelerators and non-dilutive grants that fit {{ data.company }}: where you are, your stage and sector, and how much you are raising. Add the ones you like to a pipeline and track every conversation.</p></div></div>
     <div class="fx-stats">
       <StatTile icon="users" tone="b" label="Investors that fit" :value="counts.investor" clickable :on="f.kind === 'investor'" @click="f.kind = f.kind === 'investor' ? '' : 'investor'" />
       <StatTile icon="money" tone="g" label="Grants and programs" :value="counts.grant" note="non-dilutive" clickable :on="f.kind === 'grant'" @click="f.kind = f.kind === 'grant' ? '' : 'grant'" />
@@ -71,7 +73,7 @@ async function doAdd() {
   </section>
 </template>
 <style scoped>
-.back { color: var(--c-muted); text-decoration: none; font-size: 13.5px; display: inline-block; margin: 4px 0 12px; } .hd h1 { margin: 0; } .lead { margin: 6px 0 0; color: var(--c-muted); max-width: 820px; }
+.tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 14px 0 16px; overflow-x: auto; } .tabs a { padding: 10px 0; color: var(--c-muted); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; } .tabs a.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .hd h1 { margin: 0; } .h2 { margin: 0; font-size: 20px; } .lead { margin: 6px 0 0; color: var(--c-muted); max-width: 820px; }
 .flt { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin-bottom: 16px; } .flt .w { grid-column: 1 / -1; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .flt select, .flt input, .am select, .am input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips button { background: #fff; border: 1px solid var(--c-rule); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; } .chips .on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }

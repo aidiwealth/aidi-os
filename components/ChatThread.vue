@@ -3,10 +3,11 @@ import { MSG_CATEGORIES } from '~/shared/message-categories'
 import { mdRender } from '~/shared/markdown'
 // A conversation: messages by day, attachments, a composer with a paperclip (drag a file onto the chat too).
 interface Msg { category?: string | null; id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }
-const props = defineProps<{ messages: Msg[]; side: 'team' | 'client'; closed?: boolean; busy?: boolean; uploadUrl: string; downloadBase: string; placeholder?: string }>()
+const props = defineProps<{ messages: Msg[]; side: 'team' | 'client'; closed?: boolean; busy?: boolean; uploadUrl: string; downloadBase: string; placeholder?: string; defaultCategory?: string }>()
 const emit = defineEmits<{ send: [body: string, documentId: string | null, category: string] }>()
 // The team can label a message (state notice, bank notice, mail received…); clients see the label as a tag.
-const cat = ref('general')
+const cat = ref(props.defaultCategory || 'general')
+watch(() => props.defaultCategory, (c) => { cat.value = c || 'general' })
 const text = ref(''); const att = ref<{ id: string; name: string } | null>(null); const up = ref(false); const msg = ref(''); const box = ref<HTMLElement | null>(null); const over = ref(false)
 const scroll = () => nextTick(() => { if (box.value) box.value.scrollTop = box.value.scrollHeight })
 watch(() => props.messages.length, scroll); onMounted(scroll)
@@ -15,7 +16,7 @@ async function attach(files: File[]) { const f = files[0]; if (!f) return; up.va
 function pick(e: Event) { attach(Array.from((e.target as HTMLInputElement).files ?? [])); (e.target as HTMLInputElement).value = '' }
 function drop(e: DragEvent) { over.value = false; attach(Array.from(e.dataTransfer?.files ?? [])) }
 const hasText = computed(() => text.value.replace(/[\s\u00a0]|&nbsp;|<br\s*\/?>/g, '').length > 0)
-function send() { if (!hasText.value && !att.value) return; emit('send', hasText.value ? text.value.trim() : '', att.value?.id ?? null, cat.value); text.value = ''; att.value = null; cat.value = 'general' }
+function send() { if (!hasText.value && !att.value) return; emit('send', hasText.value ? text.value.trim() : '', att.value?.id ?? null, cat.value); text.value = ''; att.value = null; cat.value = props.defaultCategory || 'general' }
 function key(e: KeyboardEvent) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() } }
 // Messages are written in the rich editor (Markdown); older plain-text messages keep their line breaks.
 const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)\s/m.test(s) ? s : s.replace(/\n/g, '  \n'))
@@ -32,7 +33,7 @@ const size = (b: number | null) => (b ? (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' 
       <template v-for="(m, i) in messages" :key="m.id">
         <div v-if="i === 0 || dayKey(messages[i - 1]!.created_at) !== dayKey(m.created_at)" class="day"><span>{{ dayLabel(m.created_at) }}</span></div>
         <div class="row" :class="{ me: mine(m) }"><span v-if="!mine(m)" class="av">{{ initials(m.author) }}</span>
-          <div class="bub"><span v-if="m.category && m.category !== 'general'" class="ctag" :data-c="m.category">{{ MSG_CATEGORIES[m.category] ?? m.category }}</span><span v-if="!mine(m)" class="who">{{ m.author ?? (m.from_team ? 'Aidi team' : 'Client') }}</span><div v-if="m.body" class="mdb" v-html="rich(m.body)" />
+          <div class="bub"><span v-if="m.category && m.category !== 'general' && m.category !== defaultCategory" class="ctag" :data-c="m.category">{{ MSG_CATEGORIES[m.category] ?? m.category }}</span><span v-if="!mine(m)" class="who">{{ m.author ?? (m.from_team ? 'Aidi team' : 'Client') }}</span><div v-if="m.body" class="mdb" v-html="rich(m.body)" />
             <button v-if="m.doc_id" type="button" class="file" @click="open(m.doc_id)"><FileBadge :name="m.doc_name" /><span class="fx"><b>{{ m.doc_name }}</b><em>{{ size(m.doc_size) }} · Open</em></span></button>
             <span class="tm">{{ time(m.created_at) }}</span></div></div>
       </template>

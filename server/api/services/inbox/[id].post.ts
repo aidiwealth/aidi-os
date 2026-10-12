@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   if (!t) throw apiError('not_found', 'Not found', 404)
   const thread = await postMessage({ orgId: t.organization_id, clientId: t.client_id, fromTeam: true, userId: user.userId, body: b.data.body, documentId: b.data.document_id, category: b.data.category, threadId: id.data })
   const to = t.emails_muted ? { emails: [] as string[], portal: false } : await clientRecipients(t.client_id)
-  for (const e of to.emails) { try { await sendPortalMessageEmail(e, t.name, b.data.body || 'We shared a document with you.', to.portal ? await portalUrl('/messages', t.client_id) : null, MSG_CATEGORIES[b.data.category]) } catch (err) { console.error('[inbox] email failed', err) } }
+  for (const e of to.emails) { try { await sendPortalMessageEmail(e, t.name, b.data.body || 'We shared a document with you.', to.portal ? await portalUrl('/messages?thread=' + id.data, t.client_id) : null, MSG_CATEGORIES[b.data.category]) } catch (err) { console.error('[inbox] email failed', err) } }
   await audit({ event, actorUserId: user.userId, action: 'services.client_message', objectType: 'client', objectId: t.client_id })
   return { ok: true, thread }
 })

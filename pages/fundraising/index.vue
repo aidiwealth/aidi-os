@@ -10,12 +10,12 @@ interface ND { id: string; scope: string; name: string; email: string; company: 
 interface D { handle: string | null; ndas: ND[]; company: string; currency: string; state: string; files: F[]; links: L[]; activity: { viewer_email: string | null; seconds: number; started_at: string; link: string; file: string | null }[]; pipelines: PL[]; memos: { id: string; title: string; updated_at: string }[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; base: string }
 const { data, refresh } = await useFetch<D>('/api/fundraising')
 const route = useRoute(); const router = useRouter()
-const TABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs'], ['nda', 'NDAs']] as const
+const TABS = [['overview', 'Overview'], ['round', 'Pipelines'], ['find', 'Find investors & grants'], ['room', 'Data room'], ['memo', 'Deal memo'], ['safe', 'SAFEs'], ['nda', 'NDAs']] as const
 const ndaView = ref<ND | null>(null)
 const shortUrl = (l: { slug: string | null }) => (l.slug && data.value?.handle ? 'app.finvry.com/' + data.value.handle + '/' + l.slug : '')
 const main = computed(() => data.value?.pipelines.find((p) => p.status === 'open') ?? data.value?.pipelines[0] ?? null)
 const tab = computed(() => (TABS.find(([k]) => k === route.query.t)?.[0] ?? 'overview'))
-const go = (t: string) => router.replace({ query: { t } })
+const go = (t: string) => (t === 'find' ? navigateTo('/fundraising/prospects') : router.replace({ query: { t } }))
 const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
 const cur = computed(() => main.value?.currency ?? data.value?.currency ?? 'USD')
 const money = (v: number | null | undefined, c = cur.value) => (v == null ? '—' : (SYM[c] ?? '') + Math.round(v).toLocaleString('en-US'))

@@ -1,18 +1,19 @@
 // Conversation threads (tickets) between a client and the services team, and message attachments.
 import { createHash, randomUUID } from 'node:crypto'
-export async function openThread(orgId: string, clientId: string, firstText: string): Promise<string> {
-  const cur = (await db().query<{ id: string }>("SELECT id FROM services.threads WHERE client_id = $1 AND status = 'open'", [clientId])).rows[0]
-  if (cur) return cur.id
-  const subject = (firstText.split(/\r?\n/)[0] || 'New conversation').replace(/[#*_>`]/g, '').trim().slice(0, 120) || 'New conversation'
-  return (await one<{ id: string }>('INSERT INTO services.threads (organization_id, client_id, subject) VALUES ($1,$2,$3) RETURNING id', [orgId, clientId, subject])).id
+// A new conversation. The subject defaults to the first line of the first message.
+export async function newThread(orgId: string, clientId: string, o: { subject?: string; firstText?: string; category?: string; startedBy: 'team' | 'client' }): Promise<string> {
+  const clean = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/[#*_>`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120)
+  const subject = clean(o.subject ?? '') || clean((o.firstText ?? '').split(/\r?\n/)[0] ?? '') || 'New conversation'
+  return (await one<{ id: string }>('INSERT INTO services.threads (organization_id, client_id, subject, category, started_by) VALUES ($1,$2,$3,$4,$5) RETURNING id', [orgId, clientId, subject, o.category ?? 'general', o.startedBy])).id
 }
-export async function postMessage(o: { orgId: string; clientId: string; fromTeam: boolean; userId?: string | null; personId?: string | null; body: string; documentId?: string | null; threadId?: string | null; category?: string }): Promise<string> {
+// Post into a conversation (a closed one reopens). No thread, or one that isn't this client's, starts a new conversation.
+export async function postMessage(o: { orgId: string; clientId: string; fromTeam: boolean; userId?: string | null; personId?: string | null; body: string; documentId?: string | null; threadId?: string | null; category?: string; subject?: string }): Promise<string> {
   let threadId = o.threadId ?? null
-  if (threadId) await db().query("UPDATE services.threads SET status = 'open', closed_at = NULL, closed_by = NULL WHERE id = $1 AND client_id = $2 AND status = 'closed' AND NOT EXISTS (SELECT 1 FROM services.threads x WHERE x.client_id = $2 AND x.status = 'open')", [threadId, o.clientId])
-  const valid = threadId ? (await db().query("SELECT 1 FROM services.threads WHERE id = $1 AND client_id = $2 AND status = 'open'", [threadId, o.clientId])).rowCount : 0
-  if (!valid) threadId = await openThread(o.orgId, o.clientId, o.body || 'Shared a document')
+  const t = threadId ? (await db().query<{ category: string }>('SELECT category FROM services.threads WHERE id = $1 AND client_id = $2', [threadId, o.clientId])).rows[0] : undefined
+  if (t) await db().query("UPDATE services.threads SET status = 'open', closed_at = NULL, closed_by = NULL WHERE id = $1 AND status = 'closed'", [threadId])
+  else threadId = await newThread(o.orgId, o.clientId, { subject: o.subject, firstText: o.body || 'Shared a document', category: o.fromTeam ? o.category : 'general', startedBy: o.fromTeam ? 'team' : 'client' })
   await db().query('INSERT INTO services.messages (organization_id, client_id, thread_id, from_team, author_user_id, author_person_id, body, document_id, category) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [o.orgId, o.clientId, threadId, o.fromTeam, o.userId ?? null, o.personId ?? null, o.body || null, o.documentId ?? null, o.fromTeam ? o.category ?? 'general' : 'general'])
+    [o.orgId, o.clientId, threadId, o.fromTeam, o.userId ?? null, o.personId ?? null, o.body || null, o.documentId ?? null, o.fromTeam ? o.category ?? t?.category ?? 'general' : 'general'])
   await db().query('UPDATE services.threads SET last_message_at = now() WHERE id = $1', [threadId])
   return threadId!
 }
