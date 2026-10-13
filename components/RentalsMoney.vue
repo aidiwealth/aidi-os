@@ -4,9 +4,9 @@
 interface Row { id: string; type: string; txn_date: string; expected_arrival: string | null; confirmation_code: string | null; check_in: string | null; check_out: string | null; nights: number | null; guest: string | null; listing: string | null; unit: string | null; details: string | null; payout_ref: string | null; amount: number | null; paid_out: number | null; service_fee: number | null; cleaning_fee: number | null; gross: number | null; remitted_tax: number | null }
 interface Payout extends Row { rows: Row[]; status: 'paid' | 'pending' | 'attention' | 'no_detail'; match: { method: string; note: string | null; txn_date: string | null; description: string | null; amount: number | null; account: string | null } | null }
 interface Rent { id: string; tenant_name: string; unit: string; property: string; due_on: string; amount: number; paid_amount: number | null; paid_on: string | null; method: string | null; note: string | null; status: string }
-interface D { books: { source: string; revenue: number; payouts_arriving: number; difference: number } | null; period: string; label: string; payouts: Payout[]; loose: Row[]; rent: Rent[]; imports: { id: string; status: string; rows_new: number; rows_dup: number; checks: { ok: boolean; label: string; detail: string }[]; has_pdf: boolean; csv_document_id: string | null; pdf_document_id: string | null; saved_at: string; by: string | null }[]; totals: Record<string, number>; periods: string[]; locked: boolean; admin: boolean }
+interface D { kind: string; books: { source: string; revenue: number; payouts_arriving: number; difference: number } | null; period: string; label: string; payouts: Payout[]; loose: Row[]; rent: Rent[]; imports: { id: string; status: string; rows_new: number; rows_dup: number; checks: { ok: boolean; label: string; detail: string }[]; has_pdf: boolean; csv_document_id: string | null; pdf_document_id: string | null; saved_at: string; by: string | null }[]; totals: Record<string, number>; periods: string[]; locked: boolean; admin: boolean }
 const route = useRoute()
-const period = ref(String(route.query.period ?? ''))
+const period = ref(String(route.query.period ?? '') || (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7) })())
 const { data, refresh } = await useFetch<D>('/api/rentals/money', { query: { period } })
 watch(data, (d) => { if (d && !period.value) period.value = d.period }, { immediate: true })
 const months = computed(() => [...new Set([...(data.value?.periods ?? []), data.value?.period ?? ''])].filter(Boolean).sort().reverse())
@@ -42,8 +42,8 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 </script>
 <template>
   <div v-if="data" class="mo">
-    <div class="bar"><label class="sel">Month<select v-model="period"><option v-for="m in months" :key="m" :value="m">{{ new Date(m + '-01T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) }}</option></select></label>
-      <span v-if="data.locked" class="lkd">🔒 Locked</span><span class="sp" /><template v-if="data.admin"><button v-if="!data.locked" type="button" class="btn secondary" @click="lock(true)">Lock month</button><button v-else type="button" class="btn secondary" @click="lock(false)">Unlock</button></template></div>
+    <div class="bar"><RentalsPeriod v-model="period" />
+      <span v-if="data.locked" class="lkd">🔒 Locked</span><span class="sp" /><template v-if="data.admin && data.kind === 'month'"><button v-if="!data.locked" type="button" class="btn secondary" @click="lock(true)">Lock month</button><button v-else type="button" class="btn secondary" @click="lock(false)">Unlock</button></template></div>
     <DropZone accept=".csv,.pdf" multiple :disabled="reading" :label="reading ? 'Reading the files…' : 'Drop the Airbnb CSV and Earnings report PDF here'" hint="Airbnb → Earnings → Transaction history (Export CSV) and Get PDF report. Both at once is best." @change="upload" />
     <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 

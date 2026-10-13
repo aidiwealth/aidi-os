@@ -5,29 +5,29 @@ interface Fig { income: number; expenses: number; profit: number; occupancy: num
 interface Rt { rating: number; reviews: number } 
 interface U { id: string; name: string; title: string | null; rental_model: string; source: string; listing: string | null; image_url: string | null; now: Fig; before: Fig; rating: Rt | null; nights_source: string }
 interface P { id: string; name: string; address: string | null; kind: string; image_url: string | null; now: Fig; before: Fig; rating: Rt | null; units: U[] }
-interface D { itemised: boolean; period: string; label: string; properties: P[]; total: { now: Fig; before: Fig; rating: Rt | null }; chart: { period: string; income: number; expenses: number; books: boolean }[]; attention: { kind: string; text: string; to: string }[]; activity: { event: string; detail: string | null; created_at: string }[]; periods: string[]; admin: boolean; locked: boolean }
+interface D { itemised: boolean; period: string; label: string; properties: P[]; total: { now: Fig; before: Fig; rating: Rt | null }; chart: { period: string; income: number; expenses: number; books: boolean; inPeriod: boolean }[]; kind: string; attention: { kind: string; text: string; to: string }[]; activity: { event: string; detail: string | null; created_at: string }[]; periods: string[]; admin: boolean; locked: boolean }
 const route = useRoute()
-const period = ref(String(route.query.period ?? ''))
+const period = ref(String(route.query.period ?? '') || (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7) })())
 const { data } = await useFetch<D>('/api/rentals/overview', { query: { period } })
 watch(data, (d) => { if (d && !period.value) period.value = d.period }, { immediate: true })
 const open = ref<string>('')
 const usd = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US'))
 const usd2 = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-const pct = (a: number | null, b: number | null) => { if (a === null || b === null || !b) return ''; const v = Math.round((a - b) / Math.abs(b) * 100); return Math.abs(v) > 500 ? '' : (v >= 0 ? '+' : '') + v + '% vs last month' }
-const pts = (a: number | null, b: number | null) => (a === null || b === null ? '' : (a >= b ? '+' : '') + (a - b).toFixed(1) + ' pts vs last month')
+const pct = (a: number | null, b: number | null) => { if (a === null || b === null || !b) return ''; const v = Math.round((a - b) / Math.abs(b) * 100); return Math.abs(v) > 500 ? '' : (v >= 0 ? '+' : '') + v + '% vs before' }
+const pts = (a: number | null, b: number | null) => (a === null || b === null ? '' : (a >= b ? '+' : '') + (a - b).toFixed(1) + ' pts vs before')
 const tone = (a: number | null, b: number | null, invert = false) => (a === null || b === null || a === b ? '' : (a > b) !== invert ? 'up' : 'dn')
 const mon = (p: string) => new Date(p + '-01T12:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
 const months = computed(() => [...new Set([...(data.value?.periods ?? []), data.value?.period ?? ''])].filter(Boolean).sort().reverse())
 const max = computed(() => Math.max(1, ...(data.value?.chart ?? []).flatMap((c) => [c.income, c.expenses])))
 // Export
-const ex = reactive({ open: false, scope: 'month' as 'month' | 'year', month: '', year: '', property: '', format: 'pdf' })
-function openExport() { Object.assign(ex, { open: true, month: data.value?.period ?? '', year: (data.value?.period ?? '').slice(0, 4) }) }
-const exportUrl = computed(() => '/api/rentals/export?' + new URLSearchParams({ period: ex.scope === 'year' ? ex.year : ex.month, format: ex.format, ...(ex.property ? { property: ex.property } : {}) }).toString())
+const ex = reactive({ open: false, period: '', property: '', format: 'pdf' })
+function openExport() { Object.assign(ex, { open: true, period: data.value?.period ?? period.value }) }
+const exportUrl = computed(() => '/api/rentals/export?' + new URLSearchParams({ period: ex.period, format: ex.format, ...(ex.property ? { property: ex.property } : {}) }).toString())
 const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 1000; return s < 3600 ? Math.max(1, Math.round(s / 60)) + 'm' : s < 86400 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd' }
 </script>
 <template>
   <div v-if="data" class="ov">
-    <div class="bar"><label class="sel">Month<select v-model="period"><option v-for="m in months" :key="m" :value="m">{{ new Date(m + '-01T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) }}</option></select></label><span v-if="data.locked" class="lk">Locked</span><span class="sp" /><button v-if="data.admin" type="button" class="btn secondary" @click="openExport">Export P&amp;L</button></div>
+    <div class="bar"><RentalsPeriod v-model="period" /><span v-if="data.locked" class="lk">Locked</span><span class="sp" /><button v-if="data.admin" type="button" class="btn secondary" @click="openExport">Export P&amp;L</button></div>
 
     <div v-if="data.attention.length || data.activity.length" class="two">
       <div class="card att"><h2>Needs attention <span v-if="data.attention.length" class="n">{{ data.attention.length }}</span></h2>
@@ -38,7 +38,7 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
         <p v-if="!data.activity.length" class="mut">New bookings, reviews and imports appear here.</p></div>
     </div>
 
-    <h2 class="h2">{{ data.label }} · all properties</h2>
+    <h2 class="h2">{{ data.label }} · all properties <span class="vs">vs {{ data.kind === 'month' ? 'the month before' : data.kind === 'quarter' ? 'the quarter before' : 'the year before' }}</span></h2>
     <p v-if="data.total.now.books" class="bk">Part of this month comes from the bank (Airbnb deposits, itemised costs) or the monthly books. Per-room income, occupancy and nightly rate start from the months you import Airbnb files for.</p>
     <div class="fx-stats six">
       <StatTile icon="money" tone="g" label="Income" :value="usd(data.total.now.income)" :note="pct(data.total.now.income, data.total.before.income)" :note-tone="tone(data.total.now.income, data.total.before.income) as any" />
@@ -50,7 +50,7 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
     </div>
 
     <div class="card ch"><div class="chh"><h2>Income vs expenses</h2><span class="lg"><i class="inc" /> Income <i class="exp" /> Expenses<template v-if="data.chart.some((c) => c.books)"> · faded months use the bank or books</template></span></div>
-      <div class="bars"><div v-for="c in data.chart" :key="c.period" class="col" :class="{ cur: c.period === data.period, bks: c.books }" :title="mon(c.period) + ': income ' + usd(c.income) + ', expenses ' + usd(c.expenses) + (c.books ? ' (monthly books)' : '')">
+      <div class="bars"><div v-for="c in data.chart" :key="c.period" class="col" :class="{ cur: c.inPeriod, bks: c.books }" :title="mon(c.period) + ': income ' + usd(c.income) + ', expenses ' + usd(c.expenses) + (c.books ? ' (monthly books)' : '')">
         <div class="pair"><span class="b inc" :style="{ height: (c.income / max * 100) + '%' }" /><span class="b exp" :style="{ height: (c.expenses / max * 100) + '%' }" /></div><em>{{ mon(c.period) }}</em></div></div></div>
 
     <div class="props">
@@ -75,8 +75,7 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
 
     <AppModal :open="ex.open" title="Export P&L" @close="ex.open = false">
       <div class="ef">
-        <div class="seg"><button type="button" :class="{ on: ex.scope === 'month' }" @click="ex.scope = 'month'">Month</button><button type="button" :class="{ on: ex.scope === 'year' }" @click="ex.scope = 'year'">Year</button></div>
-        <label v-if="ex.scope === 'month'" class="label">Month<input v-model="ex.month" type="month"></label><label v-else class="label">Year<input v-model="ex.year" inputmode="numeric" maxlength="4"></label>
+        <div class="label">Period<RentalsPeriod v-model="ex.period" /></div>
         <label class="label">Property<select v-model="ex.property"><option value="">All properties (one page each)</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
         <label class="label">Format<select v-model="ex.format"><option value="pdf">PDF</option><option value="csv">CSV</option></select></label>
         <p class="mut">Income, Airbnb fees, remitted taxes, expenses by category and profit, ready for the accountant.</p></div>
@@ -94,7 +93,7 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
 .av { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 7px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .av b { font-weight: 600; } .av span { grid-column: 1; color: var(--c-ink-soft); } .av em { grid-row: 1; grid-column: 2; font-style: normal; color: var(--c-muted); font-size: 12px; }
 .six { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
 .chh { display: flex; justify-content: space-between; align-items: baseline; } .lg { font-size: 12.5px; color: var(--c-muted); display: flex; gap: 6px; align-items: center; } .lg i { width: 10px; height: 10px; display: inline-block; } .lg i.exp { margin-left: 10px; }
-.bk { margin: -4px 0 0; font-size: 12.5px; color: var(--c-muted); } .bks .b { opacity: .45; }
+.vs { font-size: 12.5px; font-weight: 400; color: var(--c-muted); margin-left: 6px; } .bk { margin: -4px 0 0; font-size: 12.5px; color: var(--c-muted); } .bks .b { opacity: .45; }
 .inc { background: var(--c-navy); } .exp { background: #9cc7e6; }
 .bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; height: 170px; align-items: end; } .col { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; } .pair { flex: 1; width: 100%; display: flex; gap: 3px; align-items: flex-end; justify-content: center; }
 .b { width: 42%; max-width: 16px; min-height: 1px; } .col em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .col.cur em { color: var(--c-navy); font-weight: 600; }

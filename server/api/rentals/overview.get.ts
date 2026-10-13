@@ -1,11 +1,12 @@
-// Overview: per property (and per room/unit) this month's income, expenses, profit, occupancy, nightly rate and
-// rating, each against last month; 12 months of income vs expenses; "Needs attention" and recent activity.
+// Overview for a month, quarter or year (default: last month): per property (and per room/unit) income, expenses,
+// profit, occupancy, nightly rate and rating against the period before; 12 months of income vs expenses; "Needs
+// attention" and recent activity. Combined totals add up month by month, each month using this page's records where it
+// has them, else the Airbnb deposits in the bank and the monthly books.
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team')
   await ensureRentCharges(); await reconcile()
-  const latest = (await db().query<{ p: string | null }>("SELECT to_char(max(txn_date), 'YYYY-MM') AS p FROM rentals.transactions")).rows[0]?.p
   const q = String(getQuery(event).period ?? '')
-  const period = /^20\d{2}-[01]\d$/.test(q) ? q : latest ?? new Date().toISOString().slice(0, 7)
+  const period = PERIOD_RE.test(q) ? q : lastMonth()
   const props = (await db().query<{ id: string; name: string; address: string | null; kind: string; image_url: string | null }>('SELECT id, name, address, kind, image_url FROM rentals.properties WHERE active ORDER BY sort, name')).rows
   const units = await allUnits()
   const meta = new Map((await db().query<{ id: string; rating: string | null; review_count: number | null; image_url: string | null; title: string | null }>('SELECT id, rating::text, review_count, image_url, title FROM rentals.units')).rows.map((u) => [u.id, u]))
@@ -41,10 +42,28 @@ export default defineEventHandler(async (event) => {
   const property = props.map((p) => { const ids = units.filter((u) => u.property_id === p.id).map((u) => u.id)
     return { ...p, now: cur.out(ids, [p.id]), before: prev.out(ids, [p.id]), rating: rating(ids),
       units: units.filter((u) => u.property_id === p.id).map((u) => ({ id: u.id, name: u.name, title: meta.get(u.id)?.title ?? u.title, rental_model: u.rental_model, source: u.source, listing: u.airbnb_listing_id, image_url: meta.get(u.id)?.image_url ?? null, now: cur.out([u.id], [p.id], true), before: prev.out([u.id], [p.id], true), rating: rating([u.id]), nights_source: cur.f.get(u.id)?.nights_source ?? 'bookings' })) } })
-  const total = { now: fromBooks(period, cur.out(allIds, allProps)), before: fromBooks(prevPeriod(period), prev.out(allIds, allProps)), rating: rating(allIds) }
-  // 12 months: income vs expenses.
-  const chart: { period: string; income: number; expenses: number; books: boolean }[] = []
-  let p = period; for (let i = 0; i < 12; i++) { const f = await unitFigures(p); const ex = await expensesBy(p); const own = { income: Math.round([...f.values()].reduce((s, x) => s + x.income, 0) * 100) / 100, expenses: Math.round(ex.reduce((s, e) => s + e.v, 0) * 100) / 100 }; const fb = fromBooks(p, { ...own, profit: 0, occupancy: null, nights: 0, adr: null }); chart.unshift({ period: p, income: fb.income, expenses: fb.expenses, books: fb.books }); p = prevPeriod(p) }
+  // One month, combined: this page's figures where tracked, else bank deposits / books (see fromBooks).
+  const monthCache = new Map<string, { income: number; expenses: number; nights: number; cap: number; gross: number; books: boolean; itemised: boolean }>()
+  const month = async (m: string) => {
+    const hit = monthCache.get(m); if (hit) return hit
+    const f = await unitFigures(m), ex = await expensesBy(m), xs = [...f.values()]
+    const own = { income: Math.round(xs.reduce((t, x) => t + x.income, 0) * 100) / 100, expenses: Math.round(ex.reduce((t, e) => t + e.v, 0) * 100) / 100, profit: 0, occupancy: null, nights: 0, adr: null }
+    const fb = fromBooks(m, own), itemised = live.income.has(m)
+    const v = { income: fb.income, expenses: fb.expenses, nights: itemised ? xs.reduce((t, x) => t + x.nights, 0) : 0, cap: itemised ? xs.reduce((t, x) => t + x.days, 0) : 0, gross: itemised ? xs.reduce((t, x) => t + x.gross, 0) : 0, books: fb.books, itemised }
+    monthCache.set(m, v); return v
+  }
+  const sumPeriod = async (p: string) => {
+    let income = 0, expenses = 0, nights = 0, cap = 0, gross = 0, books = false
+    for (const m of periodMonths(p)) { if (m > new Date().toISOString().slice(0, 7)) continue; const v = await month(m); income += v.income; expenses += v.expenses; nights += v.nights; cap += v.cap; gross += v.gross; books ||= v.books }
+    const r = (n: number) => Math.round(n * 100) / 100
+    return { income: r(income), expenses: r(expenses), profit: r(income - expenses), occupancy: cap ? Math.round(nights / cap * 1000) / 10 : null, nights, adr: nights ? r(gross / nights) : null, books }
+  }
+  const total = { now: await sumPeriod(period), before: await sumPeriod(prevPeriod(period)), rating: rating(allIds) }
+  // 12 months of income vs expenses, ending with the period's last month.
+  const chart: { period: string; income: number; expenses: number; books: boolean; inPeriod: boolean }[] = []
+  const inP = new Set(periodMonths(period))
+  const nowM = new Date().toISOString().slice(0, 7)
+  let p = [...inP].filter((m) => m <= nowM).pop() ?? lastMonth(); for (let i = 0; i < 12; i++) { const v = await month(p); chart.unshift({ period: p, income: v.income, expenses: v.expenses, books: v.books, inPeriod: inP.has(p) }); p = prevPeriod(p) }
   // Needs attention.
   const att: { kind: string; text: string; to: string }[] = []
   let late = (await db().query<{ payout_ref: string; paid_out: string; arrive: string }>(`SELECT payout_ref, paid_out::text, to_char(coalesce(expected_arrival, txn_date), 'YYYY-MM-DD') AS arrive FROM rentals.transactions t WHERE type ILIKE 'payout' AND coalesce(expected_arrival, txn_date) < current_date - 5
@@ -55,6 +74,8 @@ export default defineEventHandler(async (event) => {
   else for (const l of late) att.push({ kind: 'payout', text: 'Airbnb payout $' + Number(l.paid_out).toFixed(2) + ' (' + l.payout_ref + ') was due in the bank by ' + l.arrive + ' and is not matched yet', to: '/rentals?t=money&period=' + l.arrive.slice(0, 7) })
   const rent = (await db().query<{ tenant_name: string; unit: string; due_on: string; amount: string; paid_amount: string | null }>("SELECT l.tenant_name, u.name AS unit, to_char(c.due_on, 'YYYY-MM-DD') AS due_on, c.amount::text, c.paid_amount::text FROM rentals.rent_charges c JOIN rentals.leases l ON l.id = c.lease_id JOIN rentals.units u ON u.id = l.unit_id WHERE c.due_on < current_date AND coalesce(c.paid_amount, 0) < c.amount ORDER BY c.due_on")).rows
   for (const r of rent) att.push({ kind: 'rent', text: 'Rent ' + (r.paid_amount ? 'part-paid' : 'not recorded') + ': ' + r.tenant_name + ' · ' + r.unit + ' · $' + Number(r.amount).toFixed(2) + ' due ' + r.due_on, to: '/rentals?t=money&period=' + r.due_on.slice(0, 7) })
+  // Income recorded but no costs yet (bank statement not uploaded, nothing logged): the profit would look too high.
+  for (const m of periodMonths(period)) { const v = monthCache.get(m); if (v && v.income > 0 && v.expenses === 0) att.push({ kind: 'import', text: monthLabel(m) + ' has income but no costs yet. Upload that month\'s Chase and Baselane statements (with transactions) to the Aidi Haven "Chase + Baselane" account, or log expenses, so profit is right.', to: '/rentals?t=expenses&period=' + m }) }
   const um = (await db().query<{ listing: string; n: number }>("SELECT listing, count(*)::int AS n FROM rentals.transactions WHERE unit_id IS NULL AND type NOT ILIKE 'payout' AND listing IS NOT NULL GROUP BY listing")).rows
   for (const u of um) att.push({ kind: 'listing', text: u.n + ' Airbnb row(s) for "' + u.listing + '" are not linked to a unit', to: '/rentals?t=properties' })
   const fails = (await db().query<{ period: string; checks: { ok: boolean; label: string; detail: string }[] }>("SELECT period, checks FROM rentals.imports WHERE status = 'saved' AND checks @> '[{\"ok\": false}]' AND saved_at > now() - interval '120 days' ORDER BY saved_at DESC LIMIT 5")).rows
@@ -62,5 +83,6 @@ export default defineEventHandler(async (event) => {
   const activity = (await db().query("SELECT event, detail, created_at FROM rentals.activity ORDER BY created_at DESC LIMIT 12")).rows
   const periods = [...new Set([...live.income, ...live.expenses, ...books.keys(), ...bankAir.keys()])].sort().reverse()
   const user = await requireUser(event)
-  return { itemised: live.income.has(period), period, label: monthLabel(period), properties: property, total, chart, attention: att, activity, periods, admin: isRentalAdmin(user.roles), locked: (await lockedPeriods()).has(period) }
+  const locked = await lockedPeriods()
+  return { itemised: periodMonths(period).some((m) => live.income.has(m)), period, label: rentalLabel(period), kind: /^\d{4}$/.test(period) ? 'year' : /-Q/.test(period) ? 'quarter' : 'month', last_month: lastMonth(), properties: property, total, chart, attention: att, activity, periods, admin: isRentalAdmin(user.roles), locked: periodMonths(period).every((m) => locked.has(m)) }
 })

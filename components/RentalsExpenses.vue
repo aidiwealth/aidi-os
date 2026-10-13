@@ -3,7 +3,7 @@
 // vendor, receipt photo, repeat monthly); filter by property, month and category. Admins edit, delete, add categories.
 interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; bank_txn_id?: string | null }
 interface D { rows: E[]; categories: { code: string; label: string; hint: string | null }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean }
-const f = reactive({ property: '', period: new Date().toISOString().slice(0, 7), category: '' })
+const f = reactive({ property: '', period: (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7) })(), category: '' })
 const { data, refresh } = await useFetch<D>('/api/rentals/expenses', { query: computed(() => ({ property: f.property || undefined, period: f.period || undefined, category: f.category || undefined })) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
@@ -42,7 +42,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
   <div v-if="data" class="xp">
     <div class="bar">
       <select v-model="f.property" aria-label="Property"><option value="">All expenses</option><option value="shared">Shared costs</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select>
-      <input v-model="f.period" type="month" aria-label="Month"><button v-if="f.period" type="button" class="lk" @click="f.period = ''">All time</button>
+      <RentalsPeriod v-model="f.period" allow-all />
       <select v-model="f.category" aria-label="Category"><option value="">All categories</option><option v-for="c in data.categories" :key="c.code" :value="c.code">{{ c.label }}</option></select>
       <span class="sp" /><button v-if="data.admin" type="button" class="btn secondary" @click="cat.open = true">+ Category</button><button type="button" class="btn" @click="add">+ Log expense</button></div>
     <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg && !x.open" class="error">{{ msg }}</p>

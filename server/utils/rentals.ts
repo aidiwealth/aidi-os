@@ -250,7 +250,18 @@ export async function refreshListings(): Promise<number> {
 // ── Month figures ─────────────────────────────────────────────────────────────────────────────────────────────────
 export interface UnitMonth { unit_id: string; income: number; gross: number; fees: number; adjustments: number; tax: number; rent: number; nights: number; nights_source: 'report' | 'bookings'; days: number }
 const overlap = (a1: string, a2: string, b1: string, b2: string) => { const s = a1 > b1 ? a1 : b1, e = a2 < b2 ? a2 : b2; return s < e ? Math.round((Date.parse(e) - Date.parse(s)) / 86400000) : 0 }
+// Periods: a month (2026-09), a quarter (2026-Q3) or a year (2026).
+export const PERIOD_RE = /^20\d{2}(-[01]\d|-Q[1-4])?$/
+export const lastMonth = () => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
+export function periodMonths(p: string): string[] {
+  if (/^\d{4}$/.test(p)) return Array.from({ length: 12 }, (_, i) => p + '-' + String(i + 1).padStart(2, '0'))
+  const q = p.match(/^(\d{4})-Q([1-4])$/); if (q) return [0, 1, 2].map((i) => q[1] + '-' + String((Number(q[2]) - 1) * 3 + i + 1).padStart(2, '0'))
+  return [p]
+}
+export const rentalLabel = (p: string) => (/^\d{4}$/.test(p) ? 'Year ' + p : /-Q\d$/.test(p) ? p.slice(5) + ' ' + p.slice(0, 4) : monthLabel(p))
 export function rentalRange(p: string): { from: string; to: string; next: string; days: number } {
+  const qm = p.match(/^(\d{4})-Q([1-4])$/)
+  if (qm) { const ms = periodMonths(p); const a = rentalRange(ms[0]!), b = rentalRange(ms[2]!); return { from: a.from, to: b.to, next: b.next, days: Math.round((Date.parse(b.next) - Date.parse(a.from)) / 86400000) } }
   if (/^\d{4}$/.test(p)) return { from: p + '-01-01', to: p + '-12-31', next: (Number(p) + 1) + '-01-01', days: (Date.parse((Number(p) + 1) + '-01-01') - Date.parse(p + '-01-01')) / 86400000 }
   const d = new Date(p + '-01T00:00:00Z'), n = new Date(d); n.setUTCMonth(n.getUTCMonth() + 1)
   const next = n.toISOString().slice(0, 10), to = new Date(n.getTime() - 86400000).toISOString().slice(0, 10)
@@ -272,7 +283,7 @@ export async function unitFigures(period: string): Promise<Map<string, UnitMonth
   const seen = new Set<string>()
   for (const s of stays) { const k = s.unit_id + ':' + (s.code ?? s.ci); if (s.code && seen.has(k)) continue; seen.add(k); const x = m.get(s.unit_id); if (x) x.nights += overlap(s.ci, s.co, from, next) }
   // A month with an Earnings report: its nights per home are authoritative.
-  if (!/^\d{4}$/.test(period)) {
+  if (/^\d{4}-\d{2}$/.test(period)) {
     const c = (await db().query<{ control: Control }>("SELECT control FROM rentals.imports WHERE status = 'saved' AND period = $1 AND control IS NOT NULL ORDER BY saved_at DESC LIMIT 1", [period])).rows[0]?.control
     if (c) { const all = await allUnits(); for (const h of c.homes) { const u = matchUnit(all, h.name); const x = u ? m.get(u.id) : undefined; if (x && h.nights !== null) { x.nights = h.nights; x.nights_source = 'report' } } }
   }
@@ -284,14 +295,14 @@ export async function expensesBy(period: string): Promise<{ property_id: string 
   const { from, to } = rentalRange(period)
   return (await db().query<{ property_id: string | null; unit_id: string | null; category: string; v: string }>('SELECT property_id, unit_id, category, sum(amount)::text AS v FROM rentals.expenses WHERE spent_on BETWEEN $1 AND $2 GROUP BY property_id, unit_id, category', [from, to])).rows.map((r) => ({ ...r, v: Number(r.v) }))
 }
-export const prevPeriod = (p: string) => { if (/^\d{4}$/.test(p)) return String(Number(p) - 1); const d = new Date(p + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
+export const prevPeriod = (p: string) => { if (/^\d{4}$/.test(p)) return String(Number(p) - 1); const q = p.match(/^(\d{4})-Q([1-4])$/); if (q) return q[2] === '1' ? (Number(q[1]) - 1) + '-Q4' : q[1] + '-Q' + (Number(q[2]) - 1); const d = new Date(p + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
 
 // ── P&L ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 export interface Pnl { title: string; period: string; label: string; gross: number; adjustments: number; fees: number; airbnb_net: number; rent: number; books_income?: number; income: number; tax: number; expenses: { category: string; label: string; v: number }[]; expense_total: number; profit: number; nights: number }
 export async function pnl(period: string, propertyId: string | null): Promise<Pnl> {
   const props = (await db().query<{ id: string; name: string }>('SELECT id, name FROM rentals.properties WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY sort', [propertyId])).rows
   const units = (await allUnits()).filter((u) => props.some((p) => p.id === u.property_id))
-  const months = /^\d{4}$/.test(period) ? Array.from({ length: 12 }, (_, i) => period + '-' + String(i + 1).padStart(2, '0')) : [period]
+  const months = periodMonths(period)
   const t = { gross: 0, adjustments: 0, fees: 0, airbnb: 0, rent: 0, tax: 0, nights: 0 }
   for (const mo of months) {
     const f = await unitFigures(mo)
@@ -311,7 +322,7 @@ export async function pnl(period: string, propertyId: string | null): Promise<Pn
   }
   const expenses = [...byCat.entries()].map(([category, v]) => ({ category, label: category === '__books' ? 'Operating costs from the monthly books (months not itemised here)' : cats.get(category) ?? category, v: r2(v) })).sort((a, b) => b.v - a.v)
   const expense_total = r2(expenses.reduce((s, e) => s + e.v, 0)), income = r2(t.airbnb + t.rent + booksIncome)
-  return { title: props.length === 1 ? props[0]!.name : 'All properties', period, label: /^\d{4}$/.test(period) ? 'Year ' + period : monthLabel(period), gross: r2(t.gross), adjustments: r2(t.adjustments), fees: r2(t.fees), airbnb_net: r2(t.airbnb), rent: r2(t.rent), books_income: r2(booksIncome), income, tax: r2(t.tax), expenses, expense_total, profit: r2(income - expense_total), nights: t.nights }
+  return { title: props.length === 1 ? props[0]!.name : 'All properties', period, label: rentalLabel(period), gross: r2(t.gross), adjustments: r2(t.adjustments), fees: r2(t.fees), airbnb_net: r2(t.airbnb), rent: r2(t.rent), books_income: r2(booksIncome), income, tax: r2(t.tax), expenses, expense_total, profit: r2(income - expense_total), nights: t.nights }
 }
 export function pnlCsv(p: Pnl): string {
   const q = (s: string | number) => (typeof s === 'number' ? s.toFixed(2) : '"' + s.replace(/"/g, '""') + '"')

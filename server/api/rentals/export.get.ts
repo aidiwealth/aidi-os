@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   const q = getQuery(event)
   const period = String(q.period ?? '')
-  if (!/^20\d{2}(-[01]\d)?$/.test(period)) throw apiError('invalid', 'Choose a month or a year.')
+  if (!PERIOD_RE.test(period)) throw apiError('invalid', 'Choose a month, quarter or year.')
   const prop = /^[0-9a-f-]{36}$/.test(String(q.property ?? '')) ? String(q.property) : null
   const fmt = q.format === 'csv' ? 'csv' : 'pdf'
   const main = await pnl(period, prop)

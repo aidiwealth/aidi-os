@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
   await runRecurringExpenses()
   const q = getQuery(event)
-  const period = /^20\d{2}(-[01]\d)?$/.test(String(q.period ?? '')) ? String(q.period) : ''
+  const period = PERIOD_RE.test(String(q.period ?? '')) ? String(q.period) : q.period === 'all' ? '' : lastMonth()
   const prop = /^[0-9a-f-]{36}$|^shared$/.test(String(q.property ?? '')) ? String(q.property) : null
   const cat = /^[a-z0-9_]{2,40}$/.test(String(q.category ?? '')) ? String(q.category) : null
   const r = period ? rentalRange(period) : { from: '1900-01-01', to: '2999-12-31' }
