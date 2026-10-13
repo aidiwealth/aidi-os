@@ -17,7 +17,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T12:00:00Z').toLocaleDateSt
 const ST: Record<string, string> = { no_detail: 'No bank detail', paid: 'Paid', pending: 'Pending', attention: 'Needs attention', due: 'Due', overdue: 'Needs attention', partial: 'Part-paid' }
 const open = ref('')
 // Import
-interface Prev { importId: string; months?: string[]; label: string | null; rows: number; fresh: number; duplicates: number; payouts: number; bookings: number; paid_out: number; control: { payout_total: number; nights: number | null; remitted_tax: number } | null; checks: { ok: boolean; label: string; detail: string }[]; unmatched: string[]; locked: boolean }
+interface Prev { importId: string; months?: string[]; label: string | null; rows: number; fresh: number; duplicates: number; payouts: number; bookings: number; paid_out: number; control: { payout_total: number; nights: number | null; remitted_tax: number } | null; reports?: number; checks: { ok: boolean; label: string; detail: string }[]; unmatched: string[]; locked: boolean }
 const prev = ref<Prev | null>(null); const reading = ref(false)
 async function upload(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files ?? []); if (!files.length) return
@@ -89,7 +89,8 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
         <div class="pv"><div><em>Rows</em><b>{{ prev.rows }}</b></div><div><em>New</em><b>{{ prev.fresh }}</b></div><div><em>Already imported</em><b>{{ prev.duplicates }}</b></div><div><em>Payouts</em><b>{{ prev.payouts }}</b></div><div><em>Bookings</em><b>{{ prev.bookings }}</b></div><div><em>Paid out</em><b>{{ usd(prev.paid_out) }}</b></div></div>
         <div class="checks"><div v-for="c in prev.checks" :key="c.label" class="cr" :class="c.ok ? 'okt' : 'bad'"><b>{{ c.ok ? '✓' : '✕' }} {{ c.label }}</b><span>{{ c.detail }}</span></div></div>
         <p v-if="prev.months && prev.months.length > 1" class="mut">This file covers {{ prev.months.length }} months. Rows already imported are skipped, so overlapping files are safe.</p>
-        <p v-if="!prev.control" class="mut">Add the Earnings report PDF too, to check the CSV against Airbnb's own totals (one month at a time).</p>
+        <p v-if="!prev.control" class="mut">Add the Earnings report PDF too, to check the CSV against Airbnb's own totals. You can drop several reports (for example last year's and this year's) with one CSV.</p>
+        <p v-else-if="(prev.reports ?? 1) > 1" class="mut">Checked against {{ prev.reports }} Earnings reports, each for its own period.</p>
         <p v-if="prev.locked" class="error">This month is locked; its rows will be skipped.</p></div>
       <template #foot><button class="btn secondary" @click="discard">Discard</button><button class="btn" :disabled="busy || !prev?.fresh" @click="saveImport">{{ busy ? 'Saving…' : 'Save ' + (prev?.fresh ?? 0) + ' new rows' }}</button></template>
     </AppModal>

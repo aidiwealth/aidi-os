@@ -76,24 +76,35 @@ export function matchUnit(units: UnitRow[], name: string | null): UnitRow | null
 
 // ── Import: preview, then save ────────────────────────────────────────────────────────────────────────────────────
 export interface Check { ok: boolean; label: string; detail: string }
-export function importChecks(rows: AirRow[], units: UnitRow[], control: Control | null): { period: string | null; checks: Check[]; unmatched: string[] } {
+// Airbnb's Earnings report takes the service fee refunded on an adjustment (a stay cut short or changed) off both
+// gross earnings and service fees; the CSV puts that fee on the Adjustment row. Same here, so the figures match.
+export const adjFee = (r: { type: string; service_fee: number | null }) => (/^adjustment$/i.test(r.type) ? Math.abs(r.service_fee ?? 0) : 0)
+const monthName = (iso: string) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+const reportLabel = (c: Control) => c.period_start.slice(0, 7) === c.period_end.slice(0, 7) ? monthName(c.period_start) : monthName(c.period_start) + ' – ' + monthName(c.period_end)
+// One or more Earnings reports (a month, a year, or a custom range): each is checked against the CSV rows in its period.
+export function importChecks(rows: AirRow[], units: UnitRow[], controls: Control[]): { period: string | null; checks: Check[]; unmatched: string[] } {
   const checks: Check[] = []
   const months = new Map<string, number>(); for (const r of rows) months.set(r.txn_date.slice(0, 7), (months.get(r.txn_date.slice(0, 7)) ?? 0) + 1)
-  const period = control ? control.period_start.slice(0, 7) : [...months.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  const sorted = [...controls].sort((x, y) => x.period_start.localeCompare(y.period_start))
+  const period = sorted[0] ? sorted[0].period_start.slice(0, 7) : [...months.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null
   const unmatched = [...new Set(rows.filter((r) => r.listing && !matchUnit(units, r.listing)).map((r) => r.listing!))]
   checks.push(unmatched.length ? { ok: false, label: 'Listings', detail: 'Not matched to a room or unit: ' + unmatched.join(', ') + '. Add the name to that unit under Properties.' } : { ok: true, label: 'Listings', detail: 'Every row matched a room or unit.' })
   const payouts = rows.filter((r) => /^payout$/i.test(r.type))
   // Each payout equals the rows it settles.
   const bad = payouts.filter((p) => { const s = rows.filter((r) => r.settled_by === p.payout_ref).reduce((t, r) => t + (r.amount ?? 0), 0); return Math.abs(s - (p.paid_out ?? 0)) > 0.009 })
-  checks.push(bad.length ? { ok: false, label: 'Payouts', detail: bad.length + ' payout(s) do not equal the rows they settle: ' + bad.map((b) => b.payout_ref).join(', ') } : { ok: true, label: 'Payouts', detail: payouts.length + ' payouts, each equal to the bookings it settles.' })
-  if (control) {
+  checks.push(bad.length ? { ok: false, label: 'Payouts', detail: bad.length + ' payout(s) do not equal the rows they settle: ' + bad.map((x) => x.payout_ref).join(', ') } : { ok: true, label: 'Payouts', detail: payouts.length + ' payouts, each equal to the bookings it settles.' })
+  for (const control of sorted) {
+    const tag = sorted.length > 1 ? ' · ' + reportLabel(control) : ''
     const inP = (r: AirRow) => r.txn_date >= control.period_start && r.txn_date <= control.period_end
     const paid = r2(payouts.filter(inP).reduce((t, r) => t + (r.paid_out ?? 0), 0))
-    checks.push({ ok: Math.abs(paid - control.payout_total) < 0.01, label: 'Paid out', detail: 'CSV $' + paid.toFixed(2) + ' · Earnings report $' + control.payout_total.toFixed(2) })
+    checks.push({ ok: Math.abs(paid - control.payout_total) < 0.01, label: 'Paid out' + tag, detail: 'CSV $' + paid.toFixed(2) + ' · Earnings report $' + control.payout_total.toFixed(2) })
     for (const h of control.homes) {
       const u = matchUnit(units, h.name)
-      const g = r2(rows.filter((r) => inP(r) && /^reservation$/i.test(r.type) && u && matchUnit(units, r.listing)?.id === u.id).reduce((t, r) => t + (r.gross ?? 0), 0))
-      checks.push(!u ? { ok: false, label: h.name, detail: 'Report name not matched to a unit.' } : { ok: Math.abs(g - h.gross) < 0.01, label: u.name, detail: 'Gross: CSV $' + g.toFixed(2) + ' · report $' + h.gross.toFixed(2) })
+      const mine = rows.filter((r) => inP(r) && u && matchUnit(units, r.listing)?.id === u.id)
+      const g = r2(mine.reduce((t, r) => t + (/^reservation$/i.test(r.type) ? r.gross ?? 0 : 0) - adjFee(r), 0))
+      // Rounding: Airbnb rounds each line, so allow a cent per adjustment.
+      const tol = 0.01 + 0.01 * mine.filter((r) => adjFee(r) > 0).length
+      checks.push(!u ? { ok: false, label: h.name + tag, detail: 'Report name not matched to a unit.' } : { ok: Math.abs(g - h.gross) < tol, label: u.name + tag, detail: 'Gross: CSV $' + g.toFixed(2) + ' · report $' + h.gross.toFixed(2) })
     }
   }
   return { period, checks, unmatched }
@@ -273,7 +284,7 @@ export async function unitFigures(period: string): Promise<Map<string, UnitMonth
   const m = new Map<string, UnitMonth>(units.map((u) => [u.id, { unit_id: u.id, income: 0, gross: 0, fees: 0, adjustments: 0, tax: 0, rent: 0, nights: 0, nights_source: 'bookings' as const, days }]))
   const tx = (await db().query<{ unit_id: string; type: string; amount: string | null; gross: string | null; service_fee: string | null; remitted_tax: string | null }>(
     "SELECT unit_id, type, amount::text, gross::text, service_fee::text, remitted_tax::text FROM rentals.transactions WHERE unit_id IS NOT NULL AND type NOT ILIKE 'payout' AND txn_date BETWEEN $1 AND $2", [from, to])).rows
-  for (const t of tx) { const x = m.get(t.unit_id); if (!x) continue; x.income += Number(t.amount ?? 0); if (/^reservation$/i.test(t.type)) { x.gross += Number(t.gross ?? 0); x.fees += Number(t.service_fee ?? 0) } else x.adjustments += Number(t.amount ?? 0); x.tax += Number(t.remitted_tax ?? 0) }
+  for (const t of tx) { const x = m.get(t.unit_id); if (!x) continue; x.income += Number(t.amount ?? 0); if (/^reservation$/i.test(t.type)) { x.gross += Number(t.gross ?? 0); x.fees += Number(t.service_fee ?? 0) } else { x.adjustments += Number(t.amount ?? 0); const af = adjFee({ type: t.type, service_fee: t.service_fee === null ? null : Number(t.service_fee) }); x.gross -= af; x.fees -= af } x.tax += Number(t.remitted_tax ?? 0) }
   const rent = (await db().query<{ unit_id: string; v: string }>('SELECT l.unit_id, sum(c.paid_amount)::text AS v FROM rentals.rent_charges c JOIN rentals.leases l ON l.id = c.lease_id WHERE c.paid_on BETWEEN $1 AND $2 GROUP BY l.unit_id', [from, to])).rows
   for (const r of rent) { const x = m.get(r.unit_id); if (x) { x.rent += Number(r.v); x.income += Number(r.v) } }
   // Nights booked: bookings (CSV, by confirmation code) and iCal reservations, by date overlap with the period.
@@ -284,7 +295,9 @@ export async function unitFigures(period: string): Promise<Map<string, UnitMonth
   for (const s of stays) { const k = s.unit_id + ':' + (s.code ?? s.ci); if (s.code && seen.has(k)) continue; seen.add(k); const x = m.get(s.unit_id); if (x) x.nights += overlap(s.ci, s.co, from, next) }
   // A month with an Earnings report: its nights per home are authoritative.
   if (/^\d{4}-\d{2}$/.test(period)) {
-    const c = (await db().query<{ control: Control }>("SELECT control FROM rentals.imports WHERE status = 'saved' AND period = $1 AND control IS NOT NULL ORDER BY saved_at DESC LIMIT 1", [period])).rows[0]?.control
+    // Only a report for exactly this month (an import can hold several reports, e.g. a year and a month).
+    const saved = (await db().query<{ control: Control | Control[] }>("SELECT control FROM rentals.imports WHERE status = 'saved' AND control IS NOT NULL ORDER BY saved_at DESC LIMIT 200")).rows
+    const c = saved.flatMap((x) => (Array.isArray(x.control) ? x.control : [x.control])).find((x) => x.period_start.slice(0, 7) === period && x.period_end.slice(0, 7) === period)
     if (c) { const all = await allUnits(); for (const h of c.homes) { const u = matchUnit(all, h.name); const x = u ? m.get(u.id) : undefined; if (x && h.nights !== null) { x.nights = h.nights; x.nights_source = 'report' } } }
   }
   for (const x of m.values()) { x.nights = Math.min(x.nights, days); for (const k of ['income', 'gross', 'fees', 'adjustments', 'tax', 'rent'] as const) x[k] = r2(x[k]) }
