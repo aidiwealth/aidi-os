@@ -1,7 +1,7 @@
 <script setup lang="ts">
 useHead({ title: 'Client Services analytics' })
 const entity = ref('')
-const range = ref<'90d' | '12m' | 'all'>('12m')
+const range = ref<'90d' | '12m' | 'all'>('all')
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { data } = await useFetch<any>('/api/cs-analytics', { query: { entity, range }, watch: [entity, range] })
 const usd = (v: number | null | undefined) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v)))
@@ -28,12 +28,12 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
         <StatTile label="Open jobs" :value="data.kpis.open" :note="data.kpis.clients + ' active clients'" icon="briefcase" tone="n" />
         <StatTile label="Overdue" :value="data.kpis.overdue" :red="!!data.kpis.overdue" note="past their due date" icon="alert" :tone="data.kpis.overdue ? 'r' : 'g'" />
         <StatTile label="Waiting on clients" :value="data.kpis.waiting" note="blocked on the client" icon="clock" tone="a" />
-        <StatTile label="Turnaround" :value="data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd'" note="average, open to completed" icon="calendar" tone="b" />
-        <StatTile label="Fees earned" :value="usd(data.kpis.fees)" :note="'on jobs completed, ' + RANGE[range]" icon="money" tone="g" />
+        <StatTile label="Turnaround" :value="data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd'" note="average days, opened to completed" icon="calendar" tone="b" />
+        <StatTile label="Fees earned" :value="usd(data.kpis.fees)" :note="'paid by clients, ' + RANGE[range]" icon="money" tone="g" />
       </div>
       <div class="charts">
         <TrendChart title="Completed" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.completedSeries)" :foot="data.kpis.completed + ' in ' + RANGE[range]" />
-        <TrendChart title="Fees earned" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" unit="usd" :points="pts(data.feeSeries)" foot="On completion" />
+        <TrendChart title="Fees earned" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" unit="usd" :points="pts(data.feeSeries)" foot="When paid" />
       </div>
       <div class="three">
         <div class="card"><DonutChart title="Open jobs by service" total-label="Open jobs" :segments="data.byService.map((s: any) => ({ label: s.label, value: s.c }))" /></div>
