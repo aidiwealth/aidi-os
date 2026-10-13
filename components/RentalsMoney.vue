@@ -2,9 +2,9 @@
 // Money: drop the month's Airbnb files (CSV + Earnings report PDF), check the preview, save. Payouts are matched to the
 // bank automatically; open one to see its bookings, fees and remitted tax. Rent: mark paid. Admins lock the month.
 interface Row { id: string; type: string; txn_date: string; expected_arrival: string | null; confirmation_code: string | null; check_in: string | null; check_out: string | null; nights: number | null; guest: string | null; listing: string | null; unit: string | null; details: string | null; payout_ref: string | null; amount: number | null; paid_out: number | null; service_fee: number | null; cleaning_fee: number | null; gross: number | null; remitted_tax: number | null }
-interface Payout extends Row { rows: Row[]; status: 'paid' | 'pending' | 'attention'; match: { method: string; note: string | null; txn_date: string | null; description: string | null; amount: number | null; account: string | null } | null }
+interface Payout extends Row { rows: Row[]; status: 'paid' | 'pending' | 'attention' | 'no_detail'; match: { method: string; note: string | null; txn_date: string | null; description: string | null; amount: number | null; account: string | null } | null }
 interface Rent { id: string; tenant_name: string; unit: string; property: string; due_on: string; amount: number; paid_amount: number | null; paid_on: string | null; method: string | null; note: string | null; status: string }
-interface D { period: string; label: string; payouts: Payout[]; loose: Row[]; rent: Rent[]; imports: { id: string; status: string; rows_new: number; rows_dup: number; checks: { ok: boolean; label: string; detail: string }[]; has_pdf: boolean; csv_document_id: string | null; pdf_document_id: string | null; saved_at: string; by: string | null }[]; totals: Record<string, number>; periods: string[]; locked: boolean; admin: boolean }
+interface D { books: { source: string; revenue: number; payouts_arriving: number; difference: number } | null; period: string; label: string; payouts: Payout[]; loose: Row[]; rent: Rent[]; imports: { id: string; status: string; rows_new: number; rows_dup: number; checks: { ok: boolean; label: string; detail: string }[]; has_pdf: boolean; csv_document_id: string | null; pdf_document_id: string | null; saved_at: string; by: string | null }[]; totals: Record<string, number>; periods: string[]; locked: boolean; admin: boolean }
 const route = useRoute()
 const period = ref(String(route.query.period ?? ''))
 const { data, refresh } = await useFetch<D>('/api/rentals/money', { query: { period } })
@@ -14,10 +14,10 @@ const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const usd = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const day = (d: string | null) => (d ? new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—')
-const ST: Record<string, string> = { paid: 'Paid', pending: 'Pending', attention: 'Needs attention', due: 'Due', overdue: 'Needs attention', partial: 'Part-paid' }
+const ST: Record<string, string> = { no_detail: 'No bank detail', paid: 'Paid', pending: 'Pending', attention: 'Needs attention', due: 'Due', overdue: 'Needs attention', partial: 'Part-paid' }
 const open = ref('')
 // Import
-interface Prev { importId: string; label: string | null; rows: number; fresh: number; duplicates: number; payouts: number; bookings: number; paid_out: number; control: { payout_total: number; nights: number | null; remitted_tax: number } | null; checks: { ok: boolean; label: string; detail: string }[]; unmatched: string[]; locked: boolean }
+interface Prev { importId: string; months?: string[]; label: string | null; rows: number; fresh: number; duplicates: number; payouts: number; bookings: number; paid_out: number; control: { payout_total: number; nights: number | null; remitted_tax: number } | null; checks: { ok: boolean; label: string; detail: string }[]; unmatched: string[]; locked: boolean }
 const prev = ref<Prev | null>(null); const reading = ref(false)
 async function upload(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files ?? []); if (!files.length) return
@@ -61,7 +61,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
         <tbody><template v-for="p in data.payouts" :key="p.id">
           <tr class="pr" @click="open = open === p.id ? '' : p.id"><td>{{ day(p.txn_date) }}</td><td class="mono">{{ p.payout_ref }}<span class="sub">arrives by {{ day(p.expected_arrival) }}</span></td><td>{{ p.rows.map((r) => r.guest ?? r.type).join(', ') }}<span class="sub">{{ [...new Set(p.rows.map((r) => r.unit ?? r.listing))].join(', ') }}</span></td><td class="r"><b>{{ usd(p.paid_out) }}</b></td>
             <td><template v-if="p.match"><span v-if="p.match.txn_date">{{ day(p.match.txn_date) }} · {{ p.match.account }}</span><span v-else>{{ p.match.note }}</span><span class="sub">{{ p.match.method === 'auto' ? 'Matched automatically' : p.match.method === 'manual' ? 'Matched by hand' : 'Resolved with a note' }}</span></template><span v-else class="mut">Not found yet</span></td>
-            <td><span class="fx-pill" :class="{ g: p.status === 'paid', amber: p.status === 'pending', red: p.status === 'attention' }">{{ ST[p.status] }}</span></td></tr>
+            <td><span class="fx-pill" :class="{ g: p.status === 'paid', amber: p.status === 'pending', red: p.status === 'attention' }" :title="p.status === 'no_detail' ? 'Only monthly totals are in the system for this month; upload the statement with transactions to match it' : ''">{{ ST[p.status] }}</span></td></tr>
           <tr v-if="open === p.id" class="det"><td colspan="6">
             <table class="it" data-nosearch><thead><tr><th>Type</th><th>Guest</th><th>Room / unit</th><th>Stay</th><th class="r">Gross</th><th class="r">Cleaning</th><th class="r">Airbnb fee</th><th class="r">Tax remitted</th><th class="r">To us</th></tr></thead>
               <tbody><tr v-for="r in p.rows" :key="r.id"><td>{{ r.type }}<span v-if="r.confirmation_code" class="sub mono">{{ r.confirmation_code }}</span></td><td>{{ r.guest ?? '—' }}</td><td>{{ r.unit ?? r.listing ?? '—' }}</td><td>{{ r.check_in ? day(r.check_in) + ' – ' + day(r.check_out) + ' · ' + r.nights + ' nights' : (r.details ?? '—') }}</td>
@@ -69,6 +69,8 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
             <div class="acts"><button v-if="!p.match && !data.locked" type="button" class="btn sm" @click.stop="openMatch(p)">Match to the bank…</button><button v-if="p.match && data.admin && !data.locked" type="button" class="lk" @click.stop="unmatch(p)">Undo match</button></div></td></tr>
         </template></tbody></table>
       <p v-else class="mut">No Airbnb payouts for {{ data.label }} yet. Drop that month's CSV above.</p>
+      <div v-if="data.books" class="bkc"><b>{{ data.books.source === 'bank' ? 'Against the bank' : 'Against the monthly books' }}</b><span>{{ data.books.source === 'bank' ? 'Airbnb deposits in Chase + Baselane' : 'Revenue in the books' }} {{ usd(data.books.revenue) }} · Airbnb payouts arriving this month {{ usd(data.books.payouts_arriving) }} · <em :class="Math.abs(data.books.difference) < 1 ? 'okt' : ''">{{ Math.abs(data.books.difference) < 1 ? 'they agree' : 'difference ' + usd(data.books.difference) + ' (other income or timing)' }}</em></span></div>
+      <p v-if="data.totals.no_detail" class="mut sm">{{ data.totals.no_detail }} payout(s) fall in months where only monthly bank totals are in the system, so they are checked against the books above rather than deposit by deposit.</p>
       <p v-if="data.loose.length" class="mut sm">{{ data.loose.length }} other row(s) this month belong to payouts in another month.</p>
     </div>
 
@@ -86,7 +88,8 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
       <div v-if="prev" class="ef">
         <div class="pv"><div><em>Rows</em><b>{{ prev.rows }}</b></div><div><em>New</em><b>{{ prev.fresh }}</b></div><div><em>Already imported</em><b>{{ prev.duplicates }}</b></div><div><em>Payouts</em><b>{{ prev.payouts }}</b></div><div><em>Bookings</em><b>{{ prev.bookings }}</b></div><div><em>Paid out</em><b>{{ usd(prev.paid_out) }}</b></div></div>
         <div class="checks"><div v-for="c in prev.checks" :key="c.label" class="cr" :class="c.ok ? 'okt' : 'bad'"><b>{{ c.ok ? '✓' : '✕' }} {{ c.label }}</b><span>{{ c.detail }}</span></div></div>
-        <p v-if="!prev.control" class="mut">Add the Earnings report PDF too, to check the CSV against Airbnb's own totals.</p>
+        <p v-if="prev.months && prev.months.length > 1" class="mut">This file covers {{ prev.months.length }} months. Rows already imported are skipped, so overlapping files are safe.</p>
+        <p v-if="!prev.control" class="mut">Add the Earnings report PDF too, to check the CSV against Airbnb's own totals (one month at a time).</p>
         <p v-if="prev.locked" class="error">This month is locked; its rows will be skipped.</p></div>
       <template #foot><button class="btn secondary" @click="discard">Discard</button><button class="btn" :disabled="busy || !prev?.fresh" @click="saveImport">{{ busy ? 'Saving…' : 'Save ' + (prev?.fresh ?? 0) + ' new rows' }}</button></template>
     </AppModal>
@@ -94,7 +97,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
     <AppModal :open="mt.open" :title="'Match payout ' + mt.ref" wide @close="mt.open = false">
       <div class="ef"><p class="mut">{{ usd(mt.amount) }}, due in the bank by {{ day(mt.arrive) }}. Pick the deposit, or add a note if it isn't in an uploaded statement.</p>
         <label v-for="r in mt.rows" :key="r.id" class="cand"><input v-model="mt.pick" type="radio" :value="r.id"><span>{{ day(r.txn_date) }} · {{ r.account }}</span><span class="dsc">{{ r.description }}</span><b :class="{ okt: Math.abs(r.amount - mt.amount) < 0.01 }">{{ usd(r.amount) }}</b></label>
-        <p v-if="!mt.rows.length" class="mut">No unmatched deposits near that date. Upload the bank statement under Bank &amp; cash, or add a note.</p>
+        <p v-if="!mt.rows.length" class="mut">No unmatched deposits near that date. Upload that month's Chase and Baselane statements to Aidi Haven's "Chase + Baselane" account under Bank &amp; cash, or add a note.</p>
         <label class="label">Note<input v-model="mt.note" maxlength="500" placeholder="e.g. Received, statement not uploaded yet"></label>
         <p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button class="btn secondary" @click="mt.open = false">Cancel</button><button class="btn" :disabled="busy || (!mt.pick && !mt.note.trim())" @click="saveMatch">Save</button></template>
@@ -116,6 +119,7 @@ h2 { margin: 0 0 10px; font-size: 16px; } .sh { display: flex; justify-content: 
 .pr { cursor: pointer; } .pr:hover td { background: #fafaf8; } .sub { display: block; font-size: 11.5px; color: var(--c-muted); } .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
 .det > td { background: #fbfaf7; padding: 10px 12px 14px; } .it { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--c-rule); } .it th { text-align: left; font-weight: 400; font-size: 11.5px; color: var(--c-muted); padding: 7px 10px; border-bottom: 1px solid var(--c-rule); } .it td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid var(--c-rule); }
 .acts { display: flex; gap: 12px; align-items: center; margin-top: 10px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; } .btn.sm { padding: 5px 11px; font-size: 13px; }
+.bkc { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; padding: 10px 12px; background: #fbfaf7; border: 1px solid var(--c-rule); font-size: 13px; } .bkc em { font-style: normal; }
 .imp { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 9px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .ck { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; font-size: 12px; } .docs { display: flex; gap: 12px; }
 .okt { color: var(--c-ok); } .bad { color: var(--c-danger); }
 .ef { display: flex; flex-direction: column; gap: 12px; } .pv { display: grid; grid-template-columns: repeat(6, 1fr); border: 1px solid var(--c-rule); } .pv div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-left: 1px solid var(--c-rule); } .pv div:first-child { border-left: 0; } .pv em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .pv b { font-size: 17px; font-weight: 500; color: var(--c-navy); }

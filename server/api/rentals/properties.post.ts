@@ -3,7 +3,7 @@ import { z } from 'zod'
 const s = (n: number) => z.string().trim().max(n).optional().nullable().transform((v) => v || null)
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(160).optional(), address: s(500), kind: z.enum(['house', 'adu', 'apartment', 'condo', 'other']).default('house'), ownership: z.enum(['owned', 'leased']).default('owned'),
+  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(160).optional(), address: s(500), kind: z.enum(['house', 'adu', 'apartment', 'condo', 'other']).default('house'), ownership: z.enum(['owned', 'leased']).default('leased'),
     bedrooms: z.coerce.number().int().min(0).max(50).optional().nullable(), acquired_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable().or(z.literal('').transform(() => null)), image_url: s(1000), notes: s(4000), entity_id: z.string().uuid().optional().nullable().or(z.literal('').transform(() => null)),
     units: z.array(z.object({ name: z.string().trim().min(1).max(160), rental_model: z.enum(['room', 'entire']), source: z.enum(['airbnb', 'direct', 'other']), airbnb: s(500) })).max(20).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the property details.')

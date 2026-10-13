@@ -19,9 +19,10 @@ export default defineEventHandler(async (event) => {
   const locked = await lockedPeriods()
   const csvDoc = csv ? await storeFile(event, ent, 'Airbnb transactions ' + (period ?? ''), csv.filename!, csv.data, 'text/csv', user.userId) : null
   const pdfDoc = pdf ? await storeFile(event, ent, 'Airbnb earnings report ' + (period ?? ''), pdf.filename!, pdf.data, 'application/pdf', user.userId) : null
-  const imp = await one<{ id: string }>('INSERT INTO rentals.imports (period, csv_document_id, pdf_document_id, parsed, control, checks, imported_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [period, csvDoc, pdfDoc, JSON.stringify({ rows }), control ? JSON.stringify(control) : null, JSON.stringify(checks), user.userId])
+  const months = [...new Set(rows.map((r) => r.txn_date.slice(0, 7)))].sort()
+  const imp = await one<{ id: string }>('INSERT INTO rentals.imports (period, months, csv_document_id, pdf_document_id, parsed, control, checks, imported_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [period, months, csvDoc, pdfDoc, JSON.stringify({ rows }), control ? JSON.stringify(control) : null, JSON.stringify(checks), user.userId])
   const isNew = (r: AirRow) => !existing.has(r.dedupe) && !locked.has(r.txn_date.slice(0, 7))
-  return { importId: imp.id, period, label: period ? monthLabel(period) : null, rows: rows.length, fresh: rows.filter(isNew).length, duplicates: rows.filter((r) => !isNew(r)).length,
+  return { importId: imp.id, period, months, label: months.length > 1 ? monthLabel(months[0]!) + ' – ' + monthLabel(months[months.length - 1]!) : period ? monthLabel(period) : null, rows: rows.length, fresh: rows.filter(isNew).length, duplicates: rows.filter((r) => !isNew(r)).length,
     payouts: rows.filter((r) => /^payout$/i.test(r.type)).length, bookings: new Set(rows.filter((r) => /^reservation$/i.test(r.type)).map((r) => r.confirmation_code)).size,
     paid_out: Math.round(rows.filter((r) => /^payout$/i.test(r.type)).reduce((s, r) => s + (r.paid_out ?? 0), 0) * 100) / 100, control, checks, unmatched, locked: period ? locked.has(period) : false }
 })

@@ -34,7 +34,7 @@ export async function pnlPdf(list: Pnl[], entity: string): Promise<Uint8Array> {
     const head = (t: string) => { y -= 6; text(t.toUpperCase(), M + 6, y, 9.5, bold, BLUE); y -= 16 }
     head('Income')
     row('Airbnb gross earnings', p.gross, { indent: true }); row('Adjustments', p.adjustments, { indent: true }); row('Airbnb service fees', -p.fees, { indent: true })
-    row('Airbnb net earnings', p.airbnb_net, { indent: true }); row('Rent received', p.rent, { indent: true }); row('Total income', p.income, { b: true, band: true })
+    row('Airbnb net earnings', p.airbnb_net, { indent: true }); row('Rent received', p.rent, { indent: true }); if (p.books_income) row('Airbnb deposits in the bank (months without Airbnb files)', p.books_income, { indent: true }); row('Total income', p.income, { b: true, band: true })
     head('Expenses')
     if (!p.expenses.length) row('No expenses logged', null, { indent: true, muted: true })
     for (const e of p.expenses) row(e.label, -e.v, { indent: true })

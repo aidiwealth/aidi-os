@@ -116,7 +116,7 @@ export async function assertUnlocked(date: string | null | undefined): Promise<v
 }
 
 export async function saveImport(importId: string): Promise<{ added: number; duplicates: number }> {
-  const imp = (await db().query<{ parsed: { rows: AirRow[] }; status: string; period: string | null }>('SELECT parsed, status, period FROM rentals.imports WHERE id = $1', [importId])).rows[0]
+  const imp = (await db().query<{ parsed: { rows: AirRow[] }; status: string; period: string | null; months: string[] }>('SELECT parsed, status, period, months FROM rentals.imports WHERE id = $1', [importId])).rows[0]
   if (!imp || imp.status !== 'preview') throw apiError('not_found', 'This import was already saved or discarded.', 404)
   const units = await allUnits(), locked = await lockedPeriods()
   let added = 0, duplicates = 0
@@ -129,7 +129,7 @@ export async function saveImport(importId: string): Promise<{ added: number; dup
     if (x.rowCount) added++; else duplicates++
   }
   await db().query("UPDATE rentals.imports SET status = 'saved', saved_at = now(), rows_new = $2, rows_dup = $3 WHERE id = $1", [importId, added, duplicates])
-  await db().query('INSERT INTO rentals.activity (event, detail) VALUES ($1,$2)', ['Airbnb import', (imp.period ? monthLabel(imp.period) + ': ' : '') + added + ' new row' + (added === 1 ? '' : 's') + (duplicates ? ', ' + duplicates + ' already imported' : '')])
+  await db().query('INSERT INTO rentals.activity (event, detail) VALUES ($1,$2)', ['Airbnb import', (imp.months?.length > 1 ? monthLabel(imp.months[0]!) + ' – ' + monthLabel(imp.months[imp.months.length - 1]!) + ': ' : imp.period ? monthLabel(imp.period) + ': ' : '') + added + ' new row' + (added === 1 ? '' : 's') + (duplicates ? ', ' + duplicates + ' already imported' : '')])
   await reconcile()
   return { added, duplicates }
 }
@@ -239,7 +239,7 @@ export async function refreshListings(): Promise<number> {
       if (p.rating !== null && u.rating !== null && Number(u.rating) !== p.rating) changes.push('rating ' + Number(u.rating).toFixed(2) + ' → ' + p.rating.toFixed(2))
       if (p.reviews !== null && u.review_count !== null && p.reviews > u.review_count) changes.push((p.reviews - u.review_count) + ' new review' + (p.reviews - u.review_count === 1 ? '' : 's'))
       if (p.title && u.title && p.title !== u.title) changes.push('title changed to "' + p.title + '"')
-      await db().query('UPDATE rentals.units SET title = coalesce($2, title), image_url = coalesce($3, image_url), rating = coalesce($4, rating), review_count = coalesce($5, review_count), refreshed_at = now(), refresh_error = NULL WHERE id = $1', [u.id, p.title, p.image, p.rating, p.reviews])
+      await db().query('UPDATE rentals.units SET title = coalesce($2, title), image_url = coalesce(image_url, $3), rating = coalesce($4, rating), review_count = coalesce($5, review_count), refreshed_at = now(), refresh_error = NULL WHERE id = $1', [u.id, p.title, p.image, p.rating, p.reviews])
       if (changes.length) await db().query('INSERT INTO rentals.activity (property_id, unit_id, event, detail) VALUES ($1,$2,$3,$4)', [u.property_id, u.id, 'Listing update', u.name + ': ' + changes.join(', ')])
       n++
     } catch (err) { await db().query('UPDATE rentals.units SET refreshed_at = now(), refresh_error = $2 WHERE id = $1', [u.id, String((err as Error).message).slice(0, 300)]) }
@@ -279,14 +279,15 @@ export async function unitFigures(period: string): Promise<Map<string, UnitMonth
   for (const x of m.values()) { x.nights = Math.min(x.nights, days); for (const k of ['income', 'gross', 'fees', 'adjustments', 'tax', 'rent'] as const) x[k] = r2(x[k]) }
   return m
 }
-export async function expensesBy(period: string): Promise<{ property_id: string; unit_id: string | null; category: string; v: number }[]> {
+// property_id null = shared across all properties (e.g. rent, software, bank fees from the bank).
+export async function expensesBy(period: string): Promise<{ property_id: string | null; unit_id: string | null; category: string; v: number }[]> {
   const { from, to } = rentalRange(period)
-  return (await db().query<{ property_id: string; unit_id: string | null; category: string; v: string }>('SELECT property_id, unit_id, category, sum(amount)::text AS v FROM rentals.expenses WHERE spent_on BETWEEN $1 AND $2 GROUP BY property_id, unit_id, category', [from, to])).rows.map((r) => ({ ...r, v: Number(r.v) }))
+  return (await db().query<{ property_id: string | null; unit_id: string | null; category: string; v: string }>('SELECT property_id, unit_id, category, sum(amount)::text AS v FROM rentals.expenses WHERE spent_on BETWEEN $1 AND $2 GROUP BY property_id, unit_id, category', [from, to])).rows.map((r) => ({ ...r, v: Number(r.v) }))
 }
 export const prevPeriod = (p: string) => { if (/^\d{4}$/.test(p)) return String(Number(p) - 1); const d = new Date(p + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
 
 // ── P&L ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-export interface Pnl { title: string; period: string; label: string; gross: number; adjustments: number; fees: number; airbnb_net: number; rent: number; income: number; tax: number; expenses: { category: string; label: string; v: number }[]; expense_total: number; profit: number; nights: number }
+export interface Pnl { title: string; period: string; label: string; gross: number; adjustments: number; fees: number; airbnb_net: number; rent: number; books_income?: number; income: number; tax: number; expenses: { category: string; label: string; v: number }[]; expense_total: number; profit: number; nights: number }
 export async function pnl(period: string, propertyId: string | null): Promise<Pnl> {
   const props = (await db().query<{ id: string; name: string }>('SELECT id, name FROM rentals.properties WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY sort', [propertyId])).rows
   const units = (await allUnits()).filter((u) => props.some((p) => p.id === u.property_id))
@@ -297,15 +298,57 @@ export async function pnl(period: string, propertyId: string | null): Promise<Pn
     for (const u of units) { const x = f.get(u.id); if (!x) continue; t.gross += x.gross; t.adjustments += x.adjustments; t.fees += x.fees; t.airbnb += x.income - x.rent; t.rent += x.rent; t.tax += x.tax; t.nights += x.nights }
   }
   const cats = new Map((await db().query<{ code: string; label: string }>('SELECT code, label FROM rentals.expense_categories ORDER BY sort')).rows.map((c) => [c.code, c.label]))
-  const ex = (await expensesBy(period)).filter((e) => props.some((p) => p.id === e.property_id))
+  // Shared costs (no property) count in full for all properties together, and by share of units for one property.
+  const allUnits_ = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM rentals.units u JOIN rentals.properties p ON p.id = u.property_id WHERE u.active AND p.active')).rows[0]?.n || 1
+  const share = propertyId ? units.length / allUnits_ : 1
+  const ex = (await expensesBy(period)).filter((e) => (e.property_id === null) || props.some((p) => p.id === e.property_id)).map((e) => (e.property_id === null ? { ...e, v: e.v * share } : e))
   const byCat = new Map<string, number>(); for (const e of ex) byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.v)
-  const expenses = [...byCat.entries()].map(([category, v]) => ({ category, label: cats.get(category) ?? category, v: r2(v) })).sort((a, b) => b.v - a.v)
-  const expense_total = r2(expenses.reduce((s, e) => s + e.v, 0)), income = r2(t.airbnb + t.rent)
-  return { title: props.length === 1 ? props[0]!.name : 'All properties', period, label: /^\d{4}$/.test(period) ? 'Year ' + period : monthLabel(period), gross: r2(t.gross), adjustments: r2(t.adjustments), fees: r2(t.fees), airbnb_net: r2(t.airbnb), rent: r2(t.rent), income, tax: r2(t.tax), expenses, expense_total, profit: r2(income - expense_total), nights: t.nights }
+  // Combined report: months with no Airbnb rows / no logged expenses take those figures from the monthly books.
+  let booksIncome = 0
+  if (!propertyId) {
+    const books = await booksMonths(), live = await rentalMonths(), bankAir = await bankAirbnbMonths()
+    for (const mo of months) { const b = books.get(mo); if (!live.income.has(mo)) booksIncome += bankAir.get(mo) ?? b?.income ?? 0; if (b && !live.expenses.has(mo)) byCat.set('__books', (byCat.get('__books') ?? 0) + b.expenses) }
+  }
+  const expenses = [...byCat.entries()].map(([category, v]) => ({ category, label: category === '__books' ? 'Operating costs from the monthly books (months not itemised here)' : cats.get(category) ?? category, v: r2(v) })).sort((a, b) => b.v - a.v)
+  const expense_total = r2(expenses.reduce((s, e) => s + e.v, 0)), income = r2(t.airbnb + t.rent + booksIncome)
+  return { title: props.length === 1 ? props[0]!.name : 'All properties', period, label: /^\d{4}$/.test(period) ? 'Year ' + period : monthLabel(period), gross: r2(t.gross), adjustments: r2(t.adjustments), fees: r2(t.fees), airbnb_net: r2(t.airbnb), rent: r2(t.rent), books_income: r2(booksIncome), income, tax: r2(t.tax), expenses, expense_total, profit: r2(income - expense_total), nights: t.nights }
 }
 export function pnlCsv(p: Pnl): string {
   const q = (s: string | number) => (typeof s === 'number' ? s.toFixed(2) : '"' + s.replace(/"/g, '""') + '"')
-  const rows: [string, string | number][] = [['Property', p.title], ['Period', p.label], ['Airbnb gross earnings', p.gross], ['Adjustments', p.adjustments], ['Airbnb service fees', -p.fees], ['Airbnb net earnings', p.airbnb_net], ['Rent received', p.rent], ['Total income', p.income],
+  const rows: [string, string | number][] = [['Property', p.title], ['Period', p.label], ['Airbnb gross earnings', p.gross], ['Adjustments', p.adjustments], ['Airbnb service fees', -p.fees], ['Airbnb net earnings', p.airbnb_net], ['Rent received', p.rent], ...(p.books_income ? [['Airbnb deposits in the bank / monthly books (months without Airbnb files)', p.books_income] as [string, number]] : []), ['Total income', p.income],
     ...p.expenses.map((e) => ['Expense: ' + e.label, -e.v] as [string, number]), ['Total expenses', -p.expense_total], ['Profit', p.profit], ['Airbnb remitted taxes (collected and paid by Airbnb, not income)', p.tax], ['Nights booked', String(p.nights)]]
   return 'Line,Amount (USD)\n' + rows.map((r) => q(r[0]) + ',' + (typeof r[1] === 'number' ? r[1].toFixed(2) : q(r[1]))).join('\n') + '\n'
+}
+
+// ── Before the Airbnb imports: Aidi Haven's monthly books ─────────────────────────────────────────────────────────
+// Months with no Airbnb rows or logged expenses here fall back to the entity's monthly income statements (Financials,
+// cash basis from the reconciled Chase + Baselane statements): income = revenue, expenses = cost of sales + opex.
+export async function booksMonths(): Promise<Map<string, { income: number; expenses: number }>> {
+  const ent = await havenEntityId(); if (!ent) return new Map()
+  const rows = (await db().query<{ p: string; lines: Record<string, number | null> }>("SELECT to_char(period_end, 'YYYY-MM') AS p, lines FROM financials.statements WHERE entity_id = $1 AND period_type = 'month' ORDER BY period_end", [ent])).rows
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return new Map(rows.map((r) => [r.p, { income: r2(n(r.lines.revenue)), expenses: r2(n(r.lines.cogs) + n(r.lines.opex_total)) }]))
+}
+// Months that have Airbnb rows (or rent) here, and months that have logged expenses. A month uses the books for
+// whichever side is missing, so importing past Airbnb CSVs never shows a month with income and no costs.
+export async function rentalMonths(): Promise<{ income: Set<string>; expenses: Set<string> }> {
+  const inc = (await db().query<{ p: string }>("SELECT DISTINCT to_char(txn_date, 'YYYY-MM') AS p FROM rentals.transactions UNION SELECT period FROM rentals.rent_charges WHERE paid_on IS NOT NULL")).rows.map((r) => r.p)
+  const ex = (await db().query<{ p: string }>("SELECT DISTINCT to_char(spent_on, 'YYYY-MM') AS p FROM rentals.expenses")).rows.map((r) => r.p)
+  return { income: new Set(inc), expenses: new Set(ex) }
+}
+// Date ranges where Aidi Haven's bank accounts have transaction-level statements (not just monthly totals): a payout
+// can only "need attention" when the bank detail for its arrival date is in the system.
+export async function bankDetailRanges(): Promise<{ from: string; to: string }[]> {
+  const ent = await havenEntityId()
+  return (await db().query<{ from: string; to: string }>(`SELECT to_char(s.period_start, 'YYYY-MM-DD') AS "from", to_char(s.period_end, 'YYYY-MM-DD') AS "to" FROM banking.statements s JOIN banking.accounts a ON a.id = s.account_id
+    WHERE ($1::uuid IS NULL OR a.entity_id = $1) AND EXISTS (SELECT 1 FROM banking.transactions t WHERE t.statement_id = s.id)`, [ent])).rows
+}
+export const covered = (ranges: { from: string; to: string }[], d: string) => ranges.some((r) => d >= r.from && d <= r.to)
+// Airbnb payouts as they reached Aidi Haven's bank (deposits mentioning Airbnb), by month: the income for months
+// without an Airbnb CSV here, ahead of the books.
+export async function bankAirbnbMonths(): Promise<Map<string, number>> {
+  const ent = await havenEntityId()
+  const rows = (await db().query<{ p: string; v: string }>(`SELECT to_char(t.txn_date, 'YYYY-MM') AS p, sum(t.amount)::text AS v FROM banking.transactions t JOIN banking.accounts a ON a.id = t.account_id
+    WHERE ($1::uuid IS NULL OR a.entity_id = $1) AND t.amount > 0 AND t.description ILIKE '%airbnb%' GROUP BY 1`, [ent])).rows
+  return new Map(rows.map((r) => [r.p, r2(Number(r.v))]))
 }

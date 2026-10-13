@@ -1,18 +1,18 @@
 <script setup lang="ts">
 // Rentals overview: combined and per-property numbers for the month vs last month, income vs expenses over 12 months,
 // "Needs attention", recent activity; tap a property for each room/unit. Admins export the P&L.
-interface Fig { income: number; expenses: number; profit: number; occupancy: number | null; nights: number; adr: number | null }
+interface Fig { income: number; expenses: number; profit: number; occupancy: number | null; nights: number; adr: number | null; books?: boolean }
 interface Rt { rating: number; reviews: number } 
 interface U { id: string; name: string; title: string | null; rental_model: string; source: string; listing: string | null; image_url: string | null; now: Fig; before: Fig; rating: Rt | null; nights_source: string }
 interface P { id: string; name: string; address: string | null; kind: string; image_url: string | null; now: Fig; before: Fig; rating: Rt | null; units: U[] }
-interface D { period: string; label: string; properties: P[]; total: { now: Fig; before: Fig; rating: Rt | null }; chart: { period: string; income: number; expenses: number }[]; attention: { kind: string; text: string; to: string }[]; activity: { event: string; detail: string | null; created_at: string }[]; periods: string[]; admin: boolean; locked: boolean }
+interface D { itemised: boolean; period: string; label: string; properties: P[]; total: { now: Fig; before: Fig; rating: Rt | null }; chart: { period: string; income: number; expenses: number; books: boolean }[]; attention: { kind: string; text: string; to: string }[]; activity: { event: string; detail: string | null; created_at: string }[]; periods: string[]; admin: boolean; locked: boolean }
 const route = useRoute()
 const period = ref(String(route.query.period ?? ''))
 const { data } = await useFetch<D>('/api/rentals/overview', { query: { period } })
 watch(data, (d) => { if (d && !period.value) period.value = d.period }, { immediate: true })
 const open = ref<string>('')
-const usd = (v: number | null | undefined) => (v === null || v === undefined ? '—' : '$' + Math.round(v).toLocaleString('en-US'))
-const usd2 = (v: number | null | undefined) => (v === null || v === undefined ? '—' : '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+const usd = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US'))
+const usd2 = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const pct = (a: number | null, b: number | null) => { if (a === null || b === null || !b) return ''; const v = Math.round((a - b) / Math.abs(b) * 100); return Math.abs(v) > 500 ? '' : (v >= 0 ? '+' : '') + v + '% vs last month' }
 const pts = (a: number | null, b: number | null) => (a === null || b === null ? '' : (a >= b ? '+' : '') + (a - b).toFixed(1) + ' pts vs last month')
 const tone = (a: number | null, b: number | null, invert = false) => (a === null || b === null || a === b ? '' : (a > b) !== invert ? 'up' : 'dn')
@@ -39,6 +39,7 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
     </div>
 
     <h2 class="h2">{{ data.label }} · all properties</h2>
+    <p v-if="data.total.now.books" class="bk">Part of this month comes from the bank (Airbnb deposits, itemised costs) or the monthly books. Per-room income, occupancy and nightly rate start from the months you import Airbnb files for.</p>
     <div class="fx-stats six">
       <StatTile icon="money" tone="g" label="Income" :value="usd(data.total.now.income)" :note="pct(data.total.now.income, data.total.before.income)" :note-tone="tone(data.total.now.income, data.total.before.income) as any" />
       <StatTile icon="billing" tone="a" label="Expenses" :value="usd(data.total.now.expenses)" :note="pct(data.total.now.expenses, data.total.before.expenses)" :note-tone="tone(data.total.now.expenses, data.total.before.expenses, true) as any" />
@@ -48,25 +49,26 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
       <StatTile icon="check" tone="g" label="Rating" :value="data.total.rating ? '★ ' + data.total.rating.rating.toFixed(2) : '—'" full :note="data.total.rating ? data.total.rating.reviews + ' reviews' : 'from Airbnb'" />
     </div>
 
-    <div class="card ch"><div class="chh"><h2>Income vs expenses</h2><span class="lg"><i class="inc" /> Income <i class="exp" /> Expenses</span></div>
-      <div class="bars"><div v-for="c in data.chart" :key="c.period" class="col" :class="{ cur: c.period === data.period }" :title="mon(c.period) + ': income ' + usd(c.income) + ', expenses ' + usd(c.expenses)">
+    <div class="card ch"><div class="chh"><h2>Income vs expenses</h2><span class="lg"><i class="inc" /> Income <i class="exp" /> Expenses<template v-if="data.chart.some((c) => c.books)"> · faded months use the bank or books</template></span></div>
+      <div class="bars"><div v-for="c in data.chart" :key="c.period" class="col" :class="{ cur: c.period === data.period, bks: c.books }" :title="mon(c.period) + ': income ' + usd(c.income) + ', expenses ' + usd(c.expenses) + (c.books ? ' (monthly books)' : '')">
         <div class="pair"><span class="b inc" :style="{ height: (c.income / max * 100) + '%' }" /><span class="b exp" :style="{ height: (c.expenses / max * 100) + '%' }" /></div><em>{{ mon(c.period) }}</em></div></div></div>
 
     <div class="props">
       <div v-for="p in data.properties" :key="p.id" class="card pc">
         <button type="button" class="pch" :aria-expanded="open === p.id" @click="open = open === p.id ? '' : p.id">
+          <span v-if="p.image_url" class="pimg" :style="{ backgroundImage: 'url(' + p.image_url + ')' }" />
           <div><b>{{ p.name }}</b><span>{{ p.units.length }} {{ p.units.length === 1 ? 'unit' : (p.units[0]?.rental_model === 'room' ? 'rooms' : 'units') }}{{ p.address ? ' · ' + p.address : '' }}</span></div>
           <span v-if="p.rating" class="rt">★ {{ p.rating.rating.toFixed(2) }} <em>({{ p.rating.reviews }})</em></span><span class="chev">›</span></button>
         <div class="pm">
-          <div><em>Income</em><b>{{ usd(p.now.income) }}</b><i :class="tone(p.now.income, p.before.income)">{{ pct(p.now.income, p.before.income) || '—' }}</i></div>
+          <div><em>Income</em><b>{{ data.itemised ? usd(p.now.income) : '—' }}</b><i :class="tone(p.now.income, p.before.income)">{{ data.itemised ? pct(p.now.income, p.before.income) || '—' : 'needs that month\'s Airbnb CSV' }}</i></div>
           <div><em>Expenses</em><b>{{ usd(p.now.expenses) }}</b><i :class="tone(p.now.expenses, p.before.expenses, true)">{{ pct(p.now.expenses, p.before.expenses) || '—' }}</i></div>
-          <div><em>Profit</em><b :class="{ neg: p.now.profit < 0 }">{{ usd(p.now.profit) }}</b><i :class="tone(p.now.profit, p.before.profit)">{{ pct(p.now.profit, p.before.profit) || '—' }}</i></div>
-          <div><em>Occupancy</em><b>{{ p.now.occupancy === null ? '—' : p.now.occupancy + '%' }}</b><i :class="tone(p.now.occupancy, p.before.occupancy)">{{ pts(p.now.occupancy, p.before.occupancy) || '—' }}</i></div>
+          <div><em>Profit</em><b :class="{ neg: data.itemised && p.now.profit < 0 }">{{ data.itemised ? usd(p.now.profit) : '—' }}</b><i :class="tone(p.now.profit, p.before.profit)">{{ data.itemised ? pct(p.now.profit, p.before.profit) || '—' : 'shared costs ' + usd(p.now.expenses) }}</i></div>
+          <div><em>Occupancy</em><b>{{ p.now.occupancy === null || !data.itemised ? '—' : p.now.occupancy + '%' }}</b><i :class="tone(p.now.occupancy, p.before.occupancy)">{{ pts(p.now.occupancy, p.before.occupancy) || '—' }}</i></div>
           <div><em>Avg nightly rate</em><b>{{ usd(p.now.adr) }}</b><i>{{ p.now.nights }} nights</i></div>
         </div>
         <table v-if="open === p.id" class="ut" data-nosearch><thead><tr><th>{{ p.units[0]?.rental_model === 'room' ? 'Room' : 'Unit' }}</th><th class="r">Income</th><th class="r">Expenses</th><th class="r">Profit</th><th class="r">Occupancy</th><th class="r">Nightly rate</th><th class="r">Rating</th></tr></thead>
-          <tbody><tr v-for="u in p.units" :key="u.id"><td><b>{{ u.name }}</b><span class="sub">{{ u.title ?? (u.source === 'airbnb' ? 'Airbnb' : 'Direct rental') }}</span></td><td class="r">{{ usd2(u.now.income) }}</td><td class="r">{{ usd2(u.now.expenses) }}<span class="sub">incl. share of shared costs</span></td><td class="r" :class="{ neg: u.now.profit < 0 }">{{ usd2(u.now.profit) }}</td>
-            <td class="r">{{ u.now.occupancy === null ? '—' : u.now.occupancy + '%' }}<span class="sub">{{ u.now.nights }} nights{{ u.nights_source === 'report' ? ' · Airbnb report' : '' }}</span></td><td class="r">{{ usd2(u.now.adr) }}</td><td class="r">{{ u.rating ? '★ ' + u.rating.rating.toFixed(2) : '—' }}<span v-if="u.rating" class="sub">{{ u.rating.reviews }} reviews</span></td></tr></tbody></table>
+          <tbody><tr v-for="u in p.units" :key="u.id"><td class="un"><span v-if="u.image_url" class="uimg" :style="{ backgroundImage: 'url(' + u.image_url + ')' }" /><span><b>{{ u.name }}</b><span class="sub">{{ u.title ?? (u.source === 'airbnb' ? 'Airbnb' : 'Direct rental') }}</span></span></td><td class="r">{{ data.itemised ? usd2(u.now.income) : '—' }}</td><td class="r">{{ usd2(u.now.expenses) }}<span class="sub">incl. share of shared costs</span></td><td class="r" :class="{ neg: data.itemised && u.now.profit < 0 }">{{ data.itemised ? usd2(u.now.profit) : '—' }}</td>
+            <td class="r">{{ u.now.occupancy === null || !data.itemised ? '—' : u.now.occupancy + '%' }}<span class="sub">{{ u.now.nights }} nights{{ u.nights_source === 'report' ? ' · Airbnb report' : '' }}</span></td><td class="r">{{ usd2(u.now.adr) }}</td><td class="r">{{ u.rating ? '★ ' + u.rating.rating.toFixed(2) : '—' }}<span v-if="u.rating" class="sub">{{ u.rating.reviews }} reviews</span></td></tr></tbody></table>
       </div>
       <EmptyState v-if="!data.properties.length" card icon="entities" title="No properties yet" text="An admin adds each property once under Properties." />
     </div>
@@ -92,10 +94,12 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
 .av { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 7px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .av b { font-weight: 600; } .av span { grid-column: 1; color: var(--c-ink-soft); } .av em { grid-row: 1; grid-column: 2; font-style: normal; color: var(--c-muted); font-size: 12px; }
 .six { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
 .chh { display: flex; justify-content: space-between; align-items: baseline; } .lg { font-size: 12.5px; color: var(--c-muted); display: flex; gap: 6px; align-items: center; } .lg i { width: 10px; height: 10px; display: inline-block; } .lg i.exp { margin-left: 10px; }
+.bk { margin: -4px 0 0; font-size: 12.5px; color: var(--c-muted); } .bks .b { opacity: .45; }
 .inc { background: var(--c-navy); } .exp { background: #9cc7e6; }
 .bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; height: 170px; align-items: end; } .col { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; } .pair { flex: 1; width: 100%; display: flex; gap: 3px; align-items: flex-end; justify-content: center; }
 .b { width: 42%; max-width: 16px; min-height: 1px; } .col em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .col.cur em { color: var(--c-navy); font-weight: 600; }
 .props { display: flex; flex-direction: column; gap: 14px; } .pc { padding: 0; } .pch { display: flex; gap: 12px; align-items: center; width: 100%; background: none; border: 0; padding: 16px 18px; font: inherit; text-align: left; cursor: pointer; color: inherit; } .pch > div { flex: 1; display: flex; flex-direction: column; gap: 2px; } .pch b { font-size: 16px; } .pch span { font-size: 12.5px; color: var(--c-muted); }
+.pimg { width: 64px; height: 48px; flex: none; background: var(--c-paper-2) center / cover no-repeat; } .un { display: flex; gap: 10px; align-items: center; } .uimg { width: 44px; height: 34px; flex: none; background: var(--c-paper-2) center / cover no-repeat; }
 .rt { font-size: 13.5px !important; color: var(--c-ink) !important; font-weight: 500; } .rt em { font-style: normal; color: var(--c-muted); } .chev { color: var(--c-muted); font-size: 20px !important; transition: transform .15s; } .pch[aria-expanded="true"] .chev { transform: rotate(90deg); }
 .pm { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--c-rule); } .pm > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 18px; border-left: 1px solid var(--c-rule); } .pm > div:first-child { border-left: 0; }
 .pm em { font-style: normal; font-size: 12px; color: var(--c-muted); } .pm b { font-size: 19px; font-weight: 500; color: var(--c-navy); } .pm i { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .pm i.up { color: var(--c-ok); } .pm i.dn { color: var(--c-danger); } .neg { color: var(--c-danger) !important; }
