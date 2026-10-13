@@ -4,6 +4,9 @@ const props = defineProps<{ companyId: string }>()
 const emit = defineEmits<{ imported: [] }>()
 interface U { id: string; title: string; label: string; sent_at: string | null; imported_at: string | null; new: boolean }
 const { data, refresh } = await useFetch<{ linked: { id: string; name: string } | null; updates: U[] }>(() => '/api/portfolio/' + props.companyId + '/finvry')
+// Collapsed by default; opens by itself when there is a new update to import.
+const open = ref(false); watch(data, (d) => { if (d?.updates.some((u) => u.new)) open.value = true }, { immediate: true })
+const summary = computed(() => { const d = data.value; if (!d?.linked) return 'Not linked'; const n = d.updates.length, nw = d.updates.filter((u) => u.new).length; return 'Linked to ' + d.linked.name + ' · ' + (n ? n + ' update' + (n === 1 ? '' : 's') + ' sent' : 'no updates yet') + (nw ? '' : '') })
 const picking = ref(false); const busy = ref(''); const msg = ref(''); const ok = ref('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function link(orgId: string | null) { msg.value = ''; ok.value = ''; try { await $fetch('/api/portfolio/' + props.companyId + '/finvry-link', { method: 'POST', body: { org_id: orgId } }); picking.value = false; await refresh() } catch (e) { msg.value = err(e) } }
@@ -12,7 +15,9 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
 </script>
 <template>
   <div v-if="data" class="card pf">
-    <div class="ph"><h2>Finvry</h2><template v-if="data.linked"><span class="ln">Linked to <b>{{ data.linked.name }}</b></span><button type="button" class="lk" @click="picking = !picking">Change</button><button type="button" class="lk red" @click="link(null)">Unlink</button></template></div>
+    <button type="button" class="ph" :aria-expanded="open" @click="open = !open"><h2>Finvry</h2><span class="ln">{{ summary }}</span><span v-if="data.updates.some((u) => u.new)" class="nw">New update</span><span class="chev" aria-hidden="true">›</span></button>
+    <template v-if="open">
+    <div v-if="data.linked" class="acts"><button type="button" class="lk" @click="picking = !picking">{{ picking ? 'Cancel' : 'Change workspace' }}</button><button type="button" class="lk red" @click="link(null)">Unlink</button></div>
     <template v-if="!data.linked || picking">
       <p class="muted">If this company uses Finvry, link its workspace. Each time it sends an investor update you get an email, and can import that update's figures (revenue, gross margin, burn, cash, customers, headcount) and notes here.</p>
       <FinvryPicker @pick="(w) => link(w.id)" />
@@ -24,10 +29,12 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
       <p v-else class="muted">No investor updates sent from Finvry yet. You'll get an email when the first one goes out.</p>
     </template>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
+    </template>
   </div>
 </template>
 <style scoped>
-.pf { display: flex; flex-direction: column; gap: 10px; } .ph { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; } .ph h2 { margin: 0; } .ln { font-size: 13.5px; color: var(--c-ink-soft); flex: 1; }
+.pf { display: flex; flex-direction: column; gap: 10px; } .ph { display: flex; gap: 12px; align-items: center; width: 100%; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; color: inherit; } .ph h2 { margin: 0; } .ln { font-size: 13.5px; color: var(--c-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev { color: var(--c-muted); font-size: 20px; line-height: 1; transition: transform .15s; } .ph[aria-expanded="true"] .chev { transform: rotate(90deg); } .acts { display: flex; gap: 14px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); } .muted { color: var(--c-muted); font-size: 13.5px; margin: 0; }
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-size: 12px; font-weight: 400; color: var(--c-muted); padding: 8px 6px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 6px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: middle; }
 .sub { display: block; font-size: 12px; color: var(--c-muted); } .r { text-align: right; white-space: nowrap; } .dn { font-size: 12px; color: var(--c-ok); } .nw { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; }
