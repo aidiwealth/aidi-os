@@ -268,14 +268,16 @@ export async function saveAgreementTemplate(code: AgreementCode, title: string, 
 }
 export async function resetAgreementTemplate(code: AgreementCode, userId: string): Promise<void> { await saveAgreementTemplate(code, AGREEMENT_DEFAULTS[code].title, AGREEMENT_DEFAULTS[code].body, userId) }
 
-export const fillAgreement = (text: string, vars: Record<string, string>): string => text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k: string) => (k in vars ? vars[k]! : m))
+export const fillAgreement = (text: string, vars: Record<string, string>): string => text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k: string) => (k in vars ? vars[k]! : m)).replace(/,(\s*,)+/g, ',')
+// A pending agreement as shown to the person signing: their email filled in (the name is filled as they type it).
+export const pendingForSigner = (body: string | null, email: string): string | null => (body === null ? null : fillAgreement(body, { signer_email: email }))
 
 // Who provides the service: the issuer on the services team's invoices (US or Nigeria).
 export async function agreementProvider(ng: boolean): Promise<{ provider: string; provider_address: string; provider_email: string }> {
   const op = await operatorOrgId()
   const s = (await asPlatform(() => db().query<{ name: string; b: Record<string, { issuer?: string; address?: string; email?: string }> | null }>("SELECT name, settings->'cs_billing' AS b FROM core.organizations WHERE id = $1", [op]))).rows[0]
   const r = (ng ? s?.b?.ng : s?.b?.us) ?? {}
-  return { provider: r.issuer || 'Aidi Ventures LLC (Finvry)', provider_address: (r.address || 'San Jose, California, United States').replace(/\s*\n\s*/g, ', '), provider_email: r.email || 'hello@finvry.com' }
+  return { provider: r.issuer || 'Aidi Ventures LLC (Finvry)', provider_address: (r.address || 'San Jose, California, United States').replace(/\s*,?\s*\n\s*/g, ', ').replace(/,(\s*,)+/g, ','), provider_email: r.email || 'hello@finvry.com' }
 }
 
 const fmtDay = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })

@@ -1,6 +1,7 @@
 // Read an invoice or receipt before the payment is logged, so the form can fill in and check the amount and receipt number.
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
+  await assertReceiptAi()
   rateLimit('receipt_scan', user.userId, 60, 60 * 60 * 1000)
   const f = ((await readMultipartFormData(event)) ?? []).find((p) => p.name === 'file' && p.filename && p.data.length)
   if (!f) throw apiError('invalid', 'Choose a file.')

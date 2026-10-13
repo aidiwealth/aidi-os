@@ -5,5 +5,5 @@ export default defineEventHandler(async (event) => {
   const options = { entities: (await db().query("SELECT id, name FROM core.entities WHERE status <> 'dissolved' ORDER BY name")).rows,
     accounts: (await db().query("SELECT id, bank_name || ' · ' || coalesce(account_name, '') || coalesce(' •••' || last4, '') AS name, entity_id, currency FROM banking.accounts WHERE active ORDER BY bank_name")).rows, categories: EXPENSE_CATEGORIES,
     payees: (await db().query('SELECT DISTINCT payee FROM finance.expenses ORDER BY payee LIMIT 300')).rows.map((r: { payee: string }) => r.payee) }
-  return { rows, options }
+  return { rows, options, receipt_ai: await receiptAiOn() }
 })

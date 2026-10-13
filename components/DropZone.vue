@@ -4,7 +4,7 @@
 const props = withDefaults(defineProps<{ accept?: string; multiple?: boolean; disabled?: boolean; label?: string; hint?: string; compact?: boolean }>(), { accept: '', multiple: false, disabled: false, label: '', hint: '', compact: false })
 const emit = defineEmits<{ change: [ev: Event] }>()
 const over = ref(false); const input = ref<HTMLInputElement | null>(null)
-const okType = (f: File) => !props.accept || props.accept.split(',').some((a) => f.name.toLowerCase().endsWith(a.trim().toLowerCase()))
+const okType = (f: File) => !props.accept || props.accept.split(',').map((a) => a.trim().toLowerCase()).some((a) => (a.includes('/') ? (a.endsWith('/*') ? f.type.toLowerCase().startsWith(a.slice(0, -1)) : f.type.toLowerCase() === a) : f.name.toLowerCase().endsWith(a)))
 function give(list: File[]) { const files = (props.multiple ? list : list.slice(0, 1)).filter(okType); if (files.length) emit('change', { target: { files } } as unknown as Event) }
 function drop(e: DragEvent) { over.value = false; if (props.disabled) return; give(Array.from(e.dataTransfer?.files ?? [])) }
 function pick(e: Event) { give(Array.from((e.target as HTMLInputElement).files ?? [])); (e.target as HTMLInputElement).value = '' }

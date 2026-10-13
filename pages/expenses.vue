@@ -3,7 +3,7 @@
 // Reconcile against an uploaded spreadsheet or balance sheet so the numbers stay true.
 useHead({ title: 'Payments' })
 interface Row { id: string; number: string; paid_on: string; payee: string; category: string; description: string | null; amount: number; currency: string; method: string | null; reference: string | null; voucher_id: string | null; attachment_id: string | null; entity: string | null; entity_id: string | null }
-const { data, refresh } = await useFetch<{ rows: Row[]; options: { entities: { id: string; name: string }[]; accounts: { id: string; name: string; entity_id: string; currency: string }[]; categories: string[]; payees: string[] } }>('/api/expenses')
+const { data, refresh } = await useFetch<{ rows: Row[]; options: { entities: { id: string; name: string }[]; accounts: { id: string; name: string; entity_id: string; currency: string }[]; categories: string[]; payees: string[] }; receipt_ai: boolean }>('/api/expenses')
 const money = (v: number, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 2 }).format(v)
 interface Checks { by_id: Record<string, { bank: 'matched' | 'missing' | 'no_statement' | 'no_account'; bank_txn?: { date: string; description: string }; receipt: string | null; receipt_issues: string[] }>; unlogged: { date: string; account: string; description: string; amount: number; currency: string }[]; financials: { entity: string; period: string; currency: string; logged: number; statement_costs: number; text: string }[]; summary: { payments: number; bank_matched: number; bank_missing: number; bank_no_statement: number; receipt_mismatch: number; unlogged: number; financials: number } }
 const { data: chk, refresh: refreshChk } = await useFetch<Checks>('/api/expenses/checks', { key: 'pay-checks' })
@@ -17,7 +17,7 @@ interface Read { number: string | null; amount: number | null; currency: string 
 const scan = reactive({ busy: false, read: null as Read | null, msg: '' })
 async function pickFile(ev: Event) {
   file.value = (ev.target as HTMLInputElement).files?.[0] ?? null; scan.read = null; scan.msg = ''
-  if (!file.value) return
+  if (!file.value || !data.value?.receipt_ai) return
   scan.busy = true; const fd = new FormData(); fd.append('file', file.value)
   try {
     const r = await $fetch<Read>('/api/expenses/scan', { method: 'POST', body: fd }); scan.read = r
@@ -75,7 +75,7 @@ async function reconcile() { if (!rfile.value) return; rc.busy = true; rc.msg = 
         <td><a v-if="r.voucher_id" :href="'/api/expenses/doc/' + r.voucher_id" target="_blank">Voucher</a><a v-if="r.attachment_id" :href="'/api/expenses/doc/' + r.attachment_id" target="_blank" class="ml">Invoice</a>
           <div v-if="chk?.by_id[r.id]" class="bdg"><span v-if="BANK[chk.by_id[r.id]!.bank]" :class="chk.by_id[r.id]!.bank" :title="chk.by_id[r.id]!.bank_txn ? chk.by_id[r.id]!.bank_txn!.date + ' · ' + chk.by_id[r.id]!.bank_txn!.description : ''">{{ BANK[chk.by_id[r.id]!.bank] }}</span>
             <span v-if="chk.by_id[r.id]!.receipt === 'match'" class="matched">Receipt ✓</span><span v-else-if="chk.by_id[r.id]!.receipt" class="missing" :title="chk.by_id[r.id]!.receipt_issues.join(' ')">Receipt ⚠</span>
-            <button v-else-if="r.attachment_id" class="lk" :disabled="checking === r.id" @click="checkReceipt(r)">{{ checking === r.id ? 'Reading…' : 'Check receipt' }}</button></div></td><td><button class="lk" @click="del(r)">Delete</button></td></tr></tbody></table>
+            <button v-else-if="r.attachment_id && data?.receipt_ai" class="lk" :disabled="checking === r.id" @click="checkReceipt(r)">{{ checking === r.id ? 'Reading…' : 'Check receipt' }}</button></div></td><td><button class="lk" @click="del(r)">Delete</button></td></tr></tbody></table>
       <EmptyState v-else compact icon="billing" title="No payments logged" text="Log rent, vendor bills, software and purchases. Each one gets a voucher and is posted to the books."><button class="btn" @click="open()">Log a payment</button></EmptyState></div>
     <AppModal :open="f.open" title="Log a payment" wide @close="f.open = false">
       <div class="fm"><div class="g3"><label class="label">Date paid<input v-model="f.paid_on" type="date"></label><label class="label">Paid by (entity)<select v-model="f.entity_id"><option value="">Choose</option><option v-for="e in data.options.entities" :key="e.id" :value="e.id">{{ e.name }}</option></select></label><label class="label">Category<select v-model="f.category"><option v-for="c in data.options.categories" :key="c">{{ c }}</option></select></label>

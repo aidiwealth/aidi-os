@@ -8,6 +8,8 @@ const model = defineModel<SignValue>({ required: true })
 const tab = ref<'typed' | 'drawn' | 'uploaded'>(model.value.kind || 'typed')
 const drawn = ref(''); const uploaded = ref(''); const upErr = ref(''); const open = ref(!props.compact)
 const all = computed(() => (props.docs.length ? props.docs : [{ title: props.title, md: props.md }]))
+// The signer's name shows as they type it (a blank line until then), never as a {{placeholder}}.
+const shown = (md: string) => md.replace(/\{\{\s*signer_name\s*\}\}/g, model.value.name.trim() || '____________').replace(/\{\{\s*[a-z_]+\s*\}\}/g, '')
 const pick = ref(0)
 // Typed: the name rendered in a handwriting-style font onto a transparent PNG.
 function typedPng(name: string): string {
@@ -42,7 +44,7 @@ defineExpose({ ready })
     <div class="doc">
       <div class="dh"><nav v-if="all.length > 1" class="dt"><button v-for="(d, i) in all" :key="d.title" type="button" :class="{ on: pick === i }" @click="pick = i; open = true">{{ d.title }}</button></nav><b v-else>{{ all[0]?.title }}</b>
         <button v-if="compact" type="button" class="lk" @click="open = !open">{{ open ? 'Hide' : 'Read the full text' }}</button></div>
-      <div v-if="open" class="body mdb" v-html="mdRender(all[pick]?.md ?? '')" />
+      <div v-if="open" class="body mdb" v-html="mdRender(shown(all[pick]?.md ?? ''))" />
     </div>
     <div class="sg">
       <label class="label">Your full name<input v-model="model.name" maxlength="200" autocomplete="name" placeholder="As it should appear on the agreement"></label>

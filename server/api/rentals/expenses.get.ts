@@ -13,5 +13,5 @@ export default defineEventHandler(async (event) => {
   const categories = (await db().query('SELECT code, label, hint FROM rentals.expense_categories ORDER BY sort, label')).rows
   const props = (await db().query('SELECT id, name FROM rentals.properties WHERE active ORDER BY sort, name')).rows
   const units = (await db().query('SELECT id, property_id, name FROM rentals.units WHERE active ORDER BY sort, name')).rows
-  return { rows, categories, properties: props, units, locked: [...(await lockedPeriods())], admin: isRentalAdmin(user.roles) }
+  return { rows, categories, properties: props, units, locked: [...(await lockedPeriods())], admin: isRentalAdmin(user.roles), receipt_ai: await receiptAiOn() }
 })

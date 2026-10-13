@@ -2,7 +2,7 @@
 // Expenses for the rentals: log one in a popup (date, amount, category, property; optional room/unit, what was bought,
 // vendor, receipt photo, repeat monthly); filter by property, month and category. Admins edit, delete, add categories.
 interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; bank_txn_id?: string | null }
-interface D { rows: E[]; categories: { code: string; label: string; hint: string | null }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean }
+interface D { rows: E[]; categories: { code: string; label: string; hint: string | null }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean; receipt_ai: boolean }
 const f = reactive({ property: '', period: (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7) })(), category: '' })
 const { data, refresh } = await useFetch<D>('/api/rentals/expenses', { query: computed(() => ({ property: f.property || undefined, period: f.period || undefined, category: f.category || undefined })) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
@@ -17,8 +17,20 @@ const blank = () => ({ bank_txn_id: '', id: '', spent_on: new Date().toISOString
 const x = reactive({ open: false, ...blank() }); const receipt = ref<File | null>(null)
 const unitsFor = computed(() => (data.value?.units ?? []).filter((u) => u.property_id === x.property_id))
 const hint = computed(() => data.value?.categories.find((c) => c.code === x.category)?.hint ?? '')
-function add() { Object.assign(x, blank(), { open: true }); receipt.value = null; msg.value = '' }
-function edit(r: E) { Object.assign(x, { open: true, bank_txn_id: '', id: r.id, spent_on: r.spent_on, amount: r.amount, category: r.category, property_id: r.property_id, unit_id: r.unit_id ?? '', item: r.item ?? '', quantity: r.quantity ?? '', vendor: r.vendor ?? '', recurring: r.recurring, notes: r.notes ?? '' }); receipt.value = null; msg.value = '' }
+const scan = reactive({ busy: false, msg: '', read: null as { readable: boolean; amount: number | null; date: string | null; payee: string | null; number: string | null } | null })
+const resetScan = () => Object.assign(scan, { busy: false, msg: '', read: null })
+// A dropped or chosen receipt; when AI reading is on, fill in what is still empty.
+async function pickReceipt(ev: Event) {
+  receipt.value = (ev.target as HTMLInputElement).files?.[0] ?? null; resetScan()
+  if (!receipt.value || !data.value?.receipt_ai) return
+  scan.busy = true; const fd = new FormData(); fd.append('file', receipt.value)
+  try {
+    const r = await $fetch<NonNullable<typeof scan.read>>('/api/rentals/scan', { method: 'POST', body: fd }); scan.read = r
+    if (r.readable) { if (!x.amount && r.amount) x.amount = r.amount; if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && !x.id) x.spent_on = r.date; if (!x.vendor && r.payee) x.vendor = r.payee.slice(0, 200); if (!x.notes && r.number) x.notes = 'Receipt ' + r.number }
+  } catch (e) { scan.msg = err(e) } finally { scan.busy = false }
+}
+function add() { Object.assign(x, blank(), { open: true }); receipt.value = null; msg.value = ''; resetScan() }
+function edit(r: E) { Object.assign(x, { open: true, bank_txn_id: '', id: r.id, spent_on: r.spent_on, amount: r.amount, category: r.category, property_id: r.property_id, unit_id: r.unit_id ?? '', item: r.item ?? '', quantity: r.quantity ?? '', vendor: r.vendor ?? '', recurring: r.recurring, notes: r.notes ?? '' }); receipt.value = null; msg.value = ''; resetScan() }
 async function save(del = false) {
   if (del && !window.confirm('Delete this expense?')) return
   busy.value = true; msg.value = ''
@@ -30,7 +42,7 @@ async function save(del = false) {
 interface B { id: string; txn_date: string; description: string; amount: number; account: string; guess: string | null }
 const { data: bank, refresh: rbank } = await useFetch<{ rows: B[]; has_accounts: boolean }>('/api/rentals/bank-spend')
 const bankOpen = ref(true)
-function fromBank(b: B) { Object.assign(x, blank(), { open: true, bank_txn_id: b.id, spent_on: b.txn_date, amount: b.amount, category: b.guess ?? '', vendor: b.description.slice(0, 200), notes: 'From ' + b.account }); receipt.value = null; msg.value = '' }
+function fromBank(b: B) { Object.assign(x, blank(), { open: true, bank_txn_id: b.id, spent_on: b.txn_date, amount: b.amount, category: b.guess ?? '', vendor: b.description.slice(0, 200), notes: 'From ' + b.account }); receipt.value = null; msg.value = ''; resetScan() }
 async function ignore(b: B) { try { await $fetch('/api/rentals/bank-ignore', { method: 'POST', body: { bank_txn_id: b.id } }); await rbank() } catch (e) { msg.value = err(e) } }
 watch(() => x.open, (o) => { if (!o) rbank() })
 // Categories (admins)
@@ -62,7 +74,9 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
       <div class="ef">
         <div class="g3"><label class="label">Date<input v-model="x.spent_on" type="date"></label><label class="label">Amount ($)<input v-model="x.amount" inputmode="decimal" placeholder="0.00"></label><label class="label">Category<select v-model="x.category"><option value="" disabled>Choose…</option><option v-for="c in data.categories" :key="c.code" :value="c.code">{{ c.label }}</option></select><em v-if="hint" class="hint">{{ hint }}</em></label></div>
         <div class="g3"><label class="label">Property<select v-model="x.property_id"><option value="">All properties (shared)</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select></label><label class="label">Room / unit (optional)<select v-model="x.unit_id" :disabled="!x.property_id"><option value="">Shared across the property</option><option v-for="u in unitsFor" :key="u.id" :value="u.id">{{ u.name }}</option></select></label><label class="label">Vendor<input v-model="x.vendor" maxlength="200" placeholder="e.g. PG&E, Costco"></label></div>
-        <div class="g3"><label class="label">What was bought or paid for<input v-model="x.item" maxlength="300" placeholder="e.g. Queen bed linen set, internet"></label><label class="label">Quantity<input v-model="x.quantity" inputmode="decimal"></label><label class="label">Receipt photo or PDF<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic" @change="receipt = ($event.target as HTMLInputElement).files?.[0] ?? null"></label></div>
+        <div class="g3"><label class="label">What was bought or paid for<input v-model="x.item" maxlength="300" placeholder="e.g. Queen bed linen set, internet"></label><label class="label">Quantity<input v-model="x.quantity" inputmode="decimal"></label><span /></div>
+        <label class="label">Receipt photo or PDF<DropZone compact accept=".pdf,.png,.jpg,.jpeg,.webp,.heic" :label="receipt ? receipt.name : ''" :hint="data.receipt_ai ? 'AI reads it and fills in the amount, date and vendor.' : ''" @change="pickReceipt" /></label>
+        <div v-if="scan.busy || scan.msg || scan.read" class="scan" :class="{ bad: !!scan.msg || (scan.read && !scan.read.readable) }"><template v-if="scan.busy">Reading the receipt…</template><template v-else-if="scan.msg">{{ scan.msg }}</template><template v-else-if="scan.read && !scan.read.readable">This file does not look like a receipt.</template><template v-else-if="scan.read"><b>✓ Read by AI, check before saving</b><span>{{ [scan.read.payee, scan.read.date, scan.read.amount !== null ? '$' + scan.read.amount.toFixed(2) : null].filter(Boolean).join(' · ') }}</span></template></div>
         <label class="chk"><input v-model="x.recurring" type="checkbox"> Repeat monthly (e.g. internet, utilities, insurance)</label>
         <label class="label">Notes<input v-model="x.notes" maxlength="2000"></label>
         <p v-if="msg" class="error">{{ msg }}</p></div>
@@ -82,6 +96,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-weight: 400; font-size: 12px; color: var(--c-muted); padding: 8px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 8px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: top; } .r { text-align: right; } .nw { white-space: nowrap; }
 .sub { display: block; font-size: 11.5px; color: var(--c-muted); } .tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; padding: 1px 6px; background: var(--c-signal-soft); color: var(--c-blue-deep); }
 .lk { background: none; border: 0; padding: 0 0 0 12px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.scan { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding: 8px 12px; border-left: 3px solid var(--c-ok); background: #f3faf6; } .scan.bad { border-left-color: var(--c-danger); background: #fff6f5; } .scan span { color: var(--c-ink-soft); }
 .ef { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .ef input:not([type="checkbox"]), .ef select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; } .hint { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .bk { padding: 0; } .bh { display: flex; gap: 12px; align-items: baseline; width: 100%; background: none; border: 0; padding: 16px 18px; font: inherit; text-align: left; cursor: pointer; color: inherit; } .bh h2 { margin: 0; font-size: 16px; white-space: nowrap; } .bh .mut { flex: 1; } .bk .t { border-top: 1px solid var(--c-rule); } .bk .t td:first-child { padding-left: 18px; } .bk .t td:last-child { padding-right: 18px; }
 .n { font-size: 12px; font-weight: 600; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 1px 7px; margin-left: 6px; } .chev { color: var(--c-muted); font-size: 20px; transition: transform .15s; } .bh[aria-expanded="true"] .chev { transform: rotate(90deg); } .btn.sm { padding: 5px 11px; font-size: 13px; } .tag.bt { margin-left: 4px; background: #eaf7ef; color: #1d7a45; }

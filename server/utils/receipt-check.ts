@@ -58,3 +58,13 @@ export async function saveReceiptCheck(expenseId: string, r: ReceiptRead, issues
   await db().query('UPDATE finance.expenses SET receipt_number = $2, receipt_amount = $3, receipt_currency = $4, receipt_date = $5, receipt_payee = $6, receipt_status = $7, receipt_issues = $8 WHERE id = $1',
     [expenseId, r.number, r.amount, r.currency, r.date, r.payee, !r.readable ? 'unreadable' : issues.length ? 'mismatch' : 'match', JSON.stringify(issues)])
 }
+
+// Reading receipts with AI (payments and rental expenses) is an Aidi OS workspace setting, on unless an admin turns
+// it off. Finvry workspaces never use it.
+export async function receiptAiOn(): Promise<boolean> {
+  const o = await currentOrg()
+  return !!o && o.kind !== 'company' && o.settings.receipt_ai !== false
+}
+export async function assertReceiptAi(): Promise<void> {
+  if (!(await receiptAiOn())) throw apiError('ai_off', 'Reading receipts with AI is turned off in Settings.', 403)
+}

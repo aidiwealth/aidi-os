@@ -23,6 +23,9 @@ const copied = ref(false)
 const pf = reactive({ url: '', busy: false, saved: false, msg: '' })
 watchEffect(() => { if (data.value && !pf.url && !pf.saved) pf.url = data.value.pitchFormUrl ?? '' })
 async function savePf() { pf.busy = true; pf.msg = ''; try { await $fetch('/api/settings/pitch-form', { method: 'POST', body: { url: pf.url } }); pf.saved = true; setTimeout(() => (pf.saved = false), 1500) } catch (e) { pf.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { pf.busy = false } }
+// Reading receipts with AI (payments and rental expenses), Aidi OS only.
+const rai = ref<boolean | null>(null); watchEffect(() => { if (data.value) rai.value = (data.value as { receipt_ai?: boolean | null }).receipt_ai ?? null })
+async function toggleRai() { const on = !rai.value; rai.value = on; try { await $fetch('/api/settings/receipt-ai', { method: 'POST', body: { on } }) } catch { rai.value = !on } }
 async function copy() { if (!data.value) return; await navigator.clipboard.writeText(data.value.pitchUrl); copied.value = true; setTimeout(() => (copied.value = false), 1500) }
 </script>
 
@@ -44,6 +47,9 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
       </form>
       <div class="col">
         <div v-if="data.org.kind === 'company'" class="card"><CompanyProfile /></div>
+        <div v-if="rai !== null" class="card">
+          <div class="rai"><div><h2>Read receipts with AI</h2><p class="muted small">When a receipt or invoice is attached to a payment or a rental expense, AI reads it, fills in the amount, date and vendor, and flags a mismatch. Each read counts as an AI run.</p></div><button type="button" class="switch" role="switch" :aria-checked="rai" aria-label="Read receipts with AI" @click="toggleRai"><span /></button></div>
+        </div>
         <div class="card">
           <h2>Plan and usage</h2>
           <p class="plan"><b>{{ data.plan.name }}</b> plan<template v-if="data.org.status === 'trial'"> · trial</template></p>
@@ -90,4 +96,7 @@ textarea { resize: vertical; } .hint { font-size: 12px; color: var(--c-muted); l
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .pfi { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .dev code { font-size: 11.5px; word-break: break-all; } .lnk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; padding: 0; } .err { color: var(--c-danger); }
 .lcn { background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; font-size: 13.5px; color: var(--c-ink-soft); margin: 0 0 10px; }
+.rai { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; } .rai h2 { margin: 0 0 4px; } .rai p { margin: 0; }
+.switch { flex: none; width: 44px; height: 24px; border: 1px solid var(--c-rule-strong); background: #e7e7e4; position: relative; cursor: pointer; padding: 0; } .switch span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: #fff; border: 1px solid var(--c-rule-strong); transition: left .15s; }
+.switch[aria-checked="true"] { background: var(--c-navy); border-color: var(--c-navy); } .switch[aria-checked="true"] span { left: 22px; border-color: var(--c-navy); }
 </style>
