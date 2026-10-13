@@ -1,0 +1,27 @@
+// Read Airbnb's monthly files (the Transaction history CSV and/or the Earnings report PDF) into a preview.
+// Nothing is saved until the team confirms; both originals are kept as documents.
+export default defineEventHandler(async (event) => {
+  const user = await requireRole(event, 'gp', 'team')
+  rateLimit('rentals_import', user.userId, 30, 60 * 60 * 1000)
+  const parts = (await readMultipartFormData(event)) ?? []
+  const files = parts.filter((p) => p.filename && p.data.length)
+  if (!files.length) throw apiError('invalid', 'Drop the Airbnb CSV and/or the Earnings report PDF.')
+  if (files.some((f) => f.data.length > 20 * 1024 * 1024)) throw apiError('too_large', 'Files can be up to 20 MB.', 413)
+  const csv = files.find((f) => /\.csv$/i.test(f.filename!)), pdf = files.find((f) => /\.pdf$/i.test(f.filename!))
+  if (!csv && !pdf) throw apiError('bad_type', 'Upload Airbnb\'s Transaction history (CSV) and the Earnings report (PDF).')
+  const ent = await havenEntityId()
+  const rows = csv ? parseAirbnbCsv(csv.data.toString('utf8')) : []
+  let control: Control | null = null
+  if (pdf) { try { control = await parseEarningsPdf(pdf.data, 'rentals:earnings') } catch (e) { console.error('[rentals] pdf', e); throw apiError('unreadable', 'We could not read that PDF. Use the Earnings report from Airbnb → Earnings → Get PDF report.', 422) } }
+  const units = await allUnits()
+  const { period, checks, unmatched } = importChecks(rows, units, control)
+  const existing = new Set((await db().query<{ dedupe: string }>('SELECT dedupe FROM rentals.transactions WHERE dedupe = ANY($1::text[])', [rows.map((r) => r.dedupe)])).rows.map((r) => r.dedupe))
+  const locked = await lockedPeriods()
+  const csvDoc = csv ? await storeFile(event, ent, 'Airbnb transactions ' + (period ?? ''), csv.filename!, csv.data, 'text/csv', user.userId) : null
+  const pdfDoc = pdf ? await storeFile(event, ent, 'Airbnb earnings report ' + (period ?? ''), pdf.filename!, pdf.data, 'application/pdf', user.userId) : null
+  const imp = await one<{ id: string }>('INSERT INTO rentals.imports (period, csv_document_id, pdf_document_id, parsed, control, checks, imported_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [period, csvDoc, pdfDoc, JSON.stringify({ rows }), control ? JSON.stringify(control) : null, JSON.stringify(checks), user.userId])
+  const isNew = (r: AirRow) => !existing.has(r.dedupe) && !locked.has(r.txn_date.slice(0, 7))
+  return { importId: imp.id, period, label: period ? monthLabel(period) : null, rows: rows.length, fresh: rows.filter(isNew).length, duplicates: rows.filter((r) => !isNew(r)).length,
+    payouts: rows.filter((r) => /^payout$/i.test(r.type)).length, bookings: new Set(rows.filter((r) => /^reservation$/i.test(r.type)).map((r) => r.confirmation_code)).size,
+    paid_out: Math.round(rows.filter((r) => /^payout$/i.test(r.type)).reduce((s, r) => s + (r.paid_out ?? 0), 0) * 100) / 100, control, checks, unmatched, locked: period ? locked.has(period) : false }
+})

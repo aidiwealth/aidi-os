@@ -33,7 +33,7 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
   </div>
 </template>
 <style scoped>
-.pf { display: flex; flex-direction: column; gap: 10px; } .ph { display: flex; gap: 12px; align-items: center; width: 100%; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; color: inherit; } .ph h2 { margin: 0; } .ln { font-size: 13.5px; color: var(--c-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; } .ph { display: flex; gap: 12px; align-items: center; width: 100%; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; color: inherit; } .ph h2 { margin: 0; } .ln { font-size: 13.5px; color: var(--c-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chev { color: var(--c-muted); font-size: 20px; line-height: 1; transition: transform .15s; } .ph[aria-expanded="true"] .chev { transform: rotate(90deg); } .acts { display: flex; gap: 14px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); } .muted { color: var(--c-muted); font-size: 13.5px; margin: 0; }
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-size: 12px; font-weight: 400; color: var(--c-muted); padding: 8px 6px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 6px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: middle; }
