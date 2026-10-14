@@ -22,6 +22,7 @@ function fill(rows: { period: string; value: number }[], keys: string[], carry =
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'family')
+  await assertOverviewTab(user.roles, 'tab_vc')
   const q = Q.safeParse(getQuery(event))
   if (!q.success) throw apiError('invalid', 'Bad filter.')
   const { entity, range } = q.data

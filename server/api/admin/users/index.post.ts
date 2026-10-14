@@ -5,6 +5,7 @@ const Body = z.object({
   email: z.string().trim().email().max(254),
   role: z.enum(ROLES),
   entity_id: z.string().uuid().optional().or(z.literal('').transform(() => undefined)),
+  include_subsidiaries: z.boolean().optional(),
   send_email: z.boolean().default(true)
 })
 export default defineEventHandler(async (event) => {
@@ -37,8 +38,8 @@ export default defineEventHandler(async (event) => {
       userId = u.rows[0]!.id
     }
     await client.query('INSERT INTO core.memberships (user_id, invited_by) VALUES ($1, $2)', [userId, admin.userId])
-    await client.query('INSERT INTO core.user_roles (user_id, role_code, scope_entity_id, granted_by) VALUES ($1,$2,$3,$4)',
-      [userId, b.data.role, b.data.entity_id ?? null, admin.userId])
+    await client.query('INSERT INTO core.user_roles (user_id, role_code, scope_entity_id, granted_by, include_subsidiaries) VALUES ($1,$2,$3,$4,$5)',
+      [userId, b.data.role, b.data.entity_id ?? null, admin.userId, b.data.entity_id ? b.data.include_subsidiaries === true : true])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, entity_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [admin.userId, 'user.invite', 'user', userId, b.data.entity_id ?? null, JSON.stringify({ email, role: b.data.role }), getRequestIP(event, { xForwardedFor: true }) ?? null])
     await client.query('COMMIT')

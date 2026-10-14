@@ -1,6 +1,7 @@
 // Wealth management at a glance: clients, assets under advice, fees, statements, signatures, top clients.
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin', 'gp', 'team')
+  const user = await requireRole(event, 'admin', 'gp', 'team')
+  await assertOverviewTab(user.roles, 'tab_wm')
   const clients = (await db().query<{ id: string; name: string; country: string; model: string; status: string; kyc_status: string }>('SELECT id, name, country, model, status, kyc_status FROM wm.clients ORDER BY name')).rows
   const per = [] as { id: string; name: string; country: string; model: string; net_worth: number; invested: number; cash: number }[]
   for (const c of clients) { const s = await clientSummary(c.id); per.push({ id: c.id, name: c.name, country: c.country, model: c.model, net_worth: s.totals.net_worth, invested: s.totals.invested, cash: s.totals.cash }) }

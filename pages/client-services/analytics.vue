@@ -24,13 +24,6 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
       </div>
     </div>
     <template v-if="data">
-      <div class="fx-stats">
-        <StatTile label="Open jobs" :value="data.kpis.open" :note="data.kpis.clients + ' active clients'" icon="briefcase" tone="n" />
-        <StatTile label="Overdue" :value="data.kpis.overdue" :red="!!data.kpis.overdue" note="past their due date" icon="alert" :tone="data.kpis.overdue ? 'r' : 'g'" />
-        <StatTile label="Waiting on clients" :value="data.kpis.waiting" note="blocked on the client" icon="clock" tone="a" />
-        <StatTile label="Turnaround" :value="data.kpis.avgDays == null ? '—' : data.kpis.avgDays + 'd'" note="average days, opened to completed" icon="calendar" tone="b" />
-        <StatTile label="Fees earned" :value="usd(data.kpis.fees)" :note="'paid by clients, ' + RANGE[range]" icon="money" tone="g" />
-      </div>
       <div class="charts">
         <TrendChart title="Completed" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.completedSeries)" :foot="data.kpis.completed + ' in ' + RANGE[range]" />
         <TrendChart title="Fees earned" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" unit="usd" :points="pts(data.feeSeries)" foot="When paid" />

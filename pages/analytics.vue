@@ -31,12 +31,10 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
       <h2 class="sec">Venture Capital</h2>
       <div class="kpis">
         <div v-if="data.pitches" class="kpi"><span class="label">Pitches received</span><b>{{ data.pitches.received }}</b><span class="sub">{{ RANGE[range] }}</span></div>
-        <div v-if="data.pitches" class="kpi"><span class="label">Advance rate</span><b>{{ data.pitches.advanceRate == null ? '—' : data.pitches.advanceRate + '%' }}</b><span class="sub">of {{ data.pitches.decided }} decided</span></div>
         <div v-if="data.pipeline" class="kpi"><span class="label">Active deals</span><b>{{ data.pipeline.active }}</b><span class="sub">screening to IC</span></div>
         <div v-if="data.pipeline" class="kpi"><span class="label">Capital deployed</span><b>{{ usd(data.pipeline.deployed) }}</b><span class="sub">{{ data.pipeline.invested }} {{ data.pipeline.invested === 1 ? 'investment' : 'investments' }}</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio companies</span><b>{{ data.portfolio.companies }}</b><span class="sub">active</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio revenue</span><b>{{ usd(data.portfolio.latestRevenue) }}</b><span class="sub">latest month, combined</span></div>
-        <div v-if="data.portfolio" class="kpi"><span class="label">Median runway</span><b>{{ data.portfolio.medianRunway == null ? '—' : data.portfolio.medianRunway.toFixed(1) + ' mo' }}</b><span class="sub">{{ usd(data.portfolio.totalCash) }} cash across portfolio</span></div>
       </div>
 
       <div class="charts">

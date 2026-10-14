@@ -16,6 +16,7 @@ const ACTIVITY: Record<string, [string, string]> = {
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
+  const shown = await overviewAllowed(user.roles)
   const usable = await usableModules(user.roles)
   const can = (code: string) => usable.has(code)
   const n = (v: unknown) => Number(v ?? 0)
@@ -106,7 +107,14 @@ export default defineEventHandler(async (event) => {
               count(*) FILTER (WHERE status NOT IN ('completed','cancelled') AND due_date < current_date)::int AS overdue,
               count(*) FILTER (WHERE status NOT IN ('completed','cancelled') AND due_date BETWEEN current_date AND current_date + 7)::int AS week,
               count(*) FILTER (WHERE status = 'completed' AND completed_at > now() - interval '30 days')::int AS done30 FROM services.jobs`)
-    out.cs = j
+    // Fees earned: what clients paid on service invoices, all time, by month (NGN in USD; a job's quoted fee when it
+    // has no invoice), the same figure as Client Services analytics.
+    const ngn = (await fxRate('NGN', 'USD')) ?? 0
+    const fees = (await db().query<{ b: string; v: string }>(`SELECT to_char(date_trunc('month', at), 'YYYY-MM-DD') AS b, sum(usd)::text AS v FROM (
+        SELECT coalesce(i.paid_at, i.issue_date)::timestamptz AS at, CASE WHEN i.currency = 'NGN' THEN i.amount * $1 ELSE i.amount END AS usd FROM services.invoices i WHERE i.status = 'paid'
+        UNION ALL SELECT j.completed_at, j.fee_usd FROM services.jobs j WHERE j.status = 'completed' AND j.completed_at IS NOT NULL AND j.fee_usd IS NOT NULL AND NOT EXISTS (SELECT 1 FROM services.invoices i WHERE i.job_id = j.id AND i.status <> 'void')
+      ) x GROUP BY 1 ORDER BY 1`, [ngn])).rows
+    out.cs = { ...j, fees: { total: Math.round(fees.reduce((t, r) => t + Number(r.v), 0)), series: fillSeries(fees, seriesKeys('all', 'month', fees[0]?.b)) } }
     if (j.overdue) attention.push({ tone: 'red', text: j.overdue + ' client job' + (j.overdue === 1 ? '' : 's') + ' past due', to: '/services' })
   }
 
@@ -117,8 +125,9 @@ export default defineEventHandler(async (event) => {
   const order = { red: 0, amber: 1, blue: 2 }
   return {
     name: me.rows[0]?.name ?? '', org: org?.name ?? '', today,
-    ...out, attention: attention.sort((a, b) => order[a.tone] - order[b.tone]),
-    activity: act.rows.map((r) => ({ at: r.at, who: r.who, text: ACTIVITY[r.action]![1], area: ACTIVITY[r.action]![0] })),
+    ...out, attention: !shown.has('attention') ? [] : attention.sort((a, b) => order[a.tone] - order[b.tone]),
+    sections: [...shown], admin: user.roles.includes('admin'),
+    activity: !shown.has('activity') ? [] : act.rows.map((r) => ({ at: r.at, who: r.who, text: ACTIVITY[r.action]![1], area: ACTIVITY[r.action]![0] })),
     quick: [can('pipeline') && { label: 'Add deal', to: '/pipeline' }, can('documents') && { label: 'Upload document', to: '/documents' }, can('compliance') && { label: 'Add obligation', to: '/compliance' }, can('services') && { label: 'New client job', to: '/services' }].filter(Boolean)
   }
 })

@@ -3,6 +3,7 @@ import { z } from 'zod'
 const Q = z.object({ entity: z.string().uuid().optional().or(z.literal('').transform(() => undefined)), range: z.enum(['90d', '12m', 'all']).default('12m') })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'family')
+  await assertOverviewTab(user.roles, 'tab_fo')
   const q = Q.safeParse(getQuery(event))
   if (!q.success) throw apiError('invalid', 'Bad filter.')
   const { entity, range } = q.data

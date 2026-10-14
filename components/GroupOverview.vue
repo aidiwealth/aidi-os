@@ -5,7 +5,7 @@ import CsInsights from '~/pages/client-services/analytics.vue'
 useHead({ title: 'Overview' })
 const { data: modsO } = await useFetch<{ code: string; usable: boolean }[]>('/api/modules', { key: 'modules' })
 const has = (c: string) => !!modsO.value?.some((m) => m.code === c && m.usable)
-const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') ? [['cs', 'Client services']] : []), ...(has('wealth_mgmt') ? [['wm', 'Wealth management']] : [])] as [string, string][])
+const TABS = computed(() => [['overview', 'Overview'], ...(has('analytics') && see('tab_vc') ? [['vc', 'Venture capital']] : []), ...(has('fo_analytics') && see('tab_fo') ? [['fo', 'Family office']] : []), ...(has('cs_analytics') && see('tab_cs') ? [['cs', 'Client services']] : []), ...(has('wealth_mgmt') && see('tab_wm') ? [['wm', 'Wealth management']] : [])] as [string, string][])
 const otab = ref(String(useRoute().query.tab ?? 'overview'))
 // Recent team meetings for the companies this person is assigned to (meetings they attended first).
 interface Mt { id: string; title: string; kind: string; held_at: string; entity: string | null; status: string; summary: string | null; open_actions: number; mine: number; attended: boolean }
@@ -17,12 +17,23 @@ interface O {
   vc?: { pitches?: { last30: number; fresh: number; series: Pt[] }; pipeline?: { open: number; deployed: number; invested: number; byStage: Record<string, number> }; portfolio?: { active: number; revenue: number; revenuePeriod: string | null; series: Pt[]; reportsSent: number; reportsDone: number } }
   fo?: { entities?: number; documents?: number; compliance?: { overdue: number; week: number; month: number }; cash?: { byCurrency: { currency: string; value: number }[]; main: string; series: Pt[] }; circulating?: number }
   credit?: { active: number; outstanding: { currency: string; value: number }[]; arrears: number }
-  cs?: { open: number; overdue: number; week: number; done30: number }
+  cs?: { open: number; overdue: number; week: number; done30: number; fees?: { total: number; series: Pt[] } }
   attention: { tone: 'red' | 'amber' | 'blue'; text: string; to: string }[]
   activity: { at: string; who: string | null; text: string; area: string }[]
   quick: { label: string; to: string }[]
+  sections?: string[]; admin?: boolean
 }
-const { data } = await useFetch<O>('/api/overview')
+const { data, refresh: refreshO } = await useFetch<O>('/api/overview')
+// What the admin has shared with this person's role (admins see everything).
+const see = (k: string) => !data.value?.sections || data.value.sections.includes(k)
+// Admins: who sees what, per role.
+interface Vis { sections: { key: string; label: string; tab?: boolean }[]; roles: string[]; visible: Record<string, string[]> }
+const vis = reactive({ open: false, busy: false, msg: '', data: null as Vis | null })
+const ROLE_LABEL: Record<string, string> = { gp: 'GP', team: 'Team', family: 'Family', adviser: 'Adviser' }
+async function openVis() { vis.open = true; vis.msg = ''; try { vis.data = await $fetch<Vis>('/api/overview/visibility') } catch { vis.msg = 'Could not load.' } }
+const allowedFor = (k: string, r: string) => !!vis.data?.visible[k]?.includes(r)
+function flip(k: string, r: string) { if (!vis.data) return; const cur = new Set(vis.data.visible[k] ?? []); if (cur.has(r)) cur.delete(r); else cur.add(r); vis.data.visible[k] = [...cur] }
+async function saveVis() { if (!vis.data) return; vis.busy = true; try { await $fetch('/api/overview/visibility', { method: 'POST', body: { visible: vis.data.visible } }); vis.open = false; await refreshO() } catch { vis.msg = 'Could not save.' } finally { vis.busy = false } }
 const hour = new Date().getHours()
 const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 const first = computed(() => (data.value?.name ?? '').split(' ')[0])
@@ -49,9 +60,9 @@ const kpis = computed<Kpi[]>(() => {
 const charts = computed(() => {
   const d = data.value; if (!d) return []
   const c: { title: string; sub: string; points: { label: string; value: number }[]; unit: 'usd' | 'count'; foot: string; symbol?: string }[] = []
-  if (d.vc?.pitches) c.push({ title: 'Pitches received', sub: 'Per month', points: pts(d.vc.pitches.series), unit: 'count', foot: d.vc.pitches.series.reduce((s, x) => s + x.value, 0) + ' in 12 months' })
-  if (d.vc?.portfolio) c.push({ title: 'Portfolio revenue', sub: 'Combined, per month', points: pts(d.vc.portfolio.series), unit: 'usd', foot: d.vc.portfolio.reportsDone + ' of ' + d.vc.portfolio.reportsSent + ' updates in for last month' })
-  if (d.fo?.cash) c.push({ title: 'Group cash', sub: d.fo.cash.main + ', month end', points: pts(d.fo.cash.series), unit: 'usd', symbol: ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as Record<string, string>)[d.fo.cash.main] ?? d.fo.cash.main + ' ', foot: d.fo.cash.byCurrency.length + ' currenc' + (d.fo.cash.byCurrency.length === 1 ? 'y' : 'ies') })
+  if (d.vc?.pitches && see('chart_pitches')) c.push({ title: 'Pitches received', sub: 'Per month', points: pts(d.vc.pitches.series), unit: 'count', foot: d.vc.pitches.series.reduce((s, x) => s + x.value, 0) + ' in 12 months' })
+  if (d.vc?.portfolio && see('chart_portfolio')) c.push({ title: 'Portfolio revenue', sub: 'Combined, per month', points: pts(d.vc.portfolio.series), unit: 'usd', foot: d.vc.portfolio.reportsDone + ' of ' + d.vc.portfolio.reportsSent + ' updates in for last month' })
+  if (d.cs?.fees && see('chart_fees')) c.push({ title: 'Fees earned', sub: 'Paid by clients, all time', points: pts(d.cs.fees.series), unit: 'usd', foot: money(d.cs.fees.total) + ' paid by clients, all time' })
   return c.slice(0, 3)
 })
 const empty = computed(() => !!data.value && !kpis.value.length)
@@ -61,7 +72,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
   <section v-if="data" class="ov">
     <div class="head">
       <div><p class="date">{{ dateLabel }}</p><h1>{{ greeting }}{{ first ? ', ' + first : '' }}</h1></div>
-      <div v-if="data.quick.length" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink></div>
+      <div v-if="data.quick.length || data.admin" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink><button v-if="data.admin" type="button" class="btn secondary" title="Choose which charts, lists and analytics tabs each role sees" @click="openVis">Who sees what</button></div>
     </div>
 
     <nav v-if="TABS.length > 1" class="otabs" role="tablist"><button v-for="[k, l] in TABS" :key="k" role="tab" :aria-selected="otab === k" :class="{ on: otab === k }" @click="otab = k">{{ l }}</button></nav>
@@ -72,16 +83,12 @@ const empty = computed(() => !!data.value && !kpis.value.length)
     <template v-else>
     <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
 
-    <div v-if="kpis.length" class="kpis" :class="'n' + Math.min(4, kpis.length)">
-      <NuxtLink v-for="k in kpis" :key="k.label" :to="k.to" class="kpi"><span class="kl">{{ k.label }}</span><b>{{ k.value }}</b><span class="ks" :class="k.tone">{{ k.sub }}</span></NuxtLink>
-    </div>
-
     <div v-if="charts.length" class="charts" :class="'n' + charts.length">
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
     </div>
 
-    <div class="two" :class="{ w3: has('meetings') }">
-      <div class="card att">
+    <div class="two" :class="'c' + [see('attention'), see('activity'), has('meetings') && see('meetings')].filter(Boolean).length">
+      <div v-if="see('attention')" class="card att">
         <h2>Needs attention</h2>
         <ul v-if="data.attention.length"><li v-for="(a, i) in data.attention" :key="i"><NuxtLink :to="a.to"><span class="dot" :class="a.tone" />{{ a.text }}<AppIcon name="right" class="go" /></NuxtLink></li></ul>
         <p v-else class="clear">All clear. Nothing needs you right now.</p>
@@ -90,12 +97,12 @@ const empty = computed(() => !!data.value && !kpis.value.length)
           <div class="sbar"><NuxtLink v-for="(n, s) in data.vc.pipeline.byStage" :key="s" to="/pipeline" :style="{ flex: n }" :title="STAGE[s] + ': ' + n"><span>{{ STAGE[s] ?? s }}</span><b>{{ n }}</b></NuxtLink></div>
         </div>
       </div>
-      <div class="card act">
+      <div v-if="see('activity')" class="card act">
         <h2>Recent activity</h2>
         <ul v-if="data.activity.length" class="tl"><li v-for="(a, i) in data.activity" :key="i"><span class="ic"><AppIcon :name="a.area" /></span><span class="tt"><b>{{ a.text }}</b><em>{{ a.who ?? 'System' }} · {{ ago(a.at) }}</em></span></li></ul>
         <EmptyState v-else compact icon="home" title="No activity yet" />
       </div>
-      <div v-if="has('meetings')" class="card mtg">
+      <div v-if="has('meetings') && see('meetings')" class="card mtg">
         <div class="mh"><h2>Team meetings</h2><NuxtLink to="/meetings/new" class="lk">+ Log</NuxtLink></div>
         <p class="ms">{{ mtg?.scoped ? 'For the companies you are assigned to' : 'Across the group' }} · last 120 days</p>
         <NuxtLink v-for="m in mtg?.meetings ?? []" :key="m.id" :to="'/meetings/' + m.id" class="mi"><span class="md">{{ mdate(m.held_at) }}</span><span class="mt"><b>{{ m.title }}</b><em>{{ m.entity ?? 'Group' }}{{ m.status === 'draft' ? ' · draft' : '' }}</em><span v-if="m.summary" class="msum">{{ m.summary }}</span>
@@ -105,6 +112,13 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       </div>
     </div>
     </template>
+    <AppModal :open="vis.open" title="Who sees what on the Overview" wide @close="vis.open = false">
+      <p class="muted vh">Tick what each role sees. Admins always see everything, and a role still only sees areas it can use (Modules page).</p>
+      <table v-if="vis.data" class="vt"><thead><tr><th /><th v-for="r in vis.data.roles" :key="r">{{ ROLE_LABEL[r] ?? r }}</th></tr></thead>
+        <tbody><tr v-for="sct in vis.data.sections" :key="sct.key" :class="{ tb: sct.tab }"><td>{{ sct.label }}</td><td v-for="r in vis.data.roles" :key="r" class="c"><input type="checkbox" :checked="allowedFor(sct.key, r)" :aria-label="sct.label + ' for ' + (ROLE_LABEL[r] ?? r)" @change="flip(sct.key, r)"></td></tr></tbody></table>
+      <p v-if="vis.msg" class="error">{{ vis.msg }}</p>
+      <template #foot><button class="btn secondary" @click="vis.open = false">Cancel</button><button class="btn" :disabled="vis.busy || !vis.data" @click="saveVis">{{ vis.busy ? 'Saving…' : 'Save' }}</button></template>
+    </AppModal>
   </section>
 </template>
 
@@ -122,7 +136,8 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 .ks { font-size: 12px; color: var(--c-muted); } .ks.red { color: var(--c-danger); }
 .charts { display: grid; gap: 12px; margin-bottom: 16px; } .charts.n2 { grid-template-columns: 1fr 1fr; } .charts.n3 { grid-template-columns: repeat(3, 1fr); }
 .charts .card { padding: 0; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .two.c1 { grid-template-columns: 1fr; }
+.vh { margin: 0 0 12px; } .vt { width: 100%; border-collapse: collapse; font-size: 14px; } .vt th { font-weight: 500; font-size: 12.5px; color: var(--c-muted); padding: 6px 10px; text-align: center; border-bottom: 1px solid var(--c-rule); } .vt td { padding: 8px 10px; border-bottom: 1px solid var(--c-rule); } .vt td.c { text-align: center; } .vt tr.tb td:first-child { color: var(--c-navy); font-weight: 500; } .vt input { width: 16px; height: 16px; }
 .two h2 { margin-bottom: 12px; }
 .att ul, .tl { list-style: none; padding: 0; margin: 0; }
 .att li a { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--c-rule); color: var(--c-ink); font-size: 14px; text-decoration: none; }
@@ -137,10 +152,10 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 .tl .ic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; background: var(--c-paper-2); color: var(--c-blue-deep); } .tl .ic svg { width: 15px; height: 15px; }
 .tt { display: flex; flex-direction: column; } .tt b { font-weight: 500; font-size: 13.5px; color: var(--c-ink); } .tt em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .muted { color: var(--c-muted); }
-.two.w3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr); }
+.two.c3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr); }
 .mtg { display: flex; flex-direction: column; } .mh { display: flex; justify-content: space-between; align-items: baseline; } .mh h2 { margin-bottom: 2px !important; } .ms { margin: 0 0 8px; font-size: 12px; color: var(--c-muted); } .mtg .lk { font-size: 13px; color: var(--c-blue-deep); text-decoration: none; } .mtg .all { margin-top: 10px; }
 .mi { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--c-rule); text-decoration: none; color: inherit; } .mi:hover b { color: var(--c-blue-deep); } .md { flex: none; width: 46px; font-size: 12px; font-weight: 600; color: var(--c-muted); padding-top: 2px; } .mt { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .mt b { font-size: 14px; font-weight: 500; } .mt em { font-style: normal; font-size: 12px; color: var(--c-muted); } .msum { font-size: 12.5px; color: var(--c-ink-soft); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .ma { font-size: 11.5px; font-weight: 600; color: #a5650b; }
-@media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two, .two.w3 { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .kpis, .kpis.n3 { grid-template-columns: repeat(2, 1fr); } .charts.n2, .charts.n3, .two, .two.c3 { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpis, .kpis.n2, .kpis.n3 { grid-template-columns: 1fr; } }
 .wic { width: 64px; height: 64px; border-radius: 50%; background: var(--c-signal-soft); color: var(--c-blue-deep); display: grid; place-items: center; margin: 0 auto 12px; } .wic :deep(svg) { width: 28px; height: 28px; } .card.none { text-align: center; padding: 44px 24px; }
 .otabs { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 4px 0 18px; width: fit-content; max-width: 100%; overflow-x: auto; } .otabs button { background: none; border: 0; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .otabs button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }

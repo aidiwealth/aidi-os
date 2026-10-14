@@ -12,13 +12,15 @@ export default defineEventHandler(async (event) => {
   event.context.user = s
   event.context.orgId = s.orgId
   event.context.entityScope = ''
-  // Roles limited to an entity see only that entity and its subsidiaries (admins and unscoped roles see everything).
+  // Roles limited to an entity see only that company, or that company and its subsidiaries when the role says so
+  // (admins and unscoped roles see everything).
   if (s.orgId && !s.roles.includes('admin')) {
-    const sc = (await asPlatform(() => db().query<{ global: boolean; ids: string[] | null }>(
-      'SELECT bool_or(scope_entity_id IS NULL) AS global, array_agg(DISTINCT scope_entity_id) FILTER (WHERE scope_entity_id IS NOT NULL) AS ids FROM core.user_roles WHERE user_id = $1 AND organization_id = $2', [s.userId, s.orgId]))).rows[0]
-    if (sc && !sc.global && sc.ids?.length) {
-      const all = (await asPlatform(() => db().query<{ id: string }>('WITH RECURSIVE t AS (SELECT id FROM core.entities WHERE id = ANY($1::uuid[]) UNION SELECT e.id FROM core.entities e JOIN t ON e.parent_id = t.id) SELECT id FROM t', [sc.ids]))).rows
-      event.context.entityScope = all.map((r) => r.id).join(',') || '00000000-0000-0000-0000-000000000000'
+    const sc = (await asPlatform(() => db().query<{ global: boolean; tree: string[] | null; only: string[] | null }>(
+      `SELECT bool_or(scope_entity_id IS NULL) AS global, array_agg(DISTINCT scope_entity_id) FILTER (WHERE scope_entity_id IS NOT NULL AND include_subsidiaries) AS tree,
+              array_agg(DISTINCT scope_entity_id) FILTER (WHERE scope_entity_id IS NOT NULL AND NOT include_subsidiaries) AS only FROM core.user_roles WHERE user_id = $1 AND organization_id = $2`, [s.userId, s.orgId]))).rows[0]
+    if (sc && !sc.global && (sc.tree?.length || sc.only?.length)) {
+      const all = sc.tree?.length ? (await asPlatform(() => db().query<{ id: string }>('WITH RECURSIVE t AS (SELECT id FROM core.entities WHERE id = ANY($1::uuid[]) UNION SELECT e.id FROM core.entities e JOIN t ON e.parent_id = t.id) SELECT id FROM t', [sc.tree]))).rows.map((r) => r.id) : []
+      event.context.entityScope = [...new Set([...all, ...(sc.only ?? [])])].join(',') || '00000000-0000-0000-0000-000000000000'
     }
   }
 })

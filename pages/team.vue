@@ -14,11 +14,11 @@ const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 
 const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES))
 async function removeUser(u: { id: string; email: string }) { if (!confirm('Remove ' + u.email + ' from this workspace? They lose access immediately.')) return; try { await $fetch('/api/admin/users/' + u.id, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove.') } }
 const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
-const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', send_email: true })
+const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', include_subsidiaries: false, send_email: true })
 const busy = ref(false)
 const msg = ref('')
 const ok = ref('')
-const adding = reactive<Record<string, { role: string; entity_id: string }>>({})
+const adding = reactive<Record<string, { role: string; entity_id: string; subs: boolean }>>({})
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
 async function run(fn: () => Promise<unknown>, done?: string) {
   busy.value = true; msg.value = ''; ok.value = ''
@@ -29,8 +29,10 @@ const invite = () => run(async () => {
   ok.value = r.emailed ? 'Invitation sent to ' + form.email + '.' : 'Access granted to ' + form.email + '. No email was sent.'
   form.full_name = ''; form.email = ''
 })
-const setRole = (u: TeamUser, action: 'add' | 'remove', role: string, entity_id: string | null) =>
-  run(() => $fetch('/api/admin/users/' + u.id + '/roles', { method: 'POST', body: { action, role, entity_id } }))
+const setRole = (u: TeamUser, action: 'add' | 'remove' | 'subsidiaries', role: string, entity_id: string | null, include_subsidiaries = false) =>
+  run(() => $fetch('/api/admin/users/' + u.id + '/roles', { method: 'POST', body: { action, role, entity_id, include_subsidiaries } }))
+// Several companies at once: one role per company picked.
+async function addRoles(u: TeamUser) { const a = adding[u.id]; if (!a?.role) return; await setRole(u, 'add', a.role, a.entity_id || null, a.subs); adding[u.id] = { role: '', entity_id: '', subs: false } }
 const setStatus = (u: TeamUser, status: 'active' | 'disabled') => {
   if (status === 'disabled' && !confirm('Disable ' + u.email + '? They are signed out immediately.')) return
   return run(() => $fetch('/api/admin/users/' + u.id + '/status', { method: 'POST', body: { status } }))
@@ -50,7 +52,8 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
         <label class="label">Full name<input v-model="form.full_name" required maxlength="200"></label>
         <label class="label">Email<input v-model="form.email" type="email" required maxlength="254"></label>
         <label class="label">Role<select v-model="form.role"><option v-for="r in ROLES" :key="r.v" :value="r.v">{{ r.label }}</option></select></label>
-        <label v-if="!isCo" class="label">Limited to entity<select v-model="form.entity_id"><option value="">All (group-wide)</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+        <label v-if="!isCo" class="label">Limited to company<select v-model="form.entity_id"><option value="">All (group-wide)</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+        <label v-if="!isCo && form.entity_id" class="chk"><input v-model="form.include_subsidiaries" type="checkbox"> Also its subsidiaries</label>
       </div>
       <label class="check"><input v-model="form.send_email" type="checkbox"> Email them an invitation</label>
       <button class="btn" type="submit" :disabled="busy">Invite</button>
@@ -59,23 +62,24 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Only admins can manage the team.' : 'Could not load the team.' }}</p>
     <table v-else-if="users?.length" class="table">
-      <caption class="scopehint">A role given for one entity (for example GP · Aidi Haven LLC) means the person only sees that entity and its subsidiaries: its documents, financials, bank accounts, compliance, funds, governance, investments and loans. Roles without an entity, and admins, see the whole group.</caption>
+      <caption class="scopehint">A role given for one company (for example Team · Aidi Haven LLC) means the person only sees that company, and its subsidiaries only when you tick "+ subsidiaries". Add the role again for each company they should see: its documents, financials, bank accounts, compliance, funds, governance, investments and loans. Roles without an entity, and admins, see the whole group.</caption>
       <thead><tr><th>Person</th><th>Roles</th><th>Last sign-in</th><th>Access</th></tr></thead>
       <tbody>
         <tr v-for="u in users" :key="u.id" :class="{ off: u.status === 'disabled' }">
           <td><b>{{ u.full_name }}</b><span class="sub">{{ u.email }}<template v-if="u.email === me?.email"> · you</template></span></td>
           <td>
             <span v-for="r in u.roles" :key="r.role + (r.entity_id ?? '')" class="chip">
-              {{ label(r.role) }}<template v-if="r.entity_name"> · {{ r.entity_name }}</template>
+              {{ label(r.role) }}<template v-if="r.entity_name"> · {{ r.entity_name }} <button type="button" class="subs" :class="{ on: r.subsidiaries }" :title="r.subsidiaries ? 'Includes its subsidiaries. Click to limit to this company only.' : 'This company only. Click to include its subsidiaries.'" :disabled="busy" @click="setRole(u, 'subsidiaries', r.role, r.entity_id, !r.subsidiaries)">{{ r.subsidiaries ? '+ subsidiaries' : 'only' }}</button></template>
               <button type="button" :aria-label="'Remove ' + label(r.role)" :disabled="busy" @click="setRole(u, 'remove', r.role, r.entity_id)">×</button>
             </span>
             <span class="add">
-              <select v-model="(adding[u.id] ??= { role: '', entity_id: '' }).role" :aria-label="'Add a role for ' + u.email">
+              <select v-model="(adding[u.id] ??= { role: '', entity_id: '', subs: false }).role" :aria-label="'Add a role for ' + u.email">
                 <option value="">+ Add role</option><option v-for="r in ROLES" :key="r.v" :value="r.v">{{ r.label }}</option>
               </select>
               <template v-if="adding[u.id]?.role">
-                <select v-model="adding[u.id]!.entity_id" aria-label="Limit to entity"><option value="">All</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
-                <button type="button" class="btn sm" :disabled="busy" @click="setRole(u, 'add', adding[u.id]!.role, adding[u.id]!.entity_id || null); adding[u.id] = { role: '', entity_id: '' }">Add</button>
+                <select v-model="adding[u.id]!.entity_id" aria-label="Limit to company"><option value="">All companies</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+                <label v-if="adding[u.id]!.entity_id" class="chk sm"><input v-model="adding[u.id]!.subs" type="checkbox"> + subsidiaries</label>
+                <button type="button" class="btn sm" :disabled="busy" @click="addRoles(u)">Add</button>
               </template>
             </span>
           </td>
@@ -113,4 +117,6 @@ b { color: var(--c-navy); font-weight: 500; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
 .danger { color: var(--c-danger); margin-left: 6px; }
 .scopehint { caption-side: top; text-align: left; font-size: 12.5px; color: var(--c-muted); padding: 0 0 10px; }
+.subs { background: none; border: 1px solid var(--c-rule-strong); font: inherit; font-size: 11px; padding: 0 5px; margin-left: 4px; cursor: pointer; color: var(--c-muted); } .subs.on { border-color: var(--c-navy); color: var(--c-navy); }
+.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; } .chk input { width: auto; } .chk.sm { font-size: 12px; }
 </style>
