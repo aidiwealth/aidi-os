@@ -79,3 +79,6 @@ export function run(a: Assumptions, scenario: Scenario = 'base'): Result {
   return { months: out, summary: { cash_end: last?.cash ?? a.opening.cash, zero_cash: zero?.month ?? null, runway: zero ? out.indexOf(zero) : recentBurn > 0 ? Math.round(a.opening.cash / recentBurn * 10) / 10 : null, break_even: be?.month ?? null,
     revenue_total: r2(out.reduce((s, x) => s + x.revenue, 0)), net_total: r2(out.reduce((s, x) => s + x.net_income, 0)), funding_total: r2(out.reduce((s, x) => s + x.funding, 0)), arr_end: last?.arr ?? 0, min_cash: min?.cash ?? 0, min_cash_month: min?.month ?? a.start } }
 }
+// What a forecast can be built from: the statements in Financials and the connected bank accounts.
+export interface FinSource { months: number; latest: string; revenue: number; costs: number; net: number; growth: number | null; cash: number | null }
+export interface BankSource { connected: boolean; enabled: boolean; accounts: { institution: string; name: string; mask: string | null; currency: string; balance: number | null; debt: boolean; updated_at: string }[]; cash: number; as_of: string | null; months: { month: string; in: number; out: number; net: number; partial?: boolean }[]; spend: { label: string; amount: number; pct?: number }[]; avg_in: number; avg_out: number; burn: number; full_months: number }

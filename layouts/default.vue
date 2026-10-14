@@ -47,7 +47,7 @@ const groups = computed(() => {
   }
   // Forecast and Cap table live under Investor relations too (tabs on its pages), when that item is there.
   const ir = out.flatMap((g) => g.items).find((x) => x.code === 'updates') as (Mod & { alsoOn?: string[] }) | undefined
-  if (ir) for (const g of out) for (const x of g.items.filter((y) => (y.code === 'forecast' || y.code === 'equity') && y.usable)) { ir.alsoOn = [...(ir.alsoOn ?? []), x.to]; g.items = g.items.filter((y) => y !== x) }
+  if (ir) for (const g of out) for (const x of g.items.filter((y) => (y.code === 'forecast' || y.code === 'equity') && (y.usable || y.locked))) { ir.alsoOn = [...(ir.alsoOn ?? []), x.to]; g.items = g.items.filter((y) => y !== x) }
   return out.filter((g) => g.items.length)
 })
 const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers', exact: false }, { to: '/platform/perks', label: 'Perks', icon: 'perks', exact: false }, { to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]

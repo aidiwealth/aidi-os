@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Live bank balances through Plaid (US banks), with a total in the reporting currency.
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
+const emit = defineEmits<{ changed: [] }>()
 interface A { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
 const { data, refresh } = await useFetch<{ available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string }>('/api/plaid/accounts', { key: 'plaid-accounts' })
 const busy = ref(false); const msg = ref('')
@@ -13,7 +14,7 @@ async function connect() {
     await loadScript()
     const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST' })
     const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid
-    P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
+    P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); emit('changed'); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as Error).message } finally { busy.value = false }
 }
 async function disconnect(id: string, name: string | null) { if (!confirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }

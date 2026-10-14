@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // Finvry forecast: revenue, costs, profit, cash and runway by month, from your actuals and a few assumptions.
-import { run, defaults, addMonths, COST_LINES, type Assumptions, type Scenario } from '~/shared/forecast'
+import { run, defaults, addMonths, COST_LINES, type Assumptions, type Scenario, type FinSource, type BankSource } from '~/shared/forecast'
 useHead({ title: 'Forecast' })
 interface Act { month: string; revenue: number | null; cogs: number | null; opex: number | null; net_income: number | null; cash: number | null }
-const { data, refresh } = await useFetch<{ currency: string; actuals: Act[]; seed: Assumptions; forecasts: { id: string; name: string; updated_at: string; start: string; months: number; views: number; links: number }[]; has_actuals: boolean }>('/api/forecast')
+const { data, refresh } = await useFetch<{ fin: FinSource | null; bank: BankSource | null; live: boolean; currency: string; actuals: Act[]; seed: Assumptions; forecasts: { id: string; name: string; updated_at: string; start: string; months: number; views: number; links: number }[]; has_actuals: boolean }>('/api/forecast')
 const rfetch = useRequestFetch() // forwards the sign-in cookie when the page renders on the server
 const sel = ref(''), name = ref('Base plan'), a = ref<Assumptions>(structuredClone(toRaw(data.value?.seed ?? defaults(new Date().toISOString().slice(0, 7)))))
 const sc = ref<Scenario>('base'), msg = ref(''), ok = ref(''), busy = ref(false), dirty = ref(false)
@@ -17,6 +17,10 @@ const route = useRoute()
 const want = String(route.query.f ?? '')
 if (data.value?.forecasts.length) await pick(data.value.forecasts.find((f) => f.id === want)?.id ?? data.value.forecasts[0]!.id)
 const { canPath } = useModuleAccess(), hasRoom = computed(() => canPath('/fundraising'))
+const build = ref(false)
+async function built(v: { name: string; assumptions: Assumptions }) { build.value = false; sel.value = ''; name.value = v.name; a.value = v.assumptions; await nextTick(); dirty.value = true; ok.value = ''; msg.value = '' }
+// The bank against this forecast: what actually left the bank each month lately, and what the forecast spends.
+const bankCheck = computed(() => { const b = data.value?.bank; if (!b?.connected || !b.full_months) return null; const f = res.value.months.slice(0, 3); if (!f.length) return null; const fOut = f.reduce((s, x) => s + x.cogs + x.opex + Math.max(0, -x.items), 0) / f.length; const diff = fOut - b.avg_out; return { bankOut: b.avg_out, fOut, diff, off: Math.abs(diff) > Math.max(1000, b.avg_out * 0.15) } })
 const imp = ref(false), shareOpen = ref(route.query.share === '1' && !!sel.value)
 const cur0 = computed(() => data.value?.forecasts.find((f) => f.id === sel.value))
 watch(sel, (id) => { useRouter().replace({ query: id ? { f: id } : {} }) })
@@ -64,12 +68,13 @@ function csv() {
     <p class="label">Investor relations</p>
     <InvestorTabs />
     <div class="hd"><div><h1>Forecast</h1><p class="lead">Revenue, costs, profit and cash by month, starting from your latest actuals. Keep as many forecasts as you need, import your accountant's, and share any of them with a private link.</p></div>
-      <div class="tb"><button class="btn secondary" @click="imp = true">Import from accountant</button><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
+      <div class="tb"><button class="btn" @click="build = true">Build from my numbers</button><button class="btn secondary" @click="imp = true">Import from accountant</button><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
     <nav class="ft"><button v-for="f in data.forecasts" :key="f.id" :class="{ on: sel === f.id }" @click="pick(f.id)">{{ f.name }}<span v-if="f.views" class="vw">{{ f.views }} view{{ f.views === 1 ? '' : 's' }}</span></button><button v-if="!sel" class="on">{{ name || 'New forecast' }} <span class="vw">not saved</span></button></nav>
     <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><button v-if="sel" class="lk red" @click="del">Delete</button></div>
     <p v-if="a.fixed && Object.keys(a.fixed).length" class="note">{{ mon(Object.keys(a.fixed).sort()[0]!) }} to {{ mon(Object.keys(a.fixed).sort().pop()!) }} use the figures imported from {{ a.source?.file || 'your accountant' }}; the assumptions below apply after that. <button class="lk" @click="dropFixed">Use assumptions for every month instead</button></p>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok && !dirty" class="ok">{{ ok }}</p>
-    <p v-if="!data.has_actuals && !a.fixed" class="note">No monthly figures yet, so the starting point is blank. Add your statements under Financials, or type your current cash, revenue and costs below.</p>
+    <p v-if="!data.has_actuals && !a.fixed && !data.bank?.connected" class="note">No monthly figures yet, so the starting point is blank. Add your statements under Financials or connect your bank, then use <button class="lk" @click="build = true">Build from my numbers</button>. Or type your current cash, revenue and costs below.</p>
+    <p v-if="bankCheck" class="note">Bank check: over the last {{ data.bank!.full_months }} months <b>{{ m(bankCheck.bankOut) }}</b> a month left your bank; this forecast spends <b>{{ m(bankCheck.fOut) }}</b> a month at the start{{ bankCheck.off ? (bankCheck.diff < 0 ? ', which looks low.' : ', which looks high.') : ', in line.' }} <button v-if="bankCheck.off" class="lk" @click="build = true">Rebuild matched to the bank</button> · Cash in the bank now <b>{{ m(data.bank!.cash) }}</b> <button v-if="Math.abs(a.opening.cash - data.bank!.cash) > 1" class="lk" @click="a.opening.cash = data.bank!.cash">Use as opening cash</button></p>
     <div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div>
     <div class="fx-stats">
       <StatTile label="Cash at the end" :value="m(res.summary.cash_end)" :note="mon(res.months[res.months.length - 1]?.month ?? null)" :red="res.summary.cash_end < 0" />
@@ -82,7 +87,7 @@ function csv() {
       <aside class="as">
         <div class="sec"><button class="sh" @click="open.start = !open.start"><b>Starting point</b><span>{{ mon(a.start) }} · {{ a.months }} months</span></button>
           <div v-if="open.start" class="sb"><div class="g2"><label>First month<input v-model="a.start" type="month"></label><label>Length<select v-model.number="a.months"><option v-for="n in [12, 18, 24, 36, 48, 60]" :key="n" :value="n">{{ n }} months</option></select></label>
-            <label>Cash today<input v-model.number="a.opening.cash" type="number"></label><label>Revenue this month<input v-model.number="a.opening.revenue" type="number" min="0"></label>
+            <label>Cash today{{ data.bank?.connected ? ' (bank: ' + m(data.bank.cash) + ')' : '' }}<input v-model.number="a.opening.cash" type="number"></label><label>Revenue this month<input v-model.number="a.opening.revenue" type="number" min="0"></label>
             <label>Customers today<input v-model.number="a.opening.customers" type="number" min="0"></label><label>Headcount today<input v-model.number="a.opening.headcount" type="number" min="0"></label></div>
             <button v-if="data.has_actuals" class="lk" @click="reseed">Reset to my latest actuals</button></div></div>
         <div class="sec"><button class="sh" @click="open.revenue = !open.revenue"><b>Revenue</b><span>{{ a.revenue.mode === 'growth' ? a.revenue.growth_pct + '% a month' : 'Customers × price' }}</span></button>
@@ -113,6 +118,7 @@ function csv() {
         <p class="fine">A forecast is an estimate from the assumptions you enter, not a promise of results. Figures in {{ cur }}.</p>
       </div>
     </div>
+    <ForecastBuild :open="build" :seed="data.seed" :fin="data.fin" :bank="data.bank" :currency="data.currency" @close="build = false" @done="built" @refresh="refresh()" />
     <ForecastImport :open="imp" :seed="data.seed" @close="imp = false" @done="imported" />
     <ShareLinks :open="shareOpen" kind="forecast" :object-id="sel" :title="name" @close="shareOpen = false" @changed="refresh()" />
   </section>

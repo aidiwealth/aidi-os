@@ -27,7 +27,7 @@ async function choose(code: string) { busy.value = true; msg.value = ''; ok.valu
 const ngn = computed(() => data.value?.currency === 'NGN')
 const currentPlan = computed(() => { const d = data.value; return d ? (d.plans.find((p) => p.code === d.plan)?.name ?? d.plan) : '' })
 const price = (p: P) => { const v = ngn.value ? p.ngn : p.usd; return v == null ? 'Contact us' : v === 0 ? 'Free' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') }
-const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financials', 'Public investor page', 'Compliance calendar', 'Order services', '1 team member'], company_startup: ['Everything in Free', 'AI investor updates with open tracking', 'Up to 5 team members', 'More AI and storage'], company_scale: ['Everything in Startup', 'Up to 20 team members', 'Most AI and storage', 'Priority service'] }
+const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financials', 'Live bank balances', 'Public investor page and data room', 'Finvry AI analyst', 'Compliance calendar', 'Order services', '1 team member'], company_startup: ['Everything in Free', 'AI investor updates with open tracking', 'Fundraising pipeline, investor and grant finder', 'Forecasts from your books, bank or accountant\'s model', 'Cap table, SAFEs and round modelling', 'Up to 5 team members', 'More AI and storage'], company_scale: ['Everything in Startup', 'Up to 20 team members', 'Most AI and storage', 'Priority service'] }
 </script>
 <template>
   <section v-if="data" class="cs">
