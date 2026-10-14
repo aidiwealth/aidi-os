@@ -47,7 +47,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
           <h3>{{ d.title }}</h3>
           <p class="desc"><template v-if="d.entity">{{ d.entity }} · </template>{{ d.description || d.current || 'PDF deck' }}</p>
           <div class="nums"><div><b>{{ d.stats.total }}</b><span>Visits</span></div><div><b>{{ d.stats.unique }}</b><span>Unique</span></div><div><b>{{ mmss(d.stats.avg_seconds) }}</b><span>Avg time</span></div><div><b>{{ d.stats.downloads }}</b><span>Downloads</span></div></div>
-          <div class="foot"><span>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
+          <div class="foot"><span v-if="!d.versions" class="nofile">No file yet: open it and upload the PDF, the link shows nothing until then</span><span v-else>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
             <button class="lk" @click.prevent.stop="copy(d)">{{ copied === d.id ? 'Copied' : 'Copy link' }}</button></div>
         </NuxtLink>
         <button class="dk add" @click="startNew"><span>+</span>New deck</button>
@@ -90,4 +90,5 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
 .src { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; width: fit-content; } .src button { background: none; border: 0; padding: 7px 12px; font: inherit; font-size: 13.5px; cursor: pointer; } .src .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); } .src button:disabled { opacity: .45; cursor: default; }
 .drop { border: 1.5px dashed var(--c-rule-strong); padding: 22px; align-items: center; cursor: pointer; text-align: center; } .drop:hover { border-color: var(--c-blue-deep); } .drop span { color: var(--c-muted); font-weight: 400; font-size: 13px; }
 .form .chk { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; } .error { color: var(--c-danger); margin: 0; }
+.nofile { color: var(--c-danger); font-weight: 500; }
 </style>

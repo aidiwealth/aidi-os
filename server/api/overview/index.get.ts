@@ -17,7 +17,7 @@ const ACTIVITY: Record<string, [string, string]> = {
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
   const shown = await overviewAllowed(user.roles)
-  const usable = await usableModules(user.roles)
+  const usable = await usableModules(user.roles, event)
   const can = (code: string) => usable.has(code)
   const n = (v: unknown) => Number(v ?? 0)
   const today = new Date().toISOString().slice(0, 10)

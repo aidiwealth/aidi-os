@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const { entity, range } = q.data
   const since = rangeSql(range), bucket = bucketFor(range)
   const levels = visibleLevels(user.roles)
-  const u = await usableModules(user.roles)
+  const u = await usableModules(user.roles, event)
   const ents = await db().query<{ status: string; kind: string; c: number }>('SELECT status, kind, count(*)::int AS c FROM core.entities GROUP BY status, kind')
   const byStatus: Record<string, number> = {}, byKind: Record<string, number> = {}
   for (const r of ents.rows) { byStatus[r.status] = (byStatus[r.status] ?? 0) + r.c; byKind[r.kind] = (byKind[r.kind] ?? 0) + r.c }

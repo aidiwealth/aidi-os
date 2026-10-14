@@ -5,6 +5,7 @@ export default defineEventHandler(async (event) => {
   const m = moduleForApi(path)
   if (m) {
     await requireModule(event, m.code)
+    if (await scopeBlocks(event, m.code)) throw apiError('forbidden', 'You do not have access to ' + m.label + '. Ask an admin.', 403)
     const ov = await moduleRoleOverrides()
     if (ov[m.code]) {
       const s = (event.context.user as SessionUser | undefined) ?? await readSession(event)

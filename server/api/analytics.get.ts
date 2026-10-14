@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   const { entity, range } = q.data
   const since = range === '90d' ? "now() - interval '90 days'" : range === '12m' ? "now() - interval '12 months'" : "'-infinity'::timestamptz"
   const bucket = range === '90d' ? 'week' : 'month'
-  const u = await usableModules(user.roles)
+  const u = await usableModules(user.roles, event)
   const out: Record<string, unknown> = { range, entity: entity ?? null, bucket }
 
   if (u.has('pitches')) {

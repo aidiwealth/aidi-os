@@ -4,7 +4,7 @@ const brand = useBrand(); const route = useRoute()
 const open = ref(false), hint = ref(false), input = ref(''), busy = ref(false), err = ref('')
 const msgs = ref<{ role: 'user' | 'assistant'; content: string; actions?: { type: string; path: string; label: string }[] }[]>([])
 const box = ref<HTMLElement | null>(null), ta = ref<HTMLTextAreaElement | null>(null)
-const SUGG = computed(() => (brand.key === 'finvry' ? ['How is our runway looking?', 'Summarise last month for investors', 'What filings are due soon?'] : ['Which deals came in this month?', 'What filings are due in the next 30 days?', 'Summarise Aidi Family holdings']))
+const SUGG = computed(() => (brand.key === 'finvry' ? ['How is our runway looking?', 'How is our deck doing with investors?', 'What filings are due soon?'] : ['What needs my attention this week?', 'Summarise last month across the group', 'What actions are open from recent meetings?']))
 onMounted(() => { try { if (!localStorage.getItem('analyst_hint')) { setTimeout(() => (hint.value = true), 1800) } } catch { /* storage off */ } })
 function toggle() { open.value = !open.value; hint.value = false; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } if (open.value) nextTick(() => ta.value?.focus()) }
 async function send(q?: string) {
@@ -21,7 +21,7 @@ function md(s: string) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').sp
 </script>
 <template>
   <div class="an" :class="{ open }">
-    <transition name="hint"><div v-if="hint && !open" class="hint" @click="toggle"><b>Ask the AI analyst</b><span>{{ brand.key === 'finvry' ? 'Metrics, investors, filings: just ask.' : 'Deals, portfolio, LPs, filings: just ask.' }}</span></div></transition>
+    <transition name="hint"><div v-if="hint && !open" class="hint" @click="toggle"><b>Ask the AI analyst</b><span>{{ brand.key === 'finvry' ? 'Metrics, investors, decks, filings: just ask.' : 'Deals, credit, cash, rentals, meetings: just ask.' }}</span></div></transition>
     <button v-if="!open" type="button" class="fab" aria-label="Open the AI analyst" @click="toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z" fill="currentColor"/><path d="M18.5 14.5l.8 2.1 2.2.9-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.9z" fill="currentColor" opacity=".7"/></svg></button>
     <aside v-if="open" class="pnl" aria-label="AI analyst">
       <header><span class="ttl"><i />AI analyst</span><button type="button" class="x" aria-label="Close" @click="toggle">×</button></header>

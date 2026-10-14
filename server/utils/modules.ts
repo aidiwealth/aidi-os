@@ -84,9 +84,19 @@ export async function moduleRoleOverrides(): Promise<Record<string, string[]>> {
 
 // The modules this person can use right now: switched on, and their role allowed (with the admin's per-role choices on
 // the Modules page). Overview, dashboards and analytics show only these.
-export async function usableModules(roles: string[]): Promise<Set<string>> {
+export async function usableModules(roles: string[], event?: H3Event): Promise<Set<string>> {
   const on = await enabledModules(), ov = await moduleRoleOverrides()
-  return new Set(MODULES.filter((m) => on.has(m.code) && canUse(m, roles, ov)).map((m) => m.code))
+  const out = new Set(MODULES.filter((m) => on.has(m.code) && canUse(m, roles, ov)).map((m) => m.code))
+  if (event) for (const c of [...out]) if (await scopeBlocks(event, c)) out.delete(c)
+  return out
+}
+// Modules that belong to one company (Rental & Real Estate is Aidi Haven's): people limited to other companies cannot
+// use them, even when their role could.
+export async function scopeBlocks(event: H3Event, code: string): Promise<boolean> {
+  const scope = String(event.context.entityScope ?? '').split(',').filter(Boolean)
+  if (!scope.length) return false
+  if (code === 'rentals') { const h = await havenEntityId(); return !!h && !scope.includes(h) }
+  return false
 }
 export async function requireModule(event: H3Event, code: string): Promise<void> {
   if (!(await enabledModules()).has(code)) throw apiError('module_off', 'This module is switched off.', 404)

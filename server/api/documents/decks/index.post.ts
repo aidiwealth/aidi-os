@@ -21,7 +21,9 @@ export default defineEventHandler(async (event) => {
     id = (await one<{ id: string }>('INSERT INTO fundraise.decks (title, token, primary_deck, created_by, description, entity_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [(field('title').trim() || filename.replace(/\.pdf$/i, '')).slice(0, 200), newDeckToken(), first || field('primary') === '1', user.userId, field('description').trim().slice(0, 500) || null, ent])).id
   }
   if (!deckId && field('primary') === '1') await db().query('UPDATE fundraise.decks SET primary_deck = (id = $1)', [id])
-  await db().query('INSERT INTO fundraise.deck_versions (deck_id, document_id, filename) VALUES ($1,$2,$3)', [id, docId, filename])
+  // All or nothing: a new deck whose file cannot be saved is removed again, so no link points at an empty deck.
+  try { await db().query('INSERT INTO fundraise.deck_versions (deck_id, document_id, filename) VALUES ($1,$2,$3)', [id, docId, filename]) }
+  catch (err) { if (!deckId) await db().query('DELETE FROM fundraise.decks WHERE id = $1', [id]).catch(() => {}); console.error('[decks] version failed', err); throw apiError('upload_failed', 'The deck could not be saved. Upload the PDF again.', 500) }
   await db().query('UPDATE fundraise.decks SET updated_at = now() WHERE id = $1', [id])
   await db().query('UPDATE fundraise.files SET document_id = $2 WHERE deck_id = $1', [id, docId])
   await audit({ event, actorUserId: user.userId, action: deckId ? 'deck.version' : 'deck.create', objectType: 'deck', objectId: id })
