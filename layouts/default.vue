@@ -43,9 +43,12 @@ const groups = computed(() => {
   // "Investor updates" + "Investor page" → one item, "Investor relations"; tabs on the pages switch between them
   for (const g of out) {
     const up = g.items.find((x) => x.code === 'updates'), ip = g.items.find((x) => x.code === 'investor_page')
-    if (up && ip) { g.items = g.items.filter((x) => x !== ip).map((x) => (x === up ? { ...up, label: 'Investor relations', to: up.usable ? '/updates' : '/investor-page', locked: !up.usable && !ip.usable, alsoOn: up.usable ? '/investor-page' : '/updates' } : x)) }
+    if (up && ip) { g.items = g.items.filter((x) => x !== ip).map((x) => (x === up ? { ...up, label: 'Investor relations', to: up.usable ? '/updates' : '/investor-page', locked: !up.usable && !ip.usable, alsoOn: [up.usable ? '/investor-page' : '/updates'] } : x)) }
   }
-  return out
+  // Forecast and Cap table live under Investor relations too (tabs on its pages), when that item is there.
+  const ir = out.flatMap((g) => g.items).find((x) => x.code === 'updates') as (Mod & { alsoOn?: string[] }) | undefined
+  if (ir) for (const g of out) for (const x of g.items.filter((y) => (y.code === 'forecast' || y.code === 'equity') && y.usable)) { ir.alsoOn = [...(ir.alsoOn ?? []), x.to]; g.items = g.items.filter((y) => y !== x) }
+  return out.filter((g) => g.items.length)
 })
 const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers', exact: false }, { to: '/platform/perks', label: 'Perks', icon: 'perks', exact: false }, { to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
 const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', internal: 'Internal' }
@@ -55,7 +58,7 @@ const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
 const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages')) && !(to === '/financials' && nowPath.value.startsWith('/financials/boards'))))
-const itemOn = (m: Mod & { alsoOn?: string }) => isOn(m.to) || (!!m.alsoOn && isOn(m.alsoOn))
+const itemOn = (m: Mod & { alsoOn?: string[] }) => isOn(m.to) || (m.alsoOn ?? []).some((p) => isOn(p))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }

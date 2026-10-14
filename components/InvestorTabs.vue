@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Tabs for Investor relations: updates and the public investor page.
+// Tabs for Investor relations: updates, the public investor page, the forecast and the cap table.
 const route = useRoute()
 const { data: mods } = await useFetch<{ code: string; usable: boolean; locked?: boolean }[]>('/api/modules', { key: 'modules' })
 const has = (c: string) => (mods.value ?? []).some((m) => m.code === c && m.usable)
 // A tab the person's role cannot use is hidden; one only a higher plan unlocks shows a lock.
 const lockedOnly = (c: string) => (mods.value ?? []).some((m) => m.code === c && !m.usable && m.locked)
-const ALL = [{ to: '/updates', label: 'Investor updates', code: 'updates' }, { to: '/investor-page', label: 'Investor page', code: 'investor_page' }]
+const ALL = [{ to: '/updates', label: 'Investor updates', code: 'updates' }, { to: '/investor-page', label: 'Investor page', code: 'investor_page' }, { to: '/forecast', label: 'Forecast', code: 'forecast' }, { to: '/cap-table', label: 'Cap table', code: 'equity' }]
 const TABS = computed(() => ALL.filter((t) => has(t.code) || lockedOnly(t.code)))
 </script>
 <template>

@@ -1,4 +1,5 @@
 // Cap tables: a company can keep several (today's, a pro forma, a what-if). Every record belongs to one.
+import { table as capTableCalc } from '~/shared/captable'
 export interface CapTableRow { id: string; name: string; note: string | null; is_main: boolean; updated_at: string }
 export async function capTables(): Promise<CapTableRow[]> {
   return (await db().query<CapTableRow>('SELECT id, name, note, is_main, updated_at FROM equity.captables ORDER BY is_main DESC, created_at')).rows
@@ -48,4 +49,15 @@ export async function copyCapTable(from: string, name: string, by: string): Prom
     await map('convertibles', 'holder_id, kind, amount, currency, valuation_cap, discount_pct, post_money, mfn, interest_pct, issued_on, maturity_on, status', ['holder_id'])
     await c.query('COMMIT'); return to
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e } finally { c.release() }
+}
+// Ownership by group (founders, investors, team, pool…) with no names: what an investor page shows by default.
+export function capGroups(d: import('~/shared/captable').Data) {
+  const t = capTableCalc(d, new Date().toISOString().slice(0, 10))
+  const L: Record<string, string> = { founder: 'Founders', investor: 'Investors', employee: 'Team (shares and options)', advisor: 'Advisors', other: 'Other' }
+  const m: Record<string, number> = {}
+  for (const r of t.rows) m[L[r.holder.kind] ?? 'Other'] = (m[L[r.holder.kind] ?? 'Other'] ?? 0) + r.fd
+  if (t.pool) m['Option pool (available)'] = t.pool
+  const conv = d.convertibles.filter((c) => c.status === 'outstanding')
+  return { fd: t.fd, groups: Object.entries(m).map(([label, shares]) => ({ label, shares, pct: t.fd ? Math.round(shares / t.fd * 10000) / 100 : 0 })).filter((g) => g.shares > 0).sort((a, b) => b.shares - a.shares),
+    convertibles: { count: conv.length, total: conv.reduce((s, c) => s + c.amount, 0), currency: conv[0]?.currency ?? 'USD' } }
 }

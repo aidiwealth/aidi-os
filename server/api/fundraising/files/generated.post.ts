@@ -1,12 +1,26 @@
-// Put a generated document into the data room as a PDF: { kind: 'safe' | 'memo' | 'nda' | 'update', id?, folder? }
+// Put a generated document into the data room: { kind: 'safe' | 'memo' | 'nda' | 'update' | 'forecast' | 'captable', id?, folder?, format? }
+// Everything goes in as a PDF; a forecast can also go in as an Excel model.
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update']), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional() }).safeParse(await readBody(event))
+  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update', 'forecast', 'captable']), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional(), format: z.enum(['pdf', 'xlsx']).default('pdf') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose a document.')
   const d = b.data, org = (await currentOrg())!
   let title = '', docs: { title: string; md: string }[] = [], folder = d.folder || ''
+  let xlsx: Buffer | null = null
+  if (d.kind === 'forecast' || d.kind === 'captable') {
+    await requireModule(event, d.kind === 'forecast' ? 'forecast' : 'equity')
+    if (d.kind === 'forecast') {
+      const f = d.id ? (await db().query<{ name: string; assumptions: import('~/shared/forecast').Assumptions }>('SELECT name, assumptions FROM financials.forecasts WHERE id = $1', [d.id])).rows[0] : undefined
+      if (!f) throw apiError('not_found', 'Forecast not found.', 404)
+      title = 'Financial forecast - ' + f.name; folder ||= 'Financials'
+      if (d.format === 'xlsx') xlsx = await forecastXlsx(f.name, org.name, f.assumptions); else docs = [{ title, md: forecastMd(f.name, f.assumptions) }]
+    } else {
+      const ct = await capTableId(d.id); const c = (await db().query<{ name: string }>('SELECT name FROM equity.captables WHERE id = $1', [ct])).rows[0]!
+      title = 'Cap table - ' + c.name; folder ||= 'Legal'; docs = [{ title, md: capTableMd(c.name, await loadCapTable(ct)) }]
+    }
+  } else
   if (d.kind === 'safe') {
     const s = d.id ? (await db().query("SELECT *, amount::float AS amount, valuation_cap::float AS valuation_cap, discount::float AS discount, to_char(safe_date, 'YYYY-MM-DD') AS safe_date FROM fundraise.safes WHERE id = $1", [d.id])).rows[0] as SafeRow | undefined : undefined
     if (!s) throw apiError('not_found', 'SAFE not found.', 404)
@@ -26,10 +40,11 @@ export default defineEventHandler(async (event) => {
     for (const bl of u.blocks ?? []) { if (bl.type === 'text' && bl.md) md.push(bl.md, ''); else if ((bl.type === 'chart' || bl.type === 'metrics_table') && bl.title) md.push('**' + bl.title + '** (see the online version for the chart)', ''); else if (['video', 'deck', 'file'].includes(bl.type) && bl.url) md.push((bl.caption || bl.type) + ': ' + bl.url, '') }
     title = u.title || 'Investor update'; docs = [{ title, md: md.join('\n') }]; folder ||= 'Investor updates'
   }
-  const bytes = await legalPdf(org.name, docs)
-  const docId = randomUUID(), key = 'documents/' + docId + '.pdf', name = (title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 180) || 'document') + '.pdf'
-  await putObject({ key, body: bytes, contentType: 'application/pdf' })
-  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,'application/pdf',$4,$5)", [docId, 'Data room — ' + name, key, bytes.length, createHash('sha256').update(bytes).digest('hex')])
+  const ext = xlsx ? 'xlsx' : 'pdf', mime = xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
+  const bytes = xlsx ?? await legalPdf(org.name, docs)
+  const docId = randomUUID(), key = 'documents/' + docId + '.' + ext, name = (title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 180) || 'document') + '.' + ext
+  await putObject({ key, body: bytes, contentType: mime })
+  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [docId, 'Data room — ' + name, key, mime, bytes.length, createHash('sha256').update(bytes).digest('hex')])
   await db().query('INSERT INTO fundraise.files (document_id, title, folder) VALUES ($1,$2,$3)', [docId, name, folder])
   await audit({ event, actorUserId: user.userId, action: 'fundraising.room_add_generated', objectType: d.kind, objectId: d.id ?? undefined })
   return { ok: true, title: name, folder }

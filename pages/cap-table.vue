@@ -12,6 +12,7 @@ const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 
 const tab = ref<string>(String(route.query.t ?? 'overview')); watch([tab, ct], ([t, c]) => router.replace({ query: { ...route.query, t, ct: c || undefined, share: undefined } }))
 // Several cap tables (today's, a pro forma, a what-if), each shareable.
 const shareOpen = ref(route.query.share === '1')
+const { canPath } = useModuleAccess(), hasRoom = computed(() => canPath('/fundraising'))
 const cm = reactive({ open: false, mode: 'create' as 'create' | 'copy' | 'rename', name: '', note: '' })
 const curCt = computed(() => data.value?.captables.find((c) => c.id === data.value?.captable))
 function ctForm(mode: typeof cm.mode) { cm.mode = mode; cm.name = mode === 'rename' ? curCt.value?.name ?? '' : mode === 'copy' ? (curCt.value?.name ?? 'Cap table') + ' (what-if)' : 'Pro forma'; cm.note = mode === 'rename' ? curCt.value?.note ?? '' : ''; cm.open = true; msg.value = '' }
@@ -59,11 +60,13 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 </script>
 <template>
   <section v-if="data && t" class="ct">
-    <div class="hd"><div><p class="label">Investors</p><h1>Cap table</h1><p class="lead">Shares, options, SAFEs and notes for {{ data.company }}, with what a round or an exit would mean for each holder.</p></div>
+    <p class="label">Investor relations</p>
+    <InvestorTabs />
+    <div class="hd"><div><h1>Cap table</h1><p class="lead">Shares, options, SAFEs and notes for {{ data.company }}, with what a round or an exit would mean for each holder.</p></div>
       <div class="acts"><button class="btn secondary" @click="imp = true">Import documents</button><button class="btn secondary" @click="edit('convertible')">Add SAFE or note</button><button class="btn secondary" @click="edit('grant')" :disabled="!data.plans.length">Grant options</button><button class="btn" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
     <div v-if="!data.classes.length" class="start card"><h3>Set up your cap table</h3><p>Have a cap table from your lawyer, SAFEs, certificates or grant letters? Drop them in and AI builds it for you. Or start by hand with common shares.</p><DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" label="Drop your cap table documents here" hint="Spreadsheets, SAFEs, notes, certificates, board consents · AI reads them together" @change="(e: Event) => { pre = Array.from(((e.target as HTMLInputElement).files ?? []) as ArrayLike<File>); imp = true }" /><button class="btn" @click="setupCommon">Create common shares</button></div>
     <div class="ctb"><nav class="cts"><button v-for="c in data.captables" :key="c.id" :class="{ on: c.id === data.captable }" @click="ct = c.id">{{ c.name }}<span v-if="c.is_main && data.captables.length > 1" class="mn">Main</span></button><button class="add" @click="ctForm('create')">+ New cap table</button></nav>
-      <div class="cta"><button class="lk" @click="ctForm('copy')">Copy as a what-if</button><button class="lk" @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" class="lk" @click="ctAct('main')">Make main</button><button v-if="data.captables.length > 1" class="lk red" @click="ctAct('delete')">Delete</button><button class="btn secondary sm" @click="shareOpen = true">Share</button></div></div>
+      <div class="cta"><button class="lk" @click="ctForm('copy')">Copy as a what-if</button><button class="lk" @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" class="lk" @click="ctAct('main')">Make main</button><button v-if="data.captables.length > 1" class="lk red" @click="ctAct('delete')">Delete</button><AddToRoom v-if="hasRoom" kind="captable" :id="data.captable" label="Add to data room" /><button class="btn secondary sm" @click="shareOpen = true">Share</button></div></div>
     <p v-if="curCt?.note" class="ctn">{{ curCt.note }}</p>
     <nav class="tabs"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
 

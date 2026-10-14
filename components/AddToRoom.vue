@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // "Add to data room" for a generated document (SAFE, memo, NDA, investor update): the button itself confirms.
-const props = defineProps<{ kind: 'safe' | 'memo' | 'nda' | 'update'; id?: string; label?: string }>()
+const props = defineProps<{ kind: 'safe' | 'memo' | 'nda' | 'update' | 'forecast' | 'captable'; id?: string; label?: string; format?: 'pdf' | 'xlsx' }>()
 const state = ref<'idle' | 'busy' | 'done' | 'error'>('idle'); const err = ref(''); const folder = ref('')
-async function add() { state.value = 'busy'; err.value = ''; try { const r = await $fetch<{ folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: props.kind, id: props.id } }); folder.value = r.folder; state.value = 'done'; setTimeout(() => { if (state.value === 'done') state.value = 'idle' }, 6000) } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.'; state.value = 'error' } }
+async function add() { state.value = 'busy'; err.value = ''; try { const r = await $fetch<{ folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: props.kind, id: props.id, format: props.format ?? 'pdf' } }); folder.value = r.folder; state.value = 'done'; setTimeout(() => { if (state.value === 'done') state.value = 'idle' }, 6000) } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.'; state.value = 'error' } }
 </script>
 <template>
   <span class="atr">

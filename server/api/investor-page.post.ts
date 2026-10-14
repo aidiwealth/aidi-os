@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const url = z.string().trim().max(500).refine((v) => v === '' || /^https?:\/\//i.test(v), 'Links must start with http:// or https://')
 const Body = z.object({ slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/), published: z.boolean(), headline: z.string().trim().max(200).default(''), about: z.string().trim().max(60000).default(''),
-  website: url.default(''), deck_url: url.default(''), contact_email: z.string().trim().max(254).default(''), metrics: z.array(z.string()).max(8), period_type: z.enum(['month', 'quarter', 'year']), logo_id: z.string().uuid().nullable().optional(), cover_id: z.string().uuid().nullable().optional(), board_id: z.string().uuid().nullable().optional(), deck_id: z.string().uuid().nullable().optional(), room: z.boolean().optional() })
+  website: url.default(''), deck_url: url.default(''), contact_email: z.string().trim().max(254).default(''), metrics: z.array(z.string()).max(8), period_type: z.enum(['month', 'quarter', 'year']), logo_id: z.string().uuid().nullable().optional(), cover_id: z.string().uuid().nullable().optional(), board_id: z.string().uuid().nullable().optional(), deck_id: z.string().uuid().nullable().optional(), forecast_id: z.string().uuid().nullable().optional(), captable_id: z.string().uuid().nullable().optional(), captable_detail: z.enum(['summary', 'holders']).optional(), room: z.boolean().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
   const b = Body.safeParse(await readBody(event))
@@ -30,6 +30,9 @@ export default defineEventHandler(async (event) => {
   }
   if (d.deck_id !== undefined) await db().query('UPDATE financials.public_pages SET deck_id = $1', [d.deck_id && (await db().query('SELECT 1 FROM fundraise.decks WHERE id = $1 AND active', [d.deck_id])).rowCount ? d.deck_id : null])
   if (d.board_id !== undefined) await db().query('UPDATE financials.public_pages SET board_id = $1', [d.board_id && (await db().query('SELECT 1 FROM financials.boards WHERE id = $1', [d.board_id])).rowCount ? d.board_id : null])
+  if (d.forecast_id !== undefined) await db().query('UPDATE financials.public_pages SET forecast_id = $1', [d.forecast_id && (await enabledModules()).has('forecast') && (await db().query('SELECT 1 FROM financials.forecasts WHERE id = $1', [d.forecast_id])).rowCount ? d.forecast_id : null])
+  if (d.captable_id !== undefined) await db().query('UPDATE financials.public_pages SET captable_id = $1', [d.captable_id && (await enabledModules()).has('equity') && (await db().query('SELECT 1 FROM equity.captables WHERE id = $1', [d.captable_id])).rowCount ? d.captable_id : null])
+  if (d.captable_detail) await db().query('UPDATE financials.public_pages SET captable_detail = $1', [d.captable_detail])
   if (d.logo_id !== undefined || d.cover_id !== undefined) await db().query('UPDATE financials.public_pages SET logo_id = CASE WHEN $1 THEN $2::uuid ELSE logo_id END, cover_id = CASE WHEN $3 THEN $4::uuid ELSE cover_id END', [d.logo_id !== undefined, d.logo_id ?? null, d.cover_id !== undefined, d.cover_id ?? null])
   await audit({ event, actorUserId: user.userId, action: d.published ? 'investor_page.publish' : 'investor_page.save', objectType: 'organization', objectId: currentOrgId()!, detail: { slug: d.slug } })
   return { ok: true, url: brands().finvry.url + '/c/' + d.slug }

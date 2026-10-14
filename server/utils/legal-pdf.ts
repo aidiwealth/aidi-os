@@ -74,9 +74,15 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
     let tbl: string[][] = []
     const flushTable = () => {
       if (!tbl.length) return
-      const cols = Math.max(...tbl.map((r) => r.length)), size = 9.5, pad = 5
-      // The first column (usually the text) gets half the width when there are 3+ columns.
-      const cws = Array.from({ length: cols }, (_, c) => (cols >= 3 ? (c === 0 ? maxW / 2 : maxW / 2 / (cols - 1)) : maxW / cols)), cx = (c: number) => cws.slice(0, c).reduce((a, b) => a + b, 0)
+      const cols = Math.max(...tbl.map((r) => r.length)), size = cols > 6 ? 8 : 9.5, pad = cols > 6 ? 4 : 5
+      // Columns as wide as their content (long text capped); spare width goes to the first column, and when the
+      // content is too wide every column shrinks in proportion and text wraps. Numbers are right-aligned.
+      const txt = (r: string[], c: number) => clean(r[c] ?? '').replace(/\*\*/g, '')
+      const nat = Array.from({ length: cols }, (_, c) => Math.min(maxW * 0.6, Math.max(24, ...tbl.map((r, ri) => (ri === 0 ? bold : reg).widthOfTextAtSize(txt(r, c), size) + pad * 2))))
+      const tot = nat.reduce((a, b) => a + b, 0)
+      const cws = tot <= maxW ? nat.map((w, c) => (c === 0 ? w + maxW - tot : w)) : nat.map((w) => w * maxW / tot), cx = (c: number) => cws.slice(0, c).reduce((a, b) => a + b, 0)
+      const isNum = (s: string) => /^[-–(]?[$€£₦]?[\d.,]+[)%x]?$|^[-–]$/.test(s.replace(/\s/g, ''))
+      const right = Array.from({ length: cols }, (_, c) => { const b = tbl.slice(1).map((r) => txt(r, c)).filter(Boolean); return c > 0 && b.length > 0 && b.filter(isNum).length > b.length / 2 })
       tbl.forEach((row, ri) => {
         const font = ri === 0 ? bold : reg
         const cells = Array.from({ length: cols }, (_, c) => clean(row[c] ?? '').replace(/\*\*/g, ''))
@@ -84,7 +90,7 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
         const h = Math.max(...wrapped.map((w) => w.length)) * (size + 3) + pad * 2
         need(h)
         if (ri === 0) page.drawRectangle({ x: M, y: y - h + size + 2, width: maxW, height: h, color: rgb(0.93, 0.95, 0.98) })
-        wrapped.forEach((ls, c) => ls.forEach((s, k) => page.drawText(s, { x: M + cx(c) + pad, y: y - pad - k * (size + 3), size, font, color: ink })))
+        wrapped.forEach((ls, c) => ls.forEach((s, k) => page.drawText(s, { x: right[c] ? M + cx(c) + cws[c]! - pad - font.widthOfTextAtSize(s, size) : M + cx(c) + pad, y: y - pad - k * (size + 3), size, font, color: ink })))
         page.drawLine({ start: { x: M, y: y - h + size + 2 }, end: { x: M + maxW, y: y - h + size + 2 }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) })
         y -= h
       })
