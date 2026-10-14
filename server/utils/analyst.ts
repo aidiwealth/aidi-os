@@ -1,3 +1,5 @@
+import { run as runForecast, defaults as fcDefaults, type Assumptions } from '~/shared/forecast'
+import { table as capTable, round as capRound, waterfall as capWaterfall } from '~/shared/captable'
 // The AI analyst: a small, cheap model with read-only tools. Nothing is sent up front except a short system prompt;
 // the model asks for exactly the data a question needs, tool results are trimmed, and only the last few turns travel.
 import type { H3Event } from 'h3'
@@ -42,8 +44,47 @@ const finvry: Tool[] = [
   { name: 'fundraising', module: 'fundraising', description: 'Fundraising pipelines (target, instrument, close date) with investors, stages and amounts.', input_schema: S(),
     run: async () => (await db().query("SELECT p.name, p.currency, p.target::float, p.instrument, p.status, to_char(p.target_close, 'YYYY-MM-DD') AS target_close, (SELECT json_agg(json_build_object('investor', d.investor, 'stage', s.name, 'amount', d.amount::float) ORDER BY d.updated_at DESC) FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id WHERE d.pipeline_id = p.id) AS investors FROM crm.pipelines p ORDER BY p.created_at DESC LIMIT 3")).rows },
   { name: 'investor_updates', module: 'updates', description: 'Recent investor updates: title, period, status, when sent and to how many.', input_schema: S(),
-    run: async () => (await db().query("SELECT title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, status, to_char(sent_at, 'YYYY-MM-DD') AS sent, sent_count FROM financials.updates WHERE NOT coalesce(is_template, false) ORDER BY created_at DESC LIMIT 6").catch(() => ({ rows: [] }))).rows }]
+    run: async () => (await db().query("SELECT title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, status, to_char(sent_at, 'YYYY-MM-DD') AS sent, sent_count FROM financials.updates WHERE NOT coalesce(is_template, false) ORDER BY created_at DESC LIMIT 6").catch(() => ({ rows: [] }))).rows },
+  { name: 'forecasts', module: 'forecast', description: "The company's saved forecasts: for each, base/best/worst case cash at the end, when cash runs out, runway, break-even month, revenue and net income totals, ARR at the end, whether it was imported from an accountant's file, and how many share-link views. Give a name for the monthly figures of one forecast.", input_schema: S({ name: { type: 'string', description: 'Forecast name (part is fine) for monthly detail.' } }),
+    run: async (a) => {
+      const rows = (await db().query<{ id: string; name: string; assumptions: Assumptions; updated_at: string }>("SELECT id, name, assumptions, to_char(updated_at, 'YYYY-MM-DD') AS updated_at FROM financials.forecasts ORDER BY updated_at DESC LIMIT 12")).rows
+      if (!rows.length) return { note: 'No forecasts yet. Make one on the Forecast page (/forecast), or import the accountant\'s file there.' }
+      const st = await shareStats('forecast')
+      const sum = (x: Assumptions, s: 'base' | 'best' | 'worst') => { const r = runForecast({ ...fcDefaults(x.start), ...x }, s).summary; return { cash_end: r2(r.cash_end), cash_runs_out: r.zero_cash, runway_months: r.runway, break_even: r.break_even, revenue_total: r2(r.revenue_total), net_income_total: r2(r.net_total), arr_end: r2(r.arr_end), lowest_cash: r2(r.min_cash), lowest_cash_month: r.min_cash_month } }
+      const out = rows.map((f) => ({ name: f.name, updated: String(f.updated_at).slice(0, 10), currency: f.assumptions.currency, from: f.assumptions.start, months: f.assumptions.months, imported_from: f.assumptions.source?.file ?? null, base: sum(f.assumptions, 'base'), best: sum(f.assumptions, 'best'), worst: sum(f.assumptions, 'worst'), share_links: st[f.id]?.links ?? 0, share_views: st[f.id]?.views ?? 0 }))
+      const one = a.name ? rows.find((f) => f.name.toLowerCase().includes(String(a.name).toLowerCase())) : null
+      return { forecasts: out, ...(one ? { monthly: runForecast({ ...fcDefaults(one.assumptions.start), ...one.assumptions }).months.slice(0, 18).map((m) => ({ month: m.month, revenue: Math.round(m.revenue), costs: Math.round(m.cogs + m.opex), net_income: Math.round(m.net_income), funding: Math.round(m.funding), cash: Math.round(m.cash), headcount: m.headcount })) } : {}) }
+    } },
+  { name: 'cap_table', module: 'equity', description: "The company's cap tables (there can be several, e.g. today's and a pro forma): fully diluted and issued shares, option pool, each holder's fully diluted %, SAFEs and notes. Optionally model a priced round (pre_money and new_money, with option pool target %) or an exit (exit value) on it.", input_schema: S({ name: { type: 'string', description: 'Cap table name; the main one if not given.' }, pre_money: { type: 'number' }, new_money: { type: 'number' }, pool_target_pct: { type: 'number' }, exit: { type: 'number' } }),
+    run: async (a) => {
+      const list = await capTables()
+      if (!list.length) return { note: 'No cap table yet. Set it up on the Cap table page (/cap-table): drop in the lawyer\'s cap table, SAFEs and certificates and it is built for you.' }
+      const pickd = (a.name ? list.find((c) => c.name.toLowerCase().includes(String(a.name).toLowerCase())) : null) ?? list[0]!
+      const d = await loadCapTable(pickd.id), today = new Date().toISOString().slice(0, 10), t = capTable(d, today), st = await shareStats('captable')
+      const res: Record<string, unknown> = { cap_tables: list.map((c) => ({ name: c.name, main: c.is_main, share_views: st[c.id]?.views ?? 0 })), showing: pickd.name,
+        fully_diluted: t.fd, issued: t.issued, option_pool_available: t.pool, options_granted: t.granted,
+        holders: t.rows.sort((x, y) => y.fd - x.fd).slice(0, 20).map((r) => ({ name: r.holder.name, kind: r.holder.kind, shares: r.issued, options: r.options, pct_fully_diluted: r2(r.pctFd) })),
+        safes_and_notes: d.convertibles.filter((c) => c.status === 'outstanding').map((c) => ({ investor: d.holders.find((h) => h.id === c.holder_id)?.name, kind: c.kind, amount: c.amount, currency: c.currency, cap: c.valuation_cap, discount_pct: c.discount_pct, post_money: c.post_money })) }
+      if (a.pre_money && a.new_money && t.fd) { const r = capRound(d, { pre_money: Number(a.pre_money), new_money: Number(a.new_money), pool_target_pct: Number(a.pool_target_pct ?? 10), on: today, investor: 'New investors' }, today)
+        res.round = { price_per_share: r2(r.price * 10000) / 10000, post_money: r.post_money, new_shares: Math.round(r.new_shares), pool_top_up: Math.round(r.topup), conversions: r.conversions.map((c) => ({ investor: c.holder, shares: Math.round(c.shares), price: c.price, via: c.method })), after: r.rows.slice(0, 15).map((x) => ({ name: x.name, before_pct: r2(x.before_pct), after_pct: r2(x.after_pct) })) } }
+      if (a.exit && t.fd) { const w = capWaterfall(d, Number(a.exit), today); res.exit = { value: Number(a.exit), payouts: w.rows.map((x) => ({ who: x.name, amount: Math.round(x.amount), how: x.how })), per_common_share: r2(w.per_common * 10000) / 10000 } }
+      return res
+    } },
+  { name: 'share_link_views', module: 'forecast', description: 'Who opened the private links to forecasts and cap tables: link name, what it shows, viewer email/name, when and for how long.', input_schema: S(),
+    run: async () => (await db().query("SELECT l.kind, coalesce(f.name, c.name) AS shows, l.label AS link, v.email, v.name, to_char(v.started_at, 'YYYY-MM-DD HH24:MI') AS opened, v.seconds FROM financials.share_views v JOIN financials.share_links l ON l.id = v.link_id LEFT JOIN financials.forecasts f ON l.kind = 'forecast' AND f.id = l.object_id LEFT JOIN equity.captables c ON l.kind = 'captable' AND c.id = l.object_id ORDER BY v.started_at DESC LIMIT 30").catch(() => ({ rows: [] }))).rows },
+  { name: 'boards', module: 'boards', description: 'Financial boards (per audience) with their headline figures, which forecast is on each, and share-link views.', input_schema: S(),
+    run: async () => (await db().query('SELECT b.name, b.kpis, b.share_enabled AS shared, b.views, f.name AS forecast FROM financials.boards b LEFT JOIN financials.forecasts f ON f.id = b.forecast_id ORDER BY b.sort').catch(() => ({ rows: [] }))).rows }]
 const aidi: Tool[] = [
+  { name: 'people_and_pay', module: 'team', description: 'Admins only. Staff and consultants (Team > People): type, title, company, pay and frequency, agreement status, contract flags (no signed agreement, ending soon), pay due or overdue, and paid this year.', input_schema: S(),
+    run: async (_a, c) => {
+      if (!c.roles.includes('admin')) return { note: 'Only admins can see people, contracts and pay.' }
+      const people = (await db().query<HrPerson & { entity: string | null }>("SELECT p.*, to_char(p.start_date, 'YYYY-MM-DD') AS start_date, to_char(p.end_date, 'YYYY-MM-DD') AS end_date, to_char(p.contract_end, 'YYYY-MM-DD') AS contract_end, p.pay_amount::float AS pay_amount, e.name AS entity FROM hr.people p LEFT JOIN core.entities e ON e.id = p.entity_id ORDER BY p.name").catch(() => ({ rows: [] }))).rows
+      if (!people.length) return { note: 'No people added yet (Team > People, contracts & pay).' }
+      const pays = (await db().query<HrPay>("SELECT person_id, period, amount::float AS amount, currency, to_char(paid_on, 'YYYY-MM-DD') AS paid_on FROM hr.payments")).rows
+      const ags = (await db().query<HrAgreement>("SELECT person_id, kind, title, status, to_char(ends_on, 'YYYY-MM-DD') AS ends_on, to_char(created_at, 'YYYY-MM-DD') AS created_at FROM hr.agreements")).rows
+      const s = hrStatus(people, pays, ags, new Date().toISOString().slice(0, 10))
+      return { people: people.map((p) => ({ name: p.name, kind: p.kind, title: p.title, company: p.entity, status: p.status, pay: p.pay_amount, currency: p.currency, frequency: p.pay_frequency, agreements: ags.filter((a) => a.person_id === p.id).map((a) => a.title + ' (' + a.status + ')'), flags: (s.flags[p.id] ?? []).map((f) => f.text) })), pay_due: s.due.slice(0, 20).map((d) => ({ name: d.name, due: d.due, period: d.period, amount: d.amount, currency: d.currency, overdue: d.overdue })), monthly_cost: monthlyCost(people) }
+    } },
   { name: 'entity_metrics', module: 'financials', description: 'Latest monthly metrics (revenue, margins, burn, runway, cash) for a group entity or company, by name.', input_schema: S({ name: { type: 'string' } }, ['name']),
     run: async (a) => { const e = await entityByName(a.name); return e ? { entity: e.name, ...(await metricsFor('entity:' + e.id)) } : { note: 'No entity matches that name.' } } },
   { name: 'entities', module: 'entities', description: 'Group entities (companies, funds, trusts, SPVs) with type, jurisdiction, status and parent.', input_schema: S(),
@@ -107,7 +148,7 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   const scoped = String(event.context.entityScope ?? '').split(',').filter(Boolean).length > 0
   const today = new Date().toISOString().slice(0, 10)
   const system = (isCo
-    ? 'You are the AI analyst inside Finvry, helping the founder and team of ' + (org?.name ?? 'this company') + ' with their own company: metrics and statements, fundraising, investor updates, decks, meetings and compliance.'
+    ? 'You are the AI analyst inside Finvry, helping the founder and team of ' + (org?.name ?? 'this company') + ' with their own company: metrics and statements, boards, forecasts (several can be kept, imported from an accountant\'s file, and shared by private links that show who viewed them), cap tables (several, e.g. today\'s and a pro forma; built from lawyers\' documents; round and exit modelling; shareable), fundraising, investor updates, decks, meetings and compliance. For runway or cash questions, use both actual metrics and the forecasts and say which is which.'
     : 'You are the AI analyst inside Aidi OS, the internal platform of The Aidi Group (family office and venture firm): group entities and financials, venture deals, portfolio, funds and LPs, credit (venture debt), bank and cash, payments, deployments, rentals (Aidi Haven), wealth management, trusts and governance, meeting minutes, client services and compliance.')
     + '\nToday is ' + today + '. The user is on ' + path + '.' + (scoped ? ' This user is limited to some companies: answer only from what the tools return, which is already limited to them.' : '')
     + '\nAreas this user can open (label and path): ' + (areas || 'none') + '. Only discuss and link these areas; if asked about anything else, say they do not have access and suggest asking an admin.'

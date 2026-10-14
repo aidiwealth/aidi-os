@@ -52,5 +52,5 @@ const val = (v: number | null) => (v ? 'Worth $' + (v >= 1000 ? Math.round(v / 1
 .fb { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--c-rule); flex-wrap: wrap; }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; } .tags { gap: 0; } .tags em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .tags em + em::before { content: '·'; margin: 0 6px; } .tags .v { color: var(--c-ink); font-weight: 500; }
 .go { font-size: 13px; font-weight: 600; color: #00183A; white-space: nowrap; } .fc:hover .go, .pc:hover .go { text-decoration: underline; } .go.done { color: var(--c-muted); font-weight: 500; }
-.empty { background: #fff; border: 1px dashed var(--c-rule-strong); padding: 32px; text-align: center; color: var(--c-muted); margin: 0; }
+.empty { padding: 32px 0; text-align: center; color: var(--c-muted); margin: 0; }
 </style>

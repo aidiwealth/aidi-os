@@ -16,6 +16,7 @@ async function removeUser(u: { id: string; email: string }) { if (!confirm('Remo
 const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
 const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', include_subsidiaries: false, send_email: true })
 const busy = ref(false)
+const ttab = ref<'access' | 'people'>(useRoute().query.t === 'people' ? 'people' : 'access'); watch(ttab, (t) => useRouter().replace({ query: { t } }))
 const msg = ref('')
 const ok = ref('')
 const adding = reactive<Record<string, { role: string; entity_id: string; subs: boolean }>>({})
@@ -49,6 +50,9 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
     <h1>Team</h1>
     <p class="lead">Who can sign in to this workspace, and what they can see. Changes take effect immediately and are logged.</p>
 
+    <nav v-if="!isCo" class="ttabs"><button :class="{ on: ttab === 'access' }" @click="ttab = 'access'">Access</button><button :class="{ on: ttab === 'people' }" @click="ttab = 'people'">People, contracts &amp; pay</button></nav>
+    <TeamPeople v-if="!isCo && ttab === 'people'" />
+    <template v-else>
     <form class="card invite" @submit.prevent="invite">
       <h2>Invite someone</h2>
       <div class="grid">
@@ -95,6 +99,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
         </tr>
       </tbody>
     </table>
+    </template>
   </section>
 </template>
 
@@ -125,4 +130,5 @@ b { color: var(--c-navy); font-weight: 500; }
 .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; } .chk input { width: auto; } .chk.sm { font-size: 12px; }
 .nmf { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; } .nmf input { font: inherit; font-size: 13.5px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); min-width: 0; width: 180px; } .nme { font-size: 12px; font-weight: 400; margin-left: 4px; opacity: .7; } .nme:hover { opacity: 1; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk:hover { text-decoration: underline; }
+.ttabs { display: flex; gap: 24px; border-bottom: 1px solid var(--c-rule); margin: 4px 0 18px; } .ttabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 0; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; margin-bottom: -1px; } .ttabs button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); font-weight: 500; }
 </style>

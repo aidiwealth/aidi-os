@@ -41,7 +41,7 @@ const sel = ref<Perk | null>(null)
 .ln { color: var(--c-ink-soft); text-decoration: none; font-size: 14.5px; } .ln:hover { color: #00183A; }
 .cta { background: #00183A; color: #fff; text-decoration: none; font-weight: 600; font-size: 14.5px; padding: 10px 18px; } .cta:hover { background: #0c2c5c; } .cta.big { padding: 14px 24px; font-size: 15.5px; white-space: nowrap; }
 .ghost { color: #00183A; text-decoration: none; font-weight: 600; font-size: 15px; padding: 13px 20px; border: 1px solid var(--c-rule-strong); } .ghost:hover { border-color: #00183A; }
-.hero { padding: clamp(56px, 8vw, 110px) 0 clamp(40px, 5vw, 64px); background: #fff; border-bottom: 1px solid var(--c-rule); }
+.hero { padding: clamp(56px, 8vw, 110px) 0 clamp(40px, 5vw, 64px); background: #fff; }
 .hg { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: end; }
 .eb { margin: 0 0 18px; font-size: 13px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--c-muted); }
 .hero h1 { margin: 0; color: #00183A; font-size: clamp(38px, 4.6vw, 64px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; } .hero h1 span { color: #6b7385; }

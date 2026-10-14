@@ -17,26 +17,26 @@ function cellText(v: ExcelJS.CellValue): string {
   return String(v)
 }
 
-export async function sheetToText(buf: Buffer, ext: 'xlsx' | 'csv'): Promise<string> {
+export async function sheetToText(buf: Buffer, ext: 'xlsx' | 'csv', sheets = 3, maxRows = MAX_ROWS): Promise<string> {
   const lines: string[] = []
   if (ext === 'csv') {
-    for (const line of buf.toString('utf8').split(/\r?\n/).slice(0, MAX_ROWS)) lines.push(line.slice(0, 2000))
+    for (const line of buf.toString('utf8').split(/\r?\n/).slice(0, maxRows)) lines.push(line.slice(0, 2000))
   } else {
     const { default: Excel } = await import('exceljs') // loaded only when a file is uploaded
     const wb = new Excel.Workbook()
     await wb.xlsx.load(buf as unknown as ArrayBuffer)
-    wb.worksheets.slice(0, 3).forEach((ws) => {
+    wb.worksheets.slice(0, sheets).forEach((ws) => {
       lines.push('## Sheet: ' + ws.name)
       let n = 0
       ws.eachRow({ includeEmpty: false }, (row) => {
-        if (n++ >= MAX_ROWS) return
+        if (n++ >= maxRows) return
         const cells: string[] = []
         for (let c = 1; c <= Math.min(ws.columnCount, MAX_COLS); c++) cells.push(cellText(row.getCell(c).value).replace(/[\t\n]/g, ' ').slice(0, 60))
         lines.push(cells.join(' | ').replace(/( \| )+$/, ''))
       })
     })
   }
-  return lines.join('\n').slice(0, MAX_CHARS)
+  return lines.join('\n').slice(0, sheets > 3 ? MAX_CHARS * 1.5 : MAX_CHARS)
 }
 
 const num = z.number().finite().nullable()

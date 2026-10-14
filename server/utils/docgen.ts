@@ -11,6 +11,11 @@ export const DOC_TYPES: Record<string, { name: string; blurb: string; group: str
     { key: 'candidate', label: 'Candidate name', required: true }, { key: 'role', label: 'Role', required: true }, { key: 'salary', label: 'Salary (with currency and period)', placeholder: 'e.g. ₦1,200,000 per month', required: true },
     { key: 'equity', label: 'Equity (optional)', placeholder: 'e.g. 0.5% options, 4-year vesting, 1-year cliff' }, { key: 'start', label: 'Start date', type: 'date', required: true },
     { key: 'location', label: 'Work location', placeholder: 'e.g. Remote / Lagos' }, { key: 'manager', label: 'Reports to' }] },
+  employment: { name: 'Employment agreement', blurb: 'Full employment contract: role, pay, hours, leave, confidentiality, IP and termination.', group: 'People', fields: [
+    { key: 'employee', label: 'Employee (name and address)', type: 'textarea', required: true }, { key: 'role', label: 'Job title and duties', type: 'textarea', required: true },
+    { key: 'salary', label: 'Pay (with currency and period)', placeholder: 'e.g. ₦1,200,000 per month, paid on the 25th', required: true }, { key: 'start', label: 'Start date', type: 'date', required: true },
+    { key: 'location', label: 'Work location and hours', placeholder: 'e.g. Remote, Monday to Friday, 9am to 5pm' }, { key: 'probation', label: 'Probation', placeholder: 'e.g. 3 months' },
+    { key: 'leave', label: 'Annual leave', placeholder: 'e.g. 20 working days' }, { key: 'notice', label: 'Notice period', placeholder: 'e.g. 1 month' }, { key: 'manager', label: 'Reports to' }, { key: 'term', label: 'Fixed term end date (if any)', type: 'date' }] },
   mutual_nda: { name: 'Mutual NDA', blurb: 'Confidentiality agreement with another company or person.', group: 'Commercial', fields: [
     { key: 'party', label: 'Other party (name and address)', type: 'textarea', required: true }, { key: 'purpose', label: 'Purpose', placeholder: 'e.g. Evaluating a partnership', required: true },
     { key: 'term', label: 'Term', type: 'select', options: ['1 year', '2 years', '3 years', '5 years'] }] },
@@ -26,6 +31,14 @@ export const DOC_TYPES: Record<string, { name: string; blurb: string; group: str
   ip_assignment: { name: 'IP assignment (founder or employee)', blurb: 'Assigns inventions and IP to the company.', group: 'Corporate', fields: [
     { key: 'person', label: 'Person assigning', required: true }, { key: 'role', label: 'Role', type: 'select', options: ['Founder', 'Employee', 'Contractor'] },
     { key: 'prior', label: 'Prior inventions to exclude (optional)', type: 'textarea' }] } }
+// Company details for a drafted document, from an entity of the group (or the workspace itself).
+export async function docCompany(entityId: string | null): Promise<{ name: string; form: string; state: string; country: string; ref: string }> {
+  const org = (await currentOrg())!, s = org.settings as Record<string, string>
+  const ent = entityId ? (await db().query<{ name: string; legal_name: string | null; jurisdiction: string | null }>('SELECT name, legal_name, jurisdiction FROM core.entities WHERE id = $1', [entityId])).rows[0] : undefined
+  const US: Record<string, string> = { DE: 'Delaware', CA: 'California', TX: 'Texas', NY: 'New York', WY: 'Wyoming', FL: 'Florida', AZ: 'Arizona', NV: 'Nevada' }
+  if (!ent) return { name: org.name, form: s.entity_type || 'other', state: s.state || '', country: s.country || '', ref: 'org:' + org.id }
+  return { name: ent.legal_name || ent.name, form: /llc/i.test(ent.name) ? 'us_llc' : /inc|corp/i.test(ent.name) ? 'us_corp' : /limited|ltd/i.test(ent.name) ? 'ng_ltd' : 'other', state: ent.jurisdiction?.startsWith('US-') ? US[ent.jurisdiction.slice(3)] ?? ent.jurisdiction.slice(3) : '', country: ent.jurisdiction?.startsWith('US') ? 'United States' : ent.jurisdiction === 'NG' ? 'Nigeria' : ent.jurisdiction ?? '', ref: 'entity:' + entityId }
+}
 export async function draftDocument(type: string, answers: Record<string, string>, company: { name: string; form: string; state: string; country: string; ref: string }) {
   const t = DOC_TYPES[type]!
   const { z } = await import('zod')

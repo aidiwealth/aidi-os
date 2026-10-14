@@ -1,19 +1,19 @@
 <script setup lang="ts">
 // Financial boards: one per audience (CFO, Executive, Team, Investors) plus your own; edit and share.
 useHead({ title: 'Boards' })
-interface B { id: string; audience: string; name: string; kpis: string[]; charts: { title: string; metrics: string[]; type?: string }[]; period: string; count: number; note: string | null; share_url: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; data: Parameters<typeof useBoardData>[0] }
+interface B { id: string; audience: string; name: string; kpis: string[]; charts: { title: string; metrics: string[]; type?: string }[]; period: string; count: number; note: string | null; share_url: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; data: Parameters<typeof useBoardData>[0]; forecast: { id: string; name: string; assumptions: import('~/shared/forecast').Assumptions } | null }
 function useBoardData(d: { labels: string[]; series: Record<string, (number | null)[]>; kpis: { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }[]; charts: { title: string; metrics: string[] }[]; currency: string; period: string }) { return d }
-const { data, refresh } = await useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }> }>('/api/financials/boards')
+const { data, refresh } = await useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }>; forecasts: { id: string; name: string }[] }>('/api/financials/boards')
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => !!me.value?.roles?.some((r) => ['admin', 'gp'].includes(r)))
 const sel = ref(''); watchEffect(() => { if (!sel.value && data.value?.boards.length) sel.value = data.value.boards[0]!.id })
 const board = computed(() => data.value?.boards.find((b) => b.id === sel.value) ?? null)
 const msg = ref(''); const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function setPeriod(period: string) { if (!board.value) return; await $fetch('/api/financials/boards', { method: 'POST', body: { id: board.value.id, period, count: period === 'year' ? 5 : period === 'quarter' ? 8 : 12 } }); await refresh() }
-const ed = reactive({ open: false, name: '', note: '', kpis: [] as string[], charts: [] as { title: string; metrics: string[]; type?: string }[] })
-function openEdit() { const b = board.value!; Object.assign(ed, { open: true, name: b.name, note: b.note ?? '', kpis: [...b.kpis], charts: JSON.parse(JSON.stringify(b.charts)) }) }
+const ed = reactive({ open: false, name: '', note: '', kpis: [] as string[], charts: [] as { title: string; metrics: string[]; type?: string }[], forecast_id: '' })
+function openEdit() { const b = board.value!; Object.assign(ed, { open: true, name: b.name, note: b.note ?? '', kpis: [...b.kpis], charts: JSON.parse(JSON.stringify(b.charts)), forecast_id: b.forecast?.id ?? '' }) }
 function toggleKpi(k: string) { ed.kpis = ed.kpis.includes(k) ? ed.kpis.filter((x) => x !== k) : [...ed.kpis, k] }
-async function saveEdit() { msg.value = ''; try { await $fetch('/api/financials/boards', { method: 'POST', body: { id: board.value!.id, name: ed.name, note: ed.note, kpis: ed.kpis, charts: ed.charts.filter((c) => c.metrics.length) } }); ed.open = false; await refresh() } catch (e) { msg.value = err(e) } }
+async function saveEdit() { msg.value = ''; try { await $fetch('/api/financials/boards', { method: 'POST', body: { id: board.value!.id, name: ed.name, note: ed.note, kpis: ed.kpis, charts: ed.charts.filter((c) => c.metrics.length), ...(data.value?.forecasts.length ? { forecast_id: ed.forecast_id || null } : {}) } }); ed.open = false; await refresh() } catch (e) { msg.value = err(e) } }
 async function newBoard() { const r = await $fetch<{ id: string }>('/api/financials/boards', { method: 'POST', body: { name: 'New board' } }); await refresh(); sel.value = r.id; openEdit() }
 const sh = reactive({ open: false, expires: 0, copied: false })
 async function share(enabled: boolean, reset = false) { msg.value = ''; try { await $fetch('/api/financials/boards', { method: 'POST', body: { id: board.value!.id, share: { enabled, expires_days: sh.expires, reset } } }); await refresh() } catch (e) { msg.value = err(e) } }
@@ -30,13 +30,15 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
         <div class="seg"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly']]" :key="k" :class="{ on: board.period === k }" :disabled="!canEdit" @click="setPeriod(k)">{{ l }}</button></div>
         <button v-if="canEdit" class="btn secondary" @click="openEdit">Edit board</button><button v-if="canEdit" class="btn" @click="sh.open = true">{{ board.share_enabled ? 'Shared · ' + board.views + ' views' : 'Share' }}</button></div></div>
       <BoardView :data="board.data" :metrics="data.metrics" :editable="canEdit" @type="setType" />
+      <div v-if="board.forecast" class="bf"><div class="bfh"><h2>Forecast · {{ board.forecast.name }}</h2><NuxtLink :to="'/forecast?f=' + board.forecast.id" class="lk2">Open forecast</NuxtLink></div><ForecastSummary :assumptions="board.forecast.assumptions" compact /></div>
+      <p v-else-if="canEdit && data.forecasts.length" class="mut addf">Add one of your forecasts to this board under Edit board.</p>
     </template>
     <p v-if="msg" class="error">{{ msg }}</p>
     <AppModal :open="ed.open" title="Edit board" wide @close="ed.open = false">
       <div class="ef"><label class="label">Name<input v-model="ed.name" maxlength="80"></label><label class="label">Description<input v-model="ed.note" maxlength="1000"></label>
         <div><b class="lb">Headline figures</b><div class="mchips"><button v-for="(m, k) in data.metrics" :key="k" type="button" :class="{ on: ed.kpis.includes(k) }" @click="toggleKpi(k)">{{ m.label }}</button></div></div>
         <div><b class="lb">Charts</b><div v-for="(c, i) in ed.charts" :key="i" class="crow"><div class="crh"><input v-model="c.title" maxlength="80" placeholder="Chart title"><select v-model="c.type" aria-label="Chart type"><option :value="undefined">Line</option><option value="bar">Bar</option><option value="area">Area</option><option value="pie">Pie</option><option value="table">Table</option></select></div><div class="mchips sm"><button v-for="(m, k) in data.metrics" :key="k" type="button" :class="{ on: c.metrics.includes(k) }" @click="c.metrics = c.metrics.includes(k) ? c.metrics.filter((x) => x !== k) : c.metrics.length < 3 ? [...c.metrics, k] : c.metrics">{{ m.label }}</button></div><button type="button" class="lk" @click="ed.charts.splice(i, 1)">Remove</button></div>
-          <button type="button" class="btn secondary sm" @click="ed.charts.push({ title: 'New chart', metrics: ['revenue'] })">+ Add a chart</button><p class="hint">Up to three figures per chart.</p></div></div>
+          <button type="button" class="btn secondary sm" @click="ed.charts.push({ title: 'New chart', metrics: ['revenue'] })">+ Add a chart</button><label v-if="data.forecasts.length" class="label fsel">Forecast on this board<select v-model="ed.forecast_id"><option value="">None</option><option v-for="f in data.forecasts" :key="f.id" :value="f.id">{{ f.name }}</option></select></label><p class="hint">Up to three figures per chart.</p></div></div>
       <template #foot><DeleteButton v-if="board?.audience === 'custom'" type="board" :id="board.id" :name="board.name" @deleted="ed.open = false; sel = ''; refresh()" /><button class="btn secondary" @click="ed.open = false">Cancel</button><button class="btn" @click="saveEdit">Save</button></template>
     </AppModal>
     <AppModal :open="sh.open" :title="'Share ' + (board?.name ?? '') + ' board'" @close="sh.open = false">
@@ -58,4 +60,5 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
 .crow { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--c-rule); padding: 10px; margin-bottom: 8px; } .lk { background: none; border: 0; color: var(--c-danger); font: inherit; font-size: 12.5px; cursor: pointer; align-self: flex-start; } .btn.sm { height: 30px; padding: 0 10px; font-size: 12.5px; } .hint { font-size: 12px; color: var(--c-muted); margin: 4px 0 0; }
 .lnk { display: flex; gap: 8px; align-items: center; background: var(--c-signal-soft); padding: 10px; } .lnk code { flex: 1; font-size: 12.5px; word-break: break-all; } .row { display: flex; gap: 12px; align-items: center; } .error { color: var(--c-danger); }
 .crh { display: flex; gap: 8px; } .crh input { flex: 1; }
+.bf { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; } .bfh { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; } .bfh h2 { margin: 0; font-size: 18px; } .lk2 { font-size: 13px; color: var(--c-blue-deep); text-decoration: none; } .addf { margin-top: 14px; } .fsel { margin-top: 14px; }
 </style>
