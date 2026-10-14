@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Billing for a company: invoices, the service jobs they pay for, and the wallet they can pay from.
 const route = useRoute()
-const tabs = [{ to: '/client/invoices', label: 'Invoices' }, { to: '/client/jobs', label: 'Service jobs' }, { to: '/wallet', label: 'Wallet' }]
+const { canPath } = useModuleAccess()
+const tabs = computed(() => [{ to: '/client/invoices', label: 'Invoices' }, { to: '/client/jobs', label: 'Service jobs' }, { to: '/wallet', label: 'Wallet' }].filter((t) => canPath(t.to)))
 </script>
 <template><nav class="bt"><NuxtLink v-for="t in tabs" :key="t.to" :to="t.to" :class="{ on: route.path === t.to }">{{ t.label }}</NuxtLink></nav></template>
 <style scoped>

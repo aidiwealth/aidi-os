@@ -222,6 +222,8 @@ export async function syncCalendars(): Promise<number> {
         await db().query('INSERT INTO rentals.calendar (unit_id, uid, starts, ends, kind, confirmation_code, summary) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING', [u.id, e.uid.slice(0, 300), e.starts, e.ends, e.kind, e.code, e.summary])
         if (e.kind === 'reserved' && old.size && !old.has(e.uid.slice(0, 300)) && e.ends >= new Date().toISOString().slice(0, 10)) await db().query('INSERT INTO rentals.activity (property_id, unit_id, event, detail) VALUES ($1,$2,$3,$4)', [u.property_id, u.id, 'New booking', u.name + ' · ' + e.starts + ' → ' + e.ends + (e.code ? ' · ' + e.code : '')])
       }
+      // First sync of a listing: one line in Activity instead of a "New booking" for every existing stay.
+      if (!old.size) { const up = evs.filter((e) => e.kind === 'reserved' && e.ends >= new Date().toISOString().slice(0, 10)).length; const first = !(await db().query('SELECT 1 FROM rentals.units WHERE id = $1 AND ical_synced_at IS NOT NULL', [u.id])).rowCount; if (first) await db().query('INSERT INTO rentals.activity (property_id, unit_id, event, detail) VALUES ($1,$2,$3,$4)', [u.property_id, u.id, 'Calendar connected', u.name + ' · ' + up + ' upcoming stay' + (up === 1 ? '' : 's')]) }
       await db().query('UPDATE rentals.units SET ical_synced_at = now() WHERE id = $1', [u.id]); n++
     } catch (err) { console.error('[rentals] ical', u.name, (err as Error).message) }
   }

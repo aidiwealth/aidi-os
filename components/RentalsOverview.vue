@@ -38,6 +38,8 @@ const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 10
         <p v-if="!data.activity.length" class="mut">New bookings, reviews and imports appear here.</p></div>
     </div>
 
+    <RentalsStays />
+
     <h2 class="h2">{{ data.label }} · all properties <span class="vs">vs {{ data.kind === 'month' ? 'the month before' : data.kind === 'quarter' ? 'the quarter before' : 'the year before' }}</span></h2>
     <p v-if="data.total.now.books" class="bk">Part of this month comes from the bank (Airbnb deposits, itemised costs) or the monthly books. Per-room income, occupancy and nightly rate start from the months you import Airbnb files for.</p>
     <div class="fx-stats six">

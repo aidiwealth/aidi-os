@@ -27,11 +27,10 @@ export default defineEventHandler(async (event) => {
   const { entity, range } = q.data
   const since = range === '90d' ? "now() - interval '90 days'" : range === '12m' ? "now() - interval '12 months'" : "'-infinity'::timestamptz"
   const bucket = range === '90d' ? 'week' : 'month'
-  const on = await enabledModules()
-  const vc = canUse(MODULES.find((m) => m.code === 'pipeline')!, user.roles)
+  const u = await usableModules(user.roles)
   const out: Record<string, unknown> = { range, entity: entity ?? null, bucket }
 
-  if (vc && on.has('pitches')) {
+  if (u.has('pitches')) {
     const p = await one<{ received: number; avg_score: string | null; decided: number; advanced: number; median_days: string | null }>(
       `SELECT (SELECT count(*)::int FROM deals.pitches WHERE received_at >= ${since} AND status <> 'spam') AS received,
               (SELECT avg(s.score)::numeric(10,1) FROM deals.screenings s JOIN deals.pitches p ON p.id = s.pitch_id WHERE p.received_at >= ${since}) AS avg_score,
@@ -46,7 +45,7 @@ export default defineEventHandler(async (event) => {
     out.pitches = { received: p.received, avgScore: p.avg_score === null ? null : Number(p.avg_score), decided: p.decided, advanceRate: p.decided ? Math.round((p.advanced / p.decided) * 100) : null, medianDaysToDecision: p.median_days === null ? null : Number(p.median_days), series: fill(series.rows.map((r) => ({ period: r.b, value: r.c })), bucketKeys(range, bucket, series.rows[0]?.b)) }
   }
 
-  if (vc && on.has('pipeline')) {
+  if (u.has('pipeline')) {
     const ef = entity ? 'AND d.vehicle_entity_id = $1' : ''
     const args = entity ? [entity] : []
     const st = await db().query<{ stage: string; c: number }>(`SELECT d.stage, count(*)::int AS c FROM deals.deals d WHERE true ${ef} GROUP BY d.stage`, args)
@@ -68,7 +67,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (vc && on.has('portfolio')) {
+  if (u.has('portfolio')) {
     const ef = entity ? 'AND c.holding_entity_id = $1' : ''
     const args = entity ? [entity] : []
     const rev = await db().query<{ period: string; v: string }>(

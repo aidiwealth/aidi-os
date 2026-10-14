@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { canPath } = useModuleAccess()
 // Your public investor page: what investors see at finvry.com/c/your-company. Metrics come from Financials.
 useHead({ title: 'Investor page' })
 interface Pg { deck_id?: string | null; board_id?: string | null; logo_id?: string | null; cover_id?: string | null; slug: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; views: number; last_viewed_at: string | null }
@@ -35,7 +36,7 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
         <div class="label"><span class="lh">Headline<AiWrite v-model="f.headline" purpose="investor_page" field="headline" :context="{ about: f.about, website: f.website }" /></span><input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></div>
         <div class="label"><span class="lh">About the company<AiWrite v-model="f.about" purpose="investor_page" field="about" :context="{ headline: f.headline, website: f.website }" /></span><ClientOnly><RichEditor v-model="f.about" :min-height="280" :max-length="60000" placeholder="What you do, who you serve, traction, team." /></ClientOnly></div>
         <div class="two"><label class="label">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label><label class="label">Deck<select v-model="f.deck_id"><option :value="null">{{ deckList?.decks.length ? 'Main deck (★ in Decks)' : 'No deck yet' }}</option><option v-for="d in deckList?.decks ?? []" :key="d.id" :value="d.id">{{ d.title }}{{ d.primary_deck ? ' ★' : '' }} · {{ d.stats.total }} views</option></select>
-          <span class="muted">Shown with viewer analytics. <NuxtLink to="/decks">Upload or manage decks</NuxtLink>{{ deckList?.decks.length ? '' : ' (none yet)' }}.</span></label>
+          <span class="muted">Shown with viewer analytics. <NuxtLink v-if="canPath('/decks')" to="/decks">Upload or manage decks</NuxtLink>{{ deckList?.decks.length ? '' : ' (none yet)' }}.</span></label>
         <label v-if="!deckList?.decks.length" class="label">Or a deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
         <div v-if="data.room?.available" class="room"><label class="chk"><input type="checkbox" :checked="data.room.on" :disabled="busy" @change="setRoom(($event.target as HTMLInputElement).checked)"> Show an “Open data room” button</label>
@@ -44,7 +45,7 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
       <div class="card frm">
         <b>Numbers to show</b>
         <label class="label">Source<select v-model="f.board_id"><option :value="null">Choose metrics here</option><option v-for="b in boards?.boards ?? []" :key="b.id" :value="b.id">{{ b.name }} board (same figures and charts)</option></select></label>
-        <p v-if="f.board_id" class="muted">The page shows this board exactly as in <NuxtLink to="/financials/boards">Boards</NuxtLink>. Change its figures and charts there.</p>
+        <p v-if="f.board_id" class="muted">The page shows this board exactly as in <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards">Boards</NuxtLink><template v-else>Boards</template>. Change its figures and charts there.</p>
         <template v-else><p class="muted">Pick up to 8. Investors see the latest value, the change and a trend chart.</p>
         <label v-for="m in data.metrics" :key="m.key" class="chk"><input v-model="f.metrics" type="checkbox" :value="m.key" :disabled="!f.metrics.includes(m.key) && f.metrics.length >= 8"> {{ m.label }}</label>
         <label class="label">Show figures<select v-model="f.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label></template>

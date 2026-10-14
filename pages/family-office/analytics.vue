@@ -44,25 +44,25 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
             <ul v-if="data.cash.stale.length" class="stale"><li v-for="s in data.cash.stale" :key="s.id"><NuxtLink :to="'/banking/' + s.id">{{ s.label }}</NuxtLink><span>{{ s.entity }} · last statement {{ day(s.as_of) }}</span></li></ul>
             <p v-else class="muted">Every account has a statement from the last 45 days.</p></div>
         </div>
-        <h2 class="sec">Entities, documents and group companies</h2>
+        <h2 class="sec">Entities{{ data.documents ? ', documents' : '' }}{{ data.groupCompanies ? ' and group companies' : '' }}</h2>
       </template>
       <div class="kpis">
         <div class="kpi"><span class="label">Active entities</span><b>{{ data.entities.byStatus.active ?? 0 }}</b><span class="sub">{{ data.entities.byStatus.forming ?? 0 }} forming · {{ (data.entities.byStatus.dormant ?? 0) + (data.entities.byStatus.closed ?? 0) }} dormant or closed</span></div>
-        <div class="kpi"><span class="label">Group companies</span><b>{{ data.groupCompanies.count }}</b><span class="sub">{{ data.groupCompanies.subsidiaries }} subsidiaries · {{ data.groupCompanies.affiliates }} affiliates</span></div>
+        <template v-if="data.groupCompanies"><div class="kpi"><span class="label">Group companies</span><b>{{ data.groupCompanies.count }}</b><span class="sub">{{ data.groupCompanies.subsidiaries }} subsidiaries · {{ data.groupCompanies.affiliates }} affiliates</span></div>
         <div class="kpi"><span class="label">Group company revenue</span><b>{{ usd(data.groupCompanies.revenue) }}</b><span class="sub">latest month, combined</span></div>
-        <div class="kpi"><span class="label">Group company cash</span><b>{{ usd(data.groupCompanies.cash) }}</b><span class="sub">latest reported, combined</span></div>
+        <div class="kpi"><span class="label">Group company cash</span><b>{{ usd(data.groupCompanies.cash) }}</b><span class="sub">latest reported, combined</span></div></template>
       </div>
-      <div class="charts">
+      <div v-if="data.groupCompanies" class="charts">
         <TrendChart title="Group company revenue" sub="Combined, per month" unit="usd" :points="pts(data.groupCompanies.revenueSeries, true)" foot="Subsidiaries and affiliates, as reported" />
       </div>
       <div class="three">
         <div class="card"><DonutChart title="Entities by type" total-label="Entities" :segments="kinds.map(([k, c]) => ({ label: KIND[k] ?? k, value: c }))" /></div>
-        <div class="card"><DonutChart title="Documents by entity" total-label="Documents" :segments="data.documents.byEntity.map((d: any) => ({ label: d.name, value: d.c }))" /></div>
-        <div class="card"><h3>Companies held by entity</h3>
+        <div v-if="data.documents" class="card"><DonutChart title="Documents by entity" total-label="Documents" :segments="data.documents.byEntity.map((d: any) => ({ label: d.name, value: d.c }))" /></div>
+        <div v-if="data.groupCompanies" class="card"><h3>Companies held by entity</h3>
           <div v-for="d in data.heldByEntity" :key="d.name" class="bar"><span>{{ d.name }}</span><i :style="{ width: (d.c / maxOf(data.heldByEntity)) * 100 + '%' }" /><b>{{ d.c }}</b></div>
           <p v-if="!data.heldByEntity.length" class="muted">No holdings recorded.</p></div>
       </div>
-      <div class="card">
+      <div v-if="data.groupCompanies" class="card">
         <h3>Group companies</h3>
         <table v-if="data.groupCompanies.list.length" class="table">
           <thead><tr><th>Company</th><th>Relationship</th><th>Held by</th><th>Revenue (latest)</th><th>Runway</th></tr></thead>

@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     last, growth, series, mix: last ? [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
     due: due.rows, page, shares, services, wallet: await walletOf(org.id),
     setup: await (async () => {
-      const mods = await enabledModules()
+      const mods = await usableModules(user.roles)
       const decks = Number((await db().query<{ n: string }>('SELECT count(*) AS n FROM fundraise.decks').catch(() => ({ rows: [{ n: '0' }] }))).rows[0]?.n ?? 0)
       const ups = Number((await db().query<{ n: string }>("SELECT count(*) AS n FROM financials.updates WHERE status = 'sent'").catch(() => ({ rows: [{ n: '0' }] }))).rows[0]?.n ?? 0)
       return [

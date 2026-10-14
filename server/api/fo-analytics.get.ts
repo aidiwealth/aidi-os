@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   const { entity, range } = q.data
   const since = rangeSql(range), bucket = bucketFor(range)
   const levels = visibleLevels(user.roles)
+  const u = await usableModules(user.roles)
   const ents = await db().query<{ status: string; kind: string; c: number }>('SELECT status, kind, count(*)::int AS c FROM core.entities GROUP BY status, kind')
   const byStatus: Record<string, number> = {}, byKind: Record<string, number> = {}
   for (const r of ents.rows) { byStatus[r.status] = (byStatus[r.status] ?? 0) + r.c; byKind[r.kind] = (byKind[r.kind] ?? 0) + r.c }
@@ -44,8 +45,7 @@ export default defineEventHandler(async (event) => {
       WHERE at >= ${since} AND actor_user_id IS NOT NULL ${entity ? 'AND entity_id = $1' : ''} GROUP BY 1 ORDER BY 1`, entity ? [entity] : [])
   // Group cash: only for people who can use Bank & cash, and only when it is switched on. Balances come from tied-out statements.
   let cash: unknown = null
-  const bankMod = MODULES.find((m) => m.code === 'banking')
-  if (bankMod && (await enabledModules()).has('banking') && canUse(bankMod, user.roles)) {
+  if (u.has('banking')) {
     const af = entity ? 'AND a.entity_id = $1' : ''
     const aArgs = entity ? [entity] : []
     const latest = await db().query<{ id: string; entity: string; bank: string; account: string; currency: string; balance: string | null; as_of: string | null; stale: boolean }>(
@@ -82,14 +82,14 @@ export default defineEventHandler(async (event) => {
   return {
     range, bucket,
     entities: { byStatus, byKind },
-    documents: { ...docTotals, byEntity: docByEntity.rows, series: fillSeries(docSeries.rows, seriesKeys(range, bucket, docSeries.rows[0]?.b)) },
-    groupCompanies: {
+    documents: !u.has('documents') ? null : { ...docTotals, byEntity: docByEntity.rows, series: fillSeries(docSeries.rows, seriesKeys(range, bucket, docSeries.rows[0]?.b)) },
+    groupCompanies: !u.has('portfolio') ? null : {
       count: cos.rows.length, subsidiaries: cos.rows.filter((c) => c.relationship === 'subsidiary').length, affiliates: cos.rows.filter((c) => c.relationship === 'affiliate').length,
       revenue: cos.rows.reduce((s, c) => s + n(c.revenue), 0), cash: cos.rows.reduce((s, c) => s + n(c.cash), 0),
       list: cos.rows.map((c) => ({ id: c.id, name: c.name, relationship: c.relationship, holder: c.holder, revenue: c.revenue === null ? null : Number(c.revenue), runway: c.cash !== null && c.burn !== null && Number(c.burn) > 0 ? Number(c.cash) / Number(c.burn) : null })),
       revenueSeries: revSeries.rows.map((r) => ({ period: r.b, value: Number(r.v) }))
     },
-    heldByEntity: held.rows,
+    heldByEntity: u.has('portfolio') ? held.rows : [],
     activity: fillSeries(act.rows, seriesKeys(range, bucket, act.rows[0]?.b)),
     cash
   }

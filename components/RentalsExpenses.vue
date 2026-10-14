@@ -1,16 +1,31 @@
 <script setup lang="ts">
-// Expenses for the rentals: log one in a popup (date, amount, category, property; optional room/unit, what was bought,
-// vendor, receipt photo, repeat monthly); filter by property, month and category. Admins edit, delete, add categories.
-interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; bank_txn_id?: string | null }
+// Expenses for the rentals, from every source: logged by the team (matched to a bank payment, or not yet) and taken from
+// the bank statements; plus bank payments still to review. Grouped by month with totals by source and category. Log one
+// in a popup (date, amount, category, property; room/unit, item, vendor, receipt, repeat monthly); admins edit and delete.
+interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; bank_txn_id?: string | null; source: 'manual' | 'matched' | 'bank'; bank_description: string | null; bank_date: string | null; bank_account: string | null }
 interface D { rows: E[]; categories: { code: string; label: string; hint: string | null }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean; receipt_ai: boolean }
-const f = reactive({ property: '', period: (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7) })(), category: '' })
+const f = reactive({ property: '', period: String(new Date().getUTCFullYear()), category: '', source: 'all' as 'all' | 'manual' | 'matched' | 'bank' })
 const { data, refresh } = await useFetch<D>('/api/rentals/expenses', { query: computed(() => ({ property: f.property || undefined, period: f.period || undefined, category: f.category || undefined })) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const usd = (v: number) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const day = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
-const total = computed(() => (data.value?.rows ?? []).reduce((s, r) => s + r.amount, 0))
-const byCat = computed(() => { const m = new Map<string, number>(); for (const r of data.value?.rows ?? []) m.set(r.category_label ?? r.category, (m.get(r.category_label ?? r.category) ?? 0) + r.amount); return [...m.entries()].sort((a, b) => b[1] - a[1]) })
+const SRC = { manual: 'Logged · not in bank yet', matched: 'Logged · matched to bank', bank: 'From bank statement' } as const
+const all = computed(() => data.value?.rows ?? [])
+const rows = computed(() => all.value.filter((r) => f.source === 'all' || r.source === f.source))
+const sumOf = (list: E[]) => list.reduce((t, r) => t + r.amount, 0)
+const bySrc = computed(() => ({ manual: all.value.filter((r) => r.source === 'manual'), matched: all.value.filter((r) => r.source === 'matched'), bank: all.value.filter((r) => r.source === 'bank') }))
+const total = computed(() => sumOf(rows.value))
+const months = computed(() => { const m = new Map<string, E[]>(); for (const r of rows.value) { const k = r.spent_on.slice(0, 7); if (!m.has(k)) m.set(k, []); m.get(k)!.push(r) } return [...m.entries()].map(([k, list]) => ({ k, label: new Date(k + '-01T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }), list, total: sumOf(list) })) })
+const openMonths = ref<Set<string>>(new Set())
+watch(months, (m) => { if (m.length && !openMonths.value.size) openMonths.value = new Set(m.slice(0, 2).map((x) => x.k)) }, { immediate: true })
+const toggle = (k: string) => { const s = new Set(openMonths.value); if (s.has(k)) s.delete(k); else s.add(k); openMonths.value = s }
+// Match a logged expense to a bank payment
+interface Cand { id: string; txn_date: string; description: string; amount: number; account: string }
+const mt = reactive({ open: false, id: '', label: '', amount: 0, date: '', rows: [] as Cand[], pick: '', busy: false })
+async function openMatch(r: E) { Object.assign(mt, { open: true, id: r.id, label: r.item || r.vendor || r.category_label || '', amount: r.amount, date: r.spent_on, rows: [], pick: '', busy: true }); try { mt.rows = await $fetch<Cand[]>('/api/rentals/expense-match', { query: { id: r.id } }); mt.pick = mt.rows[0]?.id ?? '' } catch (e) { msg.value = err(e) } finally { mt.busy = false } }
+async function saveMatch(unmatch = false) { mt.busy = true; try { await $fetch('/api/rentals/expense-match', { method: 'POST', body: { id: mt.id, bank_txn_id: unmatch ? null : mt.pick } }); mt.open = false; ok.value = unmatch ? 'Unmatched.' : 'Matched to the bank payment.'; await Promise.all([refresh(), rbank()]) } catch (e) { msg.value = err(e) } finally { mt.busy = false } }
+const byCat = computed(() => { const m = new Map<string, number>(); for (const r of rows.value) m.set(r.category_label ?? r.category, (m.get(r.category_label ?? r.category) ?? 0) + r.amount); return [...m.entries()].sort((a, b) => b[1] - a[1]) })
 const isLocked = (d: string) => (data.value?.locked ?? []).includes(d.slice(0, 7))
 // Add / edit
 const blank = () => ({ bank_txn_id: '', id: '', spent_on: new Date().toISOString().slice(0, 10), amount: '' as string | number, category: '', property_id: data.value?.properties[0]?.id ?? '', unit_id: '', item: '', quantity: '' as string | number, vendor: '', recurring: false, notes: '' })
@@ -53,22 +68,56 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 <template>
   <div v-if="data" class="xp">
     <div class="bar">
-      <select v-model="f.property" aria-label="Property"><option value="">All expenses</option><option value="shared">Shared costs</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <RentalsPeriod v-model="f.period" allow-all />
+      <select v-model="f.property" aria-label="Property"><option value="">All properties</option><option value="shared">Shared costs</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <select v-model="f.category" aria-label="Category"><option value="">All categories</option><option v-for="c in data.categories" :key="c.code" :value="c.code">{{ c.label }}</option></select>
       <span class="sp" /><button v-if="data.admin" type="button" class="btn secondary" @click="cat.open = true">+ Category</button><button type="button" class="btn" @click="add">+ Log expense</button></div>
-    <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg && !x.open" class="error">{{ msg }}</p>
-    <div class="sum card"><div class="tt"><em>Total</em><b>{{ usd(total) }}</b><span>{{ data.rows.length }} expense{{ data.rows.length === 1 ? '' : 's' }}</span></div>
-      <div class="cats"><div v-for="[k, v] in byCat" :key="k" class="cb"><span>{{ k }}</span><i :style="{ width: (total ? v / total * 100 : 0) + '%' }" /><b>{{ usd(v) }}</b></div><p v-if="!byCat.length" class="mut">Nothing logged for this view.</p></div></div>
-    <div v-if="bank?.rows.length" class="card bk"><button type="button" class="bh" :aria-expanded="bankOpen" @click="bankOpen = !bankOpen"><h2>From the bank <span class="n">{{ bank.rows.length }}</span></h2><span class="mut">Payments out of Aidi Haven's accounts not logged yet: cleaner, utilities, supplies…</span><span class="chev">›</span></button>
-      <table v-if="bankOpen" class="t" data-nosearch><tbody><tr v-for="b in bank.rows.slice(0, 25)" :key="b.id"><td class="nw">{{ day(b.txn_date) }}</td><td><b>{{ b.description }}</b><span class="sub">{{ b.account }}{{ b.guess ? ' · looks like ' + (data.categories.find((c) => c.code === b.guess)?.label ?? b.guess) : '' }}</span></td><td class="r"><b>{{ usd(b.amount) }}</b></td>
-        <td class="r nw"><button type="button" class="btn sm" @click="fromBank(b)">Log expense</button><button type="button" class="lk" @click="ignore(b)">Not a rental cost</button></td></tr></tbody></table></div>
-    <p v-else-if="bank && !bank.has_accounts" class="mut">Upload Aidi Haven's Chase and Baselane statements (with transactions) to its "Chase + Baselane" account under Bank &amp; cash: payments out, like the cleaner, then show up here to log in one click.</p>
-    <div class="card"><table v-if="data.rows.length" class="t"><thead><tr><th>Date</th><th>What</th><th>Property</th><th>Category</th><th class="r">Amount</th><th /></tr></thead>
-      <tbody><tr v-for="r in data.rows" :key="r.id"><td>{{ day(r.spent_on) }}</td><td><b>{{ r.item || r.vendor || r.category_label }}</b><span class="sub">{{ [r.quantity ? '× ' + r.quantity : '', r.item && r.vendor ? r.vendor : '', r.notes].filter(Boolean).join(' · ') }}</span><span v-if="r.recurring || r.recurred_from" class="tag">Monthly</span><span v-if="r.bank_txn_id" class="tag bt">From the bank</span></td>
-        <td>{{ r.property }}<span class="sub">{{ r.property_id ? (r.unit ?? 'Shared by its rooms') : 'Split across all units' }}</span></td><td>{{ r.category_label ?? r.category }}</td><td class="r"><b>{{ usd(r.amount) }}</b></td>
-        <td class="r nw"><button v-if="r.receipt_document_id" type="button" class="lk" title="Receipt" @click="openDoc(r.receipt_document_id)"><FileBadge name="receipt.jpg" size="sm" /> Receipt</button><button v-if="data.admin && !isLocked(r.spent_on)" type="button" class="lk" @click="edit(r)">Edit</button></td></tr></tbody></table>
-      <EmptyState v-else icon="billing" title="No expenses here yet" text="Log utilities, cleaning, supplies, furniture and repairs as they happen, with a photo of the receipt." /></div>
+    <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg && !x.open && !mt.open" class="error">{{ msg }}</p>
+
+    <div class="card hd">
+      <div class="ks">
+        <button type="button" class="kb" :class="{ on: f.source === 'all' }" @click="f.source = 'all'"><em>All expenses</em><b>{{ usd(sumOf(all)) }}</b><small>{{ all.length }} item{{ all.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'bank' }" @click="f.source = 'bank'"><em><i class="d bank" />From bank statements</em><b>{{ usd(sumOf(bySrc.bank)) }}</b><small>{{ bySrc.bank.length }} item{{ bySrc.bank.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'matched' }" @click="f.source = 'matched'"><em><i class="d matched" />Logged · matched to bank</em><b>{{ usd(sumOf(bySrc.matched)) }}</b><small>{{ bySrc.matched.length }} item{{ bySrc.matched.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'manual' }" @click="f.source = 'manual'"><em><i class="d manual" />Logged · not in bank yet</em><b>{{ usd(sumOf(bySrc.manual)) }}</b><small>{{ bySrc.manual.length }} item{{ bySrc.manual.length === 1 ? '' : 's' }}</small></button>
+        <a v-if="bank?.rows.length" href="#review" class="kb rv"><em>Bank payments to review</em><b>{{ bank.rows.length }}</b><small>{{ usd(bank.rows.reduce((t, b) => t + b.amount, 0)) }}</small></a>
+      </div>
+      <div class="cats"><h3>By category{{ f.source !== 'all' ? ' · ' + SRC[f.source] : '' }}</h3>
+        <div v-for="[k, v] in byCat" :key="k" class="cb"><span>{{ k }}</span><i><s :style="{ width: (total ? v / total * 100 : 0) + '%' }" /></i><b>{{ usd(v) }}</b><em>{{ total ? Math.round(v / total * 100) : 0 }}%</em></div>
+        <p v-if="!byCat.length" class="mut">No expenses in this view.</p></div>
+    </div>
+
+    <div v-if="rows.length" class="card ls">
+      <div v-for="m in months" :key="m.k" class="mo">
+        <button type="button" class="mh" :aria-expanded="openMonths.has(m.k)" @click="toggle(m.k)"><span class="chev" :class="{ o: openMonths.has(m.k) }">›</span><b>{{ m.label }}</b><span class="mut">{{ m.list.length }} item{{ m.list.length === 1 ? '' : 's' }}</span><span class="sp" /><span class="mix"><i v-for="s in (['bank', 'matched', 'manual'] as const)" :key="s" :class="'d ' + s" :style="{ width: (m.total ? sumOf(m.list.filter((r) => r.source === s)) / m.total * 120 : 0) + 'px' }" /></span><b class="mt">{{ usd(m.total) }}</b></button>
+        <div v-if="openMonths.has(m.k)" class="items">
+          <div v-for="r in m.list" :key="r.id" class="er">
+            <span class="dt">{{ day(r.spent_on) }}</span>
+            <span class="wh"><b>{{ r.item || r.vendor || r.category_label }}</b><span class="sub">{{ [r.quantity ? '× ' + r.quantity : '', r.item && r.vendor && r.source !== 'bank' ? r.vendor : '', r.source === 'bank' ? null : r.notes].filter(Boolean).join(' · ') }}<template v-if="r.bank_txn_id && r.source !== 'bank'">{{ ' · bank: ' + (r.bank_account ?? '') + ' ' + (r.bank_date ? day(r.bank_date) : '') }}</template><template v-if="r.source === 'bank'">{{ r.bank_account ?? 'Bank' }}</template></span></span>
+            <span class="pr">{{ r.property_id ? r.property : 'Shared' }}<span class="sub">{{ r.property_id ? (r.unit ?? 'Whole property') : 'Split across all units' }}</span></span>
+            <span class="ct">{{ r.category_label ?? r.category }}<span v-if="r.recurring || r.recurred_from" class="sub">Monthly</span></span>
+            <span class="sr"><span class="tg" :class="r.source">{{ SRC[r.source] }}</span></span>
+            <b class="am">{{ usd(r.amount) }}</b>
+            <span class="ac"><button v-if="r.receipt_document_id" type="button" class="lk" title="Receipt" @click="openDoc(r.receipt_document_id)"><FileBadge name="receipt.jpg" size="sm" /></button><button v-if="r.source === 'manual' && !isLocked(r.spent_on)" type="button" class="lk" @click="openMatch(r)">Match to bank</button><button v-if="data.admin && !isLocked(r.spent_on)" type="button" class="lk" @click="edit(r)">Edit</button></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="card"><EmptyState icon="billing" title="No expenses in this view" :text="f.source === 'all' ? 'Pick another period, or log utilities, cleaning, supplies and repairs as they happen.' : 'Nothing ' + SRC[f.source].toLowerCase() + ' in this period.'" /></div>
+
+    <div v-if="bank?.rows.length" id="review" class="card bk"><button type="button" class="bh" :aria-expanded="bankOpen" @click="bankOpen = !bankOpen"><span class="chev" :class="{ o: bankOpen }">›</span><h2>Bank payments to review <span class="n">{{ bank.rows.length }}</span></h2><span class="mut">Payments out of Aidi Haven's accounts not yet logged: log them as a rental cost, or mark them not a rental cost.</span></button>
+      <div v-if="bankOpen" class="items"><div v-for="b in bank.rows.slice(0, 40)" :key="b.id" class="er rvw"><span class="dt">{{ day(b.txn_date) }}</span><span class="wh"><b>{{ b.description }}</b><span class="sub">{{ b.account }}{{ b.guess ? ' · looks like ' + (data.categories.find((c) => c.code === b.guess)?.label ?? b.guess) : '' }}</span></span><b class="am">{{ usd(b.amount) }}</b>
+        <span class="ac"><button type="button" class="btn sm" @click="fromBank(b)">Log expense</button><button type="button" class="lk" @click="ignore(b)">Not a rental cost</button></span></div></div></div>
+    <p v-else-if="bank && !bank.has_accounts" class="mut">Upload Aidi Haven's Chase and Baselane statements (with transactions) to its "Chase + Baselane" account under Bank &amp; cash: payments out then show up here to log in one click.</p>
+
+    <AppModal :open="mt.open" :title="'Match to a bank payment · ' + mt.label" wide @close="mt.open = false">
+      <div class="ef"><p class="mut">{{ usd(mt.amount) }} on {{ mt.date ? day(mt.date) : '' }}. Pick the payment out of Aidi Haven's accounts that paid for it.</p>
+        <p v-if="mt.busy && !mt.rows.length" class="mut">Looking…</p>
+        <label v-for="c in mt.rows" :key="c.id" class="cand"><input v-model="mt.pick" type="radio" :value="c.id"><span>{{ day(c.txn_date) }} · {{ c.account }}</span><span class="dsc">{{ c.description }}</span><b :class="{ okt: Math.abs(c.amount - mt.amount) < 0.01 }">{{ usd(c.amount) }}</b></label>
+        <p v-if="!mt.busy && !mt.rows.length" class="mut">No unlogged bank payment within 10 days and close to this amount. Upload that month's statements under Bank &amp; cash, then try again.</p>
+        <p v-if="msg && mt.open" class="error">{{ msg }}</p></div>
+      <template #foot><button class="btn secondary" @click="mt.open = false">Cancel</button><button class="btn" :disabled="mt.busy || !mt.pick" @click="saveMatch()">Match</button></template>
+    </AppModal>
 
     <AppModal :open="x.open" :title="x.id ? 'Edit expense' : 'Log an expense'" wide @close="x.open = false">
       <div class="ef">
@@ -91,15 +140,25 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 <style scoped>
 .xp { display: flex; flex-direction: column; gap: 14px; } .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .bar select, .bar input { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
 .okm { color: var(--c-ok); margin: 0; font-size: 13.5px; } .error { color: var(--c-danger); margin: 0; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; }
-.sum { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center; } .tt { display: flex; flex-direction: column; gap: 2px; } .tt em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .tt b { font-size: 28px; font-weight: 500; color: var(--c-navy); } .tt span { font-size: 12.5px; color: var(--c-muted); }
-.cats { display: flex; flex-direction: column; gap: 7px; } .cb { display: grid; grid-template-columns: 170px 1fr 100px; gap: 10px; align-items: center; font-size: 13px; } .cb i { display: block; height: 8px; background: var(--c-navy); min-width: 2px; } .cb b { text-align: right; font-weight: 500; }
-.t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-weight: 400; font-size: 12px; color: var(--c-muted); padding: 8px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 8px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: top; } .r { text-align: right; } .nw { white-space: nowrap; }
-.sub { display: block; font-size: 11.5px; color: var(--c-muted); } .tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; padding: 1px 6px; background: var(--c-signal-soft); color: var(--c-blue-deep); }
+.hd { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 0; padding: 0; } .ks { display: grid; grid-template-columns: 1fr 1fr; border-right: 1px solid var(--c-rule); }
+.kb { display: flex; flex-direction: column; gap: 2px; text-align: left; background: #fff; border: 0; border-bottom: 1px solid var(--c-rule); border-right: 1px solid var(--c-rule); padding: 14px 16px; font: inherit; cursor: pointer; color: inherit; text-decoration: none; } .kb:nth-child(2n) { border-right: 0; } .kb:first-child { grid-column: 1 / -1; border-right: 0; } .kb.on { background: #f3f6fa; box-shadow: inset 3px 0 0 var(--c-navy); }
+.kb em { font-style: normal; font-size: 12.5px; color: var(--c-muted); display: flex; align-items: center; gap: 6px; } .kb b { font-size: 20px; font-weight: 600; color: var(--c-navy); } .kb:first-child b { font-size: 26px; } .kb small { font-size: 12px; color: var(--c-muted); } .kb.rv b { color: #a5650b; }
+.d { display: inline-block; width: 9px; height: 9px; } .d.bank { background: #7f93ab; } .d.matched { background: var(--c-navy); } .d.manual { background: #d9a441; }
+.cats { display: flex; flex-direction: column; gap: 8px; padding: 14px 18px; } .cats h3 { margin: 0 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted); font-weight: 600; }
+.cb { display: grid; grid-template-columns: 140px 1fr 92px 34px; gap: 10px; align-items: center; font-size: 13px; } .cb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cb i { display: block; height: 8px; background: var(--c-paper-2); } .cb s { display: block; height: 100%; background: var(--c-blue, #1c547d); } .cb b { text-align: right; font-weight: 600; } .cb em { font-style: normal; font-size: 12px; color: var(--c-muted); text-align: right; }
+.ls { padding: 0; } .mo + .mo { border-top: 1px solid var(--c-rule); } .mh { display: flex; gap: 10px; align-items: center; width: 100%; background: var(--c-paper-2); border: 0; padding: 11px 16px; font: inherit; cursor: pointer; color: inherit; text-align: left; } .mh .mt { min-width: 110px; text-align: right; } .mix { display: flex; height: 8px; } .mix i { height: 8px; }
+.chev { color: var(--c-muted); font-size: 18px; line-height: 1; transition: transform .15s; display: inline-block; } .chev.o { transform: rotate(90deg); }
+.items { display: flex; flex-direction: column; } .er { display: grid; grid-template-columns: 92px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 170px 100px 150px; gap: 12px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .er.rvw { grid-template-columns: 92px minmax(0, 1fr) 110px 230px; }
+.dt { color: var(--c-ink-soft); font-size: 13px; white-space: nowrap; } .wh b { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .sub { display: block; font-size: 12px; color: var(--c-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .am { text-align: right; font-weight: 600; white-space: nowrap; } .ac { display: flex; justify-content: flex-end; align-items: center; gap: 2px; white-space: nowrap; }
+.tg { font-size: 11.5px; padding: 2px 7px; white-space: nowrap; } .tg.bank { background: #eef1f5; color: #4b5d73; } .tg.matched { background: #e8eef5; color: var(--c-navy); } .tg.manual { background: #fbf2e1; color: #8a5a07; }
+.bk { padding: 0; } .bh { display: flex; gap: 12px; align-items: baseline; width: 100%; background: none; border: 0; padding: 14px 16px; font: inherit; text-align: left; cursor: pointer; color: inherit; flex-wrap: wrap; } .bh h2 { margin: 0; font-size: 15px; }
+.n { font-size: 12px; font-weight: 600; background: #fbf2e1; color: #8a5a07; padding: 1px 7px; margin-left: 6px; }
+.cand { display: grid; grid-template-columns: auto 200px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid var(--c-rule); font-size: 13.5px; cursor: pointer; } .cand .dsc { color: var(--c-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .okt { color: var(--c-ok); }
+@media (max-width: 1100px) { .er { grid-template-columns: 84px minmax(0, 1fr) 150px 100px; } .er .pr, .er .ct { display: none; } .er .ac { grid-column: 2 / -1; justify-content: flex-start; } .er.rvw { grid-template-columns: 84px minmax(0, 1fr) 100px; } .er.rvw .ac { grid-column: 2 / -1; } }
+@media (max-width: 800px) { .hd { grid-template-columns: 1fr; } .ks { border-right: 0; } .er { grid-template-columns: 1fr auto; } .er .dt, .er .sr { display: none; } .mix { display: none; } .cand { grid-template-columns: auto 1fr auto; } .cand .dsc { display: none; } }
 .lk { background: none; border: 0; padding: 0 0 0 12px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .scan { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding: 8px 12px; border-left: 3px solid var(--c-ok); background: #f3faf6; } .scan.bad { border-left-color: var(--c-danger); background: #fff6f5; } .scan span { color: var(--c-ink-soft); }
 .ef { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .ef input:not([type="checkbox"]), .ef select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; } .hint { font-style: normal; font-size: 12px; color: var(--c-muted); }
-.bk { padding: 0; } .bh { display: flex; gap: 12px; align-items: baseline; width: 100%; background: none; border: 0; padding: 16px 18px; font: inherit; text-align: left; cursor: pointer; color: inherit; } .bh h2 { margin: 0; font-size: 16px; white-space: nowrap; } .bh .mut { flex: 1; } .bk .t { border-top: 1px solid var(--c-rule); } .bk .t td:first-child { padding-left: 18px; } .bk .t td:last-child { padding-right: 18px; }
-.n { font-size: 12px; font-weight: 600; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 1px 7px; margin-left: 6px; } .chev { color: var(--c-muted); font-size: 20px; transition: transform .15s; } .bh[aria-expanded="true"] .chev { transform: rotate(90deg); } .btn.sm { padding: 5px 11px; font-size: 13px; } .tag.bt { margin-left: 4px; background: #eaf7ef; color: #1d7a45; }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .chk input { width: auto; }
-@media (max-width: 800px) { .g3, .sum { grid-template-columns: 1fr; } .cb { grid-template-columns: 110px 1fr 80px; } .t { display: block; overflow-x: auto; } }
+@media (max-width: 800px) { .g3 { grid-template-columns: 1fr; } .cb { grid-template-columns: 100px 1fr 80px; } .cb em { display: none; } }
 </style>

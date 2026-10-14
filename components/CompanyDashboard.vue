@@ -5,6 +5,10 @@ interface D { company: string; first: string; currency: string; plan: string; st
   due: { id: string; title: string; next_due: string; overdue: boolean }[]; page: { slug: string; published: boolean; views: number } | null; shares: { n: number; views: number }
   services: { open: number; waiting: number; unpaid: number }; wallet: { currency: string; balance_minor: number }; setup: { key?: string; label: string; desc?: string; cta?: string; mins?: number; done: boolean; to: string }[] }
 const { data } = await useFetch<D>('/api/company/dashboard')
+// Only what this person can use: sections, numbers and buttons for modules their role has switched off are hidden.
+const { canPath } = useModuleAccess()
+const fin = computed(() => canPath('/financials'))
+const steps = computed(() => (data.value?.setup ?? []).filter((s) => canPath(s.to)))
 useHead({ title: 'Dashboard' })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const lbl = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
@@ -12,7 +16,7 @@ const pts = (k: string) => (data.value?.series ?? []).filter((r) => r[k] != null
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const hour = new Date().getHours()
 const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-const done = computed(() => (data.value?.setup ?? []).filter((s) => s.done).length)
+const done = computed(() => steps.value.filter((s) => s.done).length)
 const folded = ref(false)
 onMounted(() => { folded.value = localStorage.getItem('finvry-setup-folded') === '1' })
 function fold() { folded.value = !folded.value; try { localStorage.setItem('finvry-setup-folded', folded.value ? '1' : '0') } catch { /* private mode */ } }
@@ -21,16 +25,17 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 <template>
   <section v-if="data" class="cd">
     <div class="hd"><div><p class="label">{{ data.company }}</p><h1>{{ greet }}, {{ data.first }}</h1></div>
-      <div class="qa"><NuxtLink to="/financials" class="btn">Add financials</NuxtLink><NuxtLink to="/investor-page" class="btn secondary">Investor page</NuxtLink><NuxtLink to="/client/order" class="btn secondary">Order a service</NuxtLink></div></div>
+      <div class="qa"><NuxtLink v-if="fin" to="/financials" class="btn">Add financials</NuxtLink><NuxtLink v-if="canPath('/investor-page')" to="/investor-page" class="btn secondary">Investor page</NuxtLink><NuxtLink v-if="canPath('/client/order')" to="/client/order" class="btn secondary">Order a service</NuxtLink></div></div>
 
-    <div v-if="done < data.setup.length" class="onb">
-      <div class="oh"><div><p class="ol">Getting started</p><h2>Set up Finvry <span>{{ done }} of {{ data.setup.length }} done</span></h2></div><button type="button" class="ofold" :aria-expanded="!folded" @click="fold">{{ folded ? 'Show steps' : 'Hide' }}</button></div>
-      <div class="obar"><i :style="{ width: Math.round((done / data.setup.length) * 100) + '%' }" /></div>
-      <div v-if="!folded" class="ogrid"><div v-for="(s, i) in data.setup" :key="s.label" class="ostep" :class="{ ok: s.done, next: !s.done && data.setup.findIndex((x) => !x.done) === i }">
+    <div v-if="steps.length && done < steps.length" class="onb">
+      <div class="oh"><div><p class="ol">Getting started</p><h2>Set up Finvry <span>{{ done }} of {{ steps.length }} done</span></h2></div><button type="button" class="ofold" :aria-expanded="!folded" @click="fold">{{ folded ? 'Show steps' : 'Hide' }}</button></div>
+      <div class="obar"><i :style="{ width: Math.round((done / steps.length) * 100) + '%' }" /></div>
+      <div v-if="!folded" class="ogrid"><div v-for="(s, i) in steps" :key="s.label" class="ostep" :class="{ ok: s.done, next: !s.done && steps.findIndex((x) => !x.done) === i }">
         <span class="onum">{{ s.done ? '✓' : i + 1 }}</span><div class="otx"><b>{{ s.label }}</b><p v-if="s.desc">{{ s.desc }}</p><span v-if="!s.done && s.mins" class="omin">About {{ s.mins }} min</span></div>
-        <NuxtLink v-if="!s.done" :to="s.to" class="octa" :class="{ pri: data.setup.findIndex((x) => !x.done) === i }">{{ s.cta ?? 'Start' }} →</NuxtLink><span v-else class="odone">Done</span></div></div>
+        <NuxtLink v-if="!s.done" :to="s.to" class="octa" :class="{ pri: steps.findIndex((x) => !x.done) === i }">{{ s.cta ?? 'Start' }} →</NuxtLink><span v-else class="odone">Done</span></div></div>
     </div>
 
+    <template v-if="fin">
     <div class="fx-stats">
       <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Month-on-month growth appears after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
       <StatTile label="Net income" icon="chart" tone="n" :note="'Gross margin ' + (data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%')"><Money :value="data.last?.net_income" :currency="data.currency" /></StatTile>
@@ -47,11 +52,12 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
     </template>
     <div v-else class="preview"><div class="pv-art" aria-hidden="true"><div class="pv-k" v-for="k in ['Revenue', 'Gross margin', 'Cash', 'Runway']" :key="k"><span>{{ k }}</span><b /></div><svg viewBox="0 0 600 140" preserveAspectRatio="none"><path d="M0 120 C60 112 100 104 160 96 S260 90 300 74 S400 58 440 46 S540 22 600 14" fill="none" stroke="#0c1a2e" stroke-width="3"/><path d="M0 120 C60 112 100 104 160 96 S260 90 300 74 S400 58 440 46 S540 22 600 14 L600 140 L0 140Z" fill="rgba(95,168,211,.18)"/></svg></div>
       <div class="pv-cta"><p class="ol">Your dashboard</p><h3>Your numbers will fill this in.</h3><p>Add one month of figures and you get revenue, growth, margins, burn, runway and trend charts, ready to share with investors.</p><div class="pv-acts"><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink><NuxtLink to="/integrations/quickbooks/connect" class="btn secondary">Connect QuickBooks</NuxtLink></div></div></div>
+    </template>
 
-    <ClientOnly><BankFeeds compact class="feeds" /></ClientOnly>
+    <ClientOnly><BankFeeds v-if="fin" compact class="feeds" /></ClientOnly>
     <div class="three">
-      <div class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Where the money goes" total-label="Costs this month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>
-      <div class="card"><h3>Investors</h3>
+      <div v-if="fin" class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Where the money goes" total-label="Costs this month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>
+      <div v-if="canPath('/investor-page')" class="card"><h3>Investors</h3>
         <div class="li"><span>Investor page</span><b>{{ data.page?.published ? 'Live' : 'Not published' }}</b></div>
         <div class="li"><span>Investor page views</span><b>{{ data.page?.views ?? 0 }}</b></div>
         <div class="li"><span>Active share links</span><b>{{ data.shares.n }} · {{ data.shares.views }} views</b></div>
@@ -59,10 +65,10 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
       <div class="card"><h3>Coming up</h3>
         <div v-for="d in data.due" :key="d.id" class="li"><span>{{ d.title }}</span><b :class="{ red: d.overdue }">{{ d.overdue ? 'Overdue' : day(d.next_due) }}</b></div>
         <p v-if="!data.due.length" class="muted">Nothing due in the next 60 days.</p>
-        <div class="li"><span>Open service requests</span><b>{{ data.services.open }}{{ data.services.waiting ? ' · ' + data.services.waiting + ' need you' : '' }}</b></div>
-        <div class="li"><span>Unpaid invoices</span><b :class="{ red: data.services.unpaid }">{{ data.services.unpaid }}</b></div>
-        <div class="li"><span>Wallet balance</span><b><NuxtLink to="/wallet"><Money :value="data.wallet.balance_minor / 100" :currency="data.wallet.currency" /></NuxtLink></b></div>
-        <NuxtLink to="/client" class="more">Services →</NuxtLink></div>
+        <template v-if="canPath('/client')"><div class="li"><span>Open service requests</span><b>{{ data.services.open }}{{ data.services.waiting ? ' · ' + data.services.waiting + ' need you' : '' }}</b></div>
+        <div class="li"><span>Unpaid invoices</span><b :class="{ red: data.services.unpaid }">{{ data.services.unpaid }}</b></div></template>
+        <div v-if="canPath('/wallet')" class="li"><span>Wallet balance</span><b><NuxtLink to="/wallet"><Money :value="data.wallet.balance_minor / 100" :currency="data.wallet.currency" /></NuxtLink></b></div>
+        <NuxtLink v-if="canPath('/client')" to="/client" class="more">Services →</NuxtLink></div>
     </div>
   </section>
 </template>
@@ -74,7 +80,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 .step { display: flex; align-items: center; gap: 10px; color: var(--c-ink); text-decoration: none; font-size: 14px; padding: 4px 0; } .step.ok { color: var(--c-muted); text-decoration: line-through; }
 .tick { width: 18px; height: 18px; border: 1px solid var(--c-rule-strong); display: grid; place-items: center; font-size: 12px; color: var(--c-ok); } .step.ok .tick { border-color: var(--c-ok); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .empty { margin-bottom: 12px; } .empty p { color: var(--c-ink-soft); max-width: 680px; } .empty a { text-decoration: none; }
-.three { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; margin-top: 16px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
+.three { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; } .three h3 { margin: 0 0 10px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .li span { color: var(--c-ink-soft); } .li b { font-weight: 500; } .red { color: var(--c-danger); }
 .more { display: inline-block; margin-top: 10px; font-size: 13.5px; } .muted { color: var(--c-muted); font-size: 13.5px; }
 @media (max-width: 1000px) { .charts, .three { grid-template-columns: 1fr; } }
 .feeds { margin-top: 16px; }

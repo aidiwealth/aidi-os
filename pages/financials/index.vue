@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { canPath } = useModuleAccess()
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
@@ -107,7 +108,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="seg" role="group" aria-label="Period"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly']]" :key="k" :class="{ on: periodType === k }" @click="periodType = k">{{ l }}</button></div>
         <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
-        <NuxtLink to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
+        <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
         <button v-if="canEdit" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>

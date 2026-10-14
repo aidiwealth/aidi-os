@@ -77,6 +77,12 @@ export const canUse = (m: ModuleDef, roles: string[], ov?: Record<string, string
 // Per-workspace overrides of which roles may use a module (set by admins on the Modules page).
 export async function moduleRoleOverrides(): Promise<Record<string, string[]>> { const s = (await currentOrg())?.settings as Record<string, unknown> | undefined; const v = s?.module_roles; return v && typeof v === 'object' ? v as Record<string, string[]> : {} }
 
+// The modules this person can use right now: switched on, and their role allowed (with the admin's per-role choices on
+// the Modules page). Overview, dashboards and analytics show only these.
+export async function usableModules(roles: string[]): Promise<Set<string>> {
+  const on = await enabledModules(), ov = await moduleRoleOverrides()
+  return new Set(MODULES.filter((m) => on.has(m.code) && canUse(m, roles, ov)).map((m) => m.code))
+}
 export async function requireModule(event: H3Event, code: string): Promise<void> {
   if (!(await enabledModules()).has(code)) throw apiError('module_off', 'This module is switched off.', 404)
 }

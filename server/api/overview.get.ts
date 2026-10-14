@@ -16,8 +16,8 @@ const ACTIVITY: Record<string, [string, string]> = {
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
-  const on = await enabledModules()
-  const can = (code: string) => { const m = MODULES.find((x) => x.code === code); return !!m && on.has(code) && canUse(m, user.roles) }
+  const usable = await usableModules(user.roles)
+  const can = (code: string) => usable.has(code)
   const n = (v: unknown) => Number(v ?? 0)
   const today = new Date().toISOString().slice(0, 10)
   const keys = seriesKeys('12m', 'month')
