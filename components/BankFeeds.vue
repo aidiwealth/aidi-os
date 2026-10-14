@@ -2,7 +2,7 @@
 // Live bank balances through Plaid (US banks), with a total in the reporting currency.
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 interface A { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
-const { data, refresh } = await useFetch<{ available?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string }>('/api/plaid/accounts', { key: 'plaid-accounts' })
+const { data, refresh } = await useFetch<{ available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string }>('/api/plaid/accounts', { key: 'plaid-accounts' })
 const busy = ref(false); const msg = ref('')
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const fmt = (v: string | number | null, c: string) => (v === null ? '—' : (SYM[c] ?? c + ' ') + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
@@ -20,11 +20,11 @@ async function disconnect(id: string, name: string | null) { if (!confirm('Disco
 const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago' }
 </script>
 <template>
-  <div v-if="data && data.available !== false" class="card bf">
+  <div v-if="data && data.available !== false && (data.manage || data.accounts.length)" class="card bf">
     <div class="bh"><div><h3>Live bank balances</h3><p class="mut">{{ data.accounts.length ? 'Total ' + fmt(data.total, data.currency) + ' across ' + data.accounts.length + ' account' + (data.accounts.length === 1 ? '' : 's') + (data.env === 'sandbox' ? ' · sandbox' : '') : data.enabled ? 'Connect a US bank account to see balances update automatically.' : 'Bank connections are not set up yet.' }}</p></div>
-      <div class="row"><button v-if="data.accounts.length" class="btn secondary sm" @click="refresh()">Refresh</button><button v-if="data.enabled" class="btn sm" :disabled="busy" @click="connect">{{ busy ? 'Opening…' : 'Connect a bank' }}</button></div></div>
+      <div class="row"><button v-if="data.accounts.length" class="btn secondary sm" @click="refresh()">Refresh</button><button v-if="data.enabled && data.manage" class="btn sm" :disabled="busy" @click="connect">{{ busy ? 'Opening…' : 'Connect a bank' }}</button></div></div>
     <div v-for="it in data.items" :key="it.id" class="it">
-      <div class="ih"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button class="lk" @click="disconnect(it.id, it.institution)">Disconnect</button></div>
+      <div class="ih"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button v-if="data.manage" class="lk" @click="disconnect(it.id, it.institution)">Disconnect</button></div>
       <div v-for="a in data.accounts.filter((x) => x.item_id === it.id).slice(0, compact ? 3 : 50)" :key="a.id" class="ac"><span>{{ a.name }}<em>{{ a.subtype ?? '' }}{{ a.mask ? ' ••' + a.mask : '' }} · updated {{ ago(a.updated_at) }}</em></span><b>{{ fmt(a.current, a.currency) }}<em v-if="a.available !== null && a.available !== a.current">available {{ fmt(a.available, a.currency) }}</em></b></div>
     </div>
     <p v-if="msg" class="error">{{ msg }}</p>

@@ -4,14 +4,16 @@
 // between Aidi (their workspace) and Finvry (the platform console).
 interface Mod { code: string; group: string; groupLabel: string; label: string; to: string; usable: boolean; locked?: boolean; pages?: string[]; navHidden?: boolean }
 interface Org { id: string; name: string; plan_code: string; kind: string }
-interface Me { email: string; roles: string[]; platform: boolean; org: Org | null; orgs: Org[] }
+interface Me { email: string; roles: string[]; platform: boolean; customers_view?: boolean; org: Org | null; orgs: Org[] }
 const brand = useBrand()
 const route = useRoute()
 const { data: me } = await useFetch<Me>('/api/auth/me', { key: 'me' })
 const { data: mods } = await useFetch<Mod[]>('/api/modules', { key: 'modules' })
 const canPlatform = computed(() => !!me.value?.platform && brand.key === 'aidi')
 const deskPath = computed(() => route.path === '/services' || route.path.startsWith('/services/') || route.path.startsWith('/client-services'))
-const platformMode = computed(() => route.path === '/platform' || route.path.startsWith('/platform/') || (canPlatform.value && deskPath.value))
+const platformMode = computed(() => (canPlatform.value && (route.path === '/platform' || route.path.startsWith('/platform/'))) || (canPlatform.value && deskPath.value))
+// Team roles that are not console staff can still view Finvry customer accounts (read-only).
+const customersLink = computed(() => !canPlatform.value && !!me.value?.customers_view && brand.key === 'aidi')
 const lockRouter = useRouter()
 const nowPath = computed(() => lockRouter.currentRoute.value.path)
 const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => nowPath.value === p || nowPath.value.startsWith(p + '/'))) ?? null)
@@ -94,6 +96,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
             <p class="sb-group">{{ g.label }}</p>
             <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: itemOn(m), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>
+          <template v-if="customersLink"><p class="sb-group">Finvry</p><NuxtLink to="/platform/customers" class="sb-link" :class="{ on: isOn('/platform/customers') }" title="Finvry customers"><AppIcon name="customers" class="sb-icon" /><span class="sb-label">Finvry customers</span></NuxtLink></template>
           <a class="sb-link sb-help" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="help" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
         </template>
         <template v-else>

@@ -306,9 +306,39 @@ export async function unitFigures(period: string): Promise<Map<string, UnitMonth
   return m
 }
 // property_id null = shared across all properties (e.g. rent, software, bank fees from the bank).
-export async function expensesBy(period: string): Promise<{ property_id: string | null; unit_id: string | null; category: string; v: number }[]> {
+export type Split = 'weight' | 'nights' | 'equal'
+export interface ExpRow { property_id: string | null; unit_id: string | null; category: string; split: Split | null; v: number }
+export async function expensesBy(period: string): Promise<ExpRow[]> {
   const { from, to } = rentalRange(period)
-  return (await db().query<{ property_id: string | null; unit_id: string | null; category: string; v: string }>('SELECT property_id, unit_id, category, sum(amount)::text AS v FROM rentals.expenses WHERE spent_on BETWEEN $1 AND $2 GROUP BY property_id, unit_id, category', [from, to])).rows.map((r) => ({ ...r, v: Number(r.v) }))
+  return (await db().query<{ property_id: string | null; unit_id: string | null; category: string; split: Split | null; v: string }>('SELECT property_id, unit_id, category, split, sum(amount)::text AS v FROM rentals.expenses WHERE spent_on BETWEEN $1 AND $2 GROUP BY property_id, unit_id, category, split', [from, to])).rows.map((r) => ({ ...r, v: Number(r.v) }))
+}
+// Mixed-model cost split. An expense on a unit stays on it. One on a property, or shared (no property), is spread over
+// that property's units (or all units) by its basis: the expense's own override, else its category's default.
+//   weight: each unit's size weight (Properties) · nights: nights booked in the period · equal: one share each.
+// Nights fall back to weights when nothing was booked; weights fall back to equal when all are 0.
+// Returns per-unit amounts by category, and amounts on a property that has no units.
+export interface Alloc { unit_id: string | null; property_id: string | null; category: string; v: number }
+export async function allocateExpenses(ex: ExpRow[], nights: Map<string, number>): Promise<Alloc[]> {
+  const units = (await db().query<{ id: string; property_id: string; w: string }>('SELECT u.id, u.property_id, u.cost_weight::text AS w FROM rentals.units u JOIN rentals.properties p ON p.id = u.property_id WHERE u.active ORDER BY p.sort, u.sort')).rows
+  const unitProp = new Map(units.map((u) => [u.id, u.property_id]))
+  const cats = new Map((await db().query<{ code: string; split: Split }>('SELECT code, split FROM rentals.expense_categories')).rows.map((c) => [c.code, c.split]))
+  const shares = (ids: string[], basis: Split): number[] => {
+    const eq = ids.map(() => 1)
+    const w = ids.map((i) => Number(units.find((u) => u.id === i)?.w ?? 1))
+    const pick = (xs: number[], fb: number[]) => (xs.reduce((s, x) => s + x, 0) > 0 ? xs : fb)
+    if (basis === 'equal') return eq
+    const wt = pick(w, eq)
+    return basis === 'weight' ? wt : pick(ids.map((i) => nights.get(i) ?? 0), wt)
+  }
+  const out: Alloc[] = []
+  for (const e of ex) {
+    if (e.unit_id && unitProp.has(e.unit_id)) { out.push({ unit_id: e.unit_id, property_id: unitProp.get(e.unit_id)!, category: e.category, v: e.v }); continue }
+    const ids = units.filter((u) => !e.property_id || u.property_id === e.property_id).map((u) => u.id)
+    if (!ids.length) { out.push({ unit_id: null, property_id: e.property_id, category: e.category, v: e.v }); continue }
+    const s = shares(ids, e.split ?? cats.get(e.category) ?? 'equal'), tot = s.reduce((a, b) => a + b, 0)
+    ids.forEach((id, i) => out.push({ unit_id: id, property_id: unitProp.get(id)!, category: e.category, v: e.v * s[i]! / tot }))
+  }
+  return out
 }
 export const prevPeriod = (p: string) => { if (/^\d{4}$/.test(p)) return String(Number(p) - 1); const q = p.match(/^(\d{4})-Q([1-4])$/); if (q) return q[2] === '1' ? (Number(q[1]) - 1) + '-Q4' : q[1] + '-Q' + (Number(q[2]) - 1); const d = new Date(p + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
 
@@ -319,15 +349,16 @@ export async function pnl(period: string, propertyId: string | null): Promise<Pn
   const units = (await allUnits()).filter((u) => props.some((p) => p.id === u.property_id))
   const months = periodMonths(period)
   const t = { gross: 0, adjustments: 0, fees: 0, airbnb: 0, rent: 0, tax: 0, nights: 0 }
+  const nightsBy = new Map<string, number>()
   for (const mo of months) {
     const f = await unitFigures(mo)
+    for (const x of f.values()) nightsBy.set(x.unit_id, (nightsBy.get(x.unit_id) ?? 0) + x.nights)
     for (const u of units) { const x = f.get(u.id); if (!x) continue; t.gross += x.gross; t.adjustments += x.adjustments; t.fees += x.fees; t.airbnb += x.income - x.rent; t.rent += x.rent; t.tax += x.tax; t.nights += x.nights }
   }
   const cats = new Map((await db().query<{ code: string; label: string }>('SELECT code, label FROM rentals.expense_categories ORDER BY sort')).rows.map((c) => [c.code, c.label]))
-  // Shared costs (no property) count in full for all properties together, and by share of units for one property.
-  const allUnits_ = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM rentals.units u JOIN rentals.properties p ON p.id = u.property_id WHERE u.active AND p.active')).rows[0]?.n || 1
-  const share = propertyId ? units.length / allUnits_ : 1
-  const ex = (await expensesBy(period)).filter((e) => (e.property_id === null) || props.some((p) => p.id === e.property_id)).map((e) => (e.property_id === null ? { ...e, v: e.v * share } : e))
+  // All properties: every cost in full. One property: its share under the mixed-model split (allocateExpenses).
+  const raw = await expensesBy(period)
+  const ex = propertyId ? (await allocateExpenses(raw, nightsBy)).filter((a) => a.property_id === propertyId) : raw
   const byCat = new Map<string, number>(); for (const e of ex) byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.v)
   // Combined report: months with no Airbnb rows / no logged expenses take those figures from the monthly books.
   let booksIncome = 0

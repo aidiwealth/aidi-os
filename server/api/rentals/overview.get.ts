@@ -12,16 +12,12 @@ export default defineEventHandler(async (event) => {
   const meta = new Map((await db().query<{ id: string; rating: string | null; review_count: number | null; image_url: string | null; title: string | null }>('SELECT id, rating::text, review_count, image_url, title FROM rentals.units')).rows.map((u) => [u.id, u]))
   const figs = async (p: string) => {
     const f = await unitFigures(p), ex = await expensesBy(p)
-    // Property or combined: all its expenses. One room/unit: its own expenses plus an equal share of shared ones.
+    // Costs split by the mixed model (allocateExpenses): by size weight, nights booked or equally, per category or expense.
+    const alloc = await allocateExpenses(ex, new Map([...f.values()].map((x) => [x.unit_id, x.nights])))
     const out = (ids: string[], propIds: string[], unit = false) => {
       const xs = ids.map((i) => f.get(i)).filter(Boolean) as UnitMonth[]
-      const unitsOf = (pid: string) => units.filter((u) => u.property_id === pid).length || 1
-      let expenses = 0
-      const total = units.length || 1, all = propIds.length === props.length
-      for (const e of ex) {
-        if (e.property_id === null) { expenses += unit ? e.v / total : all ? e.v : e.v * ids.length / total; continue } // shared across all properties
-        if (!propIds.includes(e.property_id)) continue; if (!unit) expenses += e.v; else if (e.unit_id) { if (ids.includes(e.unit_id)) expenses += e.v } else expenses += e.v / unitsOf(e.property_id)
-      }
+      const all = propIds.length === props.length && !unit
+      const expenses = all ? ex.reduce((s, e) => s + e.v, 0) : alloc.reduce((s, a) => s + ((a.unit_id ? ids.includes(a.unit_id) : !unit && propIds.includes(a.property_id ?? '')) ? a.v : 0), 0)
       const income = xs.reduce((s, x) => s + x.income, 0), gross = xs.reduce((s, x) => s + x.gross, 0), nights = xs.reduce((s, x) => s + x.nights, 0), cap = xs.reduce((s, x) => s + x.days, 0)
       return { income: Math.round(income * 100) / 100, expenses: Math.round(expenses * 100) / 100, profit: Math.round((income - expenses) * 100) / 100, occupancy: cap ? Math.round(nights / cap * 1000) / 10 : null, nights, adr: nights ? Math.round(gross / nights * 100) / 100 : null }
     }

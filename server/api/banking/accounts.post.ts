@@ -12,6 +12,9 @@ const Body = z.object({
 })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'family')
+  // Adding or changing bank accounts is for GPs and admins only (not roles let into Bank & cash on the Modules page).
+  const real = (event.context.realRoles as string[] | undefined) ?? user.roles
+  if (!real.some((r) => r === 'admin' || r === 'gp')) throw apiError('forbidden', 'Only GPs and admins can add or change bank accounts.', 403)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Add the entity, bank, account name and currency. For the number, enter only the last 4 digits.')
   const d = b.data

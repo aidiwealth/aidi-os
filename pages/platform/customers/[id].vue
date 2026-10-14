@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
-interface D { agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
+interface D { can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
@@ -43,10 +43,10 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
-    <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.org.kind === 'company'" type="button" class="btn secondary" @click="supportSignIn">Sign in as owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
-    <div v-if="data.org.kind === 'company'" class="card raisec"><div><b>Managed fundraising</b><p>We run the raise for this company: investor list, outreach, meetings and closing. The founder sees progress in Finvry. Success fee on money closed.</p></div>
+    <div class="cuh"><h1>{{ data.org.name }}</h1><div v-if="data.can_edit" class="cua"><button v-if="data.org.kind === 'company'" type="button" class="btn secondary" @click="supportSignIn">Sign in as owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
+    <div v-if="data.org.kind === 'company' && data.can_edit" class="card raisec"><div><b>Managed fundraising</b><p>We run the raise for this company: investor list, outreach, meetings and closing. The founder sees progress in Finvry. Success fee on money closed.</p></div>
       <div class="rr"><label class="sw"><input type="checkbox" :checked="data.org.raise_enabled" @change="setRaise(($event.target as HTMLInputElement).checked)"> {{ data.org.raise_enabled ? 'On' : 'Off' }}</label><label class="fee">Fee %<input v-model.number="raiseFee" type="number" min="0" max="30" step="0.5" @change="data.org.raise_enabled && setRaise(true)"></label><NuxtLink v-if="data.org.raise_enabled" to="/services/raise" class="lk">Open in the desk →</NuxtLink></div></div>
-    <div v-if="data.org.kind === 'company' && data.grantable?.length" class="card feats"><div class="fh"><b>Extra features</b><p>Switch on features from the Startup or Scale plan for this workspace without changing its plan or billing. They stay on if the plan changes.</p></div>
+    <div v-if="data.org.kind === 'company' && data.grantable?.length && data.can_edit" class="card feats"><div class="fh"><b>Extra features</b><p>Switch on features from the Startup or Scale plan for this workspace without changing its plan or billing. They stay on if the plan changes.</p></div>
       <div class="fl"><label v-for="g in data.grantable" :key="g.code" class="fi" :class="{ on: data.org.extra_modules?.includes(g.code) }"><input type="checkbox" :disabled="featBusy" :checked="data.org.extra_modules?.includes(g.code)" @change="toggleFeature(g.code, ($event.target as HTMLInputElement).checked)"><span><b>{{ g.label }}</b><em>In {{ g.plans.join(' and ') }}</em></span></label></div></div>
     <div v-if="data.agreements?.length" class="card agr"><b>Signed agreements</b>
       <div v-for="a in data.agreements" :key="a.id" class="agl"><FileBadge name="x.pdf" size="sm" /><span><button type="button" class="lk" :disabled="a.status !== 'signed'" @click="openAgreement(a.id)">{{ a.title }}</button><em>{{ a.status === 'signed' ? 'Signed by ' + a.signer_name + (a.signer_email ? ' (' + a.signer_email + ')' : '') + ' · ' + new Date(a.signed_at!).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Waiting for signature' }} · v{{ a.version }}</em></span></div></div>
@@ -65,15 +65,16 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
     <p v-if="ok" class="ok" role="status">{{ ok }}</p><p v-if="msg" class="error" role="alert">{{ msg }}</p>
     <div class="grid">
       <div class="col">
-        <form class="card frm" @submit.prevent="save">
+        <p v-if="!data.can_edit" class="ro">View only. Ask a Finvry console owner to change this account.</p>
+        <form class="card frm" @submit.prevent="save"><fieldset :disabled="!data.can_edit" class="fs">
           <h2>Subscription</h2>
           <label class="label">Name<input v-model="f.name" required maxlength="200"></label>
           <label class="label">Plan<select v-model="f.plan_code"><option v-for="p in (plans?.plans ?? []).filter((x) => x.code === f.plan_code || x.code.startsWith('company_') || (data!.org.brand === 'aidi' && x.code === 'internal'))" :key="p.code" :value="p.code">{{ p.name }}{{ p.active ? '' : ' (inactive)' }}</option></select></label>
           <label class="label">Status<select v-model="f.status"><option value="trial">Trial</option><option value="active">Active</option><option value="past_due">Past due</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></label>
           <label v-if="f.status === 'trial'" class="label">Trial ends<input v-model="f.trial_ends_at" type="date"></label>
-          <button class="btn" type="submit" :disabled="busy">Save</button>
+          <button v-if="data.can_edit" class="btn" type="submit" :disabled="busy">Save</button>
           <p class="hint">List price {{ data.org.price ? '$' + Number(data.org.price).toLocaleString() + ' / month' : 'not set' }}. <NuxtLink :to="'/platform/billing?org=' + data.org.id">Subscription and invoices →</NuxtLink></p>
-        </form>
+        </fieldset></form>
         <div class="card">
           <h2>Platform actions</h2>
           <ul class="log"><li v-for="(l, i) in data.log" :key="i"><b>{{ ACT[l.action] ?? l.action }}</b><span>{{ l.by_name ?? 'Platform' }} · {{ when(l.at) }}</span></li></ul>
@@ -119,4 +120,5 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .xg { width: 64px; font: inherit; font-size: 12.5px; padding: 2px 6px; border: 1px solid var(--c-rule-strong); } .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 12.5px; }
 .feats { margin: 12px 0; display: flex; flex-direction: column; gap: 12px; } .fh p { margin: 4px 0 0; font-size: 13px; color: var(--c-muted); max-width: 720px; } .fl { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; } .fi { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; } .fi.on { border-color: var(--c-ok); background: #f1faf4; } .fi input { margin-top: 3px; } .fi span { display: flex; flex-direction: column; } .fi b { font-size: 14px; font-weight: 500; } .fi em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .agr { margin: 12px 0; display: flex; flex-direction: column; gap: 4px; } .agl { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--c-rule); } .agl span { display: flex; flex-direction: column; } .agl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .agr .lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-align: left; }
+.fs { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; } .fs label { display: flex; flex-direction: column; gap: 6px; } .ro { margin: 0; font-size: 13px; color: var(--c-muted); }
 </style>

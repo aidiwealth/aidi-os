@@ -21,5 +21,8 @@ export default defineEventHandler(async (event) => {
                FROM credit.covenant_checks k LEFT JOIN core.documents d ON d.id = k.document_id WHERE k.covenant_id = c.id) AS checks
        FROM credit.covenants c WHERE c.loan_id = $1 ORDER BY c.active DESC, c.next_due`, [id.data, levels])
   const alloc = Object.fromEntries(pos.allocations.map((a) => [a.id, a]))
-  return { loan, position: pos, repayments: reps.rows.map((r) => ({ ...r, allocation: alloc[r.id] ?? null })), covenants: cov.rows }
+  // For editing: the group's companies that can lend, and the borrowers.
+  const lenders = (await db().query("SELECT id, name FROM core.entities WHERE kind <> 'trust' AND status <> 'closed' ORDER BY name")).rows
+  const borrowers = (await db().query('SELECT id, name FROM credit.borrowers ORDER BY name')).rows
+  return { lenders, borrowers, loan, position: pos, repayments: reps.rows.map((r) => ({ ...r, allocation: alloc[r.id] ?? null })), covenants: cov.rows }
 })

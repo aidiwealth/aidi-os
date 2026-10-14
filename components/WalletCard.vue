@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // The balance card: bank and account, the balance in large type, and the details along the bottom.
+provide('compactMoney', true)
 defineProps<{ title: string; label: string; value: number | string | null; currency: string; sub?: string; footLabel?: string; footValue?: string; tag?: string }>()
 </script>
 <template>

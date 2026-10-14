@@ -1,6 +1,6 @@
 // Customers with commercial facts only: plan, status, seats, last activity.
 export default defineEventHandler(async (event) => {
-  await requirePlatform(event)
+  await requirePlatformView(event)
   const r = await asPlatform(() => db().query(
     `SELECT o.id, o.name, o.slug, o.kind, o.status, o.plan_code, p.name AS plan, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, o.created_at,
             (SELECT count(*)::int FROM core.memberships m WHERE m.organization_id = o.id AND m.status = 'active') AS seats, p.seat_limit,

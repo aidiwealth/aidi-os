@@ -3,6 +3,8 @@ useHead({ title: 'Bank & cash' })
 interface Acct { id: string; entity_id: string; entity: string; bank_name: string; account_name: string; last4: string | null; currency: string; kind: string; active: boolean; balance: string | null; as_of: string | null; statements: number; continuous: boolean | null }
 const { data, error, refresh } = await useFetch<Acct[]>('/api/banking/accounts')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
+const { data: meBk } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const canManage = computed(() => (meBk.value?.roles ?? []).some((r) => r === 'admin' || r === 'gp'))
 const entity = ref('')
 const rows = computed(() => (data.value ?? []).filter((a) => a.active && (!entity.value || a.entity_id === entity.value)))
 const byEntity = computed(() => {
@@ -37,7 +39,7 @@ const fxUsd = computed(() => { const r = fxr.value?.rates; if (!r) return null; 
       <h1>Bank &amp; cash</h1>
       <div class="tools">
         <select v-model="entity" aria-label="Entity"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
-        <button class="btn" type="button" @click="adding = true">Add account</button>
+        <button v-if="canManage" class="btn" type="button" @click="adding = true">Add account</button>
       </div>
     </div>
     <p class="lead">Balances come only from imported statements that tie out: opening balance plus money in, minus money out, must equal the closing balance.</p>
@@ -61,7 +63,7 @@ const fxUsd = computed(() => { const r = fxr.value?.rates; if (!r) return null; 
     </div>
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Bank & cash is limited to GPs and family.' : 'Could not load accounts.' }}</p>
-    <EmptyState v-else-if="!rows.length" card icon="banking" title="No bank accounts yet" text="Add each account, then import its statements. Balances only count once a statement ties out: opening balance plus money in, minus money out, equals the closing balance."><button class="btn" @click="adding = true">Add account</button></EmptyState>
+    <EmptyState v-else-if="!rows.length" card icon="banking" title="No bank accounts yet" text="Add each account, then import its statements. Balances only count once a statement ties out: opening balance plus money in, minus money out, equals the closing balance."><button v-if="canManage" class="btn" @click="adding = true">Add account</button></EmptyState>
     <div v-for="[name, accts] in byEntity" :key="name" class="grp">
       <h2>{{ name }}</h2>
       <table class="table"><tbody>

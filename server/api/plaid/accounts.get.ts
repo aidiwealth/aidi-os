@@ -1,6 +1,7 @@
 // Connected bank accounts with live balances (refreshed if older than an hour), plus a total in the reporting currency.
 export default defineEventHandler(async (event): Promise<Record<string, unknown>> => {
-  await requireRole(event, 'admin', 'gp', 'team', 'family')
+  const user = await requireRole(event, 'admin', 'gp', 'team', 'family')
+  const manage = user.roles.some((r) => r === 'admin' || r === 'gp')
   const org = (await currentOrg())!
   // Live balances come from US banks. Someone limited to companies outside the US (e.g. Nigerian ones) does not get
   // this section at all; others see only their companies' connections (row-level security).
@@ -13,5 +14,5 @@ export default defineEventHandler(async (event): Promise<Record<string, unknown>
   const to = (org.settings.reporting_currency as string) || (org.settings.currency as string) || 'USD'
   let total = 0
   for (const a of accts) if (a.current !== null && !['credit', 'loan'].includes(a.subtype ?? '')) { const k = await fxRate(a.currency, to); if (k) total += Number(a.current) * k }
-  return { available: true, enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to }
+  return { available: true, manage, enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to }
 })

@@ -32,7 +32,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { weekday: 'shor
         <div class="prog"><div class="pl"><span><b>{{ pct(r) }}%</b> committed · {{ money(r.totals.committed, r.currency) }}</span><span>Target {{ money(r.totals.target, r.currency) }}</span></div>
           <div class="bar"><i class="c" :style="{ width: share(r, r.totals.closed) + '%' }" /><i class="m" :style="{ width: Math.max(0, share(r, r.totals.committed) - share(r, r.totals.closed)) + '%' }" /></div>
           <div class="lg"><span><i class="c" />Closed</span><span><i class="m" />Committed</span><span><i />To raise</span></div></div>
-        <div class="nums"><div><span>Pipeline</span><b>{{ money(r.totals.pipeline, r.currency) }}</b></div><div><span>Closed</span><b>{{ money(r.totals.closed, r.currency) }}</b></div><div><span>Fee</span><b>{{ money(r.totals.fee, r.currency) }}</b></div><div><span>Investors</span><b>{{ r.totals.active }}<small> / {{ r.totals.count }}</small></b></div></div>
+        <div class="nums"><div><span>Pipeline</span><b>{{ brief(money(r.totals.pipeline, r.currency)) }}</b></div><div><span>Closed</span><b>{{ brief(money(r.totals.closed, r.currency)) }}</b></div><div><span>Fee</span><b>{{ brief(money(r.totals.fee, r.currency)) }}</b></div><div><span>Investors</span><b>{{ r.totals.active }}<small> / {{ r.totals.count }}</small></b></div></div>
         <div class="nx" :class="{ none: !r.next }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="5" width="17" height="15" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg><span>{{ r.next ? when(r.next.starts_at) + ' · ' + r.next.title : r.totals.count ? 'No meeting booked' : 'Start the investor list →' }}</span></div>
       </NuxtLink>
     </div>

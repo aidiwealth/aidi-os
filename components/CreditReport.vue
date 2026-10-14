@@ -35,15 +35,18 @@ const SRC: Record<string, string> = { CRC: 'CRC', FIRST_CENTRAL: 'First Central'
       <div v-if="sum.lenders.length" class="card"><h4>Lenders</h4><div v-for="(l, i) in sum.lenders" :key="i" class="srow"><span>{{ l.provider }}</span><span>{{ ngn(l.amount) }}</span><span>{{ ngn(l.outstanding) }} outstanding</span><span :class="{ r: /lost|non/i.test(l.performance) }">{{ l.performance || l.status }}</span></div></div>
     </template>
     <TrendChart v-if="hist.length > 1" title="Score history" :points="hist" foot="Indicative score, 300–850" />
-    <div class="card run"><h4>{{ data.nigeria ? 'Run a credit check' : 'Credit check' }}</h4>
-      <template v-if="data.nigeria"><div class="g3"><label class="label">Borrower type<select v-model="f.kind"><option value="business">Business (RC number)</option><option value="individual">Individual (BVN)</option></select></label>
+    <div v-if="data.nigeria" class="card run"><h4>Run a credit check</h4>
+      <div class="g3"><label class="label">Borrower type<select v-model="f.kind"><option value="business">Business (RC number)</option><option value="individual">Individual (BVN)</option></select></label>
+
         <label class="label">{{ f.kind === 'individual' ? 'BVN (11 digits)' : 'RC number' }}<input v-model="f.identifier" :placeholder="data.borrower.identifier_last4 ? 'Leave blank to reuse ••' + data.borrower.identifier_last4 : f.kind === 'individual' ? '12345678901' : 'RC123456'" maxlength="30" autocomplete="off"></label>
         <label class="cb"><input v-model="f.monitor" type="checkbox"> Monitor monthly (the ID is stored encrypted)</label></div>
-        <button class="btn" :disabled="busy" @click="run">{{ busy ? 'Checking the bureaus…' : 'Run check' }}</button><p class="mut">Get the borrower's consent first. Each check is billed by CreditChek.</p></template>
-      <p v-else class="mut">Automatic bureau checks for {{ data.borrower.country || 'this country' }} are switched off until a US credit bureau is connected. Record a manual review instead.</p>
-      <details class="mr" :open="!data.nigeria"><summary>Record a manual review</summary><div class="g3"><label class="label">Score (optional, 300–850)<input v-model="f.mscore" type="number" min="300" max="850"></label><label class="label w">Notes<textarea v-model="f.mnote" rows="3" maxlength="3000" placeholder="Bank statements reviewed, references, financials, decision" /></label></div><button class="btn secondary" :disabled="busy" @click="manual">Save review</button></details>
+        <button class="btn" :disabled="busy" @click="run">{{ busy ? 'Checking the bureaus…' : 'Run check' }}</button><p class="mut">Get the borrower's consent first. Each check is billed per bureau check.</p>
+      <details class="mr"><summary>Record a manual review</summary><div class="g3"><label class="label">Score (optional, 300–850)<input v-model="f.mscore" type="number" min="300" max="850"></label><label class="label w">Notes<textarea v-model="f.mnote" rows="3" maxlength="3000" placeholder="Bank statements reviewed, references, financials, decision" /></label></div><button class="btn secondary" :disabled="busy" @click="manual">Save review</button></details>
       <p v-if="msg" class="error">{{ msg }}</p></div>
-    <div v-if="data.checks.length > 1" class="card"><h4>History</h4><div v-for="c in data.checks" :key="c.id" class="srow"><span>{{ new Date(c.created_at).toLocaleDateString('en-GB') }}</span><span>{{ c.provider === 'manual' ? 'Manual review' : 'CreditChek' }}</span><span>{{ c.score ?? '—' }} {{ c.band ?? '' }}</span><span class="mut">{{ c.status === 'no_data' ? 'No history' : c.note ?? '' }}</span></div></div>
+    <div v-else class="card run"><h4>Credit review</h4><p class="mut">Review the business yourself (bank statements, references, financials) and record the outcome. Add a business bureau report below if you have one.</p>
+      <div class="g3"><label class="label">Score (optional, 300–850)<input v-model="f.mscore" type="number" min="300" max="850"></label><label class="label w">Notes<textarea v-model="f.mnote" rows="3" maxlength="3000" placeholder="Bank statements reviewed, references, financials, decision" /></label></div><button class="btn secondary" :disabled="busy" @click="manual">Save review</button>
+      <p v-if="msg" class="error">{{ msg }}</p></div>
+    <div v-if="data.checks.length > 1" class="card"><h4>History</h4><div v-for="c in data.checks" :key="c.id" class="srow"><span>{{ new Date(c.created_at).toLocaleDateString('en-GB') }}</span><span>{{ c.provider === 'manual' ? 'Manual review' : 'Bureau check' }}</span><span>{{ c.score ?? '—' }} {{ c.band ?? '' }}</span><span class="mut">{{ c.status === 'no_data' ? 'No history' : c.note ?? '' }}</span></div></div>
   </div>
 </template>
 <style scoped>

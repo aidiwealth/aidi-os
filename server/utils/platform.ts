@@ -12,6 +12,19 @@ export async function requirePlatform(event: H3Event, write = false): Promise<Se
   return { ...s, staffRole: role }
 }
 
+// Viewing Finvry customer accounts: console staff, and every Aidi OS team role (team, GP, admin) in the operator
+// workspace, read-only ("viewer").
+export async function customersViewer(s: SessionUser, event: H3Event): Promise<boolean> {
+  if (hostBrand(event) !== 'aidi' || !s.orgId) return false
+  return s.roles.some((r) => ['team', 'gp', 'admin'].includes(r)) && s.orgId === await operatorOrgId()
+}
+export async function requirePlatformView(event: H3Event): Promise<SessionUser & { staffRole: string }> {
+  const s = await requireUser(event)
+  if (s.platform && hostBrand(event) === 'aidi') { const r = await asPlatform(() => db().query<{ role: string }>('SELECT role FROM core.platform_staff WHERE user_id = $1', [s.userId])); if (r.rows[0]) return { ...s, staffRole: r.rows[0].role } }
+  if (await customersViewer(s, event)) return { ...s, staffRole: 'viewer' }
+  throw apiError('not_found', 'Not found', 404)
+}
+
 // Platform actions are logged in the customer's own audit trail, so they can see what Aidi staff changed.
 export async function platformAudit(event: H3Event, actorUserId: string | null, action: string, orgId: string | null, detail: Record<string, unknown> = {}): Promise<void> {
   await asPlatform(() => db().query('INSERT INTO core.audit_log (organization_id, actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',

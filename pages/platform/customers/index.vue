@@ -17,6 +17,7 @@ async function create() {
   try { const r = await $fetch<{ id: string; emailed: boolean }>('/api/platform/orgs', { method: 'POST', body: f }); await navigateTo('/platform/customers/' + r.id + (r.emailed ? '?invited=1' : '')) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the workspace.' }
 }
+const { data: me } = await useFetch<{ platform: boolean }>('/api/auth/me', { key: 'me' })
 const KIND: Record<string, string> = { company: 'Company', family_office: 'Internal' }
 watch(() => f.kind, () => { f.plan_code = 'company_free' })
 const ago = (s: string | null) => { if (!s) return 'never'; const d = Math.floor((Date.now() - Date.parse(s)) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago' }
@@ -26,7 +27,7 @@ void refresh
 <template>
   <section>
     <p class="label">Finvry platform</p>
-    <div class="head"><h1>Customers</h1><button class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'New customer' }}</button></div>
+    <div class="head"><h1>Customers</h1><button v-if="me?.platform" class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'New customer' }}</button></div>
     <form v-if="adding" class="card frm" @submit.prevent="create">
       <label class="label">Company<input v-model="f.name" required maxlength="200" placeholder="e.g. Acme Capital"></label>
       <label class="label">Link name<input v-model="f.slug" required pattern="[a-z0-9][a-z0-9-]{1,40}" @input="slugTouched = true"></label>

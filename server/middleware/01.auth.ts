@@ -6,15 +6,19 @@ export default defineEventHandler(async (event) => {
   event.context.dbBypass = false
   const path = getRequestURL(event).pathname
   if (!path.startsWith('/api/') || PUBLIC.includes(path) || path === '/api/auth/mfa-verify' || path.startsWith('/api/public/') || path.startsWith('/api/v1/') || path === '/api/mcp') return
-  const s = await readSession(event)
-  if (!s) throw apiError('unauthorized', 'Sign in required', 401)
+  const cached = await readSession(event)
+  if (!cached) throw apiError('unauthorized', 'Sign in required', 401)
+  // A per-request copy: roles added for this request must never reach the cached session.
+  const s = { ...cached, roles: [...cached.roles] }
   if (s.roles.includes('services') && /^\/api\/(services|cs-analytics|documents|records)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']
   event.context.user = s
   event.context.orgId = s.orgId
   event.context.entityScope = ''
   // Roles limited to an entity see only that company, or that company and its subsidiaries when the role says so
   // (admins and unscoped roles see everything).
-  if (s.orgId && !s.roles.includes('admin')) {
+  // Credit is the venture fund's lending book: every team role works the whole book, whatever companies they are
+  // limited to elsewhere.
+  if (s.orgId && !s.roles.includes('admin') && !/^\/api\/credit(\/|$)/.test(path)) {
     const sc = (await asPlatform(() => db().query<{ global: boolean; tree: string[] | null; only: string[] | null }>(
       `SELECT bool_or(scope_entity_id IS NULL) AS global, array_agg(DISTINCT scope_entity_id) FILTER (WHERE scope_entity_id IS NOT NULL AND include_subsidiaries) AS tree,
               array_agg(DISTINCT scope_entity_id) FILTER (WHERE scope_entity_id IS NOT NULL AND NOT include_subsidiaries) AS only FROM core.user_roles WHERE user_id = $1 AND organization_id = $2`, [s.userId, s.orgId]))).rows[0]

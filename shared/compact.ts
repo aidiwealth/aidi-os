@@ -1,8 +1,8 @@
-// Short amounts for metric tiles: 1250000 → 1.3M, 500000 → 500K. Below 10,000 stays as it is.
+// Short amounts for metric tiles: 1250000 → 1.3M, 500000 → 500k. Below 10,000 stays as it is.
 export function compactNum(n: number): string | null {
   const a = Math.abs(n)
   if (!Number.isFinite(n) || a < 10_000) return null
-  const units: [number, string][] = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]
+  const units: [number, string][] = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']]
   let i = units.findIndex(([d]) => a >= d)
   const fmt = (v: number) => (v >= 100 ? Math.round(v).toString() : v >= 10 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2).replace(/\.?0+$/, ''))
   let out = fmt(a / units[i]![0])

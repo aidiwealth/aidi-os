@@ -6,9 +6,9 @@ const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', c
 <template>
   <div v-if="data" class="wa">
     <div class="hd"><h2>Wealth management</h2><NuxtLink to="/wealth-mgmt" class="lk">Open →</NuxtLink></div>
-    <div class="kp"><NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Client assets</span><b>{{ usd(data.assets.total) }}</b><em>US {{ usd(data.assets.us) }} · Nigeria {{ usd(data.assets.ng) }}</em></NuxtLink>
+    <div class="kp"><NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Client assets</span><b>{{ brief(usd(data.assets.total)) }}</b><em>US {{ usd(data.assets.us) }} · Nigeria {{ usd(data.assets.ng) }}</em></NuxtLink>
       <NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Clients</span><b>{{ data.clients.active }} active</b><em>{{ data.clients.total }} total · {{ data.clients.kyc_pending }} KYC pending</em></NuxtLink>
-      <NuxtLink to="/wealth-mgmt?t=firms" class="k"><span>Fees this year</span><b>{{ usd(data.fees.ytd) }}</b><em :class="{ warn: data.fees.due > 0 }">{{ usd(data.fees.due) }} due</em></NuxtLink>
+      <NuxtLink to="/wealth-mgmt?t=firms" class="k"><span>Fees this year</span><b>{{ brief(usd(data.fees.ytd)) }}</b><em :class="{ warn: data.fees.due > 0 }">{{ usd(data.fees.due) }} due</em></NuxtLink>
       <div class="k"><span>Statements &amp; documents</span><b>{{ data.statements_quarter }} this quarter</b><em>{{ data.statements_unseen }} not opened · {{ data.awaiting_signature }} awaiting signature</em></div></div>
     <div class="g3"><div class="card"><DonutChart title="By service model" total-label="Total" currency="USD" :segments="data.assets.by_model" /></div>
       <div class="card"><h3>Client assets over time</h3><AreaTrend v-if="data.history.length > 1" :points="data.history.map((h: any) => ({ x: h.m, y: h.v }))" :height="140" :format="usd" /><p v-else class="mut">Builds month by month as client accounts are valued.</p>

@@ -51,8 +51,8 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <p v-if="tab === 'overview'" class="rollnote">Rolling fund: investors join deal by deal, and the terms (instrument, valuation cap, amounts) are set for each startup. There is no fund-level target, fee or term.</p>
     <div v-if="tab === 'overview'" class="kpis">
       <div class="kpi"><span>Deals</span><b>{{ data.deals?.length ?? 0 }}</b><em>{{ data.deals?.filter((d) => ['active', 'at_cost'].includes(d.status)).length }} active · {{ data.deals?.filter((d) => d.status === 'written_off').length }} written off</em></div>
-      <div class="kpi"><span>Invested</span><b>{{ money(data.deals?.reduce((a, d) => a + d.cost, 0) ?? 0, cur) }}</b><em>Aidi {{ money(data.deals?.reduce((a, d) => a + (d.aidi ?? 0), 0) ?? 0, cur) }} on deals with terms on file</em></div>
-      <div class="kpi"><span>Current value</span><b>{{ money(data.deals?.reduce((a, d) => a + d.value, 0) ?? 0, cur) }}</b><em>Realized {{ money(data.deals?.reduce((a, d) => a + d.realized, 0) ?? 0, cur) }}</em></div>
+      <div class="kpi"><span>Invested</span><b>{{ brief(money(data.deals?.reduce((a, d) => a + d.cost, 0) ?? 0, cur)) }}</b><em>Aidi {{ money(data.deals?.reduce((a, d) => a + (d.aidi ?? 0), 0) ?? 0, cur) }} on deals with terms on file</em></div>
+      <div class="kpi"><span>Current value</span><b>{{ brief(money(data.deals?.reduce((a, d) => a + d.value, 0) ?? 0, cur)) }}</b><em>Realized {{ money(data.deals?.reduce((a, d) => a + d.realized, 0) ?? 0, cur) }}</em></div>
       <div class="kpi"><span>Multiple</span><b>{{ x(((data.deals?.reduce((a, d) => a + d.value + d.realized, 0) ?? 0) / Math.max(1, data.deals?.reduce((a, d) => a + d.cost, 0) ?? 1))) }}</b><em>value plus realized over invested</em></div>
       <div class="kpi"><span>Co-investors</span><b>{{ data.lps.length }}</b><em>{{ money(data.deals?.reduce((a, d) => a + d.co.reduce((s, c) => s + c.amount, 0), 0) ?? 0, cur) }} invested alongside</em></div>
     </div>
@@ -63,10 +63,10 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
       <p class="sub">Positions and terms are kept in Investments &amp; AUM; edit them there.</p></div>
     </template>
     <div v-else-if="tab === 'overview'" class="kpis">
-      <div class="kpi"><span>Committed</span><b>{{ money(data.totals.committed, cur) }}</b><em>{{ data.lps.length }} LPs</em></div>
-      <div class="kpi"><span>Called</span><b>{{ money(data.totals.called, cur) }}</b><em>{{ pct(data.totals.calledPct) }} · {{ money(data.totals.unfunded, cur) }} unfunded</em></div>
-      <div class="kpi"><span>Paid in</span><b>{{ money(data.totals.paidIn, cur) }}</b><em>{{ money(data.totals.deployed) }} invested in {{ data.investments.length }} deals</em></div>
-      <div class="kpi"><span>Distributed</span><b>{{ money(data.totals.distributed, cur) }}</b><em>NAV {{ money(data.totals.nav, cur) }}</em></div>
+      <div class="kpi"><span>Committed</span><b>{{ brief(money(data.totals.committed, cur)) }}</b><em>{{ data.lps.length }} LPs</em></div>
+      <div class="kpi"><span>Called</span><b>{{ brief(money(data.totals.called, cur)) }}</b><em>{{ pct(data.totals.calledPct) }} · {{ money(data.totals.unfunded, cur) }} unfunded</em></div>
+      <div class="kpi"><span>Paid in</span><b>{{ brief(money(data.totals.paidIn, cur)) }}</b><em>{{ money(data.totals.deployed) }} invested in {{ data.investments.length }} deals</em></div>
+      <div class="kpi"><span>Distributed</span><b>{{ brief(money(data.totals.distributed, cur)) }}</b><em>NAV {{ money(data.totals.nav, cur) }}</em></div>
       <div class="kpi"><span>DPI</span><b>{{ x(data.m.dpi) }}</b><em>RVPI {{ x(data.m.rvpi) }}</em></div>
       <div class="kpi"><span>TVPI</span><b>{{ x(data.m.tvpi) }}</b><em>Net IRR {{ pct(data.m.irr) }}</em></div>
     </div>

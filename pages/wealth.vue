@@ -30,10 +30,10 @@ const ST: Record<string, string> = { active: 'Active', realized: 'Realized', at_
     <p class="label">Family Office</p>
     <div class="head"><div><h1>Investments &amp; AUM</h1><p class="lead">Every holding across the group and Aidi Wealth, with family NAV. Update values as statements arrive; each change is kept in the history.</p></div><button v-if="canEdit" class="btn" @click="edit()">Add holding</button></div>
     <div class="kp">
-      <div class="k hero"><em>Family NAV (conservative)</em><b>{{ usd(data.totals.nav) }}</b><i>Management basis {{ usd(data.totals.mgmtNav) }}</i></div>
-      <div class="k"><em>Total assets</em><b>{{ usd(data.totals.assets) }}</b><i>less {{ usd(data.totals.liabilities) }} liabilities</i></div>
-      <div class="k"><em>Aidi Wealth AUM</em><b>{{ usd(data.totals.wealthAum) }}</b><i>{{ usd(data.totals.clientAssets) }} client assets advised</i></div>
-      <div class="k"><em>Venture positions</em><b>{{ usd(data.totals.ventureValue + data.totals.ventureRealized) }}</b><i>{{ usd(data.totals.ventureCost) }} invested · {{ data.totals.ventureCost ? ((data.totals.ventureValue + data.totals.ventureRealized) / data.totals.ventureCost).toFixed(2) + 'x' : '—' }}</i></div>
+      <div class="k hero"><em>Family NAV (conservative)</em><b>{{ brief(usd(data.totals.nav)) }}</b><i>Management basis {{ usd(data.totals.mgmtNav) }}</i></div>
+      <div class="k"><em>Total assets</em><b>{{ brief(usd(data.totals.assets)) }}</b><i>less {{ usd(data.totals.liabilities) }} liabilities</i></div>
+      <div class="k"><em>Aidi Wealth AUM</em><b>{{ brief(usd(data.totals.wealthAum)) }}</b><i>{{ usd(data.totals.clientAssets) }} client assets advised</i></div>
+      <div class="k"><em>Venture positions</em><b>{{ brief(usd(data.totals.ventureValue + data.totals.ventureRealized)) }}</b><i>{{ usd(data.totals.ventureCost) }} invested · {{ data.totals.ventureCost ? ((data.totals.ventureValue + data.totals.ventureRealized) / data.totals.ventureCost).toFixed(2) + 'x' : '—' }}</i></div>
       <button class="k fl" :class="{ on: onlyFlags }" @click="onlyFlags = !onlyFlags"><em>Need attention</em><b :class="{ r: data.totals.flags }">{{ data.totals.flags }}</b><i>{{ onlyFlags ? 'Showing flagged only' : 'Show flagged only' }}</i></button>
     </div>
     <div class="top2"><div class="card"><DonutChart title="Family assets by type" total-label="Assets" currency="USD" :segments="mix" /></div>

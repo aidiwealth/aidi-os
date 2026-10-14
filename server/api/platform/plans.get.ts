@@ -1,5 +1,5 @@
 export default defineEventHandler(async (event) => {
-  await requirePlatform(event)
+  await requirePlatformView(event)
   const r = await asPlatform(() => db().query(
     `SELECT p.code, p.name, p.description, p.modules, p.seat_limit, p.storage_gb, p.ai_runs_month, p.price_monthly_usd::text AS price_monthly, p.price_annual_usd::text AS price_annual, p.price_monthly_ngn::text AS price_monthly_ngn, p.price_annual_ngn::text AS price_annual_ngn,
             p.public, p.active, p.sort, (SELECT count(*)::int FROM core.organizations o WHERE o.plan_code = p.code AND o.status IN ('trial','active','past_due')) AS customers

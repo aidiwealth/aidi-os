@@ -1,7 +1,7 @@
 // One customer: plan, status, usage against limits, admins (for account management) and platform actions taken.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  await requirePlatform(event)
+  const staff = await requirePlatformView(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Not found', 404)
   return await asPlatform(async () => {
@@ -29,6 +29,6 @@ export default defineEventHandler(async (event) => {
     const own = new Set((o.rows[0] as { plan_modules: string[] }).plan_modules ?? [])
     const grantable = MODULES.filter((m) => m.switchable && !own.has(m.code) && paidPlans.some((p) => p.modules.includes(m.code))).map((m) => ({ code: m.code, label: m.label, plans: paidPlans.filter((p) => p.modules.includes(m.code)).map((p) => p.name) }))
     const agreements = (await db().query("SELECT s.id, s.title, s.version, s.status, s.signed_at, s.signer_name, s.signer_email FROM legal.signatures s LEFT JOIN services.clients c ON c.id = s.client_id WHERE (s.organization_id = $1 OR c.workspace_id = $1) AND s.status <> 'void' ORDER BY coalesce(s.signed_at, s.created_at) DESC", [id.data])).rows
-    return { agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
+    return { can_edit: staff.staffRole !== 'viewer' && staff.staffRole !== 'support', agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
   })
 })

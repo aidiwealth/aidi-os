@@ -2,8 +2,8 @@
 // Expenses for the rentals, from every source: logged by the team (matched to a bank payment, or not yet) and taken from
 // the bank statements; plus bank payments still to review. Grouped by month with totals by source and category. Log one
 // in a popup (date, amount, category, property; room/unit, item, vendor, receipt, repeat monthly); admins edit and delete.
-interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; bank_txn_id?: string | null; source: 'manual' | 'matched' | 'bank'; bank_description: string | null; bank_date: string | null; bank_account: string | null }
-interface D { rows: E[]; categories: { code: string; label: string; hint: string | null }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean; receipt_ai: boolean }
+interface E { id: string; property_id: string | null; property: string; unit_id: string | null; unit: string | null; category: string; category_label: string | null; item: string | null; quantity: number | null; vendor: string | null; amount: number; spent_on: string; receipt_document_id: string | null; recurring: boolean; recurred_from: string | null; notes: string | null; split: string | null; category_split: string | null; bank_txn_id?: string | null; source: 'manual' | 'matched' | 'bank'; bank_description: string | null; bank_date: string | null; bank_account: string | null }
+interface D { rows: E[]; categories: { code: string; label: string; hint: string | null; split: string }[]; properties: { id: string; name: string }[]; units: { id: string; property_id: string; name: string }[]; locked: string[]; admin: boolean; receipt_ai: boolean }
 const f = reactive({ property: '', period: String(new Date().getUTCFullYear()), category: '', source: 'all' as 'all' | 'manual' | 'matched' | 'bank' })
 const { data, refresh } = await useFetch<D>('/api/rentals/expenses', { query: computed(() => ({ property: f.property || undefined, period: f.period || undefined, category: f.category || undefined })) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
@@ -28,7 +28,7 @@ async function saveMatch(unmatch = false) { mt.busy = true; try { await $fetch('
 const byCat = computed(() => { const m = new Map<string, number>(); for (const r of rows.value) m.set(r.category_label ?? r.category, (m.get(r.category_label ?? r.category) ?? 0) + r.amount); return [...m.entries()].sort((a, b) => b[1] - a[1]) })
 const isLocked = (d: string) => (data.value?.locked ?? []).includes(d.slice(0, 7))
 // Add / edit
-const blank = () => ({ bank_txn_id: '', id: '', spent_on: new Date().toISOString().slice(0, 10), amount: '' as string | number, category: '', property_id: data.value?.properties[0]?.id ?? '', unit_id: '', item: '', quantity: '' as string | number, vendor: '', recurring: false, notes: '' })
+const blank = () => ({ bank_txn_id: '', id: '', spent_on: new Date().toISOString().slice(0, 10), amount: '' as string | number, category: '', property_id: data.value?.properties[0]?.id ?? '', unit_id: '', item: '', quantity: '' as string | number, vendor: '', recurring: false, notes: '', split: '' })
 const x = reactive({ open: false, ...blank() }); const receipt = ref<File | null>(null)
 const unitsFor = computed(() => (data.value?.units ?? []).filter((u) => u.property_id === x.property_id))
 const hint = computed(() => data.value?.categories.find((c) => c.code === x.category)?.hint ?? '')
@@ -45,7 +45,7 @@ async function pickReceipt(ev: Event) {
   } catch (e) { scan.msg = err(e) } finally { scan.busy = false }
 }
 function add() { Object.assign(x, blank(), { open: true }); receipt.value = null; msg.value = ''; resetScan() }
-function edit(r: E) { Object.assign(x, { open: true, bank_txn_id: '', id: r.id, spent_on: r.spent_on, amount: r.amount, category: r.category, property_id: r.property_id, unit_id: r.unit_id ?? '', item: r.item ?? '', quantity: r.quantity ?? '', vendor: r.vendor ?? '', recurring: r.recurring, notes: r.notes ?? '' }); receipt.value = null; msg.value = ''; resetScan() }
+function edit(r: E) { Object.assign(x, { open: true, bank_txn_id: '', id: r.id, spent_on: r.spent_on, amount: r.amount, category: r.category, property_id: r.property_id, unit_id: r.unit_id ?? '', item: r.item ?? '', quantity: r.quantity ?? '', vendor: r.vendor ?? '', recurring: r.recurring, notes: r.notes ?? '', split: r.split ?? '' }); receipt.value = null; msg.value = ''; resetScan() }
 async function save(del = false) {
   if (del && !window.confirm('Delete this expense?')) return
   busy.value = true; msg.value = ''
@@ -60,6 +60,16 @@ const bankOpen = ref(true)
 function fromBank(b: B) { Object.assign(x, blank(), { open: true, bank_txn_id: b.id, spent_on: b.txn_date, amount: b.amount, category: b.guess ?? '', vendor: b.description.slice(0, 200), notes: 'From ' + b.account }); receipt.value = null; msg.value = ''; resetScan() }
 async function ignore(b: B) { try { await $fetch('/api/rentals/bank-ignore', { method: 'POST', body: { bank_txn_id: b.id } }); await rbank() } catch (e) { msg.value = err(e) } }
 watch(() => x.open, (o) => { if (!o) rbank() })
+// How a shared cost is split (mixed model): category default, or this expense's override (GPs and admins).
+const SPLIT: Record<string, string> = { weight: 'by size weight', nights: 'by nights booked', equal: 'equally' }
+const catSplit = computed(() => data.value?.categories.find((c) => c.code === x.category)?.split ?? 'equal')
+const splitOf = (r: E) => SPLIT[r.split ?? r.category_split ?? 'equal']
+// Cost-split settings: category bases and unit weights.
+interface CS { categories: { code: string; label: string; split: string }[]; units: { id: string; name: string; property: string; weight: number }[]; admin: boolean }
+const cs = reactive({ open: false, data: null as CS | null, busy: false })
+async function openSplit() { cs.open = true; cs.data = await $fetch<CS>('/api/rentals/cost-split') }
+async function saveSplit() { if (!cs.data) return; cs.busy = true; msg.value = ''; try { await $fetch('/api/rentals/cost-split', { method: 'POST', body: { categories: cs.data.categories.map((c) => ({ code: c.code, split: c.split })), units: cs.data.units.map((u) => ({ id: u.id, weight: Number(u.weight) || 0 })) } }); cs.open = false; ok.value = 'Cost split saved. Overview and P&L now use it.'; await refresh() } catch (e) { msg.value = err(e) } finally { cs.busy = false } }
+const wTot = computed(() => (cs.data?.units ?? []).reduce((s, u) => s + (Number(u.weight) || 0), 0))
 // Categories (admins)
 const cat = reactive({ open: false, label: '', hint: '' })
 async function saveCat() { busy.value = true; try { await $fetch('/api/rentals/categories', { method: 'POST', body: { label: cat.label, hint: cat.hint } }); cat.open = false; cat.label = ''; cat.hint = ''; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
@@ -71,15 +81,15 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
       <RentalsPeriod v-model="f.period" allow-all />
       <select v-model="f.property" aria-label="Property"><option value="">All properties</option><option value="shared">Shared costs</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <select v-model="f.category" aria-label="Category"><option value="">All categories</option><option v-for="c in data.categories" :key="c.code" :value="c.code">{{ c.label }}</option></select>
-      <span class="sp" /><button v-if="data.admin" type="button" class="btn secondary" @click="cat.open = true">+ Category</button><button type="button" class="btn" @click="add">+ Log expense</button></div>
+      <span class="sp" /><button type="button" class="btn secondary" @click="openSplit">How costs are split</button><button v-if="data.admin" type="button" class="btn secondary" @click="cat.open = true">+ Category</button><button type="button" class="btn" @click="add">+ Log expense</button></div>
     <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg && !x.open && !mt.open" class="error">{{ msg }}</p>
 
     <div class="card hd">
       <div class="ks">
-        <button type="button" class="kb" :class="{ on: f.source === 'all' }" @click="f.source = 'all'"><em>All expenses</em><b>{{ usd(sumOf(all)) }}</b><small>{{ all.length }} item{{ all.length === 1 ? '' : 's' }}</small></button>
-        <button type="button" class="kb" :class="{ on: f.source === 'bank' }" @click="f.source = 'bank'"><em><i class="d bank" />From bank statements</em><b>{{ usd(sumOf(bySrc.bank)) }}</b><small>{{ bySrc.bank.length }} item{{ bySrc.bank.length === 1 ? '' : 's' }}</small></button>
-        <button type="button" class="kb" :class="{ on: f.source === 'matched' }" @click="f.source = 'matched'"><em><i class="d matched" />Logged · matched to bank</em><b>{{ usd(sumOf(bySrc.matched)) }}</b><small>{{ bySrc.matched.length }} item{{ bySrc.matched.length === 1 ? '' : 's' }}</small></button>
-        <button type="button" class="kb" :class="{ on: f.source === 'manual' }" @click="f.source = 'manual'"><em><i class="d manual" />Logged · not in bank yet</em><b>{{ usd(sumOf(bySrc.manual)) }}</b><small>{{ bySrc.manual.length }} item{{ bySrc.manual.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'all' }" @click="f.source = 'all'"><em>All expenses</em><b>{{ brief(usd(sumOf(all))) }}</b><small>{{ all.length }} item{{ all.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'bank' }" @click="f.source = 'bank'"><em><i class="d bank" />From bank statements</em><b>{{ brief(usd(sumOf(bySrc.bank))) }}</b><small>{{ bySrc.bank.length }} item{{ bySrc.bank.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'matched' }" @click="f.source = 'matched'"><em><i class="d matched" />Logged · matched to bank</em><b>{{ brief(usd(sumOf(bySrc.matched))) }}</b><small>{{ bySrc.matched.length }} item{{ bySrc.matched.length === 1 ? '' : 's' }}</small></button>
+        <button type="button" class="kb" :class="{ on: f.source === 'manual' }" @click="f.source = 'manual'"><em><i class="d manual" />Logged · not in bank yet</em><b>{{ brief(usd(sumOf(bySrc.manual))) }}</b><small>{{ bySrc.manual.length }} item{{ bySrc.manual.length === 1 ? '' : 's' }}</small></button>
         <a v-if="bank?.rows.length" href="#review" class="kb rv"><em>Bank payments to review</em><b>{{ bank.rows.length }}</b><small>{{ usd(bank.rows.reduce((t, b) => t + b.amount, 0)) }}</small></a>
       </div>
       <div class="cats"><h3>By category{{ f.source !== 'all' ? ' · ' + SRC[f.source] : '' }}</h3>
@@ -94,7 +104,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
           <div v-for="r in m.list" :key="r.id" class="er">
             <span class="dt">{{ day(r.spent_on) }}</span>
             <span class="wh"><b>{{ r.item || r.vendor || r.category_label }}</b><span class="sub">{{ [r.quantity ? '× ' + r.quantity : '', r.item && r.vendor && r.source !== 'bank' ? r.vendor : '', r.source === 'bank' ? null : r.notes].filter(Boolean).join(' · ') }}<template v-if="r.bank_txn_id && r.source !== 'bank'">{{ ' · bank: ' + (r.bank_account ?? '') + ' ' + (r.bank_date ? day(r.bank_date) : '') }}</template><template v-if="r.source === 'bank'">{{ r.bank_account ?? 'Bank' }}</template></span></span>
-            <span class="pr">{{ r.property_id ? r.property : 'Shared' }}<span class="sub">{{ r.property_id ? (r.unit ?? 'Whole property') : 'Split across all units' }}</span></span>
+            <span class="pr">{{ r.property_id ? r.property : 'Shared' }}<span class="sub">{{ r.unit_id ? r.unit : (r.property_id ? 'Its units, ' : 'All units, ') + splitOf(r) }}</span></span>
             <span class="ct">{{ r.category_label ?? r.category }}<span v-if="r.recurring || r.recurred_from" class="sub">Monthly</span></span>
             <span class="sr"><span class="tg" :class="r.source">{{ SRC[r.source] }}</span></span>
             <b class="am">{{ usd(r.amount) }}</b>
@@ -123,6 +133,10 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
       <div class="ef">
         <div class="g3"><label class="label">Date<input v-model="x.spent_on" type="date"></label><label class="label">Amount ($)<input v-model="x.amount" inputmode="decimal" placeholder="0.00"></label><label class="label">Category<select v-model="x.category"><option value="" disabled>Choose…</option><option v-for="c in data.categories" :key="c.code" :value="c.code">{{ c.label }}</option></select><em v-if="hint" class="hint">{{ hint }}</em></label></div>
         <div class="g3"><label class="label">Property<select v-model="x.property_id"><option value="">All properties (shared)</option><option v-for="p in data.properties" :key="p.id" :value="p.id">{{ p.name }}</option></select></label><label class="label">Room / unit (optional)<select v-model="x.unit_id" :disabled="!x.property_id"><option value="">Shared across the property</option><option v-for="u in unitsFor" :key="u.id" :value="u.id">{{ u.name }}</option></select></label><label class="label">Vendor<input v-model="x.vendor" maxlength="200" placeholder="e.g. PG&E, Costco"></label></div>
+        <div v-if="!x.unit_id" class="sv"><span>{{ x.property_id ? 'Split across this property\'s units' : 'Shared: split across all units' }}</span>
+          <select v-if="data.admin" v-model="x.split" aria-label="Split"><option value="">{{ 'Category default (' + SPLIT[catSplit] + ')' }}</option><option value="weight">By size weight</option><option value="nights">By nights booked</option><option value="equal">Equally</option></select>
+          <b v-else>{{ SPLIT[catSplit] }}</b>
+          <em class="hint">Know exactly where it went (e.g. cleaning for the 3 Bedroom House only)? Pick that property{{ x.property_id ? ' or its room' : '' }} above instead.</em></div>
         <div class="g3"><label class="label">What was bought or paid for<input v-model="x.item" maxlength="300" placeholder="e.g. Queen bed linen set, internet"></label><label class="label">Quantity<input v-model="x.quantity" inputmode="decimal"></label><span /></div>
         <label class="label">Receipt photo or PDF<DropZone compact accept=".pdf,.png,.jpg,.jpeg,.webp,.heic" :label="receipt ? receipt.name : ''" :hint="data.receipt_ai ? 'AI reads it and fills in the amount, date and vendor.' : ''" @change="pickReceipt" /></label>
         <div v-if="scan.busy || scan.msg || scan.read" class="scan" :class="{ bad: !!scan.msg || (scan.read && !scan.read.readable) }"><template v-if="scan.busy">Reading the receipt…</template><template v-else-if="scan.msg">{{ scan.msg }}</template><template v-else-if="scan.read && !scan.read.readable">This file does not look like a receipt.</template><template v-else-if="scan.read"><b>✓ Read by AI, check before saving</b><span>{{ [scan.read.payee, scan.read.date, scan.read.amount !== null ? '$' + scan.read.amount.toFixed(2) : null].filter(Boolean).join(' · ') }}</span></template></div>
@@ -130,6 +144,20 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
         <label class="label">Notes<input v-model="x.notes" maxlength="2000"></label>
         <p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button v-if="x.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="x.open = false">Cancel</button><button class="btn" :disabled="busy || !x.amount || !x.category || !x.spent_on" @click="save()">{{ busy ? 'Saving…' : 'Save' }}</button></template>
+    </AppModal>
+    <AppModal :open="cs.open" title="How shared costs are split" wide @close="cs.open = false">
+      <div v-if="cs.data" class="ef">
+        <p class="mut">A cost logged to one room or unit stays there. A cost logged to a property, or shared by all, is split across the units by its category's basis. GPs and admins can override one expense, or charge it to one property or unit, from Edit.</p>
+        <h3 class="sh3">By category</h3>
+        <div class="cst"><div v-for="c in cs.data.categories" :key="c.code" class="csr"><span>{{ c.label }}</span>
+          <select v-model="c.split" :disabled="!cs.data.admin" :aria-label="c.label"><option value="weight">By size weight</option><option value="nights">By nights booked</option><option value="equal">Equally</option></select></div></div>
+        <h3 class="sh3">Size weight per room / unit</h3>
+        <p class="mut">Used for "By size weight" (e.g. bedrooms or square feet). A whole ADU at 1 and each house room at 1 puts 25% on the ADU, 75% on the house.</p>
+        <div class="cst"><div v-for="u in cs.data.units" :key="u.id" class="csr"><span>{{ u.name }}<em>{{ u.property }}</em></span>
+          <span class="wv"><input v-model="u.weight" inputmode="decimal" :disabled="!cs.data.admin" :aria-label="'Weight for ' + u.name"><i>{{ wTot ? Math.round((Number(u.weight) || 0) / wTot * 100) : 0 }}%</i></span></div></div>
+        <p class="mut">"By nights booked" uses each unit's nights in the period; with no bookings it falls back to the size weights.</p>
+        <p v-if="msg && cs.open" class="error">{{ msg }}</p></div>
+      <template #foot><button class="btn secondary" @click="cs.open = false">{{ cs.data?.admin ? 'Cancel' : 'Close' }}</button><button v-if="cs.data?.admin" class="btn" :disabled="cs.busy" @click="saveSplit">{{ cs.busy ? 'Saving…' : 'Save' }}</button></template>
     </AppModal>
     <AppModal :open="cat.open" title="Add a category" @close="cat.open = false">
       <div class="ef"><label class="label">Name<input v-model="cat.label" maxlength="80" placeholder="e.g. Landscaping"></label><label class="label">Examples (optional)<input v-model="cat.hint" maxlength="200"></label></div>
@@ -158,7 +186,10 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 @media (max-width: 800px) { .hd { grid-template-columns: 1fr; } .ks { border-right: 0; } .er { grid-template-columns: 1fr auto; } .er .dt, .er .sr { display: none; } .mix { display: none; } .cand { grid-template-columns: auto 1fr auto; } .cand .dsc { display: none; } }
 .lk { background: none; border: 0; padding: 0 0 0 12px; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .scan { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding: 8px 12px; border-left: 3px solid var(--c-ok); background: #f3faf6; } .scan.bad { border-left-color: var(--c-danger); background: #fff6f5; } .scan span { color: var(--c-ink-soft); }
-.ef { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .ef input:not([type="checkbox"]), .ef select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; } .hint { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.ef { display: flex; flex-direction: column; gap: 12px; }
+.sv { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: var(--c-paper-2); padding: 10px 12px; font-size: 13px; } .sv select { flex: 0 1 260px; } .sv .hint { flex-basis: 100%; }
+.sh3 { margin: 6px 0 0; font-size: 14px; } .cst { border: 1px solid var(--c-rule); } .csr { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; font-size: 13.5px; } .csr + .csr { border-top: 1px solid var(--c-rule); } .csr span em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .csr select { width: 200px; }
+.wv { display: flex; align-items: center; gap: 8px; } .wv input { width: 80px !important; text-align: right; } .wv i { font-style: normal; font-size: 12px; color: var(--c-muted); width: 36px; text-align: right; } .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .ef input:not([type="checkbox"]), .ef select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; } .hint { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .chk input { width: auto; }
 @media (max-width: 800px) { .g3 { grid-template-columns: 1fr; } .cb { grid-template-columns: 100px 1fr 80px; } .cb em { display: none; } }
 </style>

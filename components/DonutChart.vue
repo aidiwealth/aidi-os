@@ -10,7 +10,8 @@ const rows = computed(() => {
 })
 const total = computed(() => rows.value.reduce((t, x) => t + x.value, 0))
 const sym: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
-const fmt = (v: number) => props.currency ? (sym[props.currency] ?? props.currency + ' ') + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v.toLocaleString('en-US')
+const fmt = (v: number) => props.currency ? briefMoney(v, props.currency) : brief(v.toLocaleString('en-US'))
+void sym
 const R = 70, C = 2 * Math.PI * R, GAP = rows.value.length > 1 ? 3 : 0
 const arcs = computed(() => {
   let off = 0
