@@ -34,6 +34,17 @@ async function draft() {
     await navigateTo('/governance/resolutions/' + r.id)
   } catch (e) { msg.value = errText(e) }
 }
+// AI drafting: the trustee says what it should cover; AI writes the paper from the register (names, roles, amounts).
+const ai = reactive({ brief: '', busy: false, err: '' })
+async function aiDraft() {
+  ai.busy = true; ai.err = ''
+  try {
+    const r = await $fetch<{ title: string; body: string }>('/api/governance/ai-draft', { method: 'POST', body: { entity_id: id, kind: rf.kind, title: rf.title, brief: ai.brief, current: rf.body, meeting_date: rf.meeting_date || undefined, amount: rf.kind === 'distribution' ? rf.amount : undefined, currency: rf.kind === 'distribution' ? rf.currency : undefined, beneficiary_id: rf.kind === 'distribution' ? rf.beneficiary_id : undefined } })
+    if (!rf.title) rf.title = r.title
+    rf.body = r.body
+  } catch (e) { ai.err = errText(e) } finally { ai.busy = false }
+}
+const BRIEF: Record<string, string> = { resolution: 'e.g. Approve opening a Chase account for the trust and name Emmanuel and Deborah as signatories', minutes: 'e.g. Quarterly trustee meeting: reviewed investments, approved the 2026 budget, agreed to appoint a new tax adviser', consent: 'e.g. Consent to transfer 10% of Telroi LLC units to the trust', distribution: 'e.g. Education support for the autumn term, paid from the trust\'s Chase account' }
 const money = (v: string | null, c: string | null) => (v && c ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: c }).format(Number(v)) : '')
 const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
 </script>
@@ -84,7 +95,10 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
         <label v-if="rf.kind === 'minutes'" class="label">Meeting date<input v-model="rf.meeting_date" type="date"></label>
         <label class="label">Approvals needed<input v-model="rf.required_approvals" type="number" min="1" :max="data.signers.length" :placeholder="'majority (' + majority + ')'"></label>
         <label class="label">Supporting document<select v-model="rf.document_id"><option value="">None</option><option v-for="d in docs ?? []" :key="d.id" :value="d.id">{{ d.title }}</option></select></label>
-        <label class="label wide">Text<textarea v-model="rf.body" rows="8" required maxlength="20000" placeholder="RESOLVED, that…" /></label>
+        <div class="aib wide"><div class="aih"><b>✦ Write with AI</b><span>Say what it should cover; AI drafts it from this entity's register{{ rf.kind === 'distribution' ? ', the beneficiary and amount' : rf.kind === 'minutes' ? ' and the meeting date' : '' }}. Gaps show as [brackets]. Check it before saving.</span></div>
+          <textarea v-model="ai.brief" rows="2" maxlength="4000" :placeholder="BRIEF[rf.kind]" />
+          <div class="aia"><button class="btn secondary sm" type="button" :disabled="ai.busy || (!ai.brief.trim() && !rf.body.trim() && !rf.title.trim())" @click="aiDraft">{{ ai.busy ? 'Writing…' : rf.body.trim() ? 'Improve with AI' : 'Draft with AI' }}</button><span v-if="ai.err" class="error">{{ ai.err }}</span></div></div>
+        <label class="label wide">Text<textarea v-model="rf.body" rows="14" required maxlength="20000" placeholder="RESOLVED, that…" /></label>
         <p class="muted small wide">This saves a draft. Circulate it from the next page to email the signatories.</p>
         <div class="row"><button class="btn" type="submit">Save draft</button></div>
       </form>
@@ -119,4 +133,5 @@ b { color: var(--c-navy); font-weight: 500; } .co { color: var(--c-navy); font-w
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0 0 8px; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .frm { grid-template-columns: 1fr; } .wide2 { grid-column: auto; } }
+.aib { border: 1px solid var(--c-rule); background: var(--c-signal-soft); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; } .aih { display: flex; flex-direction: column; gap: 2px; font-size: 13px; } .aih b { color: var(--c-blue-deep); font-weight: 600; } .aih span { color: var(--c-muted); font-size: 12.5px; } .aib textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; resize: vertical; } .aia { display: flex; align-items: center; gap: 10px; } .aia .error { margin: 0; font-size: 13px; }
 </style>

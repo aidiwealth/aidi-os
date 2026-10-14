@@ -4,7 +4,8 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'admin')
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Not found', 404)
-  const r = await db().query('DELETE FROM core.meeting_minutes WHERE id = $1', [id.data])
+  const vis = meetingScope(event, user.userId, 2)
+  const r = await db().query('DELETE FROM core.meeting_minutes m WHERE m.id = $1 AND ' + vis.sql, [id.data, ...vis.params])
   if (!r.rowCount) throw apiError('not_found', 'Not found', 404)
   await audit({ event, actorUserId: user.userId, action: 'meetings.deleted', objectType: 'meeting', objectId: id.data })
   return { ok: true }

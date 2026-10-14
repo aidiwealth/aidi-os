@@ -33,6 +33,9 @@ const setRole = (u: TeamUser, action: 'add' | 'remove' | 'subsidiaries', role: s
   run(() => $fetch('/api/admin/users/' + u.id + '/roles', { method: 'POST', body: { action, role, entity_id, include_subsidiaries } }))
 // Several companies at once: one role per company picked.
 async function addRoles(u: TeamUser) { const a = adding[u.id]; if (!a?.role) return; await setRole(u, 'add', a.role, a.entity_id || null, a.subs); adding[u.id] = { role: '', entity_id: '', subs: false } }
+// Edit a member's name (admins).
+const nameEd = reactive({ id: '', value: '' })
+const saveName = (u: TeamUser) => run(async () => { await $fetch('/api/admin/users/' + u.id + '/name', { method: 'POST', body: { full_name: nameEd.value } }); nameEd.id = '' }, 'Name updated.')
 const setStatus = (u: TeamUser, status: 'active' | 'disabled') => {
   if (status === 'disabled' && !confirm('Disable ' + u.email + '? They are signed out immediately.')) return
   return run(() => $fetch('/api/admin/users/' + u.id + '/status', { method: 'POST', body: { status } }))
@@ -66,7 +69,8 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
       <thead><tr><th>Person</th><th>Roles</th><th>Last sign-in</th><th>Access</th></tr></thead>
       <tbody>
         <tr v-for="u in users" :key="u.id" :class="{ off: u.status === 'disabled' }">
-          <td><b>{{ u.full_name }}</b><span class="sub">{{ u.email }}<template v-if="u.email === me?.email"> · you</template></span></td>
+          <td><form v-if="nameEd.id === u.id" class="nmf" @submit.prevent="saveName(u)"><input v-model="nameEd.value" maxlength="200" required aria-label="Full name"><button class="btn sm" :disabled="busy || !nameEd.value.trim()">Save</button><button type="button" class="lk" @click="nameEd.id = ''">Cancel</button></form>
+            <b v-else>{{ u.full_name }} <button type="button" class="lk nme" title="Edit name" @click="nameEd.id = u.id; nameEd.value = u.full_name">Edit</button></b><span class="sub">{{ u.email }}<template v-if="u.email === me?.email"> · you</template></span></td>
           <td>
             <span v-for="r in u.roles" :key="r.role + (r.entity_id ?? '')" class="chip">
               {{ label(r.role) }}<template v-if="r.entity_name"> · {{ r.entity_name }} <button type="button" class="subs" :class="{ on: r.subsidiaries }" :title="r.subsidiaries ? 'Includes its subsidiaries. Click to limit to this company only.' : 'This company only. Click to include its subsidiaries.'" :disabled="busy" @click="setRole(u, 'subsidiaries', r.role, r.entity_id, !r.subsidiaries)">{{ r.subsidiaries ? '+ subsidiaries' : 'only' }}</button></template>
@@ -119,4 +123,6 @@ b { color: var(--c-navy); font-weight: 500; }
 .scopehint { caption-side: top; text-align: left; font-size: 12.5px; color: var(--c-muted); padding: 0 0 10px; }
 .subs { background: none; border: 1px solid var(--c-rule-strong); font: inherit; font-size: 11px; padding: 0 5px; margin-left: 4px; cursor: pointer; color: var(--c-muted); } .subs.on { border-color: var(--c-navy); color: var(--c-navy); }
 .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; } .chk input { width: auto; } .chk.sm { font-size: 12px; }
+.nmf { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; } .nmf input { font: inherit; font-size: 13.5px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); min-width: 0; width: 180px; } .nme { font-size: 12px; font-weight: 400; margin-left: 4px; opacity: .7; } .nme:hover { opacity: 1; }
+.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk:hover { text-decoration: underline; }
 </style>

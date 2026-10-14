@@ -3,6 +3,7 @@
 definePageMeta({ layout: false })
 const token = useRoute().params.token as string
 const { data, error } = await useFetch<{ title: string; require_email: boolean; allow_download: boolean; workspace: { firm: string }; branding: { logo_url: string | null } | null }>('/api/public/deck/' + token, { key: 'deck-' + token })
+const errCode = computed(() => (error.value as { data?: { data?: { error?: { code?: string } } } } | null)?.data?.data?.error?.code ?? '')
 useHead({ title: () => (data.value ? data.value.title + ' — ' + data.value.workspace.firm : 'Deck'), meta: [{ name: 'robots', content: 'noindex' }] })
 const visit = ref(''); const email = ref(''); const name = ref(''); const msg = ref(''); const busy = ref(false)
 async function start() { busy.value = true; msg.value = ''; try { visit.value = (await $fetch<{ visit: string }>('/api/public/deck/' + token + '/start', { method: 'POST', body: { email: email.value, name: name.value } })).visit } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not open the deck.' } finally { busy.value = false } }
@@ -13,7 +14,7 @@ function track(page: number, seconds: number, pages: number) { const body = JSON
   <div class="dk">
     <header><img v-if="data?.branding?.logo_url" :src="data.branding.logo_url" alt="" class="lg"><b>{{ data?.workspace.firm }}</b><span>{{ data?.title }}</span><a v-if="visit && data?.allow_download" :href="'/api/public/deck/' + token + '/file?download=1&v=' + visit" class="dl">Download</a></header>
     <main>
-      <div v-if="error" class="card gate"><h1>This link is not valid</h1><p class="mut">Ask the company for a new link.</p></div>
+      <div v-if="error" class="card gate"><h1>{{ errCode === 'archived' ? 'This deck is no longer shared' : errCode === 'no_file' ? 'This deck is not ready yet' : 'This link is not valid' }}</h1><p class="mut">{{ errCode === 'no_file' ? 'The company has not uploaded the file yet.' : 'Ask the company for a new link.' }}</p></div>
       <form v-else-if="data && !visit && data.require_email" class="card gate" @submit.prevent="start"><h1>{{ data.title }}</h1><p class="mut">{{ data.workspace.firm }} shares this deck with investors. Enter your email to view it.</p>
         <input v-model="email" type="email" required placeholder="you@fund.com" autocomplete="email"><input v-model="name" maxlength="120" placeholder="Your name (optional)" autocomplete="name"><button class="btn" :disabled="busy">{{ busy ? 'Opening…' : 'View deck' }}</button><p v-if="msg" class="error">{{ msg }}</p></form>
       <ClientOnly v-else-if="visit"><DeckViewer :src="'/api/public/deck/' + token + '/file?v=' + visit" :on-track="track" /></ClientOnly>

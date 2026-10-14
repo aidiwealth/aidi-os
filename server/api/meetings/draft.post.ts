@@ -9,9 +9,12 @@ export default defineEventHandler(async (event) => {
   const people = await orgPeople(), names = d.attendees.map((id) => people.find((p) => p.id === id)?.name).filter(Boolean) as string[]
   const entity = d.entity_id ? (await db().query<{ name: string }>('SELECT name FROM core.entities WHERE id = $1', [d.entity_id])).rows[0]?.name ?? null : null
   try {
-    const out = await draftMinutes({ title: d.title, kind: d.kind, entity, held_at: d.held_at || new Date().toISOString(), attendees: names, guests: d.guests, agenda: d.agenda, notes: d.notes, ref: 'minutes:' + user.userId })
-    // Match named owners to attendees so action items can be assigned.
-    const actions = out.actions.map((a) => { const p = a.owner ? people.find((x) => x.name.toLowerCase() === a.owner!.toLowerCase() || x.name.split(' ')[0]!.toLowerCase() === a.owner!.toLowerCase().split(' ')[0]) : undefined; return { text: a.text, owner_id: p?.id ?? null, owner: p ? null : a.owner, due: a.due, done: false } })
+    const out = await draftMinutes({ team: people.map((p) => p.name), title: d.title, kind: d.kind, entity, held_at: d.held_at || new Date().toISOString(), attendees: names, guests: d.guests, agenda: d.agenda, notes: d.notes, ref: 'minutes:' + user.userId })
+    // Owners are team members only: a name the AI returns that is not someone in this workspace is dropped (never shown
+    // as a made-up option); first name or full name must match exactly one person.
+    const norm = (s: string) => s.trim().toLowerCase()
+    const match = (o: string) => { const full = people.filter((x) => norm(x.name) === norm(o)); if (full.length === 1) return full[0]; const first = people.filter((x) => norm(x.name.split(' ')[0]!) === norm(o.split(' ')[0]!)); return first.length === 1 && o.trim().split(/\s+/).length === 1 ? first[0] : undefined }
+    const actions = out.actions.map((a) => { const p = a.owner ? match(a.owner) : undefined; return { text: a.text, owner_id: p?.id ?? null, owner: null, due: a.due, done: false } })
     return { ...out, actions }
   } catch (err) { if ((err as { statusCode?: number }).statusCode === 429) throw err; console.error('[minutes] AI failed', err); throw apiError('ai_failed', 'Could not write the minutes just now. Try again in a moment.', 502) }
 })

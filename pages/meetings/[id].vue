@@ -4,7 +4,7 @@ import { mdRender } from '~/shared/markdown'
 const id = useRoute().params.id as string
 const isNew = id === 'new'
 interface Act { text: string; owner_id: string | null; owner: string | null; due: string | null; done: boolean }
-const { data: meta } = await useFetch<{ entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string> }>('/api/meetings', { transform: (d: { entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string> }) => ({ entities: d.entities, people: d.people, kinds: d.kinds }) })
+const { data: meta } = await useFetch<{ entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string>; scoped: boolean }>('/api/meetings', { transform: (d: { entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string>; scoped: boolean }) => ({ entities: d.entities, people: d.people, kinds: d.kinds, scoped: d.scoped }) })
 const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 const f = reactive({ title: '', kind: 'team', entity_id: '' as string, held_at: local(new Date()), minutes_long: 60 as number | string, location: '', attendees: [] as string[], guests: '', agenda: '', summary: '', notes: '', decisions: '', actions: [] as Act[], status: 'draft' as 'draft' | 'final' })
 const rough = ref(''); const view = ref<'edit' | 'read'>(isNew ? 'edit' : 'read')
@@ -12,6 +12,7 @@ if (!isNew) {
   const m = await $fetch<Record<string, unknown>>('/api/meetings/' + id).catch(() => null)
   if (m) Object.assign(f, { title: m.title, kind: m.kind, entity_id: (m.entity_id as string) ?? '', held_at: local(new Date(m.held_at as string)), minutes_long: m.minutes_long ?? '', location: m.location ?? '', attendees: m.attendees ?? [], guests: m.guests ?? '', agenda: m.agenda ?? '', summary: m.summary ?? '', notes: m.notes ?? '', decisions: m.decisions ?? '', actions: (m.actions as Act[]) ?? [], status: m.status })
 }
+if (meta.value?.scoped && !f.entity_id) f.entity_id = meta.value.entities[0]?.id ?? ''
 useHead({ title: () => (f.title || (isNew ? 'Log a meeting' : 'Meeting')) + ' · Minutes' })
 const toggleA = (uid: string) => { f.attendees = f.attendees.includes(uid) ? f.attendees.filter((x) => x !== uid) : [...f.attendees, uid] }
 const pname = (uid: string | null) => meta.value?.people.find((p) => p.id === uid)?.name ?? ''
@@ -58,7 +59,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
         <div class="card frm">
           <label class="label w">Title<input v-model="f.title" maxlength="200" placeholder="e.g. Q3 board meeting"></label>
           <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in meta.kinds" :key="k" :value="k">{{ l }}</option></select></label>
-          <label class="label">Company<select v-model="f.entity_id"><option value="">Group-wide / none</option><option v-for="e in meta.entities" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
+          <label class="label">Company<select v-model="f.entity_id"><option v-if="!meta.scoped" value="">Group-wide / none</option><option v-for="e in meta.entities" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
           <label class="label">When<input v-model="f.held_at" type="datetime-local"></label>
           <label class="label">Length (minutes)<input v-model="f.minutes_long" type="number" min="1" max="1440"></label>
           <label class="label w">Where<input v-model="f.location" maxlength="300" placeholder="Office, video link or address"></label>
@@ -75,7 +76,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
       </div>
       <aside class="col">
         <div class="card"><h2>Action items</h2>
-          <div v-for="(a, i) in f.actions" :key="i" class="ae"><input v-model="a.text" maxlength="500" placeholder="What needs doing"><div class="ar"><select v-model="a.owner_id"><option :value="null">{{ a.owner || 'Owner' }}</option><option v-for="p in meta.people" :key="p.id" :value="p.id">{{ p.name }}</option></select><input v-model="a.due" type="date"><label class="dn"><input v-model="a.done" type="checkbox"> Done</label><button type="button" class="x" aria-label="Remove" @click="f.actions.splice(i, 1)">×</button></div></div>
+          <div v-for="(a, i) in f.actions" :key="i" class="ae"><input v-model="a.text" maxlength="500" placeholder="What needs doing"><div class="ar"><select v-model="a.owner_id"><option :value="null">Owner</option><option v-for="p in meta.people" :key="p.id" :value="p.id">{{ p.name }}</option></select><input v-model="a.due" type="date"><label class="dn"><input v-model="a.done" type="checkbox"> Done</label><button type="button" class="x" aria-label="Remove" @click="f.actions.splice(i, 1)">×</button></div></div>
           <button type="button" class="lnk" @click="addAction">+ Add action item</button></div>
         <div class="card sv"><button class="btn" :disabled="!!busy || !f.title.trim()" @click="save('final')">{{ busy === 'save' ? 'Saving…' : 'Save as final' }}</button><button class="btn secondary" :disabled="!!busy || !f.title.trim()" @click="save('draft')">Save draft</button><button v-if="!isNew" class="btn secondary" @click="view = 'read'">Cancel</button><button v-if="!isNew" class="lnk red" @click="del">Delete minutes</button></div>
       </aside></div>
@@ -87,7 +88,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
 .rh { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; } .eb { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); display: flex; gap: 8px; align-items: center; } .acts { display: flex; gap: 8px; } .acts a { text-decoration: none; }
 .dr { font-size: 11px; font-weight: 600; padding: 2px 7px; background: #fff6e6; color: #a5650b; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; margin-top: 10px; } .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.sum { background: var(--c-signal-soft); border-color: #c9d8f5; } .sum p { margin: 6px 0 0; line-height: 1.55; } .body { font-size: 14px; line-height: 1.6; color: var(--c-ink-soft); } .body :deep(h2), .body :deep(h3) { font-size: 15px; margin: 14px 0 6px; color: var(--c-ink); }
+.sum { background: var(--c-signal-soft); border-color: #c9d8f5; } .sum p { margin: 6px 0 0; line-height: 1.55; } .body { font-size: 14px; line-height: 1.6; color: var(--c-ink-soft); } .body :deep(h2), .body :deep(h3), .body :deep(h4) { font-size: 15px; font-weight: 600; margin: 16px 0 6px; color: var(--c-blue-deep); letter-spacing: -.01em; } .body :deep(h2:first-child), .body :deep(h3:first-child) { margin-top: 0; }
 .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; } .frm .w { grid-column: 1 / -1; } .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; box-sizing: border-box; max-width: 100%; } textarea { width: 100%; resize: vertical; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips button { background: #fff; border: 1px solid var(--c-rule); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; } .chips .on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }

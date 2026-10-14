@@ -10,6 +10,10 @@ export default defineEventHandler(async (event) => {
   const d = b.data
   const at = new Date(d.held_at); if (isNaN(at.getTime())) throw apiError('invalid', 'Choose a valid date and time.')
   if (d.entity_id && !(await db().query('SELECT 1 FROM core.entities WHERE id = $1', [d.entity_id])).rowCount) throw apiError('invalid', 'Choose one of your entities.')
+  // People limited to some companies file minutes under one of their companies (so their colleagues on it can see them).
+  const scope = scopeOf(event)
+  if (scope.length && (!d.entity_id || !scope.includes(d.entity_id))) { if (d.entity_id) throw apiError('invalid', 'Choose one of your companies.'); d.entity_id = scope[0]! }
+  if (d.id) { const vis = meetingScope(event, user.userId, 2); if (!(await db().query('SELECT 1 FROM core.meeting_minutes m WHERE m.id = $1 AND ' + vis.sql, [d.id, ...vis.params])).rowCount) throw apiError('not_found', 'Not found', 404) }
   const vals = [d.title, d.kind, d.entity_id ?? null, at.toISOString(), d.minutes_long ?? null, d.location || null, d.attendees, d.guests || null, d.agenda || null, d.summary || null, d.notes || null, d.decisions || null, JSON.stringify(d.actions), d.status]
   let id = d.id
   if (id) { const r = await db().query('UPDATE core.meeting_minutes SET title = $2, kind = $3, entity_id = $4, held_at = $5, minutes_long = $6, location = $7, attendees = $8, guests = $9, agenda = $10, summary = $11, notes = $12, decisions = $13, actions = $14, status = $15, updated_at = now() WHERE id = $1', [id, ...vals]); if (!r.rowCount) throw apiError('not_found', 'Not found', 404) }

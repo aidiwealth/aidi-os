@@ -22,6 +22,9 @@ export default defineEventHandler(async (event) => {
   const roomRow = rl ? (await db().query<{ slug: string | null; dead: boolean }>('SELECT slug, (revoked OR (expires_at IS NOT NULL AND expires_at < now())) AS dead FROM fundraise.links WHERE id = $1', [rl])).rows[0] : undefined
   const kindRow = (await asPlatform(() => db().query<{ kind: string }>('SELECT kind FROM core.organizations WHERE id = $1', [p.organization_id]))).rows[0]
   const appBase = kindRow?.kind === 'company' ? brands().finvry.url : brands().aidi.url
+  // A pasted link to one of our own decks that was archived or replaced by a new link: use the current deck instead.
+  const own = p.deck_url?.match(/\/deck\/([A-Za-z0-9_-]{12,40})\/?$/)?.[1]
+  if (own && !(await db().query('SELECT 1 FROM fundraise.decks WHERE token = $1 AND active', [own])).rowCount) p.deck_url = null
   const mainDeck = p.deck_url && !chosenDeck ? null : (await db().query<{ token: string }>('SELECT token FROM fundraise.decks WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY primary_deck DESC, updated_at DESC LIMIT 1', [chosenDeck]).catch(() => ({ rows: [] as { token: string }[] }))).rows[0]
   const bid = (p as unknown as { board_id: string | null }).board_id
   const bRow = bid ? (await db().query<{ name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number }>('SELECT name, kpis, charts, period, count FROM financials.boards WHERE id = $1', [bid])).rows[0] : undefined
