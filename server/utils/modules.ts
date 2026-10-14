@@ -15,7 +15,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'contacts', group: 'fin', label: 'Contacts', to: '/contacts', roles: ['gp', 'team'], api: ['/api/crm/contacts', '/api/crm/lists', '/api/crm/fields', '/api/crm/notes'], pages: ['/contacts'], switchable: true },
   { code: 'fundraising', group: 'fin', label: 'Fundraising', to: '/fundraising', roles: ['gp', 'team'], api: ['/api/fundraising', '/api/crm/pipelines', '/api/crm/deals', '/api/crm/stages', '/api/crm/meetings', '/api/crm/calendar', '/api/crm/investors'], pages: ['/fundraising'], switchable: true },
   { code: 'updates', group: 'fin', label: 'Investor updates', to: '/updates', roles: ['gp', 'team'], api: ['/api/updates', '/api/investors'], pages: ['/updates'], switchable: true },
-  { code: 'boards', group: 'fin', label: 'Boards', to: '/financials/boards', roles: ['admin', 'gp', 'team', 'family'], api: [], pages: [], switchable: true },
+  { code: 'boards', group: 'fin', label: 'Boards', to: '/financials/boards', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/financials/boards'], pages: ['/financials/boards'], switchable: true },
   { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
@@ -72,7 +72,12 @@ async function load(): Promise<{ on: Set<string>; plan: Set<string> }> {
 export async function enabledModules(): Promise<Set<string>> { return (await load()).on }
 export async function planModules(): Promise<Set<string>> { return (await load()).plan }
 export const clearModuleCache = (): void => { cache.clear() }
-export const moduleForApi = (path: string): ModuleDef | undefined => MODULES.find((m) => m.api.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/')))
+// The module whose API prefix matches best (longest), so /api/financials/boards is Boards, not Financials.
+export const moduleForApi = (path: string): ModuleDef | undefined => {
+  let best: ModuleDef | undefined, len = -1
+  for (const m of MODULES) for (const p of m.api) if ((path === p || path.startsWith(p.endsWith('/') ? p : p + '/')) && p.length > len) { best = m; len = p.length }
+  return best
+}
 export const canUse = (m: ModuleDef, roles: string[], ov?: Record<string, string[]> | null): boolean => roles.includes('admin') || (ov?.[m.code] ?? m.roles).some((r) => roles.includes(r))
 // Per-workspace overrides of which roles may use a module (set by admins on the Modules page).
 export async function moduleRoleOverrides(): Promise<Record<string, string[]>> { const s = (await currentOrg())?.settings as Record<string, unknown> | undefined; const v = s?.module_roles; return v && typeof v === 'object' ? v as Record<string, string[]> : {} }

@@ -6,10 +6,12 @@ interface Line { key: string; label: string; section: string }
 interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[] }
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null> }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
+// Someone limited to some companies sees those companies, not the group consolidation.
+const scoped = computed(() => !!me.value?.entity_scoped)
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const co = computed(() => subj.value?.company ?? null)
-const subject = ref(co.value?.subject ?? 'group'); const periodType = ref('month'); const currency = ref(co.value?.currency ?? 'USD')
+const subject = ref(co.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const currency = ref(co.value?.currency ?? 'USD')
 watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.currency } })
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
 const original = ref(false)
@@ -100,7 +102,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <p class="label">{{ co ? 'Investors' : 'Records' }}</p>
     <div class="head">
       <div class="tl"><h1>Financials</h1>
-        <select v-if="!co" v-model="subject" class="subj" aria-label="Show figures for"><option value="group">Group (consolidated)</option>
+        <select v-if="!co" v-model="subject" class="subj" aria-label="Show figures for"><option v-if="!scoped" value="group">Group (consolidated)</option>
           <optgroup v-if="subj?.entities.length" label="Funds and entities"><option v-for="e in subj.entities" :key="e.id" :value="'entity:' + e.id">{{ e.name }}</option></optgroup>
           <optgroup v-if="subj?.companies.length" label="Portfolio and group companies"><option v-for="c in subj.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}{{ c.relationship === 'subsidiary' ? ' (subsidiary)' : '' }}</option></optgroup></select>
         <span v-else class="co">{{ co.name }}</span></div>
@@ -118,7 +120,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
     <template v-if="rows.length && latest">
-      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
+      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + lbl(latest.period_end)" icon="money" tone="b" :note="change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>

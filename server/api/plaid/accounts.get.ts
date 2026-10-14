@@ -2,6 +2,10 @@
 export default defineEventHandler(async (event): Promise<Record<string, unknown>> => {
   await requireRole(event, 'admin', 'gp', 'team', 'family')
   const org = (await currentOrg())!
+  // Live balances come from US banks. Someone limited to companies outside the US (e.g. Nigerian ones) does not get
+  // this section at all; others see only their companies' connections (row-level security).
+  const scope = String(event.context.entityScope ?? '')
+  if (scope && !(await db().query("SELECT 1 FROM core.entities WHERE id::text = ANY(string_to_array($1, ',')) AND jurisdiction ILIKE 'US%' LIMIT 1", [scope])).rowCount) return { available: false, enabled: false, env: '', items: [], accounts: [], total: 0, currency: 'USD' }
   const items = await db().query<{ id: string; access_token_enc: string; institution: string | null; error: string | null; stale: boolean }>("SELECT i.id, i.access_token_enc, i.institution, i.error, coalesce((SELECT min(a.updated_at) < now() - interval '1 hour' FROM banking.plaid_accounts a WHERE a.item_id = i.id), true) AS stale FROM banking.plaid_items i WHERE i.wm_client_id IS NULL ORDER BY i.created_at")
   if (plaidOn() && getQuery(event).refresh !== '0') for (const it of items.rows) if (it.stale || getQuery(event).refresh === '1') await refreshItem(it.id, it.access_token_enc)
   const accts = (await db().query<{ id: string; item_id: string; name: string; mask: string | null; subtype: string | null; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }>(
@@ -9,5 +13,5 @@ export default defineEventHandler(async (event): Promise<Record<string, unknown>
   const to = (org.settings.reporting_currency as string) || (org.settings.currency as string) || 'USD'
   let total = 0
   for (const a of accts) if (a.current !== null && !['credit', 'loan'].includes(a.subtype ?? '')) { const k = await fxRate(a.currency, to); if (k) total += Number(a.current) * k }
-  return { enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to }
+  return { available: true, enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to }
 })

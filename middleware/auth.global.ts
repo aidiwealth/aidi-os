@@ -15,7 +15,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path === '/') return
   try {
     const mods = await $fetch<{ pages: string[]; usable: boolean; locked?: boolean }[]>('/api/modules', { headers })
-    const m = mods.find((x) => x.pages.some((p) => to.path === p || to.path.startsWith(p + '/')))
+    // The module with the longest matching page prefix (/financials/boards is Boards, not Financials).
+    let m: typeof mods[number] | undefined, len = -1
+    for (const x of mods) for (const p of x.pages) if ((to.path === p || to.path.startsWith(p + '/')) && p.length > len) { m = x; len = p.length }
     if (m && !m.usable && !m.locked) return navigateTo('/')
   } catch { /* if the module list cannot load, the APIs still enforce access */ }
 })

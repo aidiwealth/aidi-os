@@ -6,7 +6,8 @@ const Body = z.object({
   reference: z.string().trim().max(60).optional(), principal: z.coerce.number().positive().max(1e12), currency: z.string().regex(/^[A-Z]{3}$/),
   annual_rate: z.coerce.number().min(0).max(200), tenor_months: z.coerce.number().int().min(1).max(360),
   repayment_type: z.enum(['amortising', 'interest_only', 'bullet']), frequency: z.enum(['monthly', 'quarterly']),
-  disbursed_on: date, first_payment_on: date, security: z.string().trim().max(1000).optional(), notes: z.string().trim().max(3000).optional()
+  disbursed_on: date, first_payment_on: date, security: z.string().trim().max(1000).optional(), notes: z.string().trim().max(3000).optional(),
+  deployment_id: z.string().uuid().optional().or(z.literal('').transform(() => undefined))
 })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
@@ -24,6 +25,8 @@ export default defineEventHandler(async (event) => {
        VALUES ($1, coalesce($2::uuid, core.default_vehicle()), $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
       [d.borrower_id, d.lender_entity_id ?? null, d.reference || null, d.principal, d.currency, d.annual_rate, d.tenor_months, d.repayment_type, d.frequency, d.disbursed_on, d.first_payment_on, d.security || null, d.notes || null, user.userId])
     loanId = l.rows[0]!.id
+    // Booked from a payment already recorded from the bank: link it, so it is not listed as unbooked again.
+    if (d.deployment_id) await client.query("UPDATE finance.deployments SET loan_id = $2 WHERE id = $1 AND loan_id IS NULL AND source = 'credit'", [d.deployment_id, loanId])
     for (const r of schedule) await client.query('INSERT INTO credit.schedule (loan_id, seq, due_date, principal_due, interest_due) VALUES ($1,$2,$3,$4,$5)', [loanId, r.seq, r.due_date, r.principal_due, r.interest_due])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
       [user.userId, 'credit.loan_book', 'loan', loanId, JSON.stringify({ principal: d.principal, currency: d.currency, rate: d.annual_rate, instalments: schedule.length }), getRequestIP(event, { xForwardedFor: true }) ?? null])

@@ -1,4 +1,5 @@
-// New deck (upload a PDF, or use one already in Documents), or a new version of an existing deck.
+// New deck (upload a PDF, or use one already in Documents), or a new version of an existing deck. A deck can belong
+// to one company: people limited to some companies see only their companies' decks (new decks default to theirs).
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
   const parts = (await readMultipartFormData(event)) ?? []
@@ -13,7 +14,11 @@ export default defineEventHandler(async (event) => {
   if (id) { if (!(await db().query('SELECT 1 FROM fundraise.decks WHERE id = $1', [id])).rowCount) throw apiError('not_found', 'Not found', 404) }
   else {
     const first = !(await db().query('SELECT 1 FROM fundraise.decks WHERE active AND primary_deck')).rowCount
-    id = (await one<{ id: string }>('INSERT INTO fundraise.decks (title, token, primary_deck, created_by, description) VALUES ($1,$2,$3,$4,$5) RETURNING id', [(field('title').trim() || filename.replace(/\.pdf$/i, '')).slice(0, 200), newDeckToken(), first || field('primary') === '1', user.userId, field('description').trim().slice(0, 500) || null])).id
+    const scope = String(event.context.entityScope ?? '').split(',').filter(Boolean)
+    let ent: string | null = /^[0-9a-f-]{36}$/.test(field('entity_id')) ? field('entity_id') : null
+    if (ent && scope.length && !scope.includes(ent)) throw apiError('invalid', 'Choose one of your companies.')
+    if (!ent && scope.length) ent = scope[0]!
+    id = (await one<{ id: string }>('INSERT INTO fundraise.decks (title, token, primary_deck, created_by, description, entity_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [(field('title').trim() || filename.replace(/\.pdf$/i, '')).slice(0, 200), newDeckToken(), first || field('primary') === '1', user.userId, field('description').trim().slice(0, 500) || null, ent])).id
   }
   if (!deckId && field('primary') === '1') await db().query('UPDATE fundraise.decks SET primary_deck = (id = $1)', [id])
   await db().query('INSERT INTO fundraise.deck_versions (deck_id, document_id, filename) VALUES ($1,$2,$3)', [id, docId, filename])

@@ -8,7 +8,7 @@ const f = reactive({ deck_id: null as string | null, board_id: null as string | 
 watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { deck_id: p.deck_id ?? null, board_id: p.board_id ?? null, logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const { data: deckList } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; stats: { total: number } }[] }>('/api/documents/decks', { key: 'page-decks' })
-const { data: boards } = await useFetch<{ boards: { id: string; name: string; audience: string }[] }>('/api/financials/boards', { key: 'page-boards' })
+const { data: boards } = await useFetch<{ boards: { id: string; name: string; audience: string }[] }>('/api/financials/boards', { key: 'page-boards', immediate: canPath('/financials/boards'), default: () => ({ boards: [] }) })
 const { data: mainDeck } = await useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })
 async function upImg(kind: 'logo_id' | 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
@@ -44,8 +44,8 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
       </div>
       <div class="card frm">
         <b>Numbers to show</b>
-        <label class="label">Source<select v-model="f.board_id"><option :value="null">Choose metrics here</option><option v-for="b in boards?.boards ?? []" :key="b.id" :value="b.id">{{ b.name }} board (same figures and charts)</option></select></label>
-        <p v-if="f.board_id" class="muted">The page shows this board exactly as in <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards">Boards</NuxtLink><template v-else>Boards</template>. Change its figures and charts there.</p>
+        <label v-if="canPath('/financials/boards')" class="label">Source<select v-model="f.board_id"><option :value="null">Choose metrics here</option><option v-for="b in boards?.boards ?? []" :key="b.id" :value="b.id">{{ b.name }} board (same figures and charts)</option></select></label>
+        <p v-if="f.board_id && canPath('/financials/boards')" class="muted">The page shows this board exactly as in <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards">Boards</NuxtLink><template v-else>Boards</template>. Change its figures and charts there.</p>
         <template v-else><p class="muted">Pick up to 8. Investors see the latest value, the change and a trend chart.</p>
         <label v-for="m in data.metrics" :key="m.key" class="chk"><input v-model="f.metrics" type="checkbox" :value="m.key" :disabled="!f.metrics.includes(m.key) && f.metrics.length >= 8"> {{ m.label }}</label>
         <label class="label">Show figures<select v-model="f.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label></template>

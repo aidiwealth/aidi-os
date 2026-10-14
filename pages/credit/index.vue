@@ -19,11 +19,22 @@ const showClosed = ref(false)
 const rows = computed(() => (data.value?.loans ?? []).filter((l) => showClosed.value || l.status === 'active'))
 const adding = ref<'' | 'borrower' | 'loan'>('')
 const bf = reactive({ name: '', country: '', sector: '', contact_name: '', contact_email: '' })
-const lf = reactive({ borrower_id: '', lender_entity_id: '', reference: '', principal: '', currency: 'USD', annual_rate: '', tenor_months: '12', repayment_type: 'amortising', frequency: 'monthly', disbursed_on: '', first_payment_on: '', security: '', notes: '' })
+const lf = reactive({ deployment_id: '', borrower_id: '', lender_entity_id: '', reference: '', principal: '', currency: 'USD', annual_rate: '', tenor_months: '12', repayment_type: 'amortising', frequency: 'monthly', disbursed_on: '', first_payment_on: '', security: '', notes: '' })
 const msg = ref('')
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
 async function addBorrower() { msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/credit/borrowers', { method: 'POST', body: bf }); await refreshB(); lf.borrower_id = r.id; adding.value = 'loan' } catch (e) { msg.value = errText(e) } }
 async function addLoan() { msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/credit/loans', { method: 'POST', body: { ...lf, principal: lf.principal.replace(/[^0-9.]/g, '') } }); await navigateTo('/credit/' + r.id) } catch (e) { msg.value = errText(e) } }
+// Lent out and recorded from the bank, not booked as loans yet.
+interface Ub { id: string; paid_on: string; company: string; founder_name: string | null; amount: number; currency: string; reference: string | null; paying_entity_id: string | null; entity: string | null; account: string | null }
+const { data: unbooked, refresh: refreshU } = await useFetch<Ub[]>('/api/credit/unbooked', { default: () => [] })
+function bookFrom(u: Ub) {
+  const b = (borrowers.value ?? []).find((x) => x.name.trim().toLowerCase() === u.company.trim().toLowerCase())
+  const first = new Date(u.paid_on + 'T00:00:00Z'); first.setUTCMonth(first.getUTCMonth() + 1)
+  Object.assign(lf, { deployment_id: u.id, borrower_id: b?.id ?? '', lender_entity_id: u.paying_entity_id ?? '', reference: u.reference ?? '', principal: String(u.amount), currency: u.currency, disbursed_on: u.paid_on, first_payment_on: first.toISOString().slice(0, 10) })
+  if (!b) { Object.assign(bf, { name: u.company, contact_name: u.founder_name ?? '' }); adding.value = 'borrower' } else adding.value = 'loan'
+}
+void refreshU
+watch(adding, (a) => { if (!a) lf.deployment_id = '' })
 const BUCKET: Record<string, string> = { current: 'Current', '1-30': '1–30 days late', '31-90': '31–90 days late', '90+': '90+ days late' }
 const CLOSED: Record<string, string> = { repaid: 'Repaid', written_off: 'Written off', restructured: 'Restructured' }
 const RT: Record<string, string> = { amortising: 'Amortising', interest_only: 'Interest only', bullet: 'Bullet' }
@@ -95,8 +106,10 @@ const { data: meC } = await useFetch<{ roles: string[] }>('/api/auth/me', { key:
         <div v-if="borrowers?.length" class="bgrid"><button v-for="b in borrowers" :key="b.id" type="button" class="bc" @click="report = b.id"><span class="bn"><b>{{ b.name }}</b><em>{{ b.country ?? 'Country not set' }} · {{ b.kind === 'individual' ? 'Individual' : 'Business' }}{{ b.monitor ? ' · monitored' : '' }}</em></span>
           <span v-if="b.last_check?.score" class="sc" :class="BAND[b.last_check.band ?? '']"><b>{{ b.last_check.score }}</b><em>{{ b.last_check.band }}</em></span><span v-else-if="b.last_check?.status === 'manual'" class="sc m"><em>Manual review</em></span><span v-else class="sc n"><em>Not checked</em></span></button></div>
         <EmptyState v-else compact icon="credit" title="No borrowers yet"><button class="btn" @click="adding = 'borrower'">Add a borrower</button></EmptyState></div>
-      <EmptyState v-if="!data.loans.length" card icon="credit" title="No loans yet" text="Add a borrower, run a credit check, then book the loan. Schedules, repayments, arrears and covenants are tracked for you."><button class="btn" @click="adding = 'loan'">Book a loan</button></EmptyState>
-      <table v-else class="table">
+      <div v-if="unbooked?.length" class="card ub"><h3>Lent from the bank, not booked as loans <span class="n">{{ unbooked.length }}</span></h3><p class="hint">Recorded under Deployments from a bank account. Book each one as a loan to track its schedule, repayments and arrears.</p>
+        <div v-for="u in unbooked" :key="u.id" class="ubr"><span class="d">{{ day(u.paid_on) }}</span><span><b>{{ u.company }}</b><em>{{ [u.entity, u.account, u.reference].filter(Boolean).join(' · ') }}</em></span><b class="a">{{ u.currency }} {{ u.amount.toLocaleString('en-US') }}</b><button type="button" class="btn sm" @click="bookFrom(u)">Book as loan</button></div></div>
+      <EmptyState v-if="!data.loans.length && !unbooked?.length" card icon="credit" title="No loans yet" text="Add a borrower, run a credit check, then book the loan. Schedules, repayments, arrears and covenants are tracked for you."><button class="btn" @click="adding = 'loan'">Book a loan</button></EmptyState>
+      <table v-if="data.loans.length" class="table">
         <thead><tr><th>Borrower</th><th>Terms</th><th class="num">Outstanding</th><th>Next payment</th><th>Status</th></tr></thead>
         <tbody><tr v-for="l in rows" :key="l.id" :data-b="l.status === 'active' ? l.bucket : 'closed'">
           <td><NuxtLink :to="'/credit/' + l.id" class="co">{{ l.borrower }}</NuxtLink><span class="sub">{{ [l.reference, l.lender, l.sector].filter(Boolean).join(' · ') }}</span></td>
@@ -142,4 +155,6 @@ tr[data-b="1-30"] .st { color: var(--c-warn); } tr[data-b="31-90"] .st, tr[data-
 .ap { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--c-rule); text-decoration: none; color: inherit; } .ap em { display: block; font-style: normal; font-size: 12.5px; color: var(--c-muted); } .scs { display: flex; gap: 6px; align-items: center; } .scs i { font-style: normal; font-size: 12px; background: var(--c-paper-2); padding: 2px 7px; }
 .ast { font-size: 12px; padding: 2px 8px; background: var(--c-paper-2); } .ast.review, .ast.checking { background: var(--c-signal-soft); color: var(--c-blue-deep); } .ast.approved, .ast.disbursed { background: rgba(31,122,77,.1); color: var(--c-ok); } .ast.declined { background: rgba(180,35,24,.07); color: var(--c-danger); }
 @media (max-width: 900px) { .cgrid { grid-template-columns: 1fr; } }
+.ub { margin-bottom: 14px; } .ub h3 { margin: 0 0 4px; font-size: 15px; } .ub .n { font-size: 12px; font-weight: 600; background: #fbf2e1; color: #8a5a07; padding: 1px 7px; margin-left: 6px; }
+.ubr { display: grid; grid-template-columns: 110px 1fr auto auto; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--c-rule); font-size: 14px; } .ubr .d { color: var(--c-muted); font-size: 13px; } .ubr em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .ubr .a { white-space: nowrap; }
 </style>

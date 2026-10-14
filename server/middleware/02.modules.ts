@@ -6,6 +6,12 @@ export default defineEventHandler(async (event) => {
   if (m) {
     await requireModule(event, m.code)
     const ov = await moduleRoleOverrides()
-    if (ov[m.code]) { const s = await readSession(event); if (s && !canUse(m, s.roles, ov)) throw apiError('forbidden', 'You do not have access to ' + m.label + '. Ask an admin.', 403) }
+    if (ov[m.code]) {
+      const s = (event.context.user as SessionUser | undefined) ?? await readSession(event)
+      if (s && !canUse(m, s.roles, ov)) throw apiError('forbidden', 'You do not have access to ' + m.label + '. Ask an admin.', 403)
+      // An admin let this role use the module on the Modules page: within this module's APIs it acts with the module's
+      // usual role (e.g. Team on Payments acts as GP there), still limited to the companies it is assigned to.
+      if (s && !s.roles.includes('admin') && !m.roles.some((r) => s.roles.includes(r))) { const grant = m.roles.find((r) => r !== 'admin'); if (grant) s.roles = [...s.roles, grant] }
+    }
   }
 })

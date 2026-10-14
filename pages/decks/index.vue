@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // Decks: every deck you share (seed deck, demo day deck, one-pager…), each with its own tracked link. Click one for its analytics.
 useHead({ title: 'Decks' })
-interface Dk { id: string; title: string; description: string | null; token: string; primary_deck: boolean; created_at: string; updated_at: string; versions: number; current: string | null; url: string; stats: { total: number; unique: number; avg_seconds: number; downloads: number; last_view: string | null } }
+interface Dk { id: string; title: string; description: string | null; token: string; primary_deck: boolean; created_at: string; updated_at: string; versions: number; current: string | null; url: string; entity?: string | null; stats: { total: number; unique: number; avg_seconds: number; downloads: number; last_view: string | null } }
 const { data, refresh } = await useFetch<{ decks: Dk[]; pdfs: { id: string; title: string; created_at: string }[] }>('/api/documents/decks')
 const open = ref(false), busy = ref(false), msg = ref(''), copied = ref('')
-const f = reactive({ title: '', description: '', source: 'upload' as 'upload' | 'doc', doc: '', primary: false, file: null as File | null })
-function startNew() { Object.assign(f, { title: '', description: '', source: 'upload', doc: '', primary: !data.value?.decks.length, file: null }); msg.value = ''; open.value = true }
+const { data: meK } = await useFetch<{ org: { kind: string } | null; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
+const aidi = computed(() => meK.value?.org?.kind !== 'company')
+const { data: ents } = await useFetch<{ id: string; name: string }[]>('/api/entities', { immediate: aidi.value, default: () => [] })
+const f = reactive({ entity_id: '', title: '', description: '', source: 'upload' as 'upload' | 'doc', doc: '', primary: false, file: null as File | null })
+function startNew() { Object.assign(f, { entity_id: meK.value?.entity_scoped ? ents.value?.[0]?.id ?? '' : '', title: '', description: '', source: 'upload', doc: '', primary: !data.value?.decks.length, file: null }); msg.value = ''; open.value = true }
 function onFile(ev: Event) { f.file = (ev.target as HTMLInputElement).files?.[0] ?? null; if (f.file && !f.title) f.title = f.file.name.replace(/\.pdf$/i, '') }
 const ready = computed(() => (f.source === 'upload' ? !!f.file : !!f.doc))
 async function create() {
@@ -13,7 +16,7 @@ async function create() {
   busy.value = true; msg.value = ''
   const fd = new FormData()
   if (f.source === 'upload' && f.file) fd.append('file', f.file); else fd.append('document_id', f.doc)
-  fd.append('title', f.title); fd.append('description', f.description); if (f.primary) fd.append('primary', '1')
+  fd.append('title', f.title); fd.append('description', f.description); if (f.entity_id) fd.append('entity_id', f.entity_id); if (f.primary) fd.append('primary', '1')
   try { const r = await $fetch<{ id: string }>('/api/documents/decks', { method: 'POST', body: fd }); open.value = false; await refresh(); await navigateTo('/decks/' + r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the deck.' }
   finally { busy.value = false }
@@ -42,7 +45,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
         <NuxtLink v-for="d in data.decks" :key="d.id" :to="'/decks/' + d.id" class="dk">
           <div class="dk-top"><span class="thumb" aria-hidden="true"><i /><i /><i /></span><span v-if="d.primary_deck" class="main">★ Main deck</span></div>
           <h3>{{ d.title }}</h3>
-          <p class="desc">{{ d.description || d.current || 'PDF deck' }}</p>
+          <p class="desc"><template v-if="d.entity">{{ d.entity }} · </template>{{ d.description || d.current || 'PDF deck' }}</p>
           <div class="nums"><div><b>{{ d.stats.total }}</b><span>Visits</span></div><div><b>{{ d.stats.unique }}</b><span>Unique</span></div><div><b>{{ mmss(d.stats.avg_seconds) }}</b><span>Avg time</span></div><div><b>{{ d.stats.downloads }}</b><span>Downloads</span></div></div>
           <div class="foot"><span>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
             <button class="lk" @click.prevent.stop="copy(d)">{{ copied === d.id ? 'Copied' : 'Copy link' }}</button></div>
@@ -53,6 +56,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
     <AppModal :open="open" title="New deck" @close="open = false">
       <div class="form">
         <label>Name<input v-model="f.title" maxlength="200" placeholder="e.g. Seed round deck"></label>
+        <label v-if="aidi && ents?.length">Company<select v-model="f.entity_id"><option v-if="!meK?.entity_scoped" value="">Group / not one company</option><option v-for="e in ents" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label>What it's for <em>optional</em><input v-model="f.description" maxlength="500" placeholder="e.g. Short version for demo day investors"></label>
         <div class="src"><button :class="{ on: f.source === 'upload' }" @click="f.source = 'upload'">Upload a PDF</button><button :class="{ on: f.source === 'doc' }" :disabled="!data.pdfs.length" @click="f.source = 'doc'">Use one from Documents</button></div>
         <label v-if="f.source === 'upload'" class="drop"><input type="file" accept=".pdf" hidden @change="onFile"><b>{{ f.file ? f.file.name : 'Choose a PDF' }}</b><span>{{ f.file ? Math.round(f.file.size / 1024) + ' KB' : 'Click to browse' }}</span></label>
