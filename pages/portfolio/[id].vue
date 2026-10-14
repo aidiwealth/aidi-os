@@ -12,6 +12,8 @@ interface Data {
   requests: { period: string; status: string; sent_at: string; opened_at: string | null; submitted_at: string | null; expires_at: string; file_document_id: string | null }[]
 }
 const { data, error, refresh } = await useFetch<Data>('/api/portfolio/' + id)
+const { data: meP } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const canUpload = computed(() => (meP.value?.roles ?? []).some((r) => ['admin', 'gp'].includes(r)))
 useHead({ title: () => (data.value?.company.name ?? 'Company') })
 const lastMonth = (() => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) })()
 const req = reactive({ period: lastMonth, link: '', msg: '', busy: false })
@@ -57,6 +59,7 @@ async function openDoc(docId: string) { const r = await $fetch<{ url: string }>(
     <div class="dh"><h1>{{ data.company.name }}</h1><DeleteButton type="company" :id="id" :name="data.company.name" to="/portfolio" /></div>
 
     <PortfolioFinvry :company-id="id" @imported="refresh" />
+    <PortfolioReports :company-id="id" :company-name="data.company.name" :can-upload="canUpload" @imported="refresh" />
     <div class="top">
       <div class="card insight">
         <h2>What the numbers say</h2>
@@ -164,7 +167,7 @@ td { padding: 6px 12px; border-bottom: 1px solid var(--c-rule); white-space: now
 .edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; padding: 12px; background: var(--c-paper); border: 1px solid var(--c-rule); border-radius: var(--radius); }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-.upd { padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .upd p { margin: 4px 0; }
+.upd { padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .upd p { margin: 4px 0; white-space: pre-line; }
 .reqs { list-style: none; padding: 0; margin: 0; } .reqs li { padding: 8px 0; border-bottom: 1px solid var(--c-rule); display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0; } .error { color: var(--c-danger); }
