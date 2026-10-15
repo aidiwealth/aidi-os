@@ -8,7 +8,7 @@ const route = useRoute(), router = useRouter()
 const ct = ref(String(route.query.ct ?? ''))
 const { data, refresh } = await useFetch<D>('/api/equity', { query: { ct } })
 watch(() => data.value?.captable, (id) => { if (id && id !== ct.value) ct.value = id })
-const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['round', 'Model a round'], ['exit', 'Exit']] as const
+const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['signing', 'Signing'], ['round', 'Model a round'], ['exit', 'Exit']] as const
 const tab = ref<string>(String(route.query.t ?? 'overview')); watch([tab, ct], ([t, c]) => router.replace({ query: { ...route.query, t, ct: c || undefined, share: undefined } }))
 // Several cap tables (today's, a pro forma, a what-if), each shareable.
 const shareOpen = ref(route.query.share === '1')
@@ -48,7 +48,29 @@ async function save(del = false) {
   try { await $fetch('/api/equity', { method: 'POST', body: del ? { type: f.type, id: f.id, delete: true, ct: ct.value } : { type: f.type, id: f.id || undefined, data: f.d, ct: ct.value } }); f.open = false; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
-const imp = ref(false), pre = ref<File[]>([])
+const imp = ref(false), pre = ref<File[]>([]), impFrom = ref<'pulley' | 'carta' | 'files'>('files')
+// E-signing: documents out for signature, board consents, certificates.
+const { data: es, refresh: refreshEs } = await useFetch<{ me: { name: string; email: string }; docs: import('~/components/EquityDocs.vue').EDoc[] }>('/api/equity/esign', { query: { ct }, default: () => ({ me: { name: '', email: '' }, docs: [] }) })
+const consents = computed(() => (es.value?.docs ?? []).filter((d) => d.kind === 'consent' && d.status !== 'void').map((d) => ({ id: d.id, title: d.title, status: d.status })))
+const awaiting = computed(() => (es.value?.docs ?? []).filter((d) => (d.kind === 'grant' || d.kind === 'purchase') && d.status !== 'void' && !d.consent_id && !d.consent_outside && !d.applied_id).map((d) => ({ id: d.id, title: d.title })))
+const sg = reactive<{ open: boolean; type: 'convertible' | 'grant' | 'issuance'; seed: Record<string, any> }>({ open: false, type: 'convertible', seed: {} })
+const cs = reactive({ open: false, pre: [] as string[] })
+const signOk = ref<{ text: string; link: string | null } | null>(null)
+function startSign(type: 'convertible' | 'grant' | 'issuance', seed?: Record<string, any>) { sg.type = type; sg.seed = seed ?? { ...BLANK[type === 'convertible' ? 'convertible' : type === 'grant' ? 'grant' : 'issuance']() }; f.open = false; sg.open = true }
+async function signSent(v: { id: string; my_link: string | null; consent: string }) {
+  sg.open = false; tab.value = 'signing'; await refreshEs()
+  signOk.value = { text: 'Sent for signature.' + (v.consent === 'new' ? ' Next, the board consent that approves it.' : ''), link: v.my_link }
+  if (v.consent === 'new') { cs.pre = [v.id]; cs.open = true }
+}
+async function consentSent(v: { id: string; my_link: string | null }) { cs.open = false; tab.value = 'signing'; await refreshEs(); signOk.value = { text: 'Board consent sent to the directors.', link: v.my_link } }
+async function esChanged() { await Promise.all([refreshEs(), refresh()]) }
+const certBusy = ref('')
+async function certs(ids?: string[]) { certBusy.value = ids?.[0] ?? 'all'; msg.value = ''; try { await $fetch('/api/equity/certificates', { method: 'POST', body: { ct: ct.value, ids } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not issue certificates.' } finally { certBusy.value = '' } }
+async function openDoc(id: string) { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') }
+// Signed documents reach the cap table on their own; check now and then while some are out.
+let esTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { esTimer = setInterval(() => { if ((es.value?.docs ?? []).some((d) => d.status === 'sent')) esChanged() }, 30000) })
+onBeforeUnmount(() => clearInterval(esTimer))
 async function importSafes() { busy.value = true; try { await $fetch('/api/equity/import-safes', { method: 'POST', body: { ids: data.value!.safes.map((s) => s.id), ct: ct.value } }); await refresh() } finally { busy.value = false } }
 async function setupCommon() { await $fetch('/api/equity', { method: 'POST', body: { type: 'class', ct: ct.value, data: { name: 'Common', kind: 'common', liq_pref: 0, seniority: 0 } } }); await refresh() }
 // Round and exit models.
@@ -63,8 +85,8 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
     <p class="label">Investor relations</p>
     <InvestorTabs />
     <div class="hd"><div><h1>Cap table</h1><p class="lead">Shares, options, SAFEs and notes for {{ data.company }}, with what a round or an exit would mean for each holder.</p></div>
-      <div class="acts"><button class="btn secondary" @click="imp = true">Import documents</button><button class="btn secondary" @click="edit('convertible')">Add SAFE or note</button><button class="btn secondary" @click="edit('grant')" :disabled="!data.plans.length">Grant options</button><button class="btn" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
-    <div v-if="!data.classes.length" class="start card"><h3>Set up your cap table</h3><p>Have a cap table from your lawyer, SAFEs, certificates or grant letters? Drop them in and AI builds it for you. Or start by hand with common shares.</p><DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" label="Drop your cap table documents here" hint="Spreadsheets, SAFEs, notes, certificates, board consents · AI reads them together" @change="(e: Event) => { pre = Array.from(((e.target as HTMLInputElement).files ?? []) as ArrayLike<File>); imp = true }" /><button class="btn" @click="setupCommon">Create common shares</button></div>
+      <div class="acts"><button class="btn secondary" @click="impFrom = 'files'; imp = true">Import (Pulley, Carta, files)</button><button class="btn secondary" @click="edit('convertible')">Add SAFE or note</button><button class="btn secondary" @click="edit('grant')" :disabled="!data.plans.length">Grant options</button><button class="btn" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
+    <div v-if="!data.classes.length" class="start card"><h3>Set up your cap table</h3><p>Moving from Pulley or Carta, or have a cap table from your lawyer, SAFEs, certificates or grant letters? Drop the exports or files in and AI builds it for you. Or start by hand with common shares.</p><div class="mvb"><button class="btn secondary" @click="impFrom = 'pulley'; imp = true">Import from Pulley</button><button class="btn secondary" @click="impFrom = 'carta'; imp = true">Import from Carta</button></div><DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" label="Drop your cap table documents here" hint="Spreadsheets, SAFEs, notes, certificates, board consents · AI reads them together" @change="(e: Event) => { pre = Array.from(((e.target as HTMLInputElement).files ?? []) as ArrayLike<File>); impFrom = 'files'; imp = true }" /><button class="btn" @click="setupCommon">Create common shares</button></div>
     <div class="ctb"><nav class="cts"><button v-for="c in data.captables" :key="c.id" :class="{ on: c.id === data.captable }" @click="ct = c.id">{{ c.name }}<span v-if="c.is_main && data.captables.length > 1" class="mn">Main</span></button><button class="add" @click="ctForm('create')">+ New cap table</button></nav>
       <div class="cta"><button class="lk" @click="ctForm('copy')">Copy as a what-if</button><button class="lk" @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" class="lk" @click="ctAct('main')">Make main</button><button v-if="data.captables.length > 1" class="lk red" @click="ctAct('delete')">Delete</button><AddToRoom v-if="hasRoom" kind="captable" :id="data.captable" label="Add to data room" /><button class="btn secondary sm" @click="shareOpen = true">Share</button></div></div>
     <p v-if="curCt?.note" class="ctn">{{ curCt.note }}</p>
@@ -82,9 +104,9 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
     </template>
 
     <template v-else-if="tab === 'shares'">
-      <div class="card pad0"><div class="ch"><h3>Share issuances</h3><button class="btn sm" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div>
+      <div class="card pad0"><div class="ch"><h3>Share issuances</h3><div class="row"><button v-if="data.issuances.some((i) => !(i as any).certificate_doc_id)" class="btn secondary sm" :disabled="!!certBusy" @click="certs()">{{ certBusy === 'all' ? 'Issuing…' : 'Issue electronic certificates' }}</button><button class="btn secondary sm" :disabled="!data.classes.length" @click="startSign('issuance', { class_id: data.classes[0]?.id, shares: '', price: '', issued_on: today })">Send to sign</button><button class="btn sm" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
         <table class="t" data-nosearch><thead><tr><th>Date</th><th>Holder</th><th>Class</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Paid</th><th>Certificate</th><th /></tr></thead>
-          <tbody><tr v-for="i in data.issuances" :key="i.id"><td>{{ i.issued_on }}</td><td>{{ hn(i.holder_id) }}</td><td>{{ cn(i.class_id) }}</td><td class="r">{{ n(i.shares) }}</td><td class="r">{{ usd(i.price) }}</td><td class="r">{{ i.price ? usd(i.price * i.shares) : '—' }}</td><td>{{ (i as any).certificate || '—' }}</td><td class="r"><button class="lk" @click="edit('issuance', i)">Edit</button></td></tr></tbody></table>
+          <tbody><tr v-for="i in data.issuances" :key="i.id"><td>{{ i.issued_on }}</td><td>{{ hn(i.holder_id) }}</td><td>{{ cn(i.class_id) }}</td><td class="r">{{ n(i.shares) }}</td><td class="r">{{ usd(i.price) }}</td><td class="r">{{ i.price ? usd(i.price * i.shares) : '—' }}</td><td>{{ (i as any).certificate || '—' }}<span class="sub"><button v-if="(i as any).certificate_doc_id" class="lk" @click="openDoc((i as any).certificate_doc_id)">Open certificate</button><button v-else class="lk" :disabled="!!certBusy" @click="certs([i.id])">{{ certBusy === i.id ? 'Issuing…' : 'Issue certificate' }}</button></span><span v-if="(i as any).esign_doc_id" class="sub">Signed in Finvry</span></td><td class="r"><button class="lk" @click="edit('issuance', i)">Edit</button></td></tr></tbody></table>
         <EmptyState v-if="!data.issuances.length" compact icon="equity" title="No shares issued yet" /></div>
       <div class="two"><div class="card pad0"><div class="ch"><h3>Share classes</h3><button class="btn secondary sm" @click="edit('class')">Add a class</button></div>
         <table class="t" data-nosearch><thead><tr><th>Class</th><th>Type</th><th class="r">Liquidation preference</th><th>Seniority</th><th /></tr></thead><tbody><tr v-for="c in data.classes" :key="c.id"><td><b>{{ c.name }}</b></td><td>{{ c.kind === 'preferred' ? 'Preferred' : 'Common' }}</td><td class="r">{{ c.kind === 'preferred' ? c.liq_pref + '×' + (c.participating ? ', participating' : ', non-participating') : '—' }}</td><td>{{ c.seniority }}</td><td class="r"><button class="lk" @click="edit('class', c)">Edit</button></td></tr></tbody></table></div>
@@ -92,6 +114,10 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
           <table class="t" data-nosearch><tbody><tr v-for="h in data.holders" :key="h.id"><td><b>{{ h.name }}</b><span class="sub">{{ KIND[h.kind] }}{{ h.email ? ' · ' + h.email : '' }}</span></td><td class="r"><button class="lk" @click="edit('holder', h)">Edit</button></td></tr></tbody></table></div></div>
     </template>
 
+    <template v-else-if="tab === 'signing'">
+      <p v-if="signOk" class="ok">{{ signOk.text }} <a v-if="signOk.link" :href="signOk.link" target="_blank" rel="noopener">Sign your part now</a></p>
+      <EquityDocs :docs="es?.docs ?? []" @changed="esChanged" @consent="(ids: string[]) => { cs.pre = ids; cs.open = true }" @send="(t: 'convertible' | 'grant' | 'issuance') => startSign(t)" />
+    </template>
     <template v-else-if="tab === 'options'">
       <div class="card pad0"><div class="ch"><h3>Option plans</h3><button class="btn secondary sm" @click="edit('plan')">Add a plan</button></div>
         <table class="t" data-nosearch><thead><tr><th>Plan</th><th class="r">Reserved</th><th class="r">Granted</th><th class="r">Available</th><th /></tr></thead><tbody><tr v-for="p in data.plans" :key="p.id"><td><b>{{ p.name }}</b></td><td class="r">{{ n(p.reserved) }}</td><td class="r">{{ n(p.reserved - plansAvail(p.id)) }}</td><td class="r b">{{ n(plansAvail(p.id)) }}</td><td class="r"><button class="lk" @click="edit('plan', p)">Edit</button></td></tr></tbody></table>
@@ -153,15 +179,17 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
           <div class="g3"><label v-if="f.d.kind === 'note'" class="label">Interest % a year<input v-model="f.d.interest_pct" type="number" min="0" max="100"></label><label v-if="f.d.kind === 'note'" class="label">Maturity date<input v-model="f.d.maturity_on" type="date"></label><label class="label">Status<select v-model="f.d.status"><option value="outstanding">Outstanding</option><option value="converted">Converted</option><option value="cancelled">Cancelled</option></select></label></div>
           <div class="tg"><label v-if="f.d.kind === 'safe'" class="chk"><input v-model="f.d.post_money" type="checkbox"> Post-money SAFE</label><label class="chk"><input v-model="f.d.mfn" type="checkbox"> Most favoured nation</label></div></template>
         <p v-if="msg" class="error">{{ msg }}</p></div>
-      <template #foot><button v-if="f.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : 'Save' }}</button></template>
+      <template #foot><button v-if="f.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button v-if="!f.id && ['issuance', 'grant', 'convertible'].includes(f.type)" class="btn secondary" :disabled="busy" title="Draft the agreement, have it signed, and let it update the cap table" @click="startSign(f.type as 'issuance' | 'grant' | 'convertible', { ...f.d })">Send for e-signature</button><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : f.id ? 'Save' : 'Record only' }}</button></template>
     </AppModal>
+    <EquitySign :open="sg.open" :ct="data.captable" :type="sg.type" :seed="sg.seed" :holders="data.holders" :consents="consents" :me="es?.me ?? { name: '', email: '' }" @close="sg.open = false" @sent="signSent" />
+    <EquityConsent :open="cs.open" :ct="data.captable" :pending="awaiting" :preselect="cs.pre" :me="es?.me ?? { name: '', email: '' }" @close="cs.open = false" @sent="consentSent" />
     <ShareLinks :open="shareOpen" kind="captable" :object-id="data.captable" :title="curCt?.name ?? 'cap table'" @close="shareOpen = false" />
     <AppModal :open="cm.open" :title="cm.mode === 'create' ? 'New cap table' : cm.mode === 'copy' ? 'Copy as a what-if' : 'Rename cap table'" @close="cm.open = false">
       <div class="ef"><p v-if="cm.mode !== 'rename'" class="mut">{{ cm.mode === 'copy' ? 'A full copy of this cap table to try changes on (a new grant, a secondary, a pro forma) without touching the real one.' : 'An empty cap table, for example a pro forma for the next round. You can fill it by hand or import documents into it.' }}</p>
         <label class="label">Name<input v-model="cm.name" maxlength="120"></label><label class="label">Note (optional)<input v-model="cm.note" maxlength="1000" placeholder="e.g. After the seed round closes"></label><p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="cm.open = false">Cancel</button><button class="btn" :disabled="busy || !cm.name" @click="ctAct(cm.mode)">{{ cm.mode === 'rename' ? 'Save' : 'Create' }}</button></template>
     </AppModal>
-    <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="(id: string) => { ct = id; refresh(); tab = 'overview' }" />
+    <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="(id: string) => { ct = id; refresh(); tab = 'overview' }" />
   </section>
 </template>
 <style scoped>
@@ -183,4 +211,6 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 @media (max-width: 1000px) { .two, .frm4, .g3 { grid-template-columns: 1fr; } }
 .ctb { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 2px; } .cts { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; overflow-x: auto; max-width: 100%; } .cts button { background: none; border: 0; padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .cts button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); } .cts .add { color: var(--c-blue-deep); } .mn { font-size: 10.5px; font-weight: 500; color: var(--c-muted); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; } .cta .lk { font-size: 13px; } .ctn { margin: 4px 0 0; color: var(--c-muted); font-size: 13px; }
+.ch .row { display: flex; gap: 6px; flex-wrap: wrap; } .ok { color: var(--c-ink-soft); background: var(--c-paper-3); padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .ok a { color: var(--c-blue-deep); }
+.mvb { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>

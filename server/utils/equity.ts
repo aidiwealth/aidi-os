@@ -19,10 +19,10 @@ export async function loadCapTable(ct: string) {
   const [classes, holders, issuances, plans, grants, convertibles] = await Promise.all([
     q('SELECT id, name, kind, liq_pref::float, participating, seniority, issue_price::float FROM equity.classes WHERE captable_id = $1 ORDER BY seniority, created_at'),
     q('SELECT id, name, email, kind FROM equity.holders WHERE captable_id = $1 ORDER BY name'),
-    q("SELECT id, holder_id, class_id, shares::float, price::float, to_char(issued_on, 'YYYY-MM-DD') AS issued_on, certificate, notes FROM equity.issuances WHERE captable_id = $1 ORDER BY issued_on, created_at"),
+    q("SELECT id, holder_id, class_id, shares::float, price::float, to_char(issued_on, 'YYYY-MM-DD') AS issued_on, certificate, notes, certificate_doc_id, esign_doc_id, consent_doc_id FROM equity.issuances WHERE captable_id = $1 ORDER BY issued_on, created_at"),
     q('SELECT id, name, reserved::float FROM equity.plans WHERE captable_id = $1 ORDER BY created_at'),
-    q("SELECT id, plan_id, holder_id, kind, shares::float, strike::float, to_char(granted_on, 'YYYY-MM-DD') AS granted_on, to_char(vest_start, 'YYYY-MM-DD') AS vest_start, vest_months, cliff_months, exercised::float, to_char(cancelled_on, 'YYYY-MM-DD') AS cancelled_on FROM equity.grants WHERE captable_id = $1 ORDER BY granted_on"),
-    q("SELECT id, holder_id, kind, amount::float, currency, valuation_cap::float, discount_pct::float, post_money, mfn, interest_pct::float, to_char(issued_on, 'YYYY-MM-DD') AS issued_on, to_char(maturity_on, 'YYYY-MM-DD') AS maturity_on, status, safe_id FROM equity.convertibles WHERE captable_id = $1 ORDER BY issued_on")])
+    q("SELECT id, plan_id, holder_id, kind, shares::float, strike::float, to_char(granted_on, 'YYYY-MM-DD') AS granted_on, to_char(vest_start, 'YYYY-MM-DD') AS vest_start, vest_months, cliff_months, exercised::float, to_char(cancelled_on, 'YYYY-MM-DD') AS cancelled_on, esign_doc_id, consent_doc_id FROM equity.grants WHERE captable_id = $1 ORDER BY granted_on"),
+    q("SELECT id, holder_id, kind, amount::float, currency, valuation_cap::float, discount_pct::float, post_money, mfn, interest_pct::float, to_char(issued_on, 'YYYY-MM-DD') AS issued_on, to_char(maturity_on, 'YYYY-MM-DD') AS maturity_on, status, safe_id, esign_doc_id FROM equity.convertibles WHERE captable_id = $1 ORDER BY issued_on")])
   return { classes, holders, issuances, plans, grants, convertibles } as unknown as import('~/shared/captable').Data & { holders: (import('~/shared/captable').Holder & { email: string | null })[] }
 }
 // Copy a cap table (to model a what-if without touching the real one).

@@ -4,7 +4,7 @@
 import { z } from 'zod'
 
 export interface InFile { name: string; data: Buffer }
-const MAX_FILES = 10, MAX_PDF = 6, MAX_BYTES = 20 * 1024 * 1024, MAX_TEXT = 45000
+const MAX_FILES = 10, MAX_PDF = 6, MAX_BYTES = 20 * 1024 * 1024, MAX_TEXT = 150000
 
 async function docxText(buf: Buffer): Promise<string> {
   const { default: JSZip } = await import('jszip')
@@ -28,8 +28,8 @@ export async function filesToContent(files: InFile[]): Promise<unknown[]> {
       continue
     }
     let body = ''
-    if (ext === 'xlsx' || ext === 'xlsm') body = await sheetToText(f.data, 'xlsx', 6, 400)
-    else if (ext === 'csv') body = await sheetToText(f.data, 'csv', 6, 400)
+    if (ext === 'xlsx' || ext === 'xlsm') body = await sheetToText(f.data, 'xlsx', 10, 1500)
+    else if (ext === 'csv') body = await sheetToText(f.data, 'csv', 10, 1500)
     else if (ext === 'docx') body = await docxText(f.data)
     else if (ext === 'txt' || ext === 'md') body = f.data.toString('utf8')
     else throw apiError('bad_type', f.name + ': use PDF, Excel (.xlsx), CSV or Word (.docx) files.')
@@ -41,7 +41,7 @@ export async function filesToContent(files: InFile[]): Promise<unknown[]> {
 
 const s = (d: string) => ({ type: 'string', description: d }), sn = (d: string) => ({ type: ['string', 'null'], description: d }), nn = (d: string) => ({ type: ['number', 'null'], description: d })
 const DATE = 'YYYY-MM-DD, or null if the documents do not say.'
-const SRC = s('File name this came from (and sheet or page if useful).')
+const SRC = s('File name this came from (and sheet, page or certificate ID if useful).')
 const KINDS = { type: 'string', enum: ['founder', 'employee', 'advisor', 'investor', 'other'] }
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['as_of', 'currency', 'classes', 'holders', 'issuances', 'plans', 'grants', 'convertibles', 'stated', 'notes'],
   properties: {
@@ -82,7 +82,7 @@ export const ProposalSchema = z.object({
   notes: z.array(z.string().max(500)).max(12).catch([]) })
 export type Proposal = z.infer<typeof ProposalSchema>
 
-export async function readCapDocs(files: InFile[], company: string, ref: string): Promise<Proposal> {
+export async function readCapDocs(files: InFile[], company: string, ref: string, source = ''): Promise<Proposal> {
   const content = await filesToContent(files)
   const { output } = await runAiTool({ task: 'cap_table_import', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'cap-import-v1', inputRef: ref,
     system: 'You are an experienced startup lawyer\'s paralegal building a company\'s cap table from its documents: a lawyer\'s cap table or pro forma spreadsheet, SAFE and convertible note agreements, ' +
@@ -91,9 +91,11 @@ export async function readCapDocs(files: InFile[], company: string, ref: string)
       'When a spreadsheet and a signed agreement disagree, prefer the signed agreement for terms (cap, discount, dates) and the latest-dated spreadsheet for share counts, and say so in notes. ' +
       'Do not count the same shares twice (a certificate and a spreadsheet row for the same issuance are one issuance). SAFEs that have already converted are shares, not SAFEs. ' +
       'Founder shares are common unless the documents say otherwise. Unallocated option pool goes in plans.reserved (granted + available), not as an issuance. Write full numbers (1.5M → 1500000). ' +
-      'Use holder, class and plan names consistently so rows match. Notes are short and plain English, addressed to a founder.',
-    user: '', userContent: [...content, { type: 'text', text: 'Build the current cap table for ' + company + ' from these files.' }],
-    toolName: 'record_cap_table', toolDescription: 'Record the cap table found in the documents.', jsonSchema: SCHEMA, schema: ProposalSchema, maxTokens: 12000 })
+      'Use holder, class and plan names consistently so rows match. Notes are short and plain English, addressed to a founder. ' +
+      'Exports from cap table tools (Carta, Pulley, Ledgy, AngelList and similar) are welcome: a securities or stock ledger has one row per certificate or security (e.g. CS-1, PS-2, ES-12 for option grants, SAFE-1), with stakeholder, security type, quantity, issue date, price or exercise price, vesting schedule and status. ' +
+      'Take holder emails when the export has them. Turn vesting text into months ("1/48 monthly, 1 year cliff" or "4yr/1yr cliff" = 48 months, 12-month cliff). Leave out cancelled, forfeited, repurchased, expired or transferred-away securities, and SAFEs or notes already converted (say how many in notes). Exercised options become shares (an issuance) and reduce the grant (exercised).',
+    user: '', userContent: [...content, { type: 'text', text: 'Build the current cap table for ' + company + ' from these files.' + (source ? ' The spreadsheets are exports from ' + (source === 'pulley' ? 'Pulley' : 'Carta') + ' (the company is moving its cap table to Finvry): read their ledger columns as described.' : '') }],
+    toolName: 'record_cap_table', toolDescription: 'Record the cap table found in the documents.', jsonSchema: SCHEMA, schema: ProposalSchema, maxTokens: 32000 })
   return tidy(output)
 }
 

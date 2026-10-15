@@ -372,3 +372,15 @@ export async function sendAgreementRequest(input: { to: string; contact: string;
   const html = shell(h1(esc(head)) + para('Hi ' + esc(input.contact || 'there') + ', please review and sign the ' + esc(input.title) + ' for <b>' + esc(input.jobTitle) + '</b>, effective ' + esc(input.effective) + '. It takes a minute: type, draw or upload your signature. You will get a signed copy by email.') + button('Review and sign →', input.link), head)
   await sendEmail({ to: input.to, subject: head + ' — ' + input.jobTitle, text: head + '\n\n' + input.jobTitle + ', effective ' + input.effective + '\n\n' + input.link, html, brand: 'finvry' })
 }
+
+// A document to sign (SAFE, option grant, share purchase, board consent).
+export async function sendSignRequestEmail(to: string, name: string, company: string, title: string, link: string, from: string, reminder = false): Promise<void> {
+  const html = shell(`<p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${BRAND.inkMute};margin:0 0 8px;">${esc(company)} · ${reminder ? 'Reminder' : 'Signature requested'}</p>` + h1(esc(title)) +
+    para('Hi ' + esc(name.split(' ')[0] ?? name) + ', ' + esc(from) + ' has asked you to review and sign <b>' + esc(title) + '</b>. It takes a minute: read it, then type or draw your signature.') + button('Review and sign →', link) +
+    `<p style="font-size:12.5px;color:${BRAND.inkMute};margin:0;">You will get the signed copy by email once everyone has signed.</p>`, 'Please sign: ' + title)
+  await sendEmail({ to, subject: (reminder ? 'Reminder: please sign ' : 'Please sign: ') + title, text: 'Hi ' + name + ',\n\n' + from + ' has asked you to sign "' + title + '" for ' + company + '.\n\nReview and sign: ' + link, html, brand: 'finvry' })
+}
+export async function sendSignedCopyEmail(to: string, company: string, title: string, pdf: Uint8Array): Promise<void> {
+  const html = shell(h1('Signed: ' + esc(title)) + para('Everyone has signed <b>' + esc(title) + '</b> for ' + esc(company) + '. The signed copy, with its signature certificate, is attached.'), 'Signed: ' + title)
+  await sendEmail({ to, subject: 'Signed: ' + title, text: 'Everyone has signed "' + title + '" for ' + company + '. The signed copy is attached.', html, brand: 'finvry', attachments: [{ filename: title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 120) + '.pdf', content: pdf }] })
+}

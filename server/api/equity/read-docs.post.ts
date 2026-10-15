@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
   const entity = await companyEntityId()
   const company = (await db().query<{ name: string }>('SELECT name FROM core.organizations WHERE id = core.current_org()')).rows[0]?.name ?? 'the company'
   let proposal
-  try { proposal = await readCapDocs(files, company, 'equity:' + (entity ?? 'org')) }
+  const source = parts.find((p) => p.name === 'source' && !p.filename)?.data.toString('utf8') ?? ''
+  try { proposal = await readCapDocs(files, company, 'equity:' + (entity ?? 'org'), ['pulley', 'carta'].includes(source) ? source : '') }
   catch (e) { if ((e as { statusCode?: number }).statusCode) throw e; console.error('[equity] read failed', e); throw apiError('ai_failed', 'Could not read those files just now. Try again, or try fewer files at once.', 502) }
   const kept = keep ? await Promise.all(files.map((f) => keepFile(f, entity).catch(() => null))) : []
   await audit({ event, actorUserId: user.userId, action: 'equity.docs_read', objectType: 'equity_import', detail: { files: files.map((f) => f.name), kept: kept.filter(Boolean).length } })

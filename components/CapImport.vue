@@ -2,7 +2,7 @@
 // Drop the lawyer's cap table, pro forma, SAFEs, notes, certificates and grant letters together; AI reads them into
 // one cap table; the founder checks it (totals cross-checked against the documents) and saves.
 import { table, type Data } from '~/shared/captable'
-const props = defineProps<{ open: boolean; hasData: boolean; initial?: File[]; ct?: string; ctName?: string }>()
+const props = defineProps<{ open: boolean; hasData: boolean; initial?: File[]; ct?: string; ctName?: string; from?: 'pulley' | 'carta' | 'files' }>()
 const emit = defineEmits<{ close: []; saved: [id: string] }>()
 type Kind = 'founder' | 'employee' | 'advisor' | 'investor' | 'other'
 interface Prop { as_of: string | null; currency: string
@@ -14,14 +14,16 @@ interface Prop { as_of: string | null; currency: string
   convertibles: { holder: string; kind: 'safe' | 'note'; amount: number; valuation_cap: number | null; discount_pct: number | null; post_money: boolean; mfn: boolean; interest_pct: number | null; issued_on: string | null; maturity_on: string | null; source: string }[]
   stated: { issued: number | null; fully_diluted: number | null; pool_available: number | null }; notes: string[] }
 const files = ref<File[]>([]), keep = ref(true), busy = ref(false), msg = ref(''), p = ref<Prop | null>(null), read = ref<string[]>([]), mode = ref<'replace' | 'add' | 'new'>(props.hasData ? 'add' : 'replace'), newName = ref(''), step = ref<'files' | 'review'>('files')
-watch(() => props.open, (o) => { if (o) { files.value = [...(props.initial ?? [])]; p.value = null; step.value = 'files'; msg.value = ''; mode.value = props.hasData ? 'add' : 'replace'; newName.value = 'Imported ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) } })
+const src = ref<'pulley' | 'carta' | 'files'>('files')
+const SRC = { pulley: { label: 'From Pulley', how: 'Export your cap table and your securities list (shares, options, SAFEs) from Pulley as Excel or CSV, and add any signed SAFE, option grant or stock purchase PDFs. Pulley stops operating on 8 December 2026, so export before then.' }, carta: { label: 'From Carta', how: 'Download your cap table and your securities ledger (certificates, option grants, convertibles) from Carta as Excel or CSV, and add any signed agreements as PDFs.' }, files: { label: 'Lawyer\'s files or other', how: 'Your lawyer\'s cap table or pro forma (Excel or PDF), SAFE and note agreements, share certificates, stock purchase agreements, board consents and option grant letters. Exports from other cap table tools work too.' } } as const
+watch(() => props.open, (o) => { if (o) { src.value = props.from ?? 'files'; files.value = [...(props.initial ?? [])]; p.value = null; step.value = 'files'; msg.value = ''; mode.value = props.hasData ? 'add' : 'replace'; newName.value = 'Imported ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) } })
 const MAX = 10
 function add(ev: Event) { const list = Array.from(((ev.target as HTMLInputElement).files ?? []) as ArrayLike<File>); for (const f of list) if (!files.value.some((x) => x.name === f.name && x.size === f.size)) files.value.push(f); if (files.value.length > MAX) { files.value = files.value.slice(0, MAX); msg.value = 'Up to ' + MAX + ' files at a time.' } }
 const size = (b: number) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
 async function readDocs() {
   busy.value = true; msg.value = ''
-  const fd = new FormData(); for (const f of files.value) fd.append('files', f, f.name); fd.append('keep', keep.value ? '1' : '0')
+  const fd = new FormData(); for (const f of files.value) fd.append('files', f, f.name); fd.append('keep', keep.value ? '1' : '0'); fd.append('source', src.value)
   try { const r = await $fetch<{ proposal: Prop; files: string[] }>('/api/equity/read-docs', { method: 'POST', body: fd }); p.value = r.proposal; read.value = r.files; step.value = 'review' }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
@@ -53,9 +55,10 @@ async function save() {
 }
 </script>
 <template>
-  <AppModal :open="open" :title="step === 'files' ? 'Build your cap table from documents' : 'Check your cap table'" wide @close="emit('close')">
+  <AppModal :open="open" :title="step === 'files' ? (src === 'files' ? 'Build your cap table from documents' : 'Import your cap table ' + (src === 'pulley' ? 'from Pulley' : 'from Carta')) : 'Check your cap table'" wide @close="emit('close')">
     <div v-if="step === 'files'" class="ci">
-      <p class="lead">Drop everything you have, all at once: your lawyer's cap table or pro forma (Excel or PDF), SAFE and note agreements, share certificates, stock purchase agreements, board consents and option grant letters. AI reads them together and builds the cap table. You check it before anything is saved.</p>
+      <div class="srcs"><button v-for="(v, k) in SRC" :key="k" :class="{ on: src === k }" @click="src = k">{{ v.label }}</button></div>
+      <p class="lead">{{ SRC[src].how }} Drop everything at once: AI reads the files together and builds the cap table, with certificate numbers, vesting, exercises and holder emails. Cancelled and converted securities are left out. You check it before anything is saved.</p>
       <DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" :disabled="busy" hint="PDF, Excel, CSV or Word · up to 10 files" @change="add" />
       <ul v-if="files.length" class="fl"><li v-for="(f, i) in files" :key="f.name + f.size"><span class="ext">{{ (f.name.split('.').pop() ?? '').toUpperCase() }}</span><b>{{ f.name }}</b><em>{{ size(f.size) }}</em><button class="lk red" :disabled="busy" @click="files.splice(i, 1)">Remove</button></li></ul>
       <label class="chk"><input v-model="keep" type="checkbox"> Keep copies of these files in Documents</label>
@@ -100,6 +103,8 @@ async function save() {
 </template>
 <style scoped>
 .ci { display: flex; flex-direction: column; gap: 14px; } .ci .fx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } @media (max-width: 760px) { .ci .fx-stats { grid-template-columns: 1fr 1fr; } } .lead { margin: 0; color: var(--c-ink-soft); font-size: 14px; line-height: 1.55; } .mut { margin: 0; color: var(--c-muted); font-size: 13px; } .sm2 { font-size: 12px; }
+.srcs { display: flex; border: 1px solid var(--c-rule-strong); width: fit-content; } .srcs button { font: inherit; font-size: 13.5px; padding: 7px 14px; background: #fff; border: 0; cursor: pointer; color: var(--c-ink-soft); } .srcs button + button { border-left: 1px solid var(--c-rule-strong); } .srcs button.on { background: var(--c-navy); color: #fff; }
+.mv { border: 1px solid var(--c-rule); background: var(--c-paper-3); padding: 10px 14px; font-size: 13px; color: var(--c-ink-soft); line-height: 1.5; } .mv b { color: var(--c-ink); font-weight: 600; }
 .fl { list-style: none; margin: 0; padding: 0; border: 1px solid var(--c-rule); } .fl li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .fl li:last-child { border-bottom: 0; }
 .fl b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fl em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .ext { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; color: var(--c-ink-soft); border: 1px solid var(--c-rule-strong); text-align: center; padding: 2px 0; }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
