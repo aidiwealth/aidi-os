@@ -43,11 +43,8 @@ export default defineEventHandler(async (event) => {
     }
     if (can('portfolio')) {
       const c = await one<{ active: number }>('SELECT count(*)::int AS active FROM portfolio.companies WHERE active')
-      const rev = await db().query<{ b: string; v: string }>(
-        `SELECT to_char(period, 'YYYY-MM-DD') AS b, sum(coalesce(override_value, founder_value))::text AS v FROM portfolio.metric_months
-          WHERE metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL AND period >= date_trunc('month', now()) - interval '12 months' GROUP BY 1`)
-      const lastMonths = Array.from({ length: 12 }, (_, i) => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 12 + i, 1)).toISOString().slice(0, 10) })
-      const series = fillSeries(rev.rows, lastMonths)
+      const run = await revenueRunRate({ range: '12m' })
+      const series = run.series.map((x) => ({ period: x.period, value: x.value }))
       const r = await one<{ sent: number; done: number }>("SELECT count(*)::int AS sent, count(*) FILTER (WHERE status = 'submitted')::int AS done FROM portfolio.requests WHERE period = date_trunc('month', now() - interval '1 month')::date")
       const latest = [...series].reverse().find((x) => x.value > 0)
       vc.portfolio = { active: c.active, revenue: latest?.value ?? 0, revenuePeriod: latest?.period ?? null, series, reportsSent: r.sent, reportsDone: r.done }

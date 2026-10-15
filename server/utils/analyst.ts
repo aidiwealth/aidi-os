@@ -193,3 +193,14 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   if (gate.billed === 'credits' && gate.orgId) await aiChargeCredits(gate.orgId, inTok + outTok)
   return { text: text || 'I could not find an answer to that.', actions, tokens: inTok + outTok }
 }
+
+// The same read-only company data for the Data API and the MCP server (company workspaces only; module must be on).
+export const FINVRY_DATA: Record<string, { tool: string; module: string }> = {
+  forecasts: { tool: 'forecasts', module: 'forecast' }, cap_table: { tool: 'cap_table', module: 'equity' }, investor_updates: { tool: 'investor_updates', module: 'updates' },
+  share_link_views: { tool: 'share_link_views', module: 'forecast' }, bank_cash: { tool: 'bank_live', module: 'financials' }, boards: { tool: 'boards', module: 'boards' } }
+export async function finvryData(event: H3Event, kind: string, name: keyof typeof FINVRY_DATA, args: Record<string, unknown> = {}): Promise<unknown> {
+  if (kind !== 'company') throw apiError('forbidden', 'Available to company workspaces.', 403)
+  const d = FINVRY_DATA[name]!, t = finvry.find((x) => x.name === d.tool)!
+  if (!(await enabledModules()).has(d.module)) throw apiError('module_off', 'This feature is not on your plan, or it is switched off in your workspace.', 404)
+  return t.run(args, { event, userId: '', roles: [] })
+}

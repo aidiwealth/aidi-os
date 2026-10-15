@@ -61,7 +61,7 @@ const charts = computed(() => {
   const d = data.value; if (!d) return []
   const c: { title: string; sub: string; points: { label: string; value: number }[]; unit: 'usd' | 'count'; foot: string; symbol?: string }[] = []
   if (d.vc?.pitches && see('chart_pitches')) c.push({ title: 'Pitches received', sub: 'Per month', points: pts(d.vc.pitches.series), unit: 'count', foot: d.vc.pitches.series.reduce((s, x) => s + x.value, 0) + ' in 12 months' })
-  if (d.vc?.portfolio && see('chart_portfolio')) c.push({ title: 'Portfolio revenue', sub: 'Combined, per month', points: pts(d.vc.portfolio.series), unit: 'usd', foot: d.vc.portfolio.reportsDone + ' of ' + d.vc.portfolio.reportsSent + ' updates in for last month' })
+  if (d.vc?.portfolio && see('chart_portfolio')) c.push({ title: 'Portfolio revenue', sub: 'Combined, per month', points: pts(d.vc.portfolio.series), unit: 'usd', foot: d.vc.portfolio.reportsSent ? d.vc.portfolio.reportsDone + ' of ' + d.vc.portfolio.reportsSent + ' updates in for last month' : 'Each company\'s latest report' })
   if (d.cs?.fees && see('chart_fees')) c.push({ title: 'Fees earned', sub: 'Paid by clients, all time', points: pts(d.cs.fees.series), unit: 'usd', foot: money(d.cs.fees.total) + ' paid by clients, all time' })
   return c.slice(0, 3)
 })

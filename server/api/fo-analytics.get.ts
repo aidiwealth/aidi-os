@@ -34,11 +34,7 @@ export default defineEventHandler(async (event) => {
             (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'net_burn' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS burn
        FROM portfolio.companies c LEFT JOIN core.entities he ON he.id = c.holding_entity_id
       WHERE c.active AND c.relationship IN ('subsidiary','affiliate') ${cf} ORDER BY c.name`, cArgs)
-  const revSeries = await db().query<{ b: string; v: string }>(
-    `SELECT to_char(m.period, 'YYYY-MM-DD') AS b, sum(coalesce(m.override_value, m.founder_value))::text AS v
-       FROM portfolio.metric_months m JOIN portfolio.companies c ON c.id = m.company_id
-      WHERE c.active AND c.relationship IN ('subsidiary','affiliate') AND m.metric = 'revenue' AND m.period >= date_trunc('month', now() - interval '12 months') ${cf}
-      GROUP BY 1 ORDER BY 1`, cArgs)
+  const revRun = await revenueRunRate({ filter: "AND c.relationship IN ('subsidiary','affiliate') " + cf, args: cArgs, range })
   const held = await db().query<{ name: string; c: number }>(
     `SELECT e.name, count(*)::int AS c FROM portfolio.companies c JOIN core.entities e ON e.id = c.holding_entity_id WHERE c.active GROUP BY 1 ORDER BY 2 DESC LIMIT 8`)
   const act = await db().query<{ b: string; v: number }>(
@@ -86,9 +82,9 @@ export default defineEventHandler(async (event) => {
     documents: !u.has('documents') ? null : { ...docTotals, byEntity: docByEntity.rows, series: fillSeries(docSeries.rows, seriesKeys(range, bucket, docSeries.rows[0]?.b)) },
     groupCompanies: !u.has('portfolio') ? null : {
       count: cos.rows.length, subsidiaries: cos.rows.filter((c) => c.relationship === 'subsidiary').length, affiliates: cos.rows.filter((c) => c.relationship === 'affiliate').length,
-      revenue: cos.rows.reduce((s, c) => s + n(c.revenue), 0), cash: cos.rows.reduce((s, c) => s + n(c.cash), 0),
+      revenue: revRun.latest, cash: cos.rows.reduce((s, c) => s + n(c.cash), 0),
       list: cos.rows.map((c) => ({ id: c.id, name: c.name, relationship: c.relationship, holder: c.holder, revenue: c.revenue === null ? null : Number(c.revenue), runway: c.cash !== null && c.burn !== null && Number(c.burn) > 0 ? Number(c.cash) / Number(c.burn) : null })),
-      revenueSeries: revSeries.rows.map((r) => ({ period: r.b, value: Number(r.v) }))
+      revenueSeries: revRun.series.map((r) => ({ period: r.period, value: r.value }))
     },
     heldByEntity: u.has('portfolio') ? held.rows : [],
     activity: fillSeries(act.rows, seriesKeys(range, bucket, act.rows[0]?.b)),

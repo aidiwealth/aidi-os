@@ -49,11 +49,11 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
       <div class="kpis">
         <div class="kpi"><span class="label">Active entities</span><b>{{ data.entities.byStatus.active ?? 0 }}</b><span class="sub">{{ data.entities.byStatus.forming ?? 0 }} forming · {{ (data.entities.byStatus.dormant ?? 0) + (data.entities.byStatus.closed ?? 0) }} dormant or closed</span></div>
         <template v-if="data.groupCompanies"><div class="kpi"><span class="label">Group companies</span><b>{{ data.groupCompanies.count }}</b><span class="sub">{{ data.groupCompanies.subsidiaries }} subsidiaries · {{ data.groupCompanies.affiliates }} affiliates</span></div>
-        <div class="kpi"><span class="label">Group company revenue</span><b>{{ brief(usd(data.groupCompanies.revenue)) }}</b><span class="sub">latest month, combined</span></div>
+        <div class="kpi"><span class="label">Group company revenue</span><b>{{ brief(usd(data.groupCompanies.revenue)) }}</b><span class="sub">latest reported, per month</span></div>
         <div class="kpi"><span class="label">Group company cash</span><b>{{ brief(usd(data.groupCompanies.cash)) }}</b><span class="sub">latest reported, combined</span></div></template>
       </div>
       <div v-if="data.groupCompanies" class="charts">
-        <TrendChart title="Group company revenue" sub="Combined, per month" unit="usd" :points="pts(data.groupCompanies.revenueSeries, true)" foot="Subsidiaries and affiliates, as reported" />
+        <TrendChart title="Group company revenue" sub="Combined, per month" unit="usd" :points="pts(data.groupCompanies.revenueSeries, true)" foot="Each company's latest report (kept up to 6 months)" />
       </div>
       <div class="three">
         <div class="card"><DonutChart title="Entities by type" total-label="Entities" :segments="kinds.map(([k, c]) => ({ label: KIND[k] ?? k, value: c }))" /></div>

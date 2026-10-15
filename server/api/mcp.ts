@@ -1,12 +1,19 @@
 // Finvry MCP server: connect Claude, ChatGPT, Cursor and other AI tools to your company's data (read-only).
 // Streamable HTTP, JSON responses. Authorization: Bearer fv_live_… (a Data API read key).
+import type { H3Event } from 'h3'
 const TOOLS = [
   { name: 'company_metrics', description: "Latest monthly metrics (revenue, margins, burn, runway, cash) and the previous month.", inputSchema: { type: 'object', properties: {} } },
   { name: 'statements', description: 'Financial statements for recent periods.', inputSchema: { type: 'object', properties: { period: { type: 'string', enum: ['month', 'quarter', 'year'] }, count: { type: 'integer', minimum: 1, maximum: 24 } } } },
   { name: 'compliance_deadlines', description: 'Upcoming filing and renewal deadlines.', inputSchema: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 365 } } } },
   { name: 'fundraising', description: 'Fundraising pipelines with investors, stages and amounts.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'contacts', description: 'Search your contacts (investors and others) by name, firm or email.', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } }]
-async function call(name: string, a: Record<string, any>, kind: string) {
+  { name: 'contacts', description: 'Search your contacts (investors and others) by name, firm or email.', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } },
+  { name: 'forecasts', description: 'Saved forecasts with base, best and worst case cash, runway, break-even and revenue. Give a name for one forecast\'s months.', inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
+  { name: 'cap_table', description: 'A cap table (main one unless named): fully diluted shares, holders and %, option pool, SAFEs and notes, pending signatures, missing certificates. Optionally model a priced round (pre_money, new_money, pool_target_pct) or an exit.', inputSchema: { type: 'object', properties: { name: { type: 'string' }, pre_money: { type: 'number' }, new_money: { type: 'number' }, pool_target_pct: { type: 'number' }, exit: { type: 'number' } } } },
+  { name: 'investor_updates', description: 'Recent investor updates: title, period, status, when sent and to how many.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'share_link_views', description: 'Who opened the private forecast and cap table links, when and for how long.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'bank_cash', description: 'Live cash from connected bank accounts (read-only): balances, money in and out by month, net burn.', inputSchema: { type: 'object', properties: {} } }]
+async function call(event: H3Event, name: string, a: Record<string, any>, kind: string) {
+  if (name in FINVRY_DATA) return finvryData(event, kind, name as keyof typeof FINVRY_DATA, a)
   const subj = kind === 'company' ? await apiSubject(kind) : null
   if (name === 'company_metrics') { if (!subj) return { note: 'Available to company workspaces.' }; const r = await loadStatements(subj, 'month', 'USD'); const l = r[r.length - 1], p = r[r.length - 2]; return l ? { period_end: l.period_end, currency: l.currency, metrics: derive(l.lines, 'month'), previous: p ? { period_end: p.period_end, metrics: derive(p.lines, 'month') } : null } : { note: 'No statements yet.' } }
   if (name === 'statements') { if (!subj) return []; const r = await loadStatements(subj, a.period || 'month', 'USD'); return r.slice(-Math.min(Number(a.count) || 6, 24)).map((x) => ({ period_end: x.period_end, currency: x.currency, lines: x.lines })) }
@@ -24,11 +31,11 @@ export default defineEventHandler(async (event) => {
   const fail = (code: number, message: string) => ({ jsonrpc: '2.0', id: msg.id ?? null, error: { code, message } })
   if (msg.id === undefined) { setResponseStatus(event, 202); return null }
   switch (msg.method) {
-    case 'initialize': return reply({ protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'finvry', title: 'Finvry', version: '1.0.0' }, instructions: 'Read-only access to this Finvry workspace: metrics, statements, fundraising, contacts and compliance deadlines.' })
+    case 'initialize': return reply({ protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'finvry', title: 'Finvry', version: '1.0.0' }, instructions: 'Read-only access to this Finvry workspace: metrics, statements, forecasts, cap tables, investor updates, bank cash, fundraising, contacts and compliance deadlines.' })
     case 'ping': return reply({})
     case 'tools/list': return reply({ tools: TOOLS })
     case 'tools/call': {
-      try { const out = await call(String(msg.params?.name), msg.params?.arguments ?? {}, k.kind); return reply({ content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: Array.isArray(out) ? { items: out } : out }) }
+      try { const out = await call(event, String(msg.params?.name), msg.params?.arguments ?? {}, k.kind); return reply({ content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: Array.isArray(out) ? { items: out } : out }) }
       catch (err) { return reply({ content: [{ type: 'text', text: (err as Error).message || 'Tool failed' }], isError: true }) }
     }
     default: return fail(-32601, 'Method not found')

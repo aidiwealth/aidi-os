@@ -27,7 +27,11 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleString('en-GB', { day
         <tr><td><code>GET /metrics</code></td><td>Latest key metrics in your reporting currency</td></tr>
         <tr><td><code>GET /contacts</code> · <code>POST /contacts</code></td><td>List contacts, or add/update up to 1,000: <code>{ "contacts": [{ "name": "Amara Obi", "email": "amara@vc.africa", "lists": ["Investors"] }] }</code></td></tr>
         <tr><td><code>GET /compliance</code></td><td>Filing and renewal deadlines</td></tr>
-        <tr><td><code>GET /pipelines</code></td><td>Fundraising pipelines with investors and amounts</td></tr></tbody></table>
+        <tr><td><code>GET /pipelines</code></td><td>Fundraising pipelines with investors and amounts</td></tr>
+        <tr><td><code>GET /forecasts</code></td><td>Saved forecasts with base, best and worst cases</td></tr>
+        <tr><td><code>GET /cap-table</code></td><td>Cap table: holders, option pool, SAFEs and notes, pending signatures; model a round or exit</td></tr>
+        <tr><td><code>GET /updates</code> · <code>GET /share-views</code></td><td>Investor updates sent, and who opened your forecast and cap table links</td></tr>
+        <tr><td><code>GET /cash</code></td><td>Live cash from connected bank accounts (read-only)</td></tr></tbody></table>
       <pre>curl -X POST {{ base }}/financials \
   -H "Authorization: Bearer fv_live_…" -H "Content-Type: application/json" \
   -d '{"period_type":"month","period_end":"2026-09-30","currency":"USD","lines":{"revenue":120000}}'</pre>

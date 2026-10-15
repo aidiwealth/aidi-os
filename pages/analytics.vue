@@ -34,13 +34,13 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
         <div v-if="data.pipeline" class="kpi"><span class="label">Active deals</span><b>{{ data.pipeline.active }}</b><span class="sub">screening to IC</span></div>
         <div v-if="data.pipeline" class="kpi"><span class="label">Capital deployed</span><b>{{ brief(usd(data.pipeline.deployed)) }}</b><span class="sub">{{ data.pipeline.invested }} {{ data.pipeline.invested === 1 ? 'investment' : 'investments' }}</span></div>
         <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio companies</span><b>{{ data.portfolio.companies }}</b><span class="sub">active</span></div>
-        <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio revenue</span><b>{{ brief(usd(data.portfolio.latestRevenue)) }}</b><span class="sub">latest month, combined</span></div>
+        <div v-if="data.portfolio" class="kpi"><span class="label">Portfolio revenue</span><b>{{ brief(usd(data.portfolio.latestRevenue)) }}</b><span class="sub">latest reported, per month</span></div>
       </div>
 
       <div class="charts">
         <TrendChart v-if="data.pitches" title="Pitches received" :sub="data.bucket === 'week' ? 'Per week' : 'Per month'" :points="pts(data.pitches.series)" :foot="data.pitches.received + ' in ' + RANGE[range].toLowerCase()" />
         <TrendChart v-if="data.pipeline" title="Capital deployed" sub="Cumulative" unit="usd" :points="pts(data.pipeline.deployedSeries)" :foot="data.pipeline.invested + (data.pipeline.invested === 1 ? ' investment' : ' investments')" />
-        <TrendChart v-if="data.portfolio" title="Portfolio revenue" sub="Combined, per month" unit="usd" :points="pts(data.portfolio.revenueSeries)" foot="As reported, with team corrections" />
+        <TrendChart v-if="data.portfolio" title="Portfolio revenue" sub="Combined, per month" unit="usd" :points="pts(data.portfolio.revenueSeries)" foot="Each company's latest report (kept up to 6 months), with team corrections" />
       </div>
 
       <div class="two">

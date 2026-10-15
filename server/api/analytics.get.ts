@@ -71,11 +71,7 @@ export default defineEventHandler(async (event) => {
   if (u.has('portfolio')) {
     const ef = entity ? 'AND c.holding_entity_id = $1' : ''
     const args = entity ? [entity] : []
-    const rev = await db().query<{ period: string; v: string }>(
-      `SELECT to_char(m.period, 'YYYY-MM-DD') AS period, sum(coalesce(m.override_value, m.founder_value))::text AS v
-         FROM portfolio.metric_months m JOIN portfolio.companies c ON c.id = m.company_id
-        WHERE c.active AND m.metric = 'revenue' AND m.period >= date_trunc('month', ${since === "'-infinity'::timestamptz" ? "'1900-01-01'::date" : since}) ${ef}
-        GROUP BY 1 ORDER BY 1`, args)
+    const rev = await revenueRunRate({ filter: ef, args, range })
     const latest = await db().query<{ id: string; name: string; cash: string | null; burn: string | null; revenue: string | null }>(
       `SELECT c.id, c.name,
               (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'cash' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS cash,
@@ -92,11 +88,12 @@ export default defineEventHandler(async (event) => {
     out.portfolio = {
       companies: latest.rows.length,
       totalCash: latest.rows.reduce((s, r) => s + n(r.cash), 0),
-      latestRevenue: latest.rows.reduce((s, r) => s + n(r.revenue), 0),
+      latestRevenue: rev.latest,
+      revenueCompanies: rev.companies,
       medianRunway: sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)]!.months : null,
       atRisk: sorted.filter((r) => r.months < 6),
       reporting: { month: lastMonth, asked: rep.asked, submitted: rep.submitted },
-      revenueSeries: rev.rows.map((r) => ({ period: r.period, value: Number(r.v) }))
+      revenueSeries: rev.series.map((r) => ({ period: r.period, value: r.value }))
     }
   }
 

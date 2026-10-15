@@ -14,7 +14,7 @@ const band = computed(() => (br.value?.bg || br.value?.fg ? { background: br.val
 const aidiLook = computed(() => (ws.value ? ws.value.brand === 'aidi' : brand.key === 'aidi'))
 const title = computed(() => (ws.value ? (['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? ws.value.firm : ws.value.name) : ''))
 const foot = computed(() => {
-  if (!ws.value) return kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : 'Your figures are shared only with the team that requested them.'
+  if (!ws.value) return kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : kind === 'report' ? 'Your figures are shared only with the team that requested them.' : ''
   const t = kind === 'c' || kind === 'u' || kind === 'd' || kind === 'v' || kind === 'sign' ? 'Shared by ' + ws.value.name + '.' : kind === 'info' ? 'Your answers and documents are shared only with the team preparing your filings.' : kind === 'formation' ? 'Card payments are processed by Stripe; card details never reach us.' : kind === 'bill' ? 'Card payments are processed by Stripe or Paystack; card details never reach us.' : kind === 'lp' ? 'This information is confidential to you as an investor.' : kind === 'pay' ? 'Payments are processed securely by Stripe or Paystack; card details never reach us.' : kind === 'job' ? 'Your details and documents are shared only with the team handling your request.' : 'Your figures are shared only with the ' + ws.value.firm + ' team.'
   return title.value + ' · ' + t + (ws.value.brand === 'finvry' && !br.value?.hide_finvry ? ' · Powered by Finvry' : '')
 })
@@ -29,7 +29,7 @@ const foot = computed(() => {
       <a v-else :href="brand.key === 'finvry' ? 'https://finvry.com' : 'https://theaidigroup.com'" class="pub-home" aria-label="Home"><BrandMark /></a>
     </header>
     <main class="pub-main"><slot /></main>
-    <footer class="pub-foot" :style="band">{{ foot }}</footer>
+    <footer class="pub-foot" :style="band"><template v-if="foot">{{ foot }}</template><span v-else class="pub-legal">© {{ new Date().getFullYear() }} {{ brand.name }} · <NuxtLink to="/legal/privacy">Privacy</NuxtLink> · <NuxtLink to="/legal/terms">Terms</NuxtLink></span></footer>
   </div>
 </template>
 
@@ -44,4 +44,5 @@ const foot = computed(() => {
 .pub-main { flex: 1; padding: 48px 24px; }
 .pub-foot { padding: 20px 32px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
 .pub-home { display: inline-flex; text-decoration: none; color: inherit; }
+.pub-legal a { color: inherit; }
 </style>
