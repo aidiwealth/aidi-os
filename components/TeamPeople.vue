@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RANGE_PRESETS, resolveRange, rangeLabel, type RangePreset } from '~/shared/date-range'
 // Team → People: staff and consultants, their agreements (draft with AI, upload signed, track status), pay schedule,
 // what is due, and payments (also recorded under Payments with a voucher).
 interface P { id: string; user_id: string | null; name: string; email: string | null; phone: string | null; kind: string; title: string | null; entity_id: string | null; entity: string | null; location: string | null; start_date: string | null; end_date: string | null; contract_end: string | null; pay_amount: number | null; currency: string; pay_frequency: string; pay_day: number; status: string; notes: string | null }
@@ -51,11 +52,28 @@ const up = reactive({ kind: 'employment', signed_on: new Date().toISOString().sl
 async function upload(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; busy.value = true; msg.value = ''; const fd = new FormData(); fd.append('file', file); fd.append('person_id', cur.value!.id); fd.append('kind', up.kind); fd.append('signed_on', up.signed_on); fd.append('ends_on', up.ends_on); try { await $fetch('/api/hr/agreements', { method: 'POST', body: fd }); ok.value = 'Signed agreement added.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function openDoc(id: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') } catch (e) { msg.value = err(e) } }
 // Payments.
-const pay = reactive({ open: false, person_id: '', period: '', amount: '' as string | number, currency: 'USD', paid_on: new Date().toISOString().slice(0, 10), method: 'Bank transfer', reference: '', notes: '', record_payment: true, category: 'Salaries & contractors' })
+const pay = reactive({ bank_txn_id: '' as string, open: false, person_id: '', period: '', amount: '' as string | number, currency: 'USD', paid_on: new Date().toISOString().slice(0, 10), method: 'Bank transfer', reference: '', notes: '', record_payment: true, category: 'Salaries & contractors' })
 function logPay(p: P | undefined, d?: Due) { if (!p) return; if (cur.value?.id !== p.id || !pf.open) openP(p, 'pay'); Object.assign(pay, { open: true, person_id: p.id, period: d?.period ?? new Date().toISOString().slice(0, 7), amount: d?.amount ?? p.pay_amount ?? '', currency: p.currency, paid_on: new Date().toISOString().slice(0, 10), reference: '', notes: '' }); view.value = 'pay' }
-async function savePay() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ expense_id: string | null }>('/api/hr/payments', { method: 'POST', body: { ...pay, amount: Number(pay.amount) } }); pay.open = false; ok.value = r.expense_id ? 'Payment logged, with a voucher under Payments.' : 'Payment logged.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function savePay() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ expense_id: string | null }>('/api/hr/payments', { method: 'POST', body: { ...pay, amount: Number(pay.amount), bank_txn_id: pay.bank_txn_id || undefined } }); pay.bank_txn_id = ''; if (hist.value) void refreshHist(); pay.open = false; ok.value = r.expense_id ? 'Payment logged, with a voucher under Payments.' : 'Payment logged.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function delPay(x: Pay) { if (!confirm('Remove this payment from the log? (The entry under Payments stays.)')) return; await $fetch('/api/hr/payments', { method: 'POST', body: { id: x.id, delete: true } }); await refresh() }
 const pOf = (id: string) => data.value?.people.find((p) => p.id === id)
+// Pay history: every payment for a period, checked against the bank, with filters and export.
+const section = ref<'people' | 'history'>('people')
+const hp = reactive({ preset: 'ytd' as RangePreset, from: '', to: '', person: '', entity: '', bank: '' })
+const hRange = computed(() => resolveRange(hp.preset, new Date(), { from: hp.from, to: hp.to }))
+interface HRow { id: string; person_id: string; person: string; entity: string | null; entity_id: string | null; period: string; amount: number; currency: string; paid_on: string; method: string | null; reference: string | null; expense_id: string | null; voucher_id: string | null; notes: string | null; bank: string; bank_txn: { id: string; date: string; description: string; account: string } | null; linked: boolean }
+interface Line { id: string; date: string; description: string; amount: number; currency: string; account: string }
+const { data: hist, refresh: refreshHist, pending: histBusy } = await useLazyFetch<{ rows: HRow[]; suggestions: (Omit<Line, 'id'> & { txn_id: string; person_id: string; person: string })[]; open: Line[] }>('/api/hr/pay-history', { query: computed(() => ({ from: hRange.value.from, to: hRange.value.to })), server: false, immediate: false })
+watch(section, (v) => { if (v === 'history' && !hist.value) void refreshHist() })
+const hRows = computed(() => (hist.value?.rows ?? []).filter((r) => (!hp.person || r.person_id === hp.person) && (!hp.entity || r.entity_id === hp.entity) && (!hp.bank || r.bank === hp.bank)))
+const hTot = computed(() => { const m: Record<string, number> = {}; for (const r of hRows.value) m[r.currency] = (m[r.currency] ?? 0) + r.amount; return m })
+const hCount = (b: string) => hRows.value.filter((r) => r.bank === b).length
+const BANK: Record<string, string> = { matched: 'In bank', missing: 'Not in bank', no_statement: 'Awaiting statement', no_account: 'No bank account' }
+const hExport = (format: 'csv' | 'xlsx') => '/api/hr/pay-export?' + new URLSearchParams({ from: hRange.value.from, to: hRange.value.to, person_id: hp.person, entity_id: hp.entity, bank: hp.bank, format, label: rangeLabel(hp.preset, hRange.value) }).toString()
+const linking = ref<HRow | null>(null)
+const candidates = computed(() => { const r = linking.value; if (!r) return []; return (hist.value?.open ?? []).filter((l) => l.currency === r.currency).map((l) => ({ ...l, score: Math.abs(l.amount - r.amount) / Math.max(1, r.amount) + Math.abs(new Date(l.date).getTime() - new Date(r.paid_on).getTime()) / 864e5 / 60 })).sort((a, b) => a.score - b.score).slice(0, 12) })
+async function link(r: HRow, txn: string | null) { try { await $fetch('/api/hr/payments', { method: 'POST', body: { id: r.id, bank_txn_id: txn } }); linking.value = null; await refreshHist() } catch (e) { msg.value = err(e) } }
+function logFromBank(s: { txn_id: string; person_id: string; amount: number; currency: string; date: string }) { const p = pOf(s.person_id); if (!p) return; logPay(p); Object.assign(pay, { amount: s.amount, currency: s.currency, paid_on: s.date, period: s.date.slice(0, 7), bank_txn_id: s.txn_id }) }
 </script>
 <template>
   <div v-if="data" class="tp">
@@ -67,6 +85,30 @@ const pOf = (id: string) => data.value?.people.find((p) => p.id === id)
       <StatTile icon="gauge" :tone="overdue.length ? 'r' : 'n'" label="Pay overdue" :value="overdue.length" :red="!!overdue.length" :note="upcoming.length + ' due in the next 3 weeks'" />
     </div>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !pf.open" class="error">{{ msg }}</p>
+    <div class="seg big"><button :class="{ on: section === 'people' }" @click="section = 'people'">People</button><button :class="{ on: section === 'history' }" @click="section = 'history'">Pay history</button></div>
+    <template v-if="section === 'history'">
+      <div class="hf"><select v-model="hp.preset" aria-label="Period"><option v-for="p in RANGE_PRESETS" :key="p[0]" :value="p[0]">{{ p[1] }}</option></select><template v-if="hp.preset === 'custom'"><input v-model="hp.from" type="date" aria-label="From"><span class="mut">to</span><input v-model="hp.to" type="date" aria-label="To"></template>
+        <select v-model="hp.person"><option value="">Everyone</option><option v-for="p in data.people" :key="p.id" :value="p.id">{{ p.name }}</option></select>
+        <select v-model="hp.entity"><option value="">All companies</option><option v-for="e in data.entities" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+        <select v-model="hp.bank"><option value="">Any bank status</option><option v-for="(l, k) in BANK" :key="k" :value="k">{{ l }}</option></select>
+        <span class="sp" /><details class="dd"><summary class="btn secondary sm">Export</summary><div class="ddm"><a :href="hExport('xlsx')">Excel (.xlsx)</a><a :href="hExport('csv')">CSV</a><span>{{ rangeLabel(hp.preset, hRange) }}, with the filters above</span></div></details></div>
+      <div class="hs"><div><em>Paid</em><b>{{ Object.entries(hTot).map(([c, v]) => money(v, c)).join(' · ') || '—' }}</b><i>{{ hRows.length }} payment{{ hRows.length === 1 ? '' : 's' }}</i></div><div><em>In bank</em><b>{{ hCount('matched') }}</b><i>Matched to a bank line</i></div><div><em>Not in bank</em><b :class="{ red: hCount('missing') }">{{ hCount('missing') }}</b><i>Statement has no matching line</i></div><div><em>Awaiting statement</em><b>{{ hCount('no_statement') + hCount('no_account') }}</b><i>Import statements in Banking</i></div></div>
+      <div v-if="hist?.suggestions.length" class="card pad0"><div class="ch"><h3>Bank payments that look like team pay</h3><span class="mut">Not logged yet; the line carries a team member's name</span></div>
+        <div v-for="s in hist.suggestions" :key="s.txn_id" class="sg"><span><b>{{ s.person }}</b><em>{{ day(s.date) }} · {{ s.account }} · {{ s.description }}</em></span><span class="am">{{ money(s.amount, s.currency) }}</span><button class="btn sm secondary" @click="logFromBank(s)">Log as pay</button></div></div>
+      <div class="card pad0">
+        <table v-if="hRows.length" class="t" data-nosearch><thead><tr><th>Paid on</th><th>Person</th><th>For</th><th class="r">Amount</th><th>Bank</th><th>Records</th></tr></thead>
+          <tbody><tr v-for="r in hRows" :key="r.id"><td>{{ day(r.paid_on) }}</td><td><b>{{ r.person }}</b><span class="sub">{{ r.entity ?? '—' }}</span></td><td>{{ per(r.period) }}<span v-if="r.reference || r.method" class="sub">{{ [r.method, r.reference].filter(Boolean).join(' · ') }}</span></td><td class="r">{{ money(r.amount, r.currency) }}</td>
+            <td><span class="bk" :data-b="r.bank">{{ BANK[r.bank] }}</span><span v-if="r.bank_txn" class="sub" :title="r.bank_txn.description">{{ day(r.bank_txn.date) }} · {{ r.bank_txn.account }}{{ r.linked ? ' · linked by hand' : '' }}</span>
+              <button v-if="r.bank !== 'matched'" class="lk" @click="linking = r">Find in bank</button><button v-else-if="r.linked" class="lk" @click="link(r, null)">Unlink</button></td>
+            <td><a v-if="r.voucher_id" :href="'/api/expenses/doc/' + r.voucher_id" target="_blank" class="lk">Voucher</a><span v-else class="sub">Not on Payments</span></td></tr></tbody></table>
+        <p v-else class="mut pad">{{ histBusy ? 'Loading…' : 'No team payments in this period.' }}</p></div>
+      <AppModal :open="!!linking" :title="linking ? 'Find ' + linking.person + '\'s payment in the bank' : ''" @close="linking = null">
+        <div v-if="linking" class="ef"><p class="mut">{{ money(linking.amount, linking.currency) }} paid {{ day(linking.paid_on) }} for {{ per(linking.period) }}. Bank lines not yet explained, closest first:</p>
+          <button v-for="c in candidates" :key="c.id" class="cand" @click="link(linking, c.id)"><span><b>{{ money(c.amount, c.currency) }}</b> · {{ day(c.date) }}<em>{{ c.account }} · {{ c.description }}</em></span><span class="lk">Link</span></button>
+          <p v-if="!candidates.length" class="mut">No unexplained {{ linking.currency }} money out around that date. Import the bank statement in Banking first.</p></div>
+      </AppModal>
+    </template>
+    <template v-else>
     <div v-if="data.people.length" class="two">
       <div class="card pad0"><div class="ch"><h3>Pay due</h3><span class="mut">Last 3 months and the next 3 weeks</span></div>
         <div v-for="d in data.due.slice(0, 12)" :key="d.person_id + d.period" class="dr"><span class="dt" :class="{ red: d.overdue }"><b>{{ day(d.due) }}</b><em>{{ d.overdue ? 'Overdue' : 'Due' }}</em></span><span class="dn"><b>{{ d.name }}</b><em>{{ per(d.period) }}</em></span><span class="am">{{ money(d.amount, d.currency) }}</span><button class="btn secondary sm" @click="logPay(pOf(d.person_id), d)">Log payment</button></div>
@@ -85,6 +127,7 @@ const pOf = (id: string) => data.value?.people.find((p) => p.id === id)
       <EmptyState v-if="!list.length" compact icon="team" title="No one here yet" text="Add staff and consultants to track their agreements and pay." />
     </div>
 
+    </template>
     <AppModal :open="pf.open" :title="cur ? cur.name : 'Add a person'" wide @close="pf.open = false">
       <nav v-if="cur" class="tabs"><button v-for="[k, l] in [['profile', 'Profile'], ['agreements', 'Agreements (' + agOf(cur.id).length + ')'], ['pay', 'Pay (' + payOf(cur.id).length + ')']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></nav>
       <div v-if="view === 'profile'" class="ef">
@@ -145,5 +188,12 @@ const pOf = (id: string) => data.value?.people.find((p) => p.id === id)
 .box { border: 1px solid var(--c-rule); padding: 14px; display: flex; flex-direction: column; gap: 10px; } .bh { margin: 0; font-weight: 600; font-size: 14px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chips button { font: inherit; font-size: 12.5px; padding: 5px 10px; border: 1px solid var(--c-rule-strong); background: #fff; cursor: pointer; } .chips button.on { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }
 .ar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-@media (max-width: 900px) { .two, .g3, .g2 { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .two, .g3, .g2 { grid-template-columns: 1fr; } .hs { grid-template-columns: 1fr 1fr; } }
+.seg.big { width: fit-content; } .seg.big button { padding: 7px 16px; font-size: 13.5px; }
+.hf { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .hf select, .hf input { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
+.hs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--c-rule); background: #fff; } .hs > div { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; } .hs > div + div { border-left: 1px solid var(--c-rule); } .hs em { font-style: normal; font-size: 12px; color: var(--c-muted); } .hs b { font-family: var(--font-heading); font-size: 21px; font-weight: 500; color: var(--c-navy); } .hs b.red { color: var(--c-danger); } .hs i { font-style: normal; font-size: 11.5px; color: var(--c-muted); }
+.sg { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--c-rule); } .sg span:first-child { display: flex; flex-direction: column; min-width: 0; } .sg b { font-size: 13.5px; } .sg em { font-style: normal; font-size: 12px; color: var(--c-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk { font-size: 12px; font-weight: 600; padding: 1px 8px; background: var(--c-paper-2); color: var(--c-ink-soft); white-space: nowrap; } .bk[data-b="matched"] { background: var(--c-signal-soft); color: var(--c-blue-deep); } .bk[data-b="missing"] { background: #fdecef; color: var(--c-danger); } td .lk { display: block; margin-top: 3px; font-size: 12.5px; }
+.cand { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; text-align: left; background: #fff; border: 1px solid var(--c-rule); padding: 10px 12px; font: inherit; font-size: 13.5px; cursor: pointer; } .cand:hover { border-color: var(--c-navy); } .cand em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); }
+.dd { position: relative; } .dd summary { list-style: none; cursor: pointer; } .dd summary::-webkit-details-marker { display: none; } .ddm { position: absolute; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--c-rule-strong); box-shadow: 0 12px 28px -12px rgba(12,26,46,.3); z-index: 5; min-width: 220px; display: flex; flex-direction: column; padding: 6px; } .ddm a { padding: 8px 10px; color: var(--c-ink); text-decoration: none; font-size: 13.5px; } .ddm a:hover { background: var(--c-paper-2); } .ddm span { padding: 6px 10px 4px; font-size: 12px; color: var(--c-muted); border-top: 1px solid var(--c-rule); margin-top: 4px; }
 </style>

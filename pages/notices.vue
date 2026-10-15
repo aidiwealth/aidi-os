@@ -4,7 +4,7 @@ useHead({ title: 'Notices' })
 interface R { id: string; from_name: string | null; from_email: string | null; subject: string; received_at: string; status: string; summary: string | null; action: string | null; due_date: string | null; entity_id: string | null; entity: string | null; files: number }
 interface N extends R { to_email: string | null; text_body: string | null; html_body: string | null; attachments: { doc_id: string; name: string; mime: string; size: number }[] }
 const status = ref('new')
-const { data, refresh } = await useFetch<{ rows: R[]; counts: { status: string; n: number }[]; webhook: string | null }>('/api/notices', { query: { status } })
+const { data, refresh } = await useFetch<{ rows: R[]; counts: { status: string; n: number }[]; webhook: string | null; settings: { mailboxes: string[]; senders: string[] }; can_edit: boolean }>('/api/notices', { query: { status } })
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
 const cnt = (s: string) => data.value?.counts.find((c) => c.status === s)?.n ?? 0
 const open = ref<N | null>(null); const showHtml = ref(false)
@@ -33,6 +33,25 @@ function sendToAidi() {
     thread.removeLabel(label); thread.addLabel(sent)
   })
 }`)
+// Mailboxes and senders (admins can change them; everything below uses what is saved).
+const cfg = reactive({ mailboxes: [] as string[], senders: [] as string[], mb: '', sd: '', busy: false, msg: '', ok: false })
+watchEffect(() => { if (data.value?.settings && !cfg.mailboxes.length && !cfg.senders.length) { cfg.mailboxes = [...data.value.settings.mailboxes]; cfg.senders = [...data.value.settings.senders] } })
+const filterQuery = computed(() => (data.value?.settings.senders ?? []).join(' OR '))
+const mailboxText = computed(() => { const m = data.value?.settings.mailboxes ?? []; return m.length > 1 ? m.slice(0, -1).join(', ') + ' and ' + m[m.length - 1] : m[0] ?? 'your mailbox' })
+const dirty = computed(() => JSON.stringify(cfg.mailboxes) !== JSON.stringify(data.value?.settings.mailboxes) || JSON.stringify(cfg.senders) !== JSON.stringify(data.value?.settings.senders))
+function addTo(list: 'mailboxes' | 'senders') {
+  const raw = (list === 'mailboxes' ? cfg.mb : cfg.sd).split(/[\s,;]+/).map((x) => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean)
+  for (const x of raw) if (!cfg[list].includes(x)) cfg[list].push(x)
+  if (list === 'mailboxes') cfg.mb = ''; else cfg.sd = ''
+  cfg.ok = false
+}
+async function saveCfg() {
+  cfg.busy = true; cfg.msg = ''; cfg.ok = false
+  try { await $fetch('/api/notices/settings', { method: 'POST', body: { mailboxes: cfg.mailboxes, senders: cfg.senders } }); await refresh(); cfg.ok = true }
+  catch (e) { cfg.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { cfg.busy = false }
+}
+async function copyFilter() { await navigator.clipboard.writeText(filterQuery.value); copiedF.value = true; setTimeout(() => (copiedF.value = false), 1500) }
+const copiedF = ref(false)
 async function copyScript() { await navigator.clipboard.writeText(script.value); copiedS.value = true; setTimeout(() => (copiedS.value = false), 1500) }
 </script>
 <template>
@@ -47,7 +66,7 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
         <span class="tg"><span v-if="r.due_date" class="pill" :class="(days(r.due_date) ?? 99) < 0 ? 'red' : (days(r.due_date) ?? 99) <= 14 ? 'amber' : 'blue'">Due {{ r.due_date }}</span><span v-if="r.entity" class="pill">{{ r.entity }}</span><span v-if="r.action && !/no action/i.test(r.action)" class="pill act">{{ r.action }}</span><span v-if="r.files" class="pill">{{ r.files }} file{{ r.files === 1 ? '' : 's' }}</span></span>
       </button>
     </div>
-    <EmptyState v-else card icon="cs_inbox" :title="status === 'new' ? 'No new notices' : 'Nothing here'" text="Label notices in Gmail (for example Bizee and state emails to company@aidiventures.com) and they appear here with a summary and deadline."><button class="btn" @click="setup = true">Connect Gmail</button></EmptyState>
+    <EmptyState v-else card icon="cs_inbox" :title="status === 'new' ? 'No new notices' : 'Nothing here'" :text="'Label notices in Gmail (emails from ' + (data.settings.senders.slice(0, 3).join(', ') || 'your registered agent and state') + ' and others to ' + mailboxText + ') and they appear here with a summary and deadline.'"><button class="btn" @click="setup = true">Connect Gmail</button></EmptyState>
     <AppModal :open="!!open" :title="open?.subject ?? ''" wide @close="open = null">
       <div v-if="open" class="nv"><p class="mt">From <b>{{ open.from_name }}</b> &lt;{{ open.from_email }}&gt; · {{ when(open.received_at) }}{{ open.to_email ? ' · to ' + open.to_email : '' }}</p>
         <div v-if="open.summary" class="sumc"><b>Summary</b><p>{{ open.summary }}</p><p v-if="open.action"><b>Action:</b> {{ open.action }}</p><p v-if="open.due_date"><b>Deadline:</b> {{ open.due_date }}</p></div>
@@ -60,10 +79,20 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
       <template #foot><DeleteButton v-if="open" type="notice" :id="open.id" :name="open.subject" @deleted="open = null; refresh()" /><button v-if="open?.status !== 'archived'" class="btn secondary" @click="setStatus('archived')">Archive</button><button v-if="open?.status === 'new'" class="btn" @click="setStatus('done')">Mark done</button><button v-else class="btn secondary" @click="setStatus('new')">Mark as new</button></template>
     </AppModal>
     <AppModal :open="setup" title="Send notices from Gmail" wide @close="setup = false">
+      <div class="cfg">
+        <div class="cf"><b>Mailboxes that send notices</b><span class="mut">Each one runs the steps below once.</span>
+          <div class="tags"><span v-for="(m, i) in cfg.mailboxes" :key="m" class="tg2">{{ m }}<button v-if="data.can_edit && cfg.mailboxes.length > 1" type="button" :aria-label="'Remove ' + m" @click="cfg.mailboxes.splice(i, 1); cfg.ok = false">×</button></span></div>
+          <form v-if="data.can_edit" class="addr" @submit.prevent="addTo('mailboxes')"><input v-model="cfg.mb" type="text" placeholder="name@company.com (several: separate with commas)" aria-label="Add mailbox"><button class="btn secondary sm" :disabled="!cfg.mb.trim()">Add</button></form></div>
+        <div class="cf"><b>Senders that count as notices</b><span class="mut">Domains (irs.gov also covers notices.irs.gov) or full addresses. They make up the Gmail filter in step 2.</span>
+          <div class="tags"><span v-for="(x, i) in cfg.senders" :key="x" class="tg2">{{ x }}<button v-if="data.can_edit && cfg.senders.length > 1" type="button" :aria-label="'Remove ' + x" @click="cfg.senders.splice(i, 1); cfg.ok = false">×</button></span></div>
+          <form v-if="data.can_edit" class="addr" @submit.prevent="addTo('senders')"><input v-model="cfg.sd" type="text" placeholder="e.g. ftb.ca.gov, notices@mercury.com" aria-label="Add sender"><button class="btn secondary sm" :disabled="!cfg.sd.trim()">Add</button></form></div>
+        <div v-if="data.can_edit" class="sv"><button class="btn sm" :disabled="cfg.busy || !dirty" @click="saveCfg">{{ cfg.busy ? 'Saving…' : 'Save mailboxes and senders' }}</button><span v-if="cfg.ok" class="mut">Saved. Update the Gmail filter in each mailbox if you changed senders.</span><span v-else-if="dirty" class="mut">Not saved yet.</span><span v-if="cfg.msg" class="error">{{ cfg.msg }}</span></div>
+        <p v-else class="mut">Only admins can change these.</p>
+      </div>
       <ol class="steps">
         <li><b>One-time setting in DigitalOcean:</b> add <code>NUXT_INBOUND_EMAIL_TOKEN</code> (any long random text) under App → Settings → Environment variables. <span v-if="!data.webhook" class="warn">Not set yet: add it, wait for the redeploy, then reopen this.</span></li>
-        <li><b>In Gmail (company@aidiventures.com), create a filter:</b> Settings → <i>Filters and blocked addresses</i> → <i>Create a new filter</i> → From: <code>bizee.com OR incfile.com OR delaware.gov OR irs.gov OR sos.ca.gov</code> → <i>Create filter</i> → tick <i>Apply the label</i> → new label <code>Aidi notices</code>. Tick "Also apply to matching conversations" to send the existing ones too.</li>
-        <li><b>Add the sender script</b> (Google's own Apps Script, free, runs inside your Google account): open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> while signed in as company@aidiventures.com, delete what's there, paste this, and save:
+        <li><b>In Gmail ({{ mailboxText }}), create a filter:</b> Settings → <i>Filters and blocked addresses</i> → <i>Create a new filter</i> → From: <code class="fq">{{ filterQuery }}</code> <button class="lk" type="button" @click="copyFilter">{{ copiedF ? 'Copied' : 'Copy' }}</button> → <i>Create filter</i> → tick <i>Apply the label</i> → new label <code>Aidi notices</code>. Tick "Also apply to matching conversations" to send the existing ones too.</li>
+        <li><b>Add the sender script</b> (Google's own Apps Script, free, runs inside your Google account): open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> while signed in to {{ data.settings.mailboxes.length > 1 ? 'each mailbox in turn' : mailboxText }}, delete what's there, paste this, and save:
           <div class="code"><button class="btn secondary sm" @click="copyScript">{{ copiedS ? 'Copied' : 'Copy script' }}</button><pre>{{ script }}</pre></div></li>
         <li><b>Run it once</b> (choose <code>sendToAidi</code> → Run) and allow access when Google asks. Then add a trigger: <i>Triggers</i> (clock icon) → <i>Add trigger</i> → <code>sendToAidi</code> → Time-driven → Minutes timer → Every 10 minutes.</li>
         <li>That's it. Emails that get the <b>Aidi notices</b> label appear here within 10 minutes with a summary and deadline, and are relabelled <i>Aidi notices/sent</i> in Gmail.</li></ol>
@@ -81,4 +110,7 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
 .rmd { display: flex; flex-direction: column; gap: 8px; } .g3 { display: grid; grid-template-columns: 2fr 1.4fr 1fr; gap: 10px; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } input, select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .rec { max-width: 220px; } .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; align-self: flex-start; } .error { color: var(--c-danger); margin: 0; }
 .steps { display: flex; flex-direction: column; gap: 12px; padding-left: 18px; font-size: 13.5px; line-height: 1.55; } .code { position: relative; margin-top: 8px; } .code pre { background: #0c1a2e; color: #e6edf6; padding: 12px; font-size: 11.5px; overflow-x: auto; max-height: 260px; margin: 0; } .code .btn { position: absolute; top: 6px; right: 6px; } .lnk { display: flex; gap: 8px; align-items: center; background: var(--c-signal-soft); padding: 8px; margin: 6px 0; } .lnk code { flex: 1; font-size: 12px; word-break: break-all; } code { background: var(--c-paper-2); padding: 1px 5px; font-size: 12.5px; } .warn { color: var(--c-warn); margin: 6px 0; }
 @media (max-width: 800px) { .g3 { grid-template-columns: 1fr; } }
+.cfg { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--c-rule); background: #fbfaf7; padding: 14px 16px; margin-bottom: 14px; } .cf { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; } .mut { font-size: 12.5px; color: var(--c-muted); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; } .tg2 { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--c-rule-strong); padding: 3px 8px; font-size: 13px; } .tg2 button { background: none; border: 0; padding: 0; font: inherit; font-size: 15px; line-height: 1; color: var(--c-muted); cursor: pointer; } .tg2 button:hover { color: var(--c-danger); }
+.addr { display: flex; gap: 8px; } .addr input { flex: 1; } .sv { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; } .fq { word-break: break-word; }
 </style>

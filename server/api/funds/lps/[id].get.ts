@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
       WHERE l.lp_id = $1 AND c.status IN ('sent','completed') ORDER BY c.due_date DESC`, [id.data])
   const rolls = await db().query<{ id: string; entity_id: string; name: string; currency: string }>("SELECT f.id, f.entity_id, e.name, f.currency FROM funds.funds f JOIN core.entities e ON e.id = f.entity_id WHERE f.structure = 'rolling'")
   const participations = []
-  for (const f of rolls.rows) { const ps = await lpParticipations(f.entity_id, (lp.rows[0] as { email: string | null }).email); if (ps.length) participations.push({ fund: f.name, fund_id: f.id, currency: f.currency, deals: ps }) }
+  for (const f of rolls.rows) { const ps = await lpParticipations(f.entity_id, (lp.rows[0] as { email: string | null }).email); const cm = (await db().query<{ v: string | null }>('SELECT sum(amount)::text AS v FROM funds.commitments WHERE fund_id = $1 AND lp_id = $2', [f.id, id.data])).rows[0]?.v
+    if (ps.length || cm) participations.push({ fund: f.name, fund_id: f.id, currency: f.currency, commitment: cm === null || cm === undefined ? null : Number(cm), deals: ps }) }
   return { lp: lp.rows[0], positions: positions.filter((x) => !rolls.rows.some((f) => f.id === (x as { fund_id: string }).fund_id)), participations, history: history.rows }
 })

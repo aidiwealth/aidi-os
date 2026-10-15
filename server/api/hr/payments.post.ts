@@ -2,12 +2,19 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin')
-  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), person_id: z.string().uuid().optional(), period: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), amount: z.coerce.number().positive().max(1e10).optional(),
+  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), bank_txn_id: z.string().uuid().nullable().optional(), person_id: z.string().uuid().optional(), period: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), amount: z.coerce.number().positive().max(1e10).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(), paid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), method: z.string().trim().max(60).default(''), reference: z.string().trim().max(120).default(''), notes: z.string().trim().max(1000).default(''),
     record_payment: z.boolean().default(true), category: z.string().max(60).default('Salaries & contractors') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the payment details.')
   const d = b.data
   if (d.id && d.delete) { await db().query('DELETE FROM hr.payments WHERE id = $1', [d.id]); return { ok: true } }
+  // Link a logged payment to the bank line that paid it (or unlink with null).
+  if (d.id && d.bank_txn_id !== undefined) {
+    if (d.bank_txn_id && (await db().query('SELECT 1 FROM hr.payments WHERE bank_txn_id = $1 AND id <> $2', [d.bank_txn_id, d.id])).rowCount) throw apiError('duplicate', 'That bank line is already linked to another payment.', 409)
+    await db().query('UPDATE hr.payments SET bank_txn_id = $2 WHERE id = $1', [d.id, d.bank_txn_id])
+    await audit({ event, actorUserId: user.userId, action: d.bank_txn_id ? 'hr.payment_bank_linked' : 'hr.payment_bank_unlinked', objectType: 'hr_payment', objectId: d.id, detail: {} })
+    return { ok: true }
+  }
   if (!d.person_id || !d.period || !d.amount || !d.currency || !d.paid_on) throw apiError('invalid', 'Add the period, amount and date paid.')
   const p = (await db().query<{ name: string; kind: string; entity_id: string | null; entity: string | null; title: string | null }>('SELECT p.name, p.kind, p.entity_id, e.name AS entity, p.title FROM hr.people p LEFT JOIN core.entities e ON e.id = p.entity_id WHERE p.id = $1', [d.person_id])).rows[0]
   if (!p) throw apiError('not_found', 'Person not found', 404)
@@ -22,7 +29,7 @@ export default defineEventHandler(async (event) => {
     expenseId = (await one<{ id: string }>('INSERT INTO finance.expenses (number, paid_on, entity_id, payee, category, description, amount, currency, method, reference, voucher_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
       [number, d.paid_on, p.entity_id, p.name, d.category, desc, d.amount, d.currency, d.method || null, d.reference || null, voucher, user.userId])).id
   }
-  const id = (await one<{ id: string }>('INSERT INTO hr.payments (person_id, period, amount, currency, paid_on, method, reference, expense_id, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id', [d.person_id, d.period, d.amount, d.currency, d.paid_on, d.method || null, d.reference || null, expenseId, d.notes || null, user.userId])).id
+  const id = (await one<{ id: string }>('INSERT INTO hr.payments (person_id, period, amount, currency, paid_on, method, reference, expense_id, notes, created_by, bank_txn_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id', [d.person_id, d.period, d.amount, d.currency, d.paid_on, d.method || null, d.reference || null, expenseId, d.notes || null, user.userId, d.bank_txn_id ?? null])).id
   await audit({ event, actorUserId: user.userId, action: 'hr.payment_logged', objectType: 'hr_payment', objectId: id, detail: { amount: d.amount, currency: d.currency, period: d.period } })
   return { ok: true, id, expense_id: expenseId }
 })

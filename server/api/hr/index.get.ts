@@ -11,5 +11,5 @@ export default defineEventHandler(async (event) => {
   const paidYtd: Record<string, number> = {}; for (const p of payments) if (p.paid_on.startsWith(year)) paidYtd[p.currency] = (paidYtd[p.currency] ?? 0) + p.amount
   const team = (await db().query<{ id: string; name: string; email: string }>("SELECT u.id, coalesce(p.full_name, u.email) AS name, u.email FROM core.memberships m JOIN core.users u ON u.id = m.user_id LEFT JOIN core.people p ON p.id = u.person_id WHERE m.organization_id = core.current_org() AND m.status = 'active' ORDER BY 2")).rows
   const entities = (await db().query("SELECT id, name FROM core.entities WHERE status <> 'closed' AND kind NOT IN ('trust') ORDER BY name")).rows
-  return { people, agreements, payments, due: st.due, flags: st.flags, monthly: monthlyCost(people), paid_ytd: paidYtd, team, entities, docs: HR_DOCS.map((k) => ({ key: k, ...DOC_TYPES[k] })), categories: EXPENSE_CATEGORIES }
+  return { people, agreements, payments, due: st.due, flags: st.flags, monthly: monthlyCost(people), paid_ytd: paidYtd, team, entities, docs: HR_DOCS.map((k) => ({ key: k, ...DOC_TYPES[k] })), categories: await expenseCategoryNames() }
 })
