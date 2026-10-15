@@ -51,7 +51,7 @@ export async function importFinvryUpdate(companyId: string, updateId: string, us
   let values = 0
   for (const m of f.months) for (const [metric, v] of Object.entries(m.values)) {
     if (v === null) continue
-    await db().query('INSERT INTO portfolio.metric_values (company_id, period, metric, founder_value) VALUES ($1,$2,$3,$4) ON CONFLICT (company_id, period, metric) DO UPDATE SET founder_value = EXCLUDED.founder_value, updated_at = now()', [companyId, m.period, metric, v])
+    await db().query('INSERT INTO portfolio.metric_values (company_id, period, metric, founder_value) VALUES ($1,$2,$3,$4) ON CONFLICT (company_id, period, metric) DO UPDATE SET founder_value = EXCLUDED.founder_value, months = 1, updated_at = now()', [companyId, m.period, metric, v])
     values++
   }
   const last = f.months[f.months.length - 1]?.period

@@ -43,8 +43,8 @@ async function save(it: Item) {
   if (it.rep.currency !== 'USD' && !(Number(it.rate) > 0)) { it.msg = 'Enter how many ' + it.rep.currency + ' make one US dollar.'; return }
   it.state = 'saving'; it.msg = ''
   try {
-    const r = await $fetch<{ values: number; months: number }>('/api/portfolio/' + props.companyId + '/reports/save', { method: 'POST', body: { document_id: it.doc, report: it.rep, rate: it.rep.currency === 'USD' ? 1 : Number(it.rate), notes: it.notes } })
-    it.state = 'saved'; it.saved = r.values ? r.values + ' figure' + (r.values === 1 ? '' : 's') + ' across ' + r.months + ' month' + (r.months === 1 ? '' : 's') : 'Notes saved (no figures)'
+    const r = await $fetch<{ values: number; months: number; quarterly: boolean }>('/api/portfolio/' + props.companyId + '/reports/save', { method: 'POST', body: { document_id: it.doc, report: it.rep, rate: it.rep.currency === 'USD' ? 1 : Number(it.rate), notes: it.notes } })
+    it.state = 'saved'; it.saved = r.values ? r.values + ' figure' + (r.values === 1 ? '' : 's') + ' across ' + r.months + ' ' + (r.quarterly ? 'period' : 'month') + (r.months === 1 ? '' : 's') : 'Notes saved (no figures)'
     open.value = items.value.find((x) => x.state === 'review')?.key ?? ''
     await refresh(); emit('imported')
   } catch (e) { it.state = 'review'; it.msg = err(e) }
@@ -78,7 +78,7 @@ const FIELDS: [keyof P, string, boolean][] = [['revenue_total', 'Revenue (period
             <tbody><tr v-for="(p, i) in it.rep.periods" :key="i"><td class="pl">{{ span(p) }}</td>
               <td v-for="f in FIELDS" :key="f[0]"><input :value="p[f[0]] ?? ''" inputmode="decimal" :aria-label="f[1] + ' ' + span(p)" @change="numIn(p, f[0], ($event.target as HTMLInputElement).value)"><em v-if="f[2] && cur(it) !== 'USD' && p[f[0]] !== null" class="cv">{{ usd(p[f[0]] as number, it) }}</em></td></tr></tbody>
           </table></div>
-          <p class="mut sm">Saved per month in US dollars: period revenue is spread evenly over its months; cash, customers, headcount and margin go on the last month. Corrections your team made earlier are kept.</p>
+          <p class="mut sm">Saved in US dollars for the period each figure covers: a quarter stays a quarter (its total revenue, average monthly burn, and cash, customers, headcount and margin at the end). Corrections your team made earlier are kept.</p>
           <div v-if="it.rep.other_kpis.length" class="kp"><span v-for="k in it.rep.other_kpis" :key="k.name"><b>{{ k.name }}</b> {{ (SYM[k.unit] ?? '') + nf(k.value, 2) }}{{ SYM[k.unit] ? '' : ' ' + k.unit }}<em v-if="k.period"> · {{ k.period }}</em></span></div>
           <div class="g3 nt"><label class="label">Highlights<textarea v-model="it.rep.highlights" rows="5" /></label><label class="label">Challenges<textarea v-model="it.rep.challenges" rows="5" /></label><label class="label">Asks<textarea v-model="it.rep.asks" rows="5" /></label></div>
           <label class="chk"><input v-model="it.notes" type="checkbox"> Add these notes to the company's founder notes</label>

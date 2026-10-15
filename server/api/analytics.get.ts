@@ -73,14 +73,14 @@ export default defineEventHandler(async (event) => {
     const args = entity ? [entity] : []
     const rev = await db().query<{ period: string; v: string }>(
       `SELECT to_char(m.period, 'YYYY-MM-DD') AS period, sum(coalesce(m.override_value, m.founder_value))::text AS v
-         FROM portfolio.metric_values m JOIN portfolio.companies c ON c.id = m.company_id
+         FROM portfolio.metric_months m JOIN portfolio.companies c ON c.id = m.company_id
         WHERE c.active AND m.metric = 'revenue' AND m.period >= date_trunc('month', ${since === "'-infinity'::timestamptz" ? "'1900-01-01'::date" : since}) ${ef}
         GROUP BY 1 ORDER BY 1`, args)
     const latest = await db().query<{ id: string; name: string; cash: string | null; burn: string | null; revenue: string | null }>(
       `SELECT c.id, c.name,
-              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'cash' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS cash,
-              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'net_burn' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS burn,
-              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS revenue
+              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'cash' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS cash,
+              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'net_burn' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS burn,
+              (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS revenue
          FROM portfolio.companies c WHERE c.active ${ef}`, args)
     const lastMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1)).toISOString().slice(0, 10)
     const rep = await one<{ asked: number; submitted: number }>(

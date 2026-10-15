@@ -44,7 +44,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
     <EmptyState v-else-if="!data?.length" card icon="portfolio" title="No portfolio companies yet" text="Add a company by hand, or mark a deal Invested in Pipeline and bring it across. Founders then send monthly figures through a secure link."><button class="btn" @click="adding = true">Add a company</button><NuxtLink to="/pipeline" class="btn secondary">Open pipeline</NuxtLink></EmptyState>
     <template v-else><div class="dk"><div class="k"><em>Companies</em><b>{{ rows.length }}</b></div><div class="k"><em>Reporting figures</em><b>{{ rows.filter((r) => r.latest_period).length }}</b></div><div class="k"><em>Combined revenue (latest)</em><b>{{ brief(usd(String(rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0)))) }}</b></div><div class="k"><em>Requests pending</em><b>{{ rows.filter((r) => r.last_request_status && r.last_request_status !== 'submitted').length }}</b></div></div>
     <div class="tw"><table class="table">
-      <thead><tr><th>Company</th><th>Held by</th><th>Latest month</th><th>Revenue</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
+      <thead><tr><th>Company</th><th>Held by</th><th>Latest figures</th><th>Revenue / month</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
           <td><NuxtLink :to="'/portfolio/' + r.id" class="co">{{ r.name }}</NuxtLink><NuxtLink v-if="r.finvry_new" :to="'/portfolio/' + r.id" class="fvn" title="New investor update on Finvry: import its figures">New update</NuxtLink><span class="sub">{{ r.founder_name }}{{ r.finvry ? ' · on Finvry' : '' }}</span></td>

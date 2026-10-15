@@ -23,10 +23,10 @@ export default defineEventHandler(async (event) => {
   await db().query(
     `INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256)
      VALUES ($1,$2,'report','normal',$3,$4,$5,$6)`,
-    [docId, r.company + ' — ' + periodLabel(r.period) + ' report', key, t.mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
+    [docId, r.company + ' — ' + (Number(r.months) === 3 ? requestLabel(r.period, 'quarterly') : periodLabel(r.period)) + ' report', key, t.mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   await db().query('UPDATE portfolio.requests SET file_document_id = $2 WHERE id = $1', [r.id, docId])
   try {
-    const out = await extractMetrics(text, periodLabel(r.period), 'portfolio.requests:' + r.id)
+    const out = await extractMetrics(text, Number(r.months) === 3 ? requestLabel(r.period, 'quarterly') + ' (the whole quarter: revenue is the quarter total, net burn the average per month, balances at quarter end)' : periodLabel(r.period), 'portfolio.requests:' + r.id)
     const { notes, ...values } = out
     return { ok: true, values, notes }
   } catch (err) {

@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
     if (can('portfolio')) {
       const c = await one<{ active: number }>('SELECT count(*)::int AS active FROM portfolio.companies WHERE active')
       const rev = await db().query<{ b: string; v: string }>(
-        `SELECT to_char(period, 'YYYY-MM-DD') AS b, sum(coalesce(override_value, founder_value))::text AS v FROM portfolio.metric_values
+        `SELECT to_char(period, 'YYYY-MM-DD') AS b, sum(coalesce(override_value, founder_value))::text AS v FROM portfolio.metric_months
           WHERE metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL AND period >= date_trunc('month', now()) - interval '12 months' GROUP BY 1`)
       const lastMonths = Array.from({ length: 12 }, (_, i) => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 12 + i, 1)).toISOString().slice(0, 10) })
       const series = fillSeries(rev.rows, lastMonths)

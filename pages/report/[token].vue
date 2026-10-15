@@ -2,9 +2,9 @@
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface Metric { key: string; label: string; unit: string; hint: string }
-interface Data { company: string; founderName: string; period: string; periodLabel: string; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string>; workspace: { name: string; firm: string; brand: string } }
+interface Data { company: string; founderName: string; period: string; periodLabel: string; quarterly?: boolean; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string>; workspace: { name: string; firm: string; brand: string } }
 const { data, error } = await useFetch<Data>('/api/public/report/' + token, { key: 'pub-report-' + token })
-useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · ' + data.value.periodLabel + ' update — ' + data.value.workspace.firm : 'Monthly update'), meta: [{ name: 'robots', content: 'noindex' }] })
+useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · ' + data.value.periodLabel + ' update — ' + data.value.workspace.firm : 'Founder update'), meta: [{ name: 'robots', content: 'noindex' }] })
 const vals = reactive<Record<string, string>>({})
 const upd = reactive({ highlights: '', challenges: '', asks: '' })
 const state = reactive({ busy: false, msg: '', ok: '', aiNote: '', submitted: false })
@@ -63,7 +63,7 @@ async function upload(f: File | undefined) {
     </div>
 
     <template v-else-if="data">
-      <p class="label">Monthly update · {{ data.periodLabel }}</p>
+      <p class="label">{{ data.quarterly ? 'Quarterly' : 'Monthly' }} update · {{ data.periodLabel }}</p>
       <h1>{{ data.company }}</h1>
 
       <div v-if="state.submitted" class="card done" role="status">

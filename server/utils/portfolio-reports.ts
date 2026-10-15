@@ -93,21 +93,19 @@ export async function readReport(pdf: Buffer, company: string, ref: string): Pro
   return normalise(output)
 }
 
-// Monthly figures in US dollars from what a person approved: period revenue spread evenly over its months, burn per
-// month for each month, cash / customers / headcount / margin at the period's last month.
-export function toMonthly(r: ExtractedReport, rate: number): { period: string; metric: string; value: number }[] {
-  const out = new Map<string, number>()
+// Figures in US dollars from what a person approved, kept at the period the report gives them for: a quarter is one row on
+// its last month with months = 3 (revenue is the quarter's total, burn the monthly average, balances at the end).
+export function toPeriods(r: ExtractedReport, rate: number): { period: string; metric: string; value: number; months: number }[] {
+  const out = new Map<string, { value: number; months: number }>()
   const usd = (v: number) => Math.round((v / rate) * 100) / 100
   for (const p of r.periods) {
-    const end = new Date(p.month + '-01T00:00:00Z'), months: string[] = []
-    for (let i = p.months_covered - 1; i >= 0; i--) { const d = new Date(end); d.setUTCMonth(d.getUTCMonth() - i); months.push(d.toISOString().slice(0, 10)) }
-    const last = months[months.length - 1]!
-    if (p.revenue_total !== null) for (const m of months) out.set(m + '|revenue', usd(p.revenue_total / p.months_covered))
-    if (p.net_burn_monthly !== null) for (const m of months) out.set(m + '|net_burn', usd(Math.max(0, p.net_burn_monthly)))
-    if (p.cash !== null) out.set(last + '|cash', usd(p.cash))
-    if (p.customers !== null) out.set(last + '|customers', Math.round(p.customers))
-    if (p.headcount !== null) out.set(last + '|headcount', Math.round(p.headcount))
-    if (p.gross_margin_pct !== null) out.set(last + '|gross_margin', Math.round(p.gross_margin_pct * 10) / 10)
+    const end = p.month + '-01', n = Math.max(1, Math.min(12, Math.round(p.months_covered || 1)))
+    if (p.revenue_total !== null) out.set(end + '|revenue', { value: usd(p.revenue_total), months: n })
+    if (p.net_burn_monthly !== null) out.set(end + '|net_burn', { value: usd(Math.max(0, p.net_burn_monthly)), months: n })
+    if (p.cash !== null) out.set(end + '|cash', { value: usd(p.cash), months: n })
+    if (p.customers !== null) out.set(end + '|customers', { value: Math.round(p.customers), months: n })
+    if (p.headcount !== null) out.set(end + '|headcount', { value: Math.round(p.headcount), months: n })
+    if (p.gross_margin_pct !== null) out.set(end + '|gross_margin', { value: Math.round(p.gross_margin_pct * 10) / 10, months: n })
   }
-  return [...out.entries()].map(([k, value]) => { const [period, metric] = k.split('|') as [string, string]; return { period, metric, value } })
+  return [...out.entries()].map(([k, v]) => { const [period, metric] = k.split('|') as [string, string]; return { period, metric, ...v } })
 }

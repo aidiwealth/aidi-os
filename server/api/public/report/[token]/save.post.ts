@@ -20,12 +20,15 @@ export default defineEventHandler(async (event) => {
   const client = await db().connect()
   try {
     await client.query('BEGIN')
+    // A quarter replaces monthly revenue and burn the founder reported inside it (team corrections stay).
+    if (Number(r.months) === 3) await client.query(`DELETE FROM portfolio.metric_values WHERE company_id = $1 AND metric IN ('revenue', 'net_burn') AND override_value IS NULL
+       AND period > ($2::date - interval '3 months') AND period < $2::date`, [r.company_id, r.period])
     for (const key of METRIC_KEYS) {
       const v = values[key]
       await client.query(
-        `INSERT INTO portfolio.metric_values (company_id, period, metric, founder_value) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (company_id, period, metric) DO UPDATE SET founder_value = EXCLUDED.founder_value, updated_at = now()`,
-        [r.company_id, r.period, key, v ?? null])
+        `INSERT INTO portfolio.metric_values (company_id, period, metric, founder_value, months) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (company_id, period, metric) DO UPDATE SET founder_value = EXCLUDED.founder_value, months = EXCLUDED.months, updated_at = now()`,
+        [r.company_id, r.period, key, v ?? null, Number(r.months) === 3 ? 3 : 1])
     }
     await client.query(
       `INSERT INTO portfolio.updates (company_id, period, highlights, challenges, asks) VALUES ($1,$2,$3,$4,$5)
@@ -36,6 +39,6 @@ export default defineEventHandler(async (event) => {
       ['portfolio.report_submitted', 'company', r.company_id, JSON.stringify({ period: r.period }), getRequestIP(event, { xForwardedFor: true }) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
-  sendReportSubmittedAlert(r.company_id, r.company, periodLabel(r.period)).catch((e) => console.error('[report] alert failed', e))
+  sendReportSubmittedAlert(r.company_id, r.company, Number(r.months) === 3 ? requestLabel(r.period, 'quarterly') : periodLabel(r.period)).catch((e) => console.error('[report] alert failed', e))
   return { ok: true, saved: 'submitted' }
 })

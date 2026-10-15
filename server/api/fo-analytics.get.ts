@@ -29,14 +29,14 @@ export default defineEventHandler(async (event) => {
   const cArgs = entity ? [entity] : []
   const cos = await db().query<{ id: string; name: string; relationship: string; holder: string | null; revenue: string | null; cash: string | null; burn: string | null }>(
     `SELECT c.id, c.name, c.relationship, he.name AS holder,
-            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS revenue,
-            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'cash' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS cash,
-            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_values WHERE company_id = c.id AND metric = 'net_burn' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS burn
+            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'revenue' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS revenue,
+            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'cash' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS cash,
+            (SELECT coalesce(override_value, founder_value)::text FROM portfolio.metric_months WHERE company_id = c.id AND metric = 'net_burn' AND coalesce(override_value, founder_value) IS NOT NULL ORDER BY period DESC LIMIT 1) AS burn
        FROM portfolio.companies c LEFT JOIN core.entities he ON he.id = c.holding_entity_id
       WHERE c.active AND c.relationship IN ('subsidiary','affiliate') ${cf} ORDER BY c.name`, cArgs)
   const revSeries = await db().query<{ b: string; v: string }>(
     `SELECT to_char(m.period, 'YYYY-MM-DD') AS b, sum(coalesce(m.override_value, m.founder_value))::text AS v
-       FROM portfolio.metric_values m JOIN portfolio.companies c ON c.id = m.company_id
+       FROM portfolio.metric_months m JOIN portfolio.companies c ON c.id = m.company_id
       WHERE c.active AND c.relationship IN ('subsidiary','affiliate') AND m.metric = 'revenue' AND m.period >= date_trunc('month', now() - interval '12 months') ${cf}
       GROUP BY 1 ORDER BY 1`, cArgs)
   const held = await db().query<{ name: string; c: number }>(

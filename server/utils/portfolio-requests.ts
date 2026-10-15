@@ -30,17 +30,20 @@ export function nextSend(cadence: Cadence, day: number, today = new Date()): str
   return null
 }
 
-export async function createReportRequest(companyId: string, period: string, opts: { userId: string | null; fromName: string; sendEmail: boolean; cadence: Cadence }): Promise<{ link: string; emailed: boolean }> {
+export async function createReportRequest(companyId: string, period: string, opts: { userId: string | null; fromName: string; sendEmail: boolean; cadence: Cadence; months?: 1 | 3 }): Promise<{ link: string; emailed: boolean }> {
+  // A quarter is asked for on its last month; otherwise one month.
+  const months = opts.months ?? (opts.cadence === 'quarterly' && Number(period.slice(5, 7)) % 3 === 0 ? 3 : 1)
+  if (months === 3 && Number(period.slice(5, 7)) % 3 !== 0) throw apiError('invalid', 'Choose a quarter.')
   const co = (await db().query<{ name: string; founder_name: string; founder_email: string }>('SELECT name, founder_name, founder_email FROM portfolio.companies WHERE id = $1', [companyId])).rows[0]
   if (!co) throw apiError('not_found', 'Company not found', 404)
   const token = randomToken()
   await db().query('UPDATE portfolio.requests SET expires_at = now() WHERE company_id = $1 AND period = $2 AND expires_at > now()', [companyId, period])
-  await db().query('INSERT INTO portfolio.requests (company_id, period, token_hash, expires_at, sent_by) VALUES ($1,$2,$3, now() + make_interval(days => $4), $5)',
-    [companyId, period, sha256(token), LINK_DAYS, opts.userId])
+  await db().query('INSERT INTO portfolio.requests (company_id, period, token_hash, expires_at, sent_by, months) VALUES ($1,$2,$3, now() + make_interval(days => $4), $5, $6)',
+    [companyId, period, sha256(token), LINK_DAYS, opts.userId, months])
   const link = (await appUrl()) + '/report/' + token
   let emailed = false
   if (opts.sendEmail) {
-    try { await sendReportRequest(co.founder_email, co.founder_name, co.name, requestLabel(period, opts.cadence), link, opts.fromName, opts.cadence === 'quarterly' ? 'quarterly' : 'monthly'); emailed = true }
+    try { await sendReportRequest(co.founder_email, co.founder_name, co.name, requestLabel(period, months === 3 ? 'quarterly' : 'monthly'), link, opts.fromName, months === 3 ? 'quarterly' : 'monthly'); emailed = true }
     catch (err) { console.error('[portfolio] request email failed', err) }
   }
   return { link, emailed }
