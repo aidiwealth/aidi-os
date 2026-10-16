@@ -3,7 +3,8 @@
 // alerts arrive, plus any added by hand. Review, mark interest, record what was invested.
 useHead({ title: 'Secondaries' })
 interface Info { name: string | null; website: string; domain: string; description: string | null; logo_doc_id: string | null; socials: Record<string, string>; location: string | null; founded: string | null }
-interface S { website: string | null; logo_doc_id: string | null; company_info: Info | null; id: string; source: 'meridian' | 'wefunder' | 'other'; ref: string | null; title: string; company: string | null; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; currency: string; url: string | null; notice_id: string | null; received_at: string; status: string; amount: number | null; notes: string | null; fits: boolean | null; fit_note: string | null; client_visible: boolean; pipeline_deal_id: string | null; portfolio_company_id: string | null; closes_at: string | null; interest: number }
+interface Scr { score: number; recommendation: 'prioritise' | 'review' | 'likely_pass'; criteria_fit: number; company: number; terms: number; signal: number; summary: string[]; strengths: string[]; concerns: string[]; questions: string[]; flags: string[] }
+interface S { ai_screen: Scr | null; ai_screened_at: string | null; website: string | null; logo_doc_id: string | null; company_info: Info | null; id: string; source: 'meridian' | 'wefunder' | 'other'; ref: string | null; title: string; company: string | null; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; currency: string; url: string | null; notice_id: string | null; received_at: string; status: string; amount: number | null; notes: string | null; fits: boolean | null; fit_note: string | null; client_visible: boolean; pipeline_deal_id: string | null; portfolio_company_id: string | null; closes_at: string | null; interest: number }
 const route = useRoute(), router = useRouter()
 const STATUSES = [['new', 'New'], ['reviewing', 'Reviewing'], ['interested', 'Interested'], ['invested', 'Invested'], ['passed', 'Passed'], ['expired', 'Expired']] as const
 const SOURCES: Record<string, string> = { meridian: 'Meridian', wefunder: 'Wefunder', other: 'Other' }
@@ -30,9 +31,9 @@ async function setStatus(r: S, s: string) { try { await $fetch('/api/secondaries
 const scanning = ref(false)
 async function scan() { scanning.value = true; msg.value = ''; try { const r = await $fetch<{ emails: number; added: number }>('/api/secondaries/scan', { method: 'POST' }); okMsg.value = r.emails ? r.added + ' new opportunit' + (r.added === 1 ? 'y' : 'ies') + ' from ' + r.emails + ' deal alert' + (r.emails === 1 ? '' : 's') + ' in Notices.' : 'No Meridian or Wefunder alerts in Notices yet.'; await refresh() } catch (e) { msg.value = err(e) } finally { scanning.value = false } }
 // One opportunity: view and edit.
-const blank = () => ({ id: '', title: '', company: '', sector: '', stage: '', lead: '', co_investors: '', min_investment: '' as string | number, valuation: '', url: '', status: 'new', amount: '' as string | number, notes: '', source: 'other' as S['source'], notice_id: null as string | null, received_at: '', client_visible: true, closes_at: '', pipeline_deal_id: null as string | null, portfolio_company_id: null as string | null, fits: null as boolean | null, fit_note: null as string | null, website: '', logo_doc_id: null as string | null, company_info: null as Info | null })
+const blank = () => ({ id: '', title: '', company: '', sector: '', stage: '', lead: '', co_investors: '', min_investment: '' as string | number, valuation: '', url: '', status: 'new', amount: '' as string | number, notes: '', source: 'other' as S['source'], notice_id: null as string | null, received_at: '', client_visible: true, closes_at: '', pipeline_deal_id: null as string | null, portfolio_company_id: null as string | null, fits: null as boolean | null, fit_note: null as string | null, website: '', logo_doc_id: null as string | null, company_info: null as Info | null, ai_screen: null as Scr | null, ai_screened_at: null as string | null })
 const f = reactive({ open: false, busy: false, msg: '', ...blank() })
-function edit(r?: S) { det.value = null; inv.client_id = ''; inv.amount = ''; inv.msg = ''; if (r) void loadDet(r.id); Object.assign(f, blank(), r ? { ...r, company: r.company ?? '', sector: r.sector ?? '', stage: r.stage ?? '', lead: r.lead ?? '', co_investors: r.co_investors ?? '', min_investment: r.min_investment ?? '', valuation: r.valuation ?? '', url: r.url ?? '', amount: r.amount ?? '', notes: r.notes ?? '', closes_at: r.closes_at ?? '', website: r.website ?? '' } : {}, { open: true, busy: false, msg: '' }); lk.key = key(); lk.msg = ''; if (r && (r.company || r.website) && !r.company_info) void nextTick(() => lookup(true)) }
+function edit(r?: S) { det.value = null; inv.client_id = ''; inv.amount = ''; inv.msg = ''; if (r) void loadDet(r.id); Object.assign(f, blank(), r ? { ...r, company: r.company ?? '', sector: r.sector ?? '', stage: r.stage ?? '', lead: r.lead ?? '', co_investors: r.co_investors ?? '', min_investment: r.min_investment ?? '', valuation: r.valuation ?? '', url: r.url ?? '', amount: r.amount ?? '', notes: r.notes ?? '', closes_at: r.closes_at ?? '', website: r.website ?? '' } : {}, { open: true, busy: false, msg: '' }); lk.key = key(); lk.msg = ''; sc.msg = ''; sc.key = r?.ai_screen ? key() : ''; if (r && (r.company || r.website) && !r.company_info) void nextTick(() => lookup(true)); else if (r && r.company && r.website && !r.ai_screen) void nextTick(() => screen()) }
 // Company details from its website (or name): looked up when the name or website changes.
 const SOCIAL: Record<string, string> = { linkedin: 'LinkedIn', x: 'X', crunchbase: 'Crunchbase', github: 'GitHub' }
 const info = computed(() => f.company_info)
@@ -45,13 +46,24 @@ async function lookup(force = false) {
   lk.busy = true; lk.msg = ''; lk.key = key()
   try {
     const r = await $fetch<{ found: boolean; info?: Info }>('/api/secondaries/lookup', { method: 'POST', body: { id: f.id || undefined, name: f.company || undefined, website: f.website || undefined } })
-    if (r.found && r.info) { if (!f.company) f.company = r.info.name ?? ''; f.website = r.info.website; f.logo_doc_id = r.info.logo_doc_id ?? f.logo_doc_id; f.company_info = r.info; lk.key = key(); if (f.id) await refresh() }
+    if (r.found && r.info) { if (!f.company) f.company = r.info.name ?? ''; f.website = r.info.website; f.logo_doc_id = r.info.logo_doc_id ?? f.logo_doc_id; f.company_info = r.info; lk.key = key(); if (f.id) await refresh(); void screen() }
     else lk.msg = f.website ? 'Could not read that website. Check the address.' : 'No website found for that name. Add the website to fill in the details.'
   } catch (e) { lk.msg = err(e) } finally { lk.busy = false }
 }
+// AI screening: runs once the company name and website are in (and again when they change, or on "Screen again").
+const sc = reactive({ busy: false, msg: '', key: '' })
+const REC: Record<string, string> = { prioritise: 'Prioritise', review: 'Worth a look', likely_pass: 'Likely pass' }
+async function screen(force = false) {
+  if (sc.busy || !f.company.trim() || !f.website.trim() || (!force && f.ai_screen && sc.key === key())) return
+  sc.busy = true; sc.msg = ''
+  try {
+    const r = await $fetch<{ screen: Scr; screened_at: string }>('/api/secondaries/screen', { method: 'POST', body: { id: f.id || undefined, title: f.title, company: f.company, website: f.website, sector: f.sector, stage: f.stage, lead: f.lead, co_investors: f.co_investors, min_investment: f.min_investment, valuation: f.valuation, closes_at: f.closes_at || null, notes: f.notes, source: f.source } })
+    f.ai_screen = r.screen; f.ai_screened_at = r.screened_at; sc.key = key(); if (f.id) await refresh()
+  } catch (e) { sc.msg = err(e) } finally { sc.busy = false }
+}
 async function save() {
   f.busy = true; f.msg = ''
-  try { const { open: _o, busy: _b, msg: _m, notice_id: _n, received_at: _r, pipeline_deal_id: _p, portfolio_company_id: _pc, fits: _f, fit_note: _fn, id, ...body } = f; if (!body.company_info) delete (body as Record<string, unknown>).company_info; await $fetch('/api/secondaries', { method: 'POST', body: { id: id || undefined, ...body } }); f.open = false; await refresh() }
+  try { const { open: _o, busy: _b, msg: _m, notice_id: _n, received_at: _r, pipeline_deal_id: _p, portfolio_company_id: _pc, fits: _f, fit_note: _fn, ai_screened_at: _sa, id, ...body } = f; if (!body.company_info) delete (body as Record<string, unknown>).company_info; if (id || !body.ai_screen) delete (body as Record<string, unknown>).ai_screen; await $fetch('/api/secondaries', { method: 'POST', body: { id: id || undefined, ...body } }); f.open = false; await refresh() }
   catch (e) { f.msg = err(e) } finally { f.busy = false }
 }
 // Deal detail: wealth clients interested and investments recorded.
@@ -99,7 +111,7 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
       <DealCard v-for="r in data.rows" :key="r.id" :deal="r" clickable react :source="r.source === 'other' ? null : SOURCES[r.source]" :starred="r.status === 'interested' || r.status === 'invested'" :passed="r.status === 'passed'"
         :star-label="r.status === 'interested' ? 'Interested (click to undo)' : 'Mark interested'" :pass-label="r.status === 'passed' ? 'Passed (click to undo)' : 'Pass'"
         @open="edit(r)" @star="r.status !== 'invested' && setStatus(r, r.status === 'interested' ? 'reviewing' : 'interested')" @pass="r.status !== 'invested' && setStatus(r, r.status === 'passed' ? 'new' : 'passed')">
-        <p v-if="r.fit_note || r.interest || r.pipeline_deal_id || r.portfolio_company_id" class="cnote" :class="{ out: r.fits === false }">{{ [r.fit_note ? (r.fits === false ? 'Outside criteria: ' : 'Check: ') + r.fit_note : '', r.interest ? r.interest + ' client' + (r.interest === 1 ? '' : 's') + ' interested' : '', r.pipeline_deal_id ? 'In Pipeline' : '', r.portfolio_company_id ? 'Portfolio company' : ''].filter(Boolean).join(' · ') }}</p>
+        <p v-if="r.ai_screen || r.fit_note || r.interest || r.pipeline_deal_id || r.portfolio_company_id" class="cnote" :class="{ out: r.fits === false }">{{ [r.ai_screen ? 'AI ' + r.ai_screen.score + ' · ' + REC[r.ai_screen.recommendation] : '', r.fit_note ? (r.fits === false ? 'Outside criteria: ' : 'Check: ') + r.fit_note : '', r.interest ? r.interest + ' client' + (r.interest === 1 ? '' : 's') + ' interested' : '', r.pipeline_deal_id ? 'In Pipeline' : '', r.portfolio_company_id ? 'Portfolio company' : ''].filter(Boolean).join(' · ') }}</p>
       </DealCard>
       <div v-if="data.total > 25" class="pg"><span>{{ from }}–{{ to }} of {{ data.total }}</span><button class="btn secondary sm" :disabled="data.page <= 1" @click="page = data.page - 1">‹ Prev</button><span>Page {{ data.page }} of {{ data.pages }}</span><button class="btn secondary sm" :disabled="data.page >= data.pages" @click="page = data.page + 1">Next ›</button></div>
     </div>
@@ -129,6 +141,18 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
             <div class="g2"><label class="label">Name<input v-model="f.company" maxlength="200" placeholder="e.g. Mercury" @blur="lookup()"></label>
               <label class="label">Website<span class="wsi"><input v-model="f.website" maxlength="300" placeholder="e.g. mercury.com" @blur="lookup(true)"><button type="button" class="lk" :disabled="lk.busy || (!f.company && !f.website)" @click="lookup(true)">{{ lk.busy ? 'Looking…' : 'Look up' }}</button></span></label></div>
             <p v-if="lk.msg" class="mut">{{ lk.msg }}</p></section>
+          <section class="ais"><div class="aih"><span class="k">AI screening</span><button v-if="f.company && f.website" type="button" class="lk" :disabled="sc.busy" @click="screen(true)">{{ sc.busy ? 'Screening…' : f.ai_screen ? 'Screen again' : 'Screen now' }}</button></div>
+            <template v-if="f.ai_screen">
+              <div class="aisc"><b class="sco" :class="f.ai_screen.recommendation">{{ f.ai_screen.score }}<em>/100</em></b><span class="rec" :class="f.ai_screen.recommendation">{{ REC[f.ai_screen.recommendation] }}</span>
+                <span class="dims"><span v-for="[k, l] in ([['criteria_fit', 'Criteria fit'], ['company', 'Company'], ['terms', 'Terms'], ['signal', 'Investors']] as const)" :key="k">{{ l }} <i v-for="n in 5" :key="n" :class="{ on: n <= f.ai_screen[k] }" /></span></span></div>
+              <ul class="sum"><li v-for="x in f.ai_screen.summary" :key="x">{{ x }}</li></ul>
+              <div class="g3 aic"><div v-if="f.ai_screen.strengths.length"><b>Strengths</b><ul><li v-for="x in f.ai_screen.strengths" :key="x">{{ x }}</li></ul></div>
+                <div v-if="f.ai_screen.concerns.length"><b>Concerns</b><ul><li v-for="x in f.ai_screen.concerns" :key="x">{{ x }}</li></ul></div>
+                <div v-if="f.ai_screen.questions.length"><b>Ask or check</b><ul><li v-for="x in f.ai_screen.questions" :key="x">{{ x }}</li></ul></div></div>
+              <p class="mut">{{ f.ai_screen.flags.length ? f.ai_screen.flags.join(' · ') + ' · ' : '' }}AI advice from the deal and the company's website{{ f.ai_screened_at ? ', ' + new Date(f.ai_screened_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '' }}. The team decides.</p></template>
+            <p v-else-if="sc.busy" class="mut">Screening against our criteria and thesis…</p>
+            <p v-else-if="!f.company || !f.website" class="mut">Add the company name and website to screen it with AI.</p>
+            <p v-if="sc.msg" class="error">{{ sc.msg }}</p></section>
           <section><span class="k">The deal</span>
             <label class="label">What it is<textarea v-model="f.title" rows="2" maxlength="500" required placeholder="e.g. Speech AI for emotion and speaking style" /></label>
             <div class="g3"><label class="label">Sector<input v-model="f.sector" maxlength="120" placeholder="e.g. AI / ML"></label><label class="label">Stage<input v-model="f.stage" maxlength="60" placeholder="e.g. Seed, Series B+"></label><label class="label">Minimum (USD)<input v-model="f.min_investment" inputmode="decimal"></label></div>
@@ -176,6 +200,11 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
 </template>
 <style scoped>
 .cards { display: flex; flex-direction: column; gap: 16px; } .cards.dim { opacity: .6; } .cst { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); background: #fff; } .cnote { margin: 12px 0 0; font-size: 12.5px; color: var(--c-muted); } .cnote.out { color: var(--c-warn); }
+.ais { border: 1px solid var(--c-line-soft); background: var(--c-paper-3, #fafafa); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; } .aih { display: flex; justify-content: space-between; align-items: center; }
+.aisc { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; } .sco { font-size: 26px; font-weight: 600; color: var(--c-ink); } .sco em { font-style: normal; font-size: 13px; color: var(--c-muted); font-weight: 400; }
+.rec { font-size: 12.5px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); } .rec.prioritise { background: #eef4ff; color: #2c5cc5; } .rec.likely_pass { background: #fdecef; color: #b4234a; }
+.dims { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--c-muted); } .dims i { display: inline-block; width: 7px; height: 7px; margin-left: 2px; background: var(--c-rule-strong); } .dims i.on { background: var(--c-navy); }
+.ais .sum { margin: 0; padding-left: 18px; font-size: 14px; } .aic b { font-size: 12.5px; font-weight: 600; } .aic ul { margin: 4px 0 0; padding-left: 16px; font-size: 13px; color: var(--c-ink-soft); }
 .vw { display: inline-flex; border: 1px solid var(--c-rule-strong); } .vw button { background: #fff; border: 0; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--c-ink-soft); cursor: pointer; } .vw button.on { background: var(--c-navy); color: #fff; }
 .mn { display: flex; gap: 12px; align-items: flex-start; } .rl { width: 34px; height: 34px; flex: none; border: 1px solid var(--c-rule); display: grid; place-items: center; background: #fff; overflow: hidden; } .rl img { width: 100%; height: 100%; object-fit: contain; } .rl i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-ink-soft); } .rt { min-width: 0; }
 .ch { display: flex; gap: 14px; align-items: center; min-width: 0; } .lg { width: 52px; height: 52px; flex: none; border: 1px solid var(--c-rule); display: grid; place-items: center; background: #fff; overflow: hidden; } .lg img { width: 100%; height: 100%; object-fit: contain; padding: 4px; } .lg b { font-size: 16px; color: var(--c-ink-soft); }
