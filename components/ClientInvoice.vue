@@ -4,6 +4,7 @@ interface Inv { number: string; currency: string; amount: string; issue_date: st
   lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; bill_to: { name: string; email: string; address?: string }
   issuer: { issuer: string; address: string; phone: string; email: string; bank?: Record<string, string>; note_top?: string; note_bottom?: string }; note: string | null; legal_footer?: string }
 // Services (Finvry) invoices carry the Finvry logo and legal line wherever they are opened; wealth invoices carry Aidi's.
+import { FINVRY_TAGLINE, finvryEmail, finvryAddress, legalFooter } from '~/shared/invoice-brand'
 const props = withDefaults(defineProps<{ inv: Inv; payable?: boolean; brand?: 'finvry' | 'aidi' }>(), { brand: 'finvry' })
 defineEmits<{ pay: [] }>()
 const money = (v: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: props.inv.currency }).format(Number(v))
@@ -16,7 +17,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
 <template>
   <article class="ti" data-nosearch>
     <header class="hd">
-      <div><div class="logo"><img v-if="brand === 'finvry'" src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"><span v-else class="aw" aria-label="Aidi"><AidiWordmark /></span></div><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></div>
+      <div><div class="logo"><img v-if="brand === 'finvry'" src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"><span v-else class="aw" aria-label="Aidi"><AidiWordmark /></span></div><template v-if="brand === 'finvry'"><h1>{{ FINVRY_TAGLINE }}</h1><p class="pre">{{ finvryAddress(inv.issuer.address) }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p>{{ finvryEmail(inv.issuer.email) }}</p><p>finvry.com</p></template><template v-else><h1>{{ inv.issuer.issuer }}</h1><p class="pre">{{ inv.issuer.address }}</p><p v-if="inv.issuer.phone">{{ inv.issuer.phone }}</p><p v-if="inv.issuer.email">{{ inv.issuer.email }}</p></template></div>
       <div class="rt"><span class="lb">Invoice</span><b class="no">{{ inv.number }}</b><span class="chip" :class="inv.status">{{ chip }}</span></div>
     </header>
     <div class="info">
@@ -40,7 +41,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
       <div class="bg"><div v-for="[k, v] in bank" :key="k"><span class="lb sm">{{ k }}</span><b :class="{ m: /number|routing|swift|sort/i.test(k) }">{{ v }}</b></div><div><span class="lb sm">Reference</span><b class="m">{{ inv.number }}</b></div></div>
       <p class="mut">Use the invoice number as the reference. Bank transfers can take up to two business days.</p></div>
     <p v-if="inv.issuer.note_bottom" class="foot">{{ inv.issuer.note_bottom }}</p>
-    <p v-if="brand === 'finvry' && inv.legal_footer" class="legal">{{ inv.legal_footer }}</p>
+    <p v-if="brand === 'finvry'" class="legal">{{ legalFooter(inv.legal_footer) }}</p>
   </article>
 </template>
 

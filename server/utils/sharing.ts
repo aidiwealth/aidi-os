@@ -29,11 +29,22 @@ export async function ndaSigned(orgId: string, sigId: unknown): Promise<{ email:
   return (await asPlatform(() => db().query<{ email: string; name: string }>("SELECT email, name FROM fundraise.nda_signatures WHERE id = $1 AND organization_id = $2 AND signed_at > now() - interval '12 months'", [sigId, orgId]))).rows[0] ?? null
 }
 // A data room link from its token, or from its short address "@handle.name".
-export interface RoomLink { id: string; organization_id: string; name: string; file_ids: string[]; require_email: boolean; allow_download: boolean; dead: boolean; notify: boolean }
+export interface RoomLink { id: string; organization_id: string; name: string; file_ids: string[]; require_email: boolean; allow_download: boolean; dead: boolean; notify: boolean; room_id: string | null }
 export async function findRoomLink(ref: string): Promise<RoomLink | null> {
-  const cols = "l.id, l.organization_id, l.name, l.file_ids, l.require_email, l.allow_download, (l.revoked OR (l.expires_at IS NOT NULL AND l.expires_at < now())) AS dead, (l.last_viewed_at IS NULL OR l.last_viewed_at < now() - interval '1 hour') AS notify"
+  const cols = "l.id, l.organization_id, l.name, l.file_ids, l.room_id, l.require_email, l.allow_download, (l.revoked OR (l.expires_at IS NOT NULL AND l.expires_at < now())) AS dead, (l.last_viewed_at IS NULL OR l.last_viewed_at < now() - interval '1 hour') AS notify"
   const m = ref.match(/^@([a-z0-9][a-z0-9-]{1,40})\.([a-z0-9][a-z0-9-]{1,40})$/)
   if (m) return (await asPlatform(() => db().query<RoomLink>('SELECT ' + cols + ' FROM fundraise.links l JOIN financials.public_pages p ON p.organization_id = l.organization_id AND p.slug = $1 WHERE l.slug = $2', [m[1], m[2]]))).rows[0] ?? null
   if (ref.length < 30) return null
   return (await asPlatform(() => db().query<RoomLink>('SELECT ' + cols + ' FROM fundraise.links l WHERE l.token_hash = $1', [sha256(ref)]))).rows[0] ?? null
+}
+
+// The data room a request is about: the one asked for, else the first one (made on first use).
+export async function roomId(want?: unknown): Promise<string> {
+  if (typeof want === 'string' && /^[0-9a-f-]{36}$/.test(want)) {
+    const r = (await db().query<{ id: string }>('SELECT id FROM fundraise.rooms WHERE id = $1', [want])).rows[0]
+    if (r) return r.id
+    throw apiError('not_found', 'That data room was not found.', 404)
+  }
+  const first = (await db().query<{ id: string }>('SELECT id FROM fundraise.rooms ORDER BY created_at LIMIT 1')).rows[0]
+  return first?.id ?? (await one<{ id: string }>("INSERT INTO fundraise.rooms (name) VALUES ('Data room') RETURNING id")).id
 }

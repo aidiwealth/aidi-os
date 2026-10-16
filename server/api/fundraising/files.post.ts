@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   const file = parts?.find((p) => p.name === 'file' && p.filename)
   const folder = (parts?.find((p) => p.name === 'folder')?.data.toString() || 'General').trim().slice(0, 60) || 'General'
   const isDeck = parts?.find((p) => p.name === 'is_deck')?.data.toString() === 'true'
+  const room = await roomId(parts?.find((p) => p.name === 'room_id')?.data.toString())
   if (!file || !file.data.length) throw apiError('invalid', 'Choose a file.')
   if (file.data.length > 50 * 1024 * 1024) throw apiError('too_large', 'Files can be up to 50 MB.', 413)
   const ext = (file.filename ?? '').split('.').pop()?.toLowerCase() ?? ''
@@ -17,7 +18,7 @@ export default defineEventHandler(async (event) => {
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
   const title = (file.filename ?? 'file').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200) || 'file'
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [docId, 'Data room — ' + title, key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
-  if (isDeck) await db().query('UPDATE fundraise.files SET is_deck = false')
-  const r = await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, is_deck) VALUES ($1,$2,$3,$4) RETURNING id', [docId, title, folder, isDeck])
+  if (isDeck) await db().query('UPDATE fundraise.files SET is_deck = false WHERE room_id = $1', [room])
+  const r = await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, is_deck, room_id) VALUES ($1,$2,$3,$4,$5) RETURNING id', [docId, title, folder, isDeck, room])
   return { ok: true, id: r.id }
 })

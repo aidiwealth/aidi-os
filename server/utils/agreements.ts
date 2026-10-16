@@ -277,7 +277,7 @@ export async function agreementProvider(ng: boolean): Promise<{ provider: string
   const op = await operatorOrgId()
   const s = (await asPlatform(() => db().query<{ name: string; b: Record<string, { issuer?: string; address?: string; email?: string }> | null }>("SELECT name, settings->'cs_billing' AS b FROM core.organizations WHERE id = $1", [op]))).rows[0]
   const r = (ng ? s?.b?.ng : s?.b?.us) ?? {}
-  return { provider: r.issuer || 'Aidi Ventures LLC (Finvry)', provider_address: (r.address || 'San Jose, California, United States').replace(/\s*,?\s*\n\s*/g, ', ').replace(/,(\s*,)+/g, ','), provider_email: r.email || 'hello@finvry.com' }
+  return { provider: r.issuer || 'Finvry, a product of TAGroup', provider_address: (r.address || 'San Jose, California, United States').replace(/\s*,?\s*\n\s*/g, ', ').replace(/,(\s*,)+/g, ','), provider_email: r.email || 'hello@finvry.com' }
 }
 
 const fmtDay = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })

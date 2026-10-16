@@ -51,3 +51,7 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 .tsr:focus-within { border-color: var(--c-navy); } .tsr svg { width: 15px; height: 15px; color: var(--c-muted); flex: none; }
 .tsr input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13.5px; padding: 8px 0; color: var(--c-ink); border-radius: 0; }
 .tsr-n { font-size: 12px; color: var(--c-muted); white-space: nowrap; } @media print { .tsr { display: none; } }
+.tpg { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; font-size: 13px; color: var(--c-muted); } .tpg[hidden] { display: none; }
+.tpg-n { margin-right: auto; } .tpg-s { display: flex; align-items: center; gap: 6px; } .tpg-s select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
+.tpg button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 5px 11px; font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; } .tpg button:disabled { color: var(--c-muted); cursor: default; opacity: .6; } .tpg button:not(:disabled):hover { border-color: var(--c-navy); }
+.tpg-p { color: var(--c-ink-soft); } @media print { .tpg { display: none; } }

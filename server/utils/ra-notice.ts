@@ -128,7 +128,7 @@ async function sendRaNotice(c: Cand): Promise<boolean> {
   const nid = claim.rows[0]?.id; if (!nid) return false
   try {
     const set = (await db().query<{ b: { us?: { issuer?: string; address?: string; phone?: string; email?: string } } | null }>("SELECT settings->'cs_billing' AS b FROM core.organizations WHERE id = $1", [cl.organization_id])).rows[0]?.b?.us ?? {}
-    const issuer = { name: 'Finvry', legal: set.issuer || 'Aidi Ventures LLC', address: set.address || '6472 Camden Ave, Suite 204\nSan Jose, CA', phone: set.phone || '', email: set.email || 'hello@finvry.com', website: 'finvry.com' }
+    const issuer = { name: 'Finvry', legal: set.issuer || 'Finvry, a product of TAGroup', address: set.address || '6472 Camden Ave, Suite 204\nSan Jose, CA', phone: set.phone || '', email: set.email || 'hello@finvry.com', website: 'finvry.com' }
     const agent = agentFor(await raAgents(), co?.jurisdiction ?? ours[0]?.jurisdiction ?? null).name
     const finvry = brands().finvry.url
     const payUrl = c.source === 'invoice' ? finvry + '/bill/' + billToken(c.source_id) : finvry + '/wallet'

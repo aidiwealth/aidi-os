@@ -6,7 +6,9 @@ import type { H3Event } from 'h3'
 const COOKIE = 'aidi_os_session'
 const MAX_AGE = 60 * 60 * 12 // 12 hours
 
-export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean }
+export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean; aidiOrg?: boolean }
+// Aidi OS workspaces (the internal plan, or a workspace branded Aidi) open only at app.theaidigroup.com, never on Finvry.
+export const AIDI_ORG_SQL = "(o.settings->>'brand' = 'aidi' OR o.plan_code = 'internal')"
 export const RETURN_COOKIE = 'aidi_os_return'
 
 function secret(): Uint8Array {
@@ -64,11 +66,12 @@ export async function readSession(event: H3Event): Promise<SessionUser | null> {
     if (typeof payload.sid !== 'string') return null
     sid = payload.sid
   } catch { return null } // bad or expired signature: simply not signed in
+  const onFinvry = hostBrand(event) === 'finvry'
   const hit = sessionCache.get(sid)
-  if (hit && Date.now() - hit.at < 10_000) return hit.v
+  if (hit && Date.now() - hit.at < 10_000) return hit.v && onFinvry && hit.v.aidiOrg ? null : hit.v
   if (sessionCache.size > 5000) sessionCache.clear()
-  const r = await asPlatform(() => db().query<{ user_id: string; email: string; org_id: string | null; org_ok: boolean; roles: string[]; platform: boolean }>(
-    `SELECT s.user_id, u.email, s.organization_id AS org_id,
+  const r = await asPlatform(() => db().query<{ user_id: string; email: string; org_id: string | null; org_ok: boolean; roles: string[]; platform: boolean; aidi_org: boolean }>(
+    `SELECT s.user_id, u.email, s.organization_id AS org_id, coalesce(${AIDI_ORG_SQL}, false) AS aidi_org,
             coalesce(o.status = ANY($2::text[]) AND m.status = 'active', false) AS org_ok,
             coalesce((SELECT array_agg(DISTINCT ur.role_code) FROM core.user_roles ur WHERE ur.user_id = u.id AND ur.organization_id = s.organization_id), '{}') AS roles,
             EXISTS (SELECT 1 FROM core.platform_staff ps WHERE ps.user_id = u.id) AS platform
@@ -79,9 +82,9 @@ export async function readSession(event: H3Event): Promise<SessionUser | null> {
   const row = r.rows[0]
   if (!row) { sessionCache.set(sid, { at: Date.now(), v: null }); return null }
   const orgId = row.org_ok ? row.org_id : null
-  const v = { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform }
+  const v = { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform, aidiOrg: row.aidi_org }
   sessionCache.set(sid, { at: Date.now(), v })
-  return v
+  return onFinvry && v.aidiOrg ? null : v
 }
 
 export async function endSession(event: H3Event): Promise<void> {

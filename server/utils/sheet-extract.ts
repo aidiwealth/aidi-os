@@ -42,7 +42,8 @@ export async function sheetToText(buf: Buffer, ext: 'xlsx' | 'csv', sheets = 3, 
 const num = z.number().finite().nullable()
 const Extract = z.object({
   revenue: num, gross_margin: num, net_burn: num, cash: num, customers: num, headcount: num,
-  notes: z.string().max(500)
+  notes: z.string().max(500),
+  highlights: z.string().max(4000).optional(), challenges: z.string().max(4000).optional(), asks: z.string().max(4000).optional()
 })
 export type Extracted = z.infer<typeof Extract>
 const JSON_SCHEMA = {
@@ -55,20 +56,24 @@ const JSON_SCHEMA = {
     cash: { type: ['number', 'null'], description: 'Cash balance at month end in USD' },
     customers: { type: ['number', 'null'], description: 'Paying customers at month end' },
     headcount: { type: ['number', 'null'], description: 'Headcount (full-time equivalents) at month end' },
-    notes: { type: 'string', description: 'One short line: which sheet/column you used, any currency or unit assumptions, anything unclear' }
+    notes: { type: 'string', description: 'One short line: which sheet/column you used, any currency or unit assumptions, anything unclear' },
+    highlights: { type: 'string', description: 'Only for a written report or update: its wins and progress, in short lines. Empty for a plain spreadsheet.' },
+    challenges: { type: 'string', description: 'Only for a written report: challenges it mentions. Empty otherwise.' },
+    asks: { type: 'string', description: 'Only for a written report: what the company asks investors for. Empty otherwise.' }
   }
 }
 
-export async function extractMetrics(text: string, periodLabelText: string, inputRef: string): Promise<Extracted> {
+export async function extractMetrics(text: string, periodLabelText: string, inputRef: string, pdf?: Buffer): Promise<Extracted> {
   const { output } = await runAiTool<Extracted>({
     task: 'report_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'report-extract-v1', inputRef,
-    system: 'You read a startup\'s financial or KPI spreadsheet and extract figures for one month. Only use numbers that appear in the sheet. ' +
+    system: 'You read a startup\'s financial or KPI spreadsheet, or its investor update or report (PDF), and extract figures for the requested period. Only use numbers that appear in it. Read amounts with their scale (45k = 45000, $1.2m = 1200000). For a written report, also summarise its highlights, challenges and asks. ' +
       'If a figure is not clearly present for that month, return null; never estimate. If the sheet has several months, use the column for the requested month, ' +
       'or the latest month if the requested one is absent, and say so in notes. Convert thousands notation (e.g. 45k) to full numbers. ' +
       'If amounts are clearly in another currency, keep the numbers as they are and say which currency in notes.',
     user: 'Month requested: ' + periodLabelText + '\n\nSpreadsheet:\n' + text,
+    userContent: pdf ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') } }, { type: 'text', text: 'Period requested: ' + periodLabelText }] : undefined,
     toolName: 'record_metrics', toolDescription: 'Record the month\'s metrics found in the spreadsheet.',
-    jsonSchema: JSON_SCHEMA, schema: Extract, maxTokens: 600
+    jsonSchema: JSON_SCHEMA, schema: Extract, maxTokens: pdf ? 2500 : 600
   })
   return output
 }

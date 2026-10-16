@@ -2,7 +2,7 @@
 // A fundraising pipeline: stages with totals on the left; investors with stage, amount and primary contact.
 const id = useRoute().params.id as string
 interface St { id: string; name: string; color: string; kind: string; sort: number; total: number; n: number }
-interface Dl { added_by_team?: boolean; id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
+interface Dl { added_by_team?: boolean; on_captable?: boolean; id: string; investor: string; stage_id: string; amount: number | null; notes: string | null; contact_id: string | null; contact_name: string | null; contact_email: string | null; next_meeting: string | null }
 const calOpen = ref(false)
 const sugg = ref<string[]>([]); let sgT: ReturnType<typeof setTimeout> | undefined
 function suggest() { clearTimeout(sgT); const q = dl.investor; sgT = setTimeout(async () => { if (q.trim().length < 2) { sugg.value = []; return } try { sugg.value = await $fetch<string[]>('/api/crm/investors/suggest', { query: { q } }) } catch { sugg.value = [] } }, 200) }
@@ -33,6 +33,31 @@ const se = reactive({ open: false, stages: [] as { id?: string; name: string; co
 function editStages() { se.stages = (data.value?.stages ?? []).map((s) => ({ id: s.id, name: s.name, color: s.color, kind: s.kind })); se.open = true }
 function up(i: number) { if (i > 0) { const a = se.stages; [a[i - 1], a[i]] = [a[i]!, a[i - 1]!] } }
 async function saveStages() { msg.value = ''; try { await $fetch('/api/crm/stages', { method: 'POST', body: { pipeline_id: id, stages: se.stages } }); se.open = false; await refresh() } catch (e) { msg.value = err(e) } }
+// Add a whole contact list (e.g. "Investors") to this pipeline, in its first stage.
+const fc = reactive({ open: false, list: '', busy: false, msg: '' })
+const { data: cl, execute: loadLists } = await useLazyFetch<{ lists: { id: string; name: string; n: number }[]; all: number }>('/api/crm/contacts', { query: { size: 25 }, server: false, immediate: false })
+function openFromContacts() { fc.open = true; fc.msg = ''; fc.list = ''; void loadLists() }
+async function addFromContacts() {
+  fc.busy = true; fc.msg = ''
+  try { const r = await $fetch<{ added: number; skipped: number }>('/api/crm/deals/from-contacts', { method: 'POST', body: { pipeline_id: id, match: { q: '', list: fc.list } } }); fc.open = false; msg.value = ''; await refresh(); okMsg.value = r.added + ' investor' + (r.added === 1 ? '' : 's') + ' added' + (r.skipped ? ' (' + r.skipped + ' already in this pipeline)' : '') + '.' }
+  catch (e) { fc.msg = err(e) } finally { fc.busy = false }
+}
+const okMsg = ref('')
+// Closed investors onto the cap table: SAFE or note pipelines add SAFEs or notes; a priced round issues shares.
+interface Cap { captables: { id: string; name: string; is_main: boolean }[]; classes: { id: string; name: string; issue_price: number | null }[]; captable: string }
+const cap = reactive({ open: false, ids: [] as string[], ct: '', class_id: '', price: '' as string | number, issued_on: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10), busy: false, msg: '', info: null as Cap | null })
+const capDeals = computed(() => (data.value?.deals ?? []).filter((d) => cap.ids.includes(d.id)))
+const capReady = computed(() => capDeals.value.filter((d) => st(d.stage_id)?.kind === 'won' && !d.on_captable && d.amount))
+async function loadCap() { try { cap.info = await $fetch<Cap>('/api/equity', { query: cap.ct ? { ct: cap.ct } : {} }); cap.ct = cap.info.captable; if (!cap.info.classes.some((c) => c.id === cap.class_id)) { const pref = cap.info.classes.find((c) => /pref|seed|series/i.test(c.name)) ?? cap.info.classes[0]; cap.class_id = pref?.id ?? ''; if (pref?.issue_price) cap.price = pref.issue_price } } catch (e) { cap.msg = err(e) } }
+function openCap(ids: string[]) { Object.assign(cap, { open: true, ids: [...ids], msg: '', ct: '', info: null }); void loadCap() }
+async function addToCap() {
+  cap.busy = true; cap.msg = ''
+  try {
+    const r = await $fetch<{ added: number; skipped: { investor: string; reason: string }[] }>('/api/crm/deals/to-captable', { method: 'POST', body: { ids: cap.ids, captable_id: cap.ct || undefined, issued_on: cap.issued_on, class_id: data.value?.pipeline.instrument === 'priced' ? cap.class_id : undefined, price: data.value?.pipeline.instrument === 'priced' ? cap.price : undefined } })
+    cap.open = false; sel.value = []; await refresh()
+    okMsg.value = r.added + ' investor' + (r.added === 1 ? '' : 's') + ' added to the cap table' + (r.skipped.length ? '; skipped ' + r.skipped.map((x) => x.investor + ' (' + x.reason + ')').join(', ') : '') + '.'
+  } catch (e) { cap.msg = err(e) } finally { cap.busy = false }
+}
 const COLORS = ['grey', 'blue', 'purple', 'teal', 'amber', 'green', 'red']
 const contactLabel = (c: { name: string; email: string; firm: string | null }) => c.name + ' · ' + c.email + (c.firm ? ' (' + c.firm + ')' : '')
 </script>
@@ -44,13 +69,14 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
       <button class="lk ed" @click="editStages">Edit stages</button></aside>
     <div class="main">
       <div class="top"><div class="pg"><select v-model="progStage" aria-label="Progress from stage"><option value="">All stages</option><option v-for="s in data.stages.filter((x) => x.kind !== 'lost')" :key="s.id" :value="s.id">{{ s.name }} and later</option></select><span>{{ money(prog.total) }} ({{ prog.pct.toFixed(1) }}%)</span><div class="pb"><i :style="{ width: prog.pct + '%' }" /></div><span class="mut">{{ money(committedTotal) }} committed</span></div>
-        <div class="row"><input v-model="q" placeholder="Search investors" aria-label="Search"><button class="btn secondary" @click="calOpen = true">Calendar</button><button class="btn" @click="openDeal()">New investor</button></div></div>
+        <div class="row"><input v-model="q" placeholder="Search investors" aria-label="Search"><button class="btn secondary" @click="calOpen = true">Calendar</button><button class="btn secondary" @click="openFromContacts">Add from contacts</button><button class="btn" @click="openDeal()">New investor</button></div></div>
+      <p v-if="okMsg" class="okm">{{ okMsg }}</p>
       <p v-if="msg" class="error">{{ msg }}</p>
-      <div v-if="sel.length" class="bulk"><b>{{ sel.length }} selected</b><select v-model="bulkTo"><option value="">Move to stage…</option><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></div>
+      <div v-if="sel.length" class="bulk"><b>{{ sel.length }} selected</b><select v-model="bulkTo"><option value="">Move to stage…</option><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select><button class="btn secondary sm" type="button" @click="openCap(sel)">Add to cap table</button></div>
       <div class="box"><table v-if="list.length"><thead><tr><th class="ck" /><th>Investor</th><th>Stage</th><th class="n">Amount</th><th>Primary contact</th><th>Next meeting</th></tr></thead>
-        <tbody><tr v-for="d in list" :key="d.id" @click="openDeal(d)"><td class="ck" @click.stop><input v-model="sel" type="checkbox" :value="d.id" aria-label="Select"></td><td><b>{{ d.investor }}</b><span v-if="d.added_by_team" class="vf" title="Introduced by the Finvry fundraising team, who keep the contact details">Via Finvry</span></td>
+        <tbody><tr v-for="d in list" :key="d.id" @click="openDeal(d)"><td class="ck" @click.stop><input v-model="sel" type="checkbox" :value="d.id" aria-label="Select"></td><td><b>{{ d.investor }}</b><span v-if="d.on_captable" class="oc">On cap table</span><span v-if="d.added_by_team" class="vf" title="Introduced by the Finvry fundraising team, who keep the contact details">Via Finvry</span></td>
           <td @click.stop><select class="stsel" :class="st(d.stage_id)?.color" :value="d.stage_id" @change="move(($event.target as HTMLSelectElement).value, [d.id])"><option v-for="s in data.stages" :key="s.id" :value="s.id">{{ s.name }}</option></select></td>
-          <td class="n">{{ d.amount != null ? money(d.amount) : '—' }}</td>
+          <td class="n">{{ d.amount != null ? money(d.amount) : '—' }}<button v-if="st(d.stage_id)?.kind === 'won' && !d.on_captable && d.amount" class="lk ac" type="button" @click.stop="openCap([d.id])">Add to cap table</button></td>
           <td><NuxtLink v-if="d.contact_id" :to="'/contacts/' + d.contact_id" class="ct" @click.stop><span class="av">{{ initials(d.contact_name ?? d.contact_email ?? '?') }}</span><span><b>{{ d.contact_name }}</b><em>{{ d.contact_email }}</em></span></NuxtLink><span v-else class="mut">{{ d.added_by_team ? 'Kept by Finvry' : '—' }}</span></td><td><span v-if="d.next_meeting" class="nm">{{ new Date(d.next_meeting).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span><span v-else class="mut">—</span></td></tr></tbody></table>
         <EmptyState v-else icon="pipeline" :title="data.deals.length ? 'No investors in this stage' : 'No investors yet'" :text="data.deals.length ? 'Pick another stage on the left.' : 'Add the funds and angels you are talking to, with their primary contact.'"><button v-if="!data.deals.length" class="btn" @click="openDeal()">Add an investor</button></EmptyState></div>
     </div>
@@ -76,9 +102,29 @@ const contactLabel = (c: { name: string; email: string; firm: string | null }) =
         <button type="button" class="btn secondary sm" @click="se.stages.push({ name: 'New stage', color: 'blue', kind: 'open' })">+ Add stage</button><p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button class="btn secondary" @click="se.open = false">Cancel</button><button class="btn" @click="saveStages">Save stages</button></template>
     </AppModal>
+    <AppModal :open="fc.open" title="Add investors from contacts" @close="fc.open = false">
+      <div class="fcf"><p class="mut">Each contact is added as an investor in the first stage, under their firm (or their name). Contacts already in this pipeline are skipped.</p>
+        <label class="label">Which contacts<select v-model="fc.list"><option value="">All contacts ({{ cl?.all ?? '…' }})</option><option v-for="l in cl?.lists ?? []" :key="l.id" :value="l.id">{{ l.name }} ({{ l.n }})</option></select></label>
+        <p v-if="fc.msg" class="error">{{ fc.msg }}</p></div>
+      <template #foot><button class="btn secondary" @click="fc.open = false">Cancel</button><button class="btn" :disabled="fc.busy" @click="addFromContacts">{{ fc.busy ? 'Adding…' : 'Add to ' + data.pipeline.name }}</button></template>
+    </AppModal>
+    <AppModal :open="cap.open" title="Add to cap table" @close="cap.open = false">
+      <div class="fcf">
+        <p class="mut">{{ data.pipeline.instrument === 'priced' ? 'Each closed investor gets shares at the price per share: amount ÷ price, rounded down.' : 'Each closed investor is added as a ' + (data.pipeline.instrument === 'convertible_note' ? 'convertible note' : 'SAFE') + ' for their amount' + (data.pipeline.valuation_cap ? ', ' + money(data.pipeline.valuation_cap) + ' post-money cap' : '') + (data.pipeline.discount ? ', ' + data.pipeline.discount + '% discount' : '') + '.' }} Only investors in a "Won" stage with an amount are added.</p>
+        <label v-if="(cap.info?.captables.length ?? 0) > 1" class="label">Cap table<select v-model="cap.ct" @change="loadCap"><option v-for="c in cap.info!.captables" :key="c.id" :value="c.id">{{ c.name }}{{ c.is_main ? ' (main)' : '' }}</option></select></label>
+        <template v-if="data.pipeline.instrument === 'priced'">
+          <label class="label">Share class<select v-model="cap.class_id"><option v-if="!cap.info?.classes.length" value="">Add a share class on the cap table first</option><option v-for="c in cap.info?.classes ?? []" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+          <label class="label">Price per share ({{ data.pipeline.currency }})<input v-model="cap.price" inputmode="decimal"></label>
+        </template>
+        <label class="label">Date issued<input v-model="cap.issued_on" type="date"></label>
+        <ul class="capl"><li v-for="d in capDeals" :key="d.id" :class="{ off: !capReady.includes(d) }"><span>{{ d.investor }}</span><span>{{ money(d.amount) }}{{ d.on_captable ? ' · already added' : st(d.stage_id)?.kind !== 'won' ? ' · not closed' : !d.amount ? ' · no amount' : '' }}</span></li></ul>
+        <p v-if="cap.msg" class="error">{{ cap.msg }}</p></div>
+      <template #foot><NuxtLink :to="'/cap-table' + (cap.ct ? '?ct=' + cap.ct : '')" class="btn secondary">Open cap table</NuxtLink><span class="sp" /><button class="btn secondary" @click="cap.open = false">Cancel</button><button class="btn" :disabled="cap.busy || !capReady.length" @click="addToCap">{{ cap.busy ? 'Adding…' : 'Add ' + capReady.length + ' investor' + (capReady.length === 1 ? '' : 's') }}</button></template>
+    </AppModal>
   </section>
 </template>
 <style scoped>
+.oc { margin-left: 8px; font-size: 11.5px; padding: 2px 7px; background: var(--c-paper-2); color: var(--c-ink-soft); } .ac { display: block; margin-left: auto; font-size: 12.5px; margin-top: 2px; } .capl { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--c-rule); max-height: 220px; overflow: auto } .capl li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px } .capl li.off { color: var(--c-muted) }
 .pl { display: grid; grid-template-columns: 280px 1fr; gap: 18px; align-items: start; } .side { background: var(--c-paper-2); padding: 16px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
 .back { color: var(--c-muted); font-size: 13px; } .side h1 { font-size: 24px; margin: 6px 0 2px; } .tg { font-size: 14px; color: var(--c-ink-soft); margin-bottom: 10px; } .lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .ed { margin-top: 10px; align-self: flex-start; font-size: 13px; }
 .sr { display: flex; justify-content: space-between; gap: 8px; background: none; border: 0; padding: 9px 10px; font: inherit; font-size: 14px; cursor: pointer; text-align: left; } .sr.on { background: #e6e4dd; } .sr em { font-style: normal; color: var(--c-ink-soft); white-space: nowrap; }
@@ -95,4 +141,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; bor
 @media (max-width: 1000px) { .pl { grid-template-columns: 1fr; } .side { position: static; } }
 .nm { font-size: 12.5px; background: var(--c-signal-soft); color: var(--c-blue-deep); padding: 2px 8px; white-space: nowrap; }
 .vf { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 7px; background: var(--c-signal-soft); color: var(--c-blue-deep); white-space: nowrap; }
+.okm { margin: 0 0 8px; font-size: 13.5px; color: var(--c-ink); } .fcf { display: flex; flex-direction: column; gap: 12px; } .fcf label { display: flex; flex-direction: column; gap: 6px; } .fcf select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 </style>

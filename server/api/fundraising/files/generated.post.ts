@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update', 'forecast', 'captable']), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional(), format: z.enum(['pdf', 'xlsx']).default('pdf') }).safeParse(await readBody(event))
+  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update', 'forecast', 'captable']), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional(), format: z.enum(['pdf', 'xlsx']).default('pdf'), room_id: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose a document.')
   const d = b.data, org = (await currentOrg())!
   let title = '', docs: { title: string; md: string }[] = [], folder = d.folder || ''
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
   const docId = randomUUID(), key = 'documents/' + docId + '.' + ext, name = (title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 180) || 'document') + '.' + ext
   await putObject({ key, body: bytes, contentType: mime })
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [docId, 'Data room — ' + name, key, mime, bytes.length, createHash('sha256').update(bytes).digest('hex')])
-  await db().query('INSERT INTO fundraise.files (document_id, title, folder) VALUES ($1,$2,$3)', [docId, name, folder])
+  await db().query('INSERT INTO fundraise.files (document_id, title, folder, room_id) VALUES ($1,$2,$3,$4)', [docId, name, folder, await roomId(d.room_id)])
   await audit({ event, actorUserId: user.userId, action: 'fundraising.room_add_generated', objectType: d.kind, objectId: d.id ?? undefined })
   return { ok: true, title: name, folder }
 })

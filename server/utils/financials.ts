@@ -85,17 +85,25 @@ const SCHEMA = { type: 'object', additionalProperties: false, required: ['period
   currency: { type: 'string', description: 'ISO currency code, e.g. USD or NGN' },
   lines: { type: 'object', additionalProperties: false, required: LINE_KEYS, properties: Object.fromEntries(LINE_KEYS.map((k) => [k, numN])) },
   kpis: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } }, description: 'Non-financial KPIs in the sheet (customers, headcount, AUM...), at most 10' },
-  notes: { type: 'string', description: 'One or two lines: which sheet/columns you used, units, anything unclear' } } }
-export async function extractStatement(text: string, wanted: string, inputRef: string) {
+  notes: { type: 'string', description: 'One or two lines: which sheet/columns you used, units, anything unclear' },
+  more_periods: { type: 'array', description: 'Every OTHER period the file has figures for (not the one above), oldest first, at most 24. Empty if only one.', items: { type: 'object', additionalProperties: false, required: ['period_end', 'period_type', 'lines', 'kpis'], properties: {
+    period_end: { type: 'string', description: 'YYYY-MM-DD' }, period_type: { type: 'string', enum: ['month', 'quarter', 'year'] },
+    lines: { type: 'object', additionalProperties: false, required: LINE_KEYS, properties: Object.fromEntries(LINE_KEYS.map((k) => [k, numN])) },
+    kpis: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } } } } } } } }
+export async function extractStatement(text: string, wanted: string, inputRef: string, pdf?: Buffer) {
   const { z } = await import('zod')
-  const Out = z.object({ period_end: z.string().nullable(), period_type: z.enum(['month', 'quarter', 'year']), currency: z.string().max(3),
-    lines: z.record(z.string(), z.number().finite().nullable()), kpis: z.array(z.object({ name: z.string().max(60), value: z.number().finite() })).max(10), notes: z.string().max(600) })
-  const { output } = await runAiTool({ task: 'financials_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'financials-extract-v1', inputRef,
-    system: 'You read a financial statement spreadsheet (profit and loss, balance sheet, cash flow, management accounts or KPI sheet) and map it to standard lines. ' +
-      'Only use numbers that appear in the sheet; if a line is not clearly present, return null, never estimate. Costs and expenses are positive numbers; net income, EBITDA and cash flows keep their sign (losses negative). ' +
-      'If the sheet has several periods, use the requested one, else the latest, and say so in notes. Convert thousands notation to full numbers and apply any stated units (e.g. "in thousands").',
-    user: 'Period wanted: ' + wanted + '\n\nSpreadsheet:\n' + text, toolName: 'record_statement', toolDescription: 'Record the statement mapped to standard lines.',
-    jsonSchema: SCHEMA, schema: Out, maxTokens: 1500 })
+  const Lines = z.record(z.string(), z.number().finite().nullable()), Kpis = z.array(z.object({ name: z.string().max(60), value: z.number().finite() })).max(10)
+  const Out = z.object({ period_end: z.string().nullable(), period_type: z.enum(['month', 'quarter', 'year']), currency: z.string().max(3), lines: Lines, kpis: Kpis, notes: z.string().max(600),
+    more_periods: z.array(z.object({ period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), period_type: z.enum(['month', 'quarter', 'year']), lines: Lines, kpis: Kpis })).max(24).default([]) })
+  const ask = 'Period wanted: ' + wanted
+  const { output } = await runAiTool({ task: 'financials_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'financials-extract-v2', inputRef,
+    system: 'You read a financial document and map it to standard lines. It may be a spreadsheet or a PDF: a profit and loss, balance sheet, cash flow, management accounts, a KPI sheet, or a BANK STATEMENT. ' +
+      'Only use numbers that appear in it; if a line is not clearly present, return null, never estimate. Costs and expenses are positive numbers; net income, EBITDA and cash flows keep their sign (losses negative). ' +
+      'For a bank statement: cash = the closing balance at the end of each month; operating_cf = money in minus money out for that month; put "Money in" and "Money out" totals in kpis; never treat deposits as revenue. ' +
+      'Use the requested period for the main figures (else the latest) and put EVERY other period the document covers in more_periods, so they can all be saved at once. Convert thousands notation to full numbers and apply any stated units (e.g. "in thousands").',
+    user: ask + '\n\nSpreadsheet:\n' + text,
+    userContent: pdf ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') } }, { type: 'text', text: ask }] : undefined,
+    toolName: 'record_statement', toolDescription: 'Record the statement mapped to standard lines.', jsonSchema: SCHEMA, schema: Out, maxTokens: 6000 })
   return output
 }
 

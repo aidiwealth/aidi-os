@@ -3,8 +3,8 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team')
   const b = z.object({ id: z.string().uuid().optional(), pipeline_id: z.string().uuid(), stage_id: z.string().uuid(), investor: z.string().trim().min(1).max(200), contact_id: z.string().uuid().optional().nullable(),
-    contact_name: z.string().trim().max(200).default(''), contact_email: z.string().trim().max(254).default(''), amount: z.union([z.coerce.number().min(0), z.literal('').transform(() => null), z.null()]).optional(), notes: z.string().max(3000).default('') }).safeParse(await readBody(event))
-  if (!b.success) throw apiError('invalid', 'Add the investor and stage.')
+    contact_name: z.string().trim().max(200).default(''), contact_email: z.string().trim().max(254).default(''), amount: z.preprocess((v) => (typeof v === 'string' ? v.replace(/[,\s$₦]/g, '') : v), z.union([z.literal('').transform(() => null), z.coerce.number().min(0), z.null()])).optional(), notes: z.string().max(3000).default('') }).safeParse(await readBody(event))
+  if (!b.success) throw apiError('invalid', b.error.issues.some((i) => i.path[0] === 'amount') ? 'Enter the amount as a number, e.g. 25000.' : 'Add the investor and stage.')
   const d = b.data
   let contact = d.contact_id ?? null
   if (!contact && d.contact_email) {

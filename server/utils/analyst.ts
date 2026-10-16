@@ -1,3 +1,4 @@
+import { MONTHLY_SQL } from '~/server/utils/sales'
 import { run as runForecast, defaults as fcDefaults, type Assumptions } from '~/shared/forecast'
 import { table as capTable, round as capRound, waterfall as capWaterfall } from '~/shared/captable'
 // The AI analyst: a small, cheap model with read-only tools. Nothing is sent up front except a short system prompt;
@@ -143,6 +144,36 @@ const aidi: Tool[] = [
       overdue: (await db().query("SELECT j.title, c.name AS client, to_char(j.due_date, 'YYYY-MM-DD') AS due FROM services.jobs j LEFT JOIN services.clients c ON c.id = j.client_id WHERE j.due_date < current_date AND j.status NOT IN ('done', 'completed', 'cancelled') ORDER BY j.due_date LIMIT 10")).rows,
       fees_this_year_usd: Number((await db().query("SELECT coalesce(sum(fee_usd), 0)::float AS v FROM services.jobs WHERE completed_at >= date_trunc('year', now())")).rows[0]?.v ?? 0),
       top_clients: (await db().query("SELECT c.name, count(j.id)::int AS jobs, coalesce(sum(j.fee_usd), 0)::float AS fees_usd FROM services.clients c JOIN services.jobs j ON j.client_id = c.id GROUP BY c.id ORDER BY jobs DESC LIMIT 8")).rows }) }]
+// Finvry customer accounts (the platform console), for Aidi OS people who may open it: console staff and the
+// operator workspace's team. Commercial facts only (plan, status, seats, billing), never a customer's own data.
+const NOT_AIDI = "o.plan_code <> 'internal' AND coalesce(o.settings->>'brand', 'finvry') <> 'aidi'"
+const finvryAdmin: Tool[] = [
+  { name: 'finvry_customers', module: null, description: 'Finvry customer workspaces (commercial facts only): plan, status, seats, trial end, monthly revenue in USD and last activity. Optionally filter by name or status (trial, active, past_due, suspended, closed).', input_schema: S({ q: { type: 'string' }, status: { type: 'string' } }),
+    run: async (a) => (await asPlatform(() => db().query(`SELECT o.name, o.status, p.name AS plan, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, to_char(o.created_at, 'YYYY-MM-DD') AS joined,
+        (SELECT count(*)::int FROM core.memberships m WHERE m.organization_id = o.id AND m.status = 'active') AS seats,
+        (SELECT round(sum(${MONTHLY_SQL}), 2)::float FROM platform.subscriptions s WHERE s.organization_id = o.id AND s.status <> 'ended') AS mrr_usd,
+        (SELECT to_char(max(x.at), 'YYYY-MM-DD') FROM core.audit_log x WHERE x.organization_id = o.id AND x.actor_user_id IS NOT NULL AND x.action NOT LIKE 'platform.%') AS last_activity
+      FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code
+      WHERE ${NOT_AIDI} AND ($1 = '' OR o.name ILIKE '%' || $1 || '%') AND ($2 = '' OR o.status = $2) ORDER BY o.created_at DESC LIMIT 40`, [String(a.q ?? '').slice(0, 60), String(a.status ?? '').slice(0, 20)]))).rows },
+  { name: 'finvry_business', module: null, description: 'Finvry business summary: customers by status and plan, MRR and ARR in USD, new customers in the last 30 days, renewals in the next 30 days, and unpaid or overdue invoices.', input_schema: S(),
+    run: async () => asPlatform(async () => ({
+      by_status: (await db().query(`SELECT o.status, count(*)::int AS n FROM core.organizations o WHERE ${NOT_AIDI} GROUP BY 1 ORDER BY 2 DESC`)).rows,
+      by_plan: (await db().query(`SELECT p.name AS plan, count(*)::int AS n FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE ${NOT_AIDI} AND o.status IN ('trial','active','past_due') GROUP BY 1 ORDER BY 2 DESC`)).rows,
+      mrr_usd: Number((await db().query(`SELECT coalesce(round(sum(${MONTHLY_SQL}), 2), 0)::float AS v FROM platform.subscriptions s WHERE s.status <> 'ended' AND s.start_date <= current_date`)).rows[0]?.v ?? 0),
+      new_last_30_days: Number((await db().query(`SELECT count(*)::int AS v FROM core.organizations o WHERE ${NOT_AIDI} AND o.created_at > now() - interval '30 days'`)).rows[0]?.v ?? 0),
+      trials_ending_14_days: (await db().query(`SELECT o.name, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS ends FROM core.organizations o WHERE ${NOT_AIDI} AND o.status = 'trial' AND o.trial_ends_at BETWEEN now() AND now() + interval '14 days' ORDER BY o.trial_ends_at LIMIT 15`)).rows,
+      unpaid_invoices: (await db().query(`SELECT i.number, o.name AS customer, i.currency, i.amount::float, to_char(i.due_date, 'YYYY-MM-DD') AS due, (i.due_date < current_date) AS overdue FROM platform.invoices i JOIN core.organizations o ON o.id = i.organization_id WHERE i.status = 'sent' ORDER BY i.due_date LIMIT 20`)).rows })) },
+  { name: 'finvry_customer', module: null, description: "One Finvry customer's account by name: plan, status, seats and limit, subscription (amount, billing, start), recent invoices, and which areas they use (counts only).", input_schema: S({ name: { type: 'string' } }, ['name']),
+    run: async (a) => asPlatform(async () => {
+      const o = (await db().query<{ id: string; name: string; status: string; plan: string; seat_limit: number | null; trial_ends: string | null; joined: string }>(`SELECT o.id, o.name, o.status, p.name AS plan, p.seat_limit, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, to_char(o.created_at, 'YYYY-MM-DD') AS joined FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE ${NOT_AIDI} AND o.name ILIKE $1 ORDER BY length(o.name) LIMIT 1`, ['%' + String(a.name).slice(0, 60) + '%'])).rows[0]
+      if (!o) return { note: 'No Finvry customer matches that name.' }
+      const { id, ...acct } = o
+      return { ...acct,
+        seats: Number((await db().query("SELECT count(*)::int AS v FROM core.memberships WHERE organization_id = $1 AND status = 'active'", [id])).rows[0]?.v ?? 0),
+        subscription: (await db().query("SELECT s.currency, s.amount_usd::float AS amount, s.billing, s.status, to_char(s.start_date, 'YYYY-MM-DD') AS started FROM platform.subscriptions s WHERE s.organization_id = $1 AND s.status <> 'ended' LIMIT 1", [id])).rows[0] ?? null,
+        invoices: (await db().query("SELECT number, currency, amount::float, status, to_char(issue_date, 'YYYY-MM-DD') AS issued, to_char(due_date, 'YYYY-MM-DD') AS due FROM platform.invoices WHERE organization_id = $1 ORDER BY issue_date DESC LIMIT 6", [id])).rows,
+        activity_last_30_days: (await db().query("SELECT split_part(action, '.', 1) AS area, count(*)::int AS actions FROM core.audit_log WHERE organization_id = $1 AND actor_user_id IS NOT NULL AND action NOT LIKE 'platform.%' AND at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC LIMIT 10", [id])).rows }
+    }) }]
 export async function analystReply(event: H3Event, history: { role: 'user' | 'assistant'; content: string }[], path: string) {
   const { anthropicApiKey, anthropicBaseUrl } = useRuntimeConfig()
   if (!anthropicApiKey) throw apiError('ai_off', 'The AI analyst is not set up on this server.', 503)
@@ -152,15 +183,18 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   const roles = (event.context.realRoles as string[] | undefined) ?? user.roles
   // Only the areas this person can open: switched-on modules their role may use (Modules page choices included).
   const usable = await usableModules(roles, event)
-  const tools = [...(isCo ? finvry : aidi), ...common].filter((t) => !t.module || usable.has(t.module))
+  // Finvry customer accounts only for people who may open the platform console, on the Aidi OS address.
+  const console_ = !isCo && hostBrand(event) === 'aidi' && !String(event.context.entityScope ?? '') && ((user.platform && !!(await asPlatform(() => db().query('SELECT 1 FROM core.platform_staff WHERE user_id = $1', [user.userId]))).rows[0]) || await customersViewer({ ...user, roles }, event))
+  const tools = [...(isCo ? finvry : aidi), ...(console_ ? finvryAdmin : []), ...common].filter((t) => !t.module || usable.has(t.module))
   const ctx: Ctx = { event, userId: user.userId, roles }
-  const areas = MODULES.filter((m) => usable.has(m.code) && m.to && !['team', 'modules', 'settings', 'wm_portal', 'client_raise'].includes(m.code)).map((m) => m.label + ' ' + m.to).join('; ')
+  const areas = MODULES.filter((m) => usable.has(m.code) && m.to && !['team', 'modules', 'settings', 'wm_portal', 'client_raise'].includes(m.code)).map((m) => m.label + ' ' + m.to).join('; ') + (console_ ? '; Finvry customers /platform/customers; Finvry console /platform' : '')
   const scoped = String(event.context.entityScope ?? '').split(',').filter(Boolean).length > 0
   const today = new Date().toISOString().slice(0, 10)
   const system = (isCo
     ? 'You are the AI analyst inside Finvry, helping the founder and team of ' + (org?.name ?? 'this company') + ' with their own company: metrics and statements, boards, forecasts (several can be kept, imported from an accountant\'s file, and shared by private links that show who viewed them), cap tables (several, e.g. today\'s and a pro forma; built from lawyers\' documents; round and exit modelling; shareable; SAFEs, option grants and share purchases e-signed in Finvry with AI-drafted documents and board consents, updating the cap table once signed and approved; electronic share certificates; import from Pulley or Carta exports); both live under Investor relations and can be shown on the investor page or added to the data room, fundraising, investor updates, decks, meetings and compliance. For runway or cash questions, use the reported metrics, the live bank (bank_live) and the forecasts, and say which is which; flag when the forecast spends much less than what actually leaves the bank. Forecasts can be built from Financials and the bank in one click (Forecast → Build from my numbers).'
     : 'You are the AI analyst inside Aidi OS, the internal platform of The Aidi Group (family office and venture firm): group entities and financials, venture deals, portfolio, funds and LPs, credit (venture debt), bank and cash, payments, deployments, rentals (Aidi Haven), wealth management, trusts and governance, meeting minutes, client services and compliance.')
     + '\nToday is ' + today + '. The user is on ' + path + '.' + (scoped ? ' This user is limited to some companies: answer only from what the tools return, which is already limited to them.' : '')
+    + (console_ ? '\nThis user may also see Finvry customer accounts (finvry_ tools): commercial facts only (plan, status, seats, billing, activity counts). Never reveal or guess a customer\'s own figures, documents, investors or people.' : '')
     + '\nAreas this user can open (label and path): ' + (areas || 'none') + '. Only discuss and link these areas; if asked about anything else, say they do not have access and suggest asking an admin.'
     + '\nRules: use tools to look things up and never invent figures, names or dates. Keep currencies separate (never add USD to NGN). Say the period or as-of date of every figure. If a tool returns nothing, say so and say where in the app to add it. '
     + 'Never name third-party data vendors or providers (for example credit bureaus or bank-data services); say "credit check" or "bank feed". '

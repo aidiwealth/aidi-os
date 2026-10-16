@@ -46,9 +46,10 @@ async function upload(f: File | undefined) {
   const fd = new FormData(); fd.append('file', f)
   state.busy = true
   try {
-    const r = await $fetch<{ values: Record<string, number | null>; notes: string }>('/api/public/report/' + token + '/upload', { method: 'POST', body: fd })
+    const r = await $fetch<{ values: Record<string, number | null>; notes: string; update?: { highlights: string; challenges: string; asks: string } }>('/api/public/report/' + token + '/upload', { method: 'POST', body: fd })
     let found = 0
     for (const [k, v] of Object.entries(r.values)) if (v !== null && v !== undefined) { vals[k] = String(v); found++ }
+    if (r.update) { if (!upd.highlights && r.update.highlights) upd.highlights = r.update.highlights; if (!upd.challenges && r.update.challenges) upd.challenges = r.update.challenges; if (!upd.asks && r.update.asks) upd.asks = r.update.asks }
     state.aiNote = found ? 'We filled in ' + found + ' figure' + (found === 1 ? '' : 's') + ' from your file. Please check them before submitting.' + (r.notes ? ' Note: ' + r.notes : '')
       : 'We could not find these figures in your file. Please type them in.'
   } catch (e) { state.msg = errText(e) } finally { state.busy = false; if (fileEl.value) fileEl.value.value = '' }
@@ -70,13 +71,13 @@ async function upload(f: File | undefined) {
         <h2>Thank you, {{ data.founderName.split(' ')[0] }}.</h2>
         <p>Your {{ data.periodLabel }} update has been received by the {{ data.workspace.firm }} team. You can still change it below until the link expires on {{ new Date(data.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) }}.</p>
       </div>
-      <p v-else class="lead">Hi {{ data.founderName.split(' ')[0] }}, this takes about five minutes. Type your figures, or upload your spreadsheet and we'll fill them in for you. You can save and come back to finish with the same link.</p>
+      <p v-else class="lead">Hi {{ data.founderName.split(' ')[0] }}, this takes about five minutes. Drop in your report (spreadsheet or PDF) and we'll fill in the figures and notes for you, or type them in below. You can save and come back to finish with the same link.</p>
 
-      <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Upload an Excel or CSV file"
+      <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Upload your report: Excel, CSV or PDF"
         @click="fileEl?.click()" @keydown.enter.prevent="fileEl?.click()" @keydown.space.prevent="fileEl?.click()"
         @dragenter.prevent="over = true" @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="over = false; upload($event.dataTransfer?.files?.[0])">
-        <input ref="fileEl" type="file" class="sr-only" tabindex="-1" accept=".xlsx,.csv" @change="upload(($event.target as HTMLInputElement).files?.[0])">
-        <p><b>{{ state.busy ? 'Reading your file…' : 'Upload your Excel or CSV' }}</b> — drop it here or click to choose</p>
+        <input ref="fileEl" type="file" class="sr-only" tabindex="-1" accept=".xlsx,.csv,.pdf,application/pdf" @change="upload(($event.target as HTMLInputElement).files?.[0])">
+        <p><b>{{ state.busy ? 'Reading your file…' : 'Drop your report here' }}</b> (Excel, CSV or PDF, such as your investor update), or click to choose</p>
         <p class="hint">We read the {{ data.periodLabel }} figures from it. You check them before anything is sent.</p>
       </div>
       <p v-if="state.aiNote" class="ai" role="status">{{ state.aiNote }}</p>

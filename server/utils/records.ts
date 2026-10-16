@@ -25,6 +25,7 @@ export const RECORDS: Record<string, RecordType> = {
   update: { table: 'financials.updates', module: 'updates', roles: ['admin', 'gp'], name: 'title' },
   investor: { table: 'financials.investors', module: 'updates', roles: ['admin', 'gp'], name: 'name' },
   dr_file: { table: 'fundraise.files', module: 'fundraising', roles: ['admin', 'gp'], name: 'title' },
+  dr_room: { table: 'fundraise.rooms', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   dr_link: { table: 'fundraise.links', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   round_investor: { table: 'fundraise.round_investors', module: 'fundraising', roles: ['admin', 'gp'], name: 'name' },
   memo: { table: 'fundraise.memos', module: 'fundraising', roles: ['admin', 'gp'], name: 'title' },

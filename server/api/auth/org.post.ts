@@ -1,3 +1,4 @@
+import { AIDI_ORG_SQL } from '~/server/utils/session'
 // Switch the current session to another workspace the person belongs to.
 import { z } from 'zod'
 const Body = z.object({ organization_id: z.string().uuid() })
@@ -7,8 +8,9 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Choose a workspace.')
   const ok = await asPlatform(() => db().query(
     `SELECT 1 FROM core.memberships m JOIN core.organizations o ON o.id = m.organization_id
-      WHERE m.user_id = $1 AND m.organization_id = $2 AND m.status = 'active' AND o.status = ANY($3::text[])`, [s.userId, b.data.organization_id, LIVE_ORG_STATUSES]))
-  if (!ok.rowCount) throw apiError('forbidden', 'You do not have access to that workspace.', 403)
+      WHERE m.user_id = $1 AND m.organization_id = $2 AND m.status = 'active' AND o.status = ANY($3::text[])
+        ${hostBrand(event) === 'finvry' ? 'AND NOT ' + AIDI_ORG_SQL : ''}`, [s.userId, b.data.organization_id, LIVE_ORG_STATUSES]))
+  if (!ok.rowCount) throw apiError('forbidden', hostBrand(event) === 'finvry' ? 'Aidi OS workspaces open at app.theaidigroup.com.' : 'You do not have access to that workspace.', 403)
   await db().query('UPDATE core.sessions SET organization_id = $2 WHERE id = $1', [s.sessionId, b.data.organization_id])
   forgetSessions((_, sid) => sid === s.sessionId)
   await db().query('UPDATE core.users SET last_org_id = $2 WHERE id = $1', [s.userId, b.data.organization_id])

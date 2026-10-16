@@ -1,6 +1,6 @@
 // Create (with standard stages) or update a pipeline.
 import { z } from 'zod'
-const n = z.union([z.coerce.number().min(0), z.literal('').transform(() => null), z.null()]).optional()
+const n = z.preprocess((v) => (typeof v === 'string' ? v.replace(/[,\s$₦%]/g, '') : v), z.union([z.literal('').transform(() => null), z.coerce.number().min(0), z.null()])).optional()
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp')
   const b = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(120), currency: z.enum(['USD', 'NGN']), target: n, instrument: z.enum(['safe', 'priced', 'convertible_note']).default('safe'),

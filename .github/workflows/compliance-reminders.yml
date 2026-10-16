@@ -32,3 +32,7 @@ jobs:
       - name: Credit monitoring
         run: |
           curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/credit-monitor -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
+
+      - name: Linked sheets (Financials and forecasts)
+        run: |
+          curl -fsS -X POST https://app.theaidigroup.com/api/public/cron/sheets -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

@@ -11,6 +11,7 @@ const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }
 const scoped = computed(() => !!me.value?.entity_scoped)
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const co = computed(() => subj.value?.company ?? null)
+const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
 const subject = ref(co.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const currency = ref(co.value?.currency ?? 'USD')
 watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.currency } })
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
@@ -68,12 +69,28 @@ async function fromSheet(ev: Event) {
   busy.value = true; msg.value = ''
   const fd = new FormData(); fd.append('file', f); fd.append('wanted', periodEnd.value || 'latest period')
   try {
-    const r = await $fetch<{ period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id: string }>('/api/financials/extract', { method: 'POST', body: fd })
+    const r = await $fetch<{ period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id: string; more_periods: MorePeriod[] }>('/api/financials/extract', { method: 'POST', body: fd })
+    more.value = r.more_periods ?? []
     if (r.period_end) setFromEnd(r.period_end, r.period_type)
     const c = (r.currency || form.currency).toUpperCase()
     Object.assign(form, { currency: CURS.value.includes(c) ? c : form.currency, document_id: r.document_id, lines: Object.fromEntries(Object.entries(r.lines).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)])), kpis: Object.entries(r.kpis).map(([name, v]) => ({ name, value: String(v) })) })
     aiNote.value = r.notes + ' Check every figure before saving.'
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read the file.' } finally { busy.value = false }
+}
+// Other periods found in the same file (a bank statement over several months, a multi-year P&L): saved in one go.
+interface MorePeriod { period_end: string; period_type: string; lines: Record<string, number | null>; kpis: Record<string, number> }
+const more = ref<MorePeriod[]>([]); const moreBusy = ref(false)
+async function saveMore() {
+  moreBusy.value = true; msg.value = ''
+  let n = 0
+  try {
+    for (const p of more.value) {
+      await $fetch('/api/financials/statements', { method: 'POST', body: { subject: form.subject, period_type: p.period_type, period_end: p.period_end, currency: form.currency,
+        lines: Object.fromEntries(Object.entries(p.lines).filter(([, v]) => v !== null)), kpis: p.kpis, notes: 'Read from the same file as ' + (periodEnd.value || 'the main period') + '.', document_id: form.document_id || undefined } })
+      n++
+    }
+    ok.value = n + ' more period' + (n === 1 ? '' : 's') + ' saved from the file.'; more.value = []; await refresh()
+  } catch (e) { msg.value = errOf(e, 'Saved ' + n + ' of ' + more.value.length + ' periods; the rest could not be saved.') } finally { moreBusy.value = false }
 }
 async function save() {
   busy.value = true; msg.value = ''; ok.value = ''
@@ -119,6 +136,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>
 
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
+    <ClientOnly><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <template v-if="rows.length && latest">
       <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
@@ -138,7 +156,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
             <button class="link" @click="tab = 'statements'">All statements →</button></div></div>
       </template>
       <div v-else-if="tab === 'statements'" class="card flat"><div class="scroll"><table class="table"><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
-        <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end"><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
+        <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end"><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'sheet' ? 'Linked sheet' : r.source === 'api' ? 'From the API' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
           <td class="n"><Money :value="r.derived.revenue" :currency="r.currency" /></td><td class="n">{{ pctFmt(r.derived.gross_margin) }}</td><td class="n"><Money :value="r.derived.ebitda" :currency="r.currency" /></td>
           <td class="n"><Money :value="r.derived.net_income" :currency="r.currency" /></td><td class="n"><Money :value="r.derived.cash" :currency="r.currency" /></td>
           <td class="n"><template v-if="r.id && canEdit && !converting"><button class="link" type="button" @click="openForm(r)">Edit</button> · <DeleteButton type="statement" :id="r.id" :name="lbl(r.period_end) + ' statement'" link @deleted="refresh()" /></template></td></tr></tbody></table></div></div>
@@ -159,7 +177,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
-        <DropZone accept=".xlsx,.csv" :disabled="busy" :label="busy ? 'Reading your spreadsheet…' : 'Fill from a spreadsheet'" hint="Drop an Excel or CSV file and we map the figures for you to check · or click to choose" @change="fromSheet" />
+        <DropZone accept=".xlsx,.csv,.pdf,application/pdf" :disabled="busy" :label="busy ? 'Reading your file…' : 'Fill from a file'" hint="Drop accounts or a bank statement (Excel, CSV or PDF) and we map the figures for you to check · or click to choose" @change="fromSheet" />
+        <div v-if="more.length" class="more"><span><b>{{ more.length }} more period{{ more.length === 1 ? '' : 's' }} in this file</b>: {{ more.map((p) => p.period_end.slice(0, 7)).join(', ') }}. Save the one below first, or save these as they were read.</span><button type="button" class="btn secondary sm" :disabled="moreBusy || !form.subject" @click="saveMore">{{ moreBusy ? 'Saving…' : 'Save these ' + more.length }}</button></div>
         <div v-if="form.subject && form.subject !== 'group'" class="srcs">
           <div class="src"><span class="sl"><b>Google Sheets</b><em>Share the sheet as "Anyone with the link: Viewer", then paste the link.</em></span><span class="sr"><input v-model="src.gs" placeholder="https://docs.google.com/spreadsheets/d/…"><button type="button" class="btn secondary sm" :disabled="!src.gs || !!src.busy" @click="fromGoogle">{{ src.busy === 'gs' ? 'Reading…' : 'Import' }}</button></span></div>
           <div v-if="src.qb" class="src"><span class="sl"><b>QuickBooks</b><em>{{ src.qb.connected ? 'Connected' + (src.qb.company ? ' · ' + src.qb.company : '') + (src.qb.last_pulled_at ? ' · last pulled ' + new Date(src.qb.last_pulled_at).toLocaleDateString('en-GB') : '') : src.qb.configured ? 'Pull P&L, balance sheet and cash flow for the period you choose.' : 'Not set up on this server yet.' }}</em></span>
@@ -216,4 +235,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .srcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .src { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .sl { display: flex; flex-direction: column; } .sl b { font-size: 13.5px; } .sl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sr { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; } .sr input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .lnk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; }
 .rc { font-size: 12.5px; color: var(--c-warn); }
 .lock { font-size: 11.5px; font-weight: 600; padding: 3px 8px; background: #fff6e6; color: #a5650b; white-space: nowrap; }
+.more { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); }
 </style>

@@ -2,7 +2,10 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 export interface InvoicePdf { title?: string; number: string; issue_date: string; due_date?: string | null; status?: string | null; paid_at?: string | null; currency: string; issuer: { name: string; address?: string; email?: string; phone?: string }; bill_to: { name: string; email?: string; address?: string }; lines: { description: string; quantity: number; unit_amount: number; amount: number; kind?: string }[]; amount: number; note?: string | null; payment?: string | null; brand?: 'aidi' | 'finvry'; footer?: string | null; period?: string | null }
 const clean = (s: string) => String(s ?? '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF\n]/g, '')
-export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
+import { FINVRY_TAGLINE, finvryEmail, finvryAddress, legalFooter } from '../../shared/invoice-brand'
+export async function invoicePdf(inv0: InvoicePdf): Promise<Uint8Array> {
+  // Finvry invoices show Finvry only: "A product of TAGroup", finvry.com contact details, the Finvry legal line.
+  const inv: InvoicePdf = inv0.brand === 'finvry' ? { ...inv0, issuer: { name: FINVRY_TAGLINE, address: finvryAddress(inv0.issuer.address) || undefined, email: finvryEmail(inv0.issuer.email) + '  ·  finvry.com', phone: inv0.issuer.phone }, footer: legalFooter(inv0.footer ?? null) } : inv0
   const pdf = await PDFDocument.create(); pdf.setTitle('Invoice ' + clean(inv.number)); pdf.setProducer('Finvry')
   const reg = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const W = 612, H = 792, M = 56, ink = rgb(0.06, 0.1, 0.18), mut = rgb(0.42, 0.45, 0.5), blue = rgb(0.05, 0.1, 0.18)
@@ -48,6 +51,6 @@ export async function invoicePdf(inv: InvoicePdf): Promise<Uint8Array> {
     if (y < top + 14) { page = pdf.addPage([W, H]) }
     let fy = top; page.drawLine({ start: { x: M, y: fy + 6 }, end: { x: W - M, y: fy + 6 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) }); fy -= 8
     for (const l of ls) { page.drawText(clean(l), { x: (W - reg.widthOfTextAtSize(clean(l), 8)) / 2, y: fy, size: 8, font: reg, color: mut }); fy -= 11 } }
-  const pages = pdf.getPages(); pages.forEach((p, i) => { const t = clean(inv.issuer.name) + '  ·  Invoice ' + clean(inv.number) + '  ·  page ' + (i + 1) + ' of ' + pages.length; p.drawText(t, { x: (W - reg.widthOfTextAtSize(t, 7.5)) / 2, y: 30, size: 7.5, font: reg, color: mut }) })
+  const pages = pdf.getPages(); pages.forEach((p, i) => { const t = (inv.brand === 'finvry' ? 'Finvry' : clean(inv.issuer.name)) + '  ·  Invoice ' + clean(inv.number) + '  ·  page ' + (i + 1) + ' of ' + pages.length; p.drawText(t, { x: (W - reg.widthOfTextAtSize(t, 7.5)) / 2, y: 30, size: 7.5, font: reg, color: mut }) })
   return pdf.save()
 }

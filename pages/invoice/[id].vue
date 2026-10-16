@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A Finvry subscription invoice, laid out like the Telroi invoice. For Aidi platform staff and admins of the invoiced workspace.
-import { legalFooter } from '~/shared/invoice-brand'
+import { legalFooter, FINVRY_TAGLINE, finvryEmail, finvryAddress } from '~/shared/invoice-brand'
 definePageMeta({ layout: false })
 const legal = legalFooter(null)
 const id = useRoute().params.id as string
@@ -21,7 +21,7 @@ const back = () => (history.length > 1 ? history.back() : navigateTo('/settings'
       <div class="bar noprint"><button type="button" class="btn secondary" @click="back">← Back</button><span /><button type="button" class="btn secondary" @click="doPrint">Download PDF</button><a v-if="data.payUrl && data.invoice.status !== 'paid'" :href="data.payUrl" class="btn">Pay now</a></div>
       <article class="ti">
         <header class="hd">
-          <div><div class="logo"><img src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"></div><h1>{{ data.issuer.issuer_name }}</h1><p class="pre">{{ data.issuer.issuer_address }}</p><p>{{ data.issuer.issuer_email }}</p></div>
+          <div><div class="logo"><img src="/brand/finvry-logo.svg" alt="Finvry" class="fvimg"></div><h1>{{ FINVRY_TAGLINE }}</h1><p class="pre">{{ finvryAddress(data.issuer.issuer_address) }}</p><p>{{ finvryEmail(data.issuer.issuer_email) }}</p><p>finvry.com</p></div>
           <div class="rt"><span class="lb">Invoice</span><b class="no">{{ data.invoice.number }}</b>
             <span class="chip" :class="data.invoice.overdue ? 'over' : data.invoice.status">{{ data.invoice.status === 'paid' ? 'Paid ' + short(data.invoice.paid_at) : data.invoice.status === 'void' ? 'Void' : (data.invoice.overdue ? 'Overdue · ' : 'Due ') + short(data.invoice.due_date) }}</span></div>
         </header>
