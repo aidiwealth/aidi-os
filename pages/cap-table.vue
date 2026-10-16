@@ -28,6 +28,9 @@ const n = (v: number) => Math.round(v).toLocaleString('en-US'), pct = (v: number
 const usd = (v: number | null | undefined, c = 'USD') => (v === null || v === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: v < 10 ? 4 : 0 }).format(v))
 const hn = (id: string) => data.value?.holders.find((h) => h.id === id)?.name ?? '—'
 const cn = (id: string) => data.value?.classes.find((c) => c.id === id)?.name ?? '—'
+const toCrm = ref(false)
+// After an import, offer to bring the investors into Fundraising and Contacts.
+async function afterImport(id: string) { ct.value = id; await refresh(); tab.value = 'overview'; if (data.value?.holders.some((h) => h.kind === 'investor')) toCrm.value = true }
 const KIND: Record<string, string> = { founder: 'Founder', employee: 'Employee', advisor: 'Advisor', investor: 'Investor', other: 'Other' }
 const mix = computed(() => { if (!t.value) return []; const m: Record<string, number> = {}; for (const r of t.value.rows) m[KIND[r.holder.kind] ?? 'Other'] = (m[KIND[r.holder.kind] ?? 'Other'] ?? 0) + r.fd; if (t.value.pool) m['Option pool (available)'] = t.value.pool; return Object.entries(m).map(([label, value]) => ({ label, value })) })
 // One form for every record type.
@@ -110,7 +113,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
         <EmptyState v-if="!data.issuances.length" compact icon="equity" title="No shares issued yet" /></div>
       <div class="two"><div class="card pad0"><div class="ch"><h3>Share classes</h3><button class="btn secondary sm" @click="edit('class')">Add a class</button></div>
         <table class="t" data-nosearch><thead><tr><th>Class</th><th>Type</th><th class="r">Liquidation preference</th><th>Seniority</th><th /></tr></thead><tbody><tr v-for="c in data.classes" :key="c.id"><td><b>{{ c.name }}</b></td><td>{{ c.kind === 'preferred' ? 'Preferred' : 'Common' }}</td><td class="r">{{ c.kind === 'preferred' ? c.liq_pref + '×' + (c.participating ? ', participating' : ', non-participating') : '—' }}</td><td>{{ c.seniority }}</td><td class="r"><button class="lk" @click="edit('class', c)">Edit</button></td></tr></tbody></table></div>
-        <div class="card pad0"><div class="ch"><h3>Holders</h3><button class="btn secondary sm" @click="edit('holder')">Add a holder</button></div>
+        <div class="card pad0"><div class="ch"><h3>Holders</h3><div class="row"><button v-if="data.holders.length" class="btn secondary sm" @click="toCrm = true">Add to Fundraising</button><button class="btn secondary sm" @click="edit('holder')">Add a holder</button></div></div>
           <table class="t" data-nosearch><tbody><tr v-for="h in data.holders" :key="h.id"><td><b>{{ h.name }}</b><span class="sub">{{ KIND[h.kind] }}{{ h.email ? ' · ' + h.email : '' }}</span></td><td class="r"><button class="lk" @click="edit('holder', h)">Edit</button></td></tr></tbody></table></div></div>
     </template>
 
@@ -181,6 +184,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
         <p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button v-if="f.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button v-if="!f.id && ['issuance', 'grant', 'convertible'].includes(f.type)" class="btn secondary" :disabled="busy" title="Draft the agreement, have it signed, and let it update the cap table" @click="startSign(f.type as 'issuance' | 'grant' | 'convertible', { ...f.d })">Send for e-signature</button><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : f.id ? 'Save' : 'Record only' }}</button></template>
     </AppModal>
+    <CapToCrm :open="toCrm" :ct="data.captable" @close="toCrm = false" />
     <EquitySign :open="sg.open" :ct="data.captable" :type="sg.type" :seed="sg.seed" :holders="data.holders" :consents="consents" :me="es?.me ?? { name: '', email: '' }" @close="sg.open = false" @sent="signSent" />
     <EquityConsent :open="cs.open" :ct="data.captable" :pending="awaiting" :preselect="cs.pre" :me="es?.me ?? { name: '', email: '' }" @close="cs.open = false" @sent="consentSent" />
     <ShareLinks :open="shareOpen" kind="captable" :object-id="data.captable" :title="curCt?.name ?? 'cap table'" @close="shareOpen = false" />
@@ -189,7 +193,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
         <label class="label">Name<input v-model="cm.name" maxlength="120"></label><label class="label">Note (optional)<input v-model="cm.note" maxlength="1000" placeholder="e.g. After the seed round closes"></label><p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="cm.open = false">Cancel</button><button class="btn" :disabled="busy || !cm.name" @click="ctAct(cm.mode)">{{ cm.mode === 'rename' ? 'Save' : 'Create' }}</button></template>
     </AppModal>
-    <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="(id: string) => { ct = id; refresh(); tab = 'overview' }" />
+    <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="afterImport" />
   </section>
 </template>
 <style scoped>

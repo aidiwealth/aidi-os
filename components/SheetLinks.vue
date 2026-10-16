@@ -2,7 +2,10 @@
 // Live-linked spreadsheets: link a shared Google Sheet, Excel online or Dropbox file, choose which rows feed
 // Financials (statement lines and custom metrics) or a forecast, and it stays in step: read on open, daily, or on
 // "Sync now".
-interface Link { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
+interface Link { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; mode?: 'rows' | 'ai'; ai_map?: AiM | null; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
+interface AiBlock { sheet: string; title: string; label_col: string; scale: number; periods: { col: string; period_type: string; period_end: string; projected: boolean }[]; rows: { row: number; label: string; to: string; kpi: string; pct: boolean }[]; use?: boolean }
+interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
+interface AiRes { provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null }[] } }
 interface Prev { provider: string; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
 const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
 const emit = defineEmits<{ synced: [] }>()
@@ -29,13 +32,14 @@ const mon = (ym: string) => new Date(ym + '-01T00:00:00Z').toLocaleDateString('e
 
 // The link form.
 const open = ref(false), step = ref(1), busy = ref(false), msg = ref('')
-const f = reactive({ id: '', name: '', url: '', sheet: '', forecast_id: '', currency: 'USD', auto: true })
+const f = reactive({ id: '', name: '', url: '', sheet: '', forecast_id: '', currency: 'USD', auto: true, mode: 'ai' as 'rows' | 'ai' })
+const ai = ref<AiRes | null>(null), openB = ref<number | null>(null)
 const prev = ref<Prev | null>(null), map = ref<Record<string, string>>({}), keep = ref<{ label: string; to: string }[] | null>(null)
 const tab = computed(() => prev.value?.sheets.find((s) => s.sheet === f.sheet) ?? prev.value?.sheets[0] ?? null)
 function start(l?: Link) {
-  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true })
-  keep.value = l?.mapping ?? null; prev.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
-  if (l) read()
+  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: l ? (l.mode ?? 'rows') : props.target === 'financials' ? 'ai' : 'rows' })
+  keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
+  if (l) { if (f.mode === 'ai') aiRead(); else read() }
 }
 function applyMap() {
   const t = tab.value; if (!t) return
@@ -52,6 +56,36 @@ async function read() {
     applyMap(); step.value = 2
   } catch (e) { msg.value = err(e, 'Could not read that sheet.') } finally { busy.value = false }
 }
+// Read with AI: the whole workbook, any layout.
+async function aiRead() {
+  if (!f.url.trim()) { msg.value = 'Paste the share link.'; return }
+  busy.value = true; msg.value = ''
+  try {
+    ai.value = await $fetch<AiRes>('/api/sheet-links/ai-read', { method: 'POST', body: { url: f.url, subject: props.subject, currency: f.currency } })
+    for (const b of ai.value.map.blocks) b.use = true
+    if (!f.name) f.name = ai.value.map.company.name ? ai.value.map.company.name + ' model' : ai.value.provider + ' workbook'
+    step.value = 3
+  } catch (e) { msg.value = err(e, 'Could not read that workbook.') } finally { busy.value = false }
+}
+function next() { if (f.mode === 'ai') aiRead(); else read() }
+async function saveAi() {
+  if (!ai.value) return
+  busy.value = true; msg.value = ''
+  try {
+    const r = await $fetch<{ months?: number; skipped?: string[]; error?: string }>('/api/sheet-links', { method: 'POST', body: { id: f.id || undefined, name: f.name, url: f.url, target: 'financials', subject: props.subject, currency: f.currency, auto: f.auto, mode: 'ai', ai_map: ai.value.map } })
+    open.value = false; noteErr.value = !!r.error
+    note.value = r.error ? 'Linked, but the first read failed: ' + r.error : 'Linked. ' + (r.months ?? 0) + ' period' + (r.months === 1 ? '' : 's') + ' brought in' + (r.skipped?.length ? '; skipped ' + r.skipped.join(', ') : '') + '.'
+    await load(); emit('synced')
+  } catch (e) { msg.value = err(e, 'Could not save the link.') } finally { busy.value = false }
+}
+const LINE_LABEL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of revenue', gross_profit: 'Gross profit', opex_payroll: 'Payroll', opex_marketing: 'Sales & marketing', opex_rnd: 'R&D', opex_ga: 'G&A', opex_other: 'Other operating costs', opex_total: 'Total operating costs', ebitda: 'EBITDA', depreciation: 'D&A', interest: 'Interest', tax: 'Tax', net_income: 'Net income', cash: 'Cash', receivables: 'Receivables', investments: 'Investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
+const asWhat = (r: AiBlock['rows'][number]) => (r.to === 'kpi' ? 'Metric: ' + (r.kpi || r.label) : LINE_LABEL[r.to] ?? r.to)
+const PT: Record<string, string> = { month: 'Month', quarter: 'Quarter', year: 'Year' }
+const span = (b: AiBlock) => { const a = b.periods.filter((p) => !p.projected).map((p) => p.period_end).sort(); const pr = b.periods.filter((p) => p.projected).length; return (a.length ? a.length + ' ' + (b.periods[0]?.period_type ?? 'period') + (a.length === 1 ? '' : 's') + ' to ' + perLabel(b.periods[0]?.period_type ?? 'month', a[a.length - 1]!) : 'no actuals') + (pr ? ' · ' + pr + ' projected' : '') }
+const perLabel = (t: string, d: string) => { const x = new Date(d + 'T00:00:00Z'); return t === 'year' ? 'FY' + x.getUTCFullYear() : t === 'quarter' ? 'Q' + (Math.floor(x.getUTCMonth() / 3) + 1) + ' ' + x.getUTCFullYear() : x.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) }
+const factGroups = computed(() => { const g: Record<string, AiM['facts']> = {}; for (const x of ai.value?.map.facts ?? []) (g[x.goes_to || 'Other'] ??= []).push(x); return g })
+const kept = computed(() => ai.value?.map.blocks.filter((b) => b.use !== false).length ?? 0)
+const money0 = (v: number | null) => (v === null ? '—' : Math.round(v).toLocaleString('en-US'))
 watch(() => f.sheet, () => { if (step.value === 2) { keep.value = null; applyMap() } })
 const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi'))
 const dup = (k: string) => k && k !== 'kpi' && used.value.filter((v) => v === k).length > 1
@@ -75,16 +109,38 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
     <p v-if="note" :class="noteErr ? 'error' : 'okm'">{{ note }}</p>
     <ul v-if="shown.length" class="sll">
       <li v-for="l in shown" :key="l.id">
-        <div class="slm"><b>{{ l.name }}</b><span>{{ l.target === 'forecast' ? 'Forecast: ' + (l.forecast ?? '—') : (l.sheet ? 'Tab ' + l.sheet + ' · ' : '') + l.currency }} · {{ l.mapping.length }} row{{ l.mapping.length === 1 ? '' : 's' }} · synced {{ ago(l.last_synced_at) }}{{ l.last_result?.months !== undefined && !l.last_error ? ' (' + l.last_result.months + ' months)' : '' }}{{ l.auto ? '' : ' · manual only' }}</span>
-          <span v-if="l.last_error" class="slx">{{ l.last_error }}</span></div>
-        <div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">Edit</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
+        <div class="slm"><b>{{ l.name }}</b><span>{{ l.target === 'forecast' ? 'Forecast: ' + (l.forecast ?? '—') : l.mode === 'ai' ? 'Read with AI · ' + l.currency : (l.sheet ? 'Tab ' + l.sheet + ' · ' : '') + l.currency }} · {{ l.mode === 'ai' ? (l.ai_map?.blocks.length ?? 0) + ' table' + (l.ai_map?.blocks.length === 1 ? '' : 's') : l.mapping.length + ' row' + (l.mapping.length === 1 ? '' : 's') }} · synced {{ ago(l.last_synced_at) }}{{ l.last_result?.months !== undefined && !l.last_error ? ' (' + l.last_result.months + (l.mode === 'ai' ? ' periods' : ' months') + ')' : '' }}{{ l.auto ? '' : ' · manual only' }}</span>
+          <span v-if="l.last_error" class="slx">{{ l.last_error }}</span><span v-if="l.mode === 'ai' && l.ai_map?.suggestions?.length" class="sgl">Worth adding to the sheet: {{ l.ai_map.suggestions.slice(0, 4).map((x) => x.metric).join(', ') }}</span></div>
+        <div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">{{ l.mode === 'ai' ? 'Read again with AI' : 'Edit' }}</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
       </li>
     </ul>
     <p v-else-if="target === 'financials' && (!subject || subject === 'group')" class="sub">Choose a company or entity to link a sheet.</p>
     <AppModal :open="open" :title="f.id ? 'Edit linked sheet' : 'Link a sheet'" wide @close="open = false">
       <div v-if="step === 1" class="slf">
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
-        <p class="sub">Share the file so anyone with the link can view it. Put the months across one heading row (Jan 2026, Feb 2026…) and line names down a column; your other tabs and formulas can stay as they are.</p>
+        <div v-if="target === 'financials'" class="mo"><label class="ck"><input v-model="f.mode" type="radio" value="ai"> <span><b>Read the whole workbook with AI</b><span class="sub"> For full financial models: many tabs, years or quarters, actuals beside projections, side-by-side tables, two currencies. AI finds where each figure is; the figures are then read straight from your cells on every sync.</span></span></label>
+          <label class="ck"><input v-model="f.mode" type="radio" value="rows"> <span><b>Choose rows myself</b><span class="sub"> One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column.</span></span></label>
+          <label v-if="f.mode === 'ai'" class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label></div>
+        <p class="sub">Share the file so anyone with the link can view it.</p>
+      </div>
+      <div v-else-if="step === 3 && ai" class="slf">
+        <div class="g3"><label class="fl">Name<input v-model="f.name" maxlength="120"></label><label class="fl">Currency<input :value="f.currency" disabled></label></div>
+        <p class="sub">{{ ai.provider }} · read {{ ai.tabs.length }} tab{{ ai.tabs.length === 1 ? '' : 's' }}{{ ai.map.company.name ? ' · ' + ai.map.company.name : '' }}{{ ai.map.fiscal_year_end ? ' · year ends ' + ai.map.fiscal_year_end : '' }} · into {{ subjectLabel || 'this company' }}</p>
+        <p class="sum">Brings in actuals for {{ [ai.preview.months ? ai.preview.months + ' month' + (ai.preview.months === 1 ? '' : 's') : '', ai.preview.quarters ? ai.preview.quarters + ' quarter' + (ai.preview.quarters === 1 ? '' : 's') : '', ai.preview.years ? ai.preview.years + ' year' + (ai.preview.years === 1 ? '' : 's') : ''].filter(Boolean).join(', ') || 'no periods' }}{{ ai.preview.projected ? '. ' + ai.preview.projected + ' projected or unfinished period' + (ai.preview.projected === 1 ? ' is' : 's are') + ' left out of actuals' : '' }}.</p>
+        <h4>Tables found</h4>
+        <div class="tw"><table class="mt" data-nosearch><thead><tr><th /><th>Table</th><th>Tab</th><th>Periods</th><th class="n">Rows</th></tr></thead>
+          <tbody><template v-for="(b, i) in ai.map.blocks" :key="i"><tr :class="{ off: b.use === false }"><td><input v-model="b.use" type="checkbox" :aria-label="'Use ' + b.title"></td><td><button class="lnk" type="button" @click="openB = openB === i ? null : i">{{ b.title }}</button></td><td>{{ b.sheet }}</td><td>{{ span(b) }}</td><td class="n">{{ b.rows.length }}</td></tr>
+            <tr v-if="openB === i" class="sub2"><td /><td colspan="4"><span v-for="r in b.rows" :key="r.row + r.label" class="rm">{{ r.label }} <em>→ {{ asWhat(r) }}</em></span></td></tr></template></tbody></table></div>
+        <template v-if="ai.preview.periods.length"><h4>Latest periods</h4>
+          <div class="tw sm"><table class="mt" data-nosearch><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Net income</th><th class="n">Cash</th><th class="n">Lines · metrics</th></tr></thead>
+            <tbody><tr v-for="p in ai.preview.periods.slice().reverse().slice(0, 14)" :key="p.period_type + p.period_end"><td>{{ perLabel(p.period_type, p.period_end) }} <span class="sub">{{ PT[p.period_type] }}</span></td><td class="n">{{ money0(p.revenue) }}</td><td class="n">{{ money0(p.net_income) }}</td><td class="n">{{ money0(p.cash) }}</td><td class="n">{{ p.lines }} · {{ p.kpis }}</td></tr></tbody></table></div></template>
+        <template v-if="ai.map.facts.length"><h4>Also in the workbook</h4>
+          <div class="fg"><div v-for="(xs, g) in factGroups" :key="g"><b>{{ g }}</b><span v-for="x in xs" :key="x.sheet + x.label" class="fx">{{ x.label }}: {{ x.value }}</span></div></div></template>
+        <template v-if="ai.map.suggestions.length"><h4>Worth adding to the sheet</h4><ul class="sg"><li v-for="x in ai.map.suggestions" :key="x.metric"><b>{{ x.metric }}</b> {{ x.why }}</li></ul></template>
+        <p v-if="ai.map.notes" class="sub">{{ ai.map.notes }}</p>
+        <p v-if="ai.preview.missing.length" class="sub">Not found in the cells: {{ ai.preview.missing.slice(0, 6).join('; ') }}{{ ai.preview.missing.length > 6 ? '…' : '' }}</p>
+        <details class="sub"><summary>What each tab holds</summary><ul class="sg"><li v-for="t in ai.map.tabs" :key="t.sheet"><b>{{ t.sheet }}</b> {{ t.what }}{{ t.used ? '' : ' (not used)' }}</li></ul></details>
+        <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
       </div>
       <div v-else-if="prev && tab" class="slf">
         <div class="g3">
@@ -101,8 +157,9 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
       </div>
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
-        <button class="btn secondary" type="button" @click="step === 2 && !f.id ? (step = 1) : (open = false)">{{ step === 2 && !f.id ? 'Back' : 'Cancel' }}</button>
-        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="read">{{ busy ? 'Reading…' : 'Read sheet' }}</button>
+        <button class="btn secondary" type="button" @click="step > 1 && !f.id ? (step = 1) : (open = false)">{{ step > 1 && !f.id ? 'Back' : 'Cancel' }}</button>
+        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading every tab…' : 'Reading…') : f.mode === 'ai' ? 'Read with AI' : 'Read sheet' }}</button>
+        <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept" @click="saveAi">{{ busy ? 'Linking…' : 'Link ' + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
         <button v-else class="btn" type="button" :disabled="busy || !chosen || used.length !== new Set(used).size" @click="save">{{ busy ? 'Linking…' : 'Link ' + chosen + ' row' + (chosen === 1 ? '' : 's') }}</button>
       </template>
     </AppModal>
@@ -135,4 +192,9 @@ select.bad { border-color: var(--c-danger) }
 .ck { display: flex; gap: 8px; align-items: center; font-size: 13px }
 .okm { color: var(--c-ink); font-size: 13px; margin: 8px 0 0 }
 td.n, th.n { text-align: right; white-space: nowrap }
+.mo { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); padding: 10px 12px } .mo .ck { align-items: flex-start; font-size: 13.5px } .mo .ck input { margin-top: 3px } .mo .ck b { font-weight: 500 } .cur { max-width: 180px }
+.sum { margin: 0; font-size: 14px } h4 { margin: 6px 0 0; font-size: 13px; font-weight: 600 } .tw.sm { max-height: 30vh }
+.lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-align: left } tr.sub2 td { background: #fafafa } .rm { display: inline-block; margin: 2px 14px 2px 0; font-size: 12.5px } .rm em { font-style: normal; color: var(--c-muted) }
+.fg { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px; font-size: 13px } .fg b { display: block; font-weight: 500; margin-bottom: 2px } .fg .fx { display: block; color: var(--c-ink-soft); overflow-wrap: anywhere }
+.sg { margin: 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft) } .sg b { font-weight: 500; color: var(--c-ink) } .sgl { color: var(--c-muted) }
 </style>

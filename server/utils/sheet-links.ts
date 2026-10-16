@@ -5,6 +5,7 @@
 // rows can move in the sheet without breaking the link.
 import type ExcelJS from 'exceljs'
 import { FIXED_KEYS } from '~/shared/forecast'
+import { AiMap, readWithMap, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
 export interface Grid { name: string; rows: Cell[][] }
@@ -56,13 +57,15 @@ function csvRows(text: string): Cell[][] {
   }
   return out
 }
-export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv'): Promise<Grid[]> {
+export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv', lim: { tabs?: number; rows?: number; cols?: number } = {}): Promise<Grid[]> {
   if (ext === 'csv') return [{ name: 'Sheet1', rows: csvRows(buf.toString('utf8')) }]
   const { default: Excel } = await import('exceljs')
-  const wb = new Excel.Workbook(); await wb.xlsx.load(buf as unknown as ArrayBuffer)
-  return wb.worksheets.slice(0, 12).map((ws) => {
+  const wb = new Excel.Workbook()
+  try { await wb.xlsx.load(buf as unknown as ArrayBuffer) } catch (e) { console.error('[sheets] load', (e as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
+  const maxR = lim.rows ?? MAX_ROWS, maxC = lim.cols ?? MAX_COLS
+  return wb.worksheets.filter((ws) => ws.state !== 'veryHidden').slice(0, lim.tabs ?? 12).map((ws) => {
     const rows: Cell[][] = []
-    for (let r = 1; r <= Math.min(ws.rowCount, MAX_ROWS); r++) { const row = ws.getRow(r), cells: Cell[] = []; for (let c = 1; c <= Math.min(ws.columnCount, MAX_COLS); c++) cells.push(cellVal(row.getCell(c).value)); rows.push(cells) }
+    for (let r = 1; r <= Math.min(ws.rowCount, maxR); r++) { const row = ws.getRow(r), cells: Cell[] = []; for (let c = 1; c <= Math.min(ws.columnCount, maxC); c++) cells.push(cellVal(row.getCell(c).value)); rows.push(cells) }
     return { name: ws.name, rows }
   })
 }
@@ -152,12 +155,13 @@ export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'for
 // Costs are kept as positive figures, however the sheet shows them (minus signs or brackets).
 const COST_LINES_FIN = ['cogs', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other', 'opex_total', 'depreciation', 'interest', 'tax']
 const lastDay = (m: string) => { const d = new Date(m + '-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10) }
-export interface LinkRow { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; currency: string; sheet: string | null; mapping: MapRow[] }
+export interface LinkRow { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; currency: string; sheet: string | null; mapping: MapRow[]; mode?: 'rows' | 'ai'; ai_map?: unknown }
 
 // Reads the sheet and writes the chosen rows. Financials: months up to this one, merged into each month's statement
 // (lines from the sheet replace those lines only). Forecast: the months become given months in that forecast.
 export async function syncLink(l: LinkRow, userId: string | null): Promise<{ months: number; skipped: string[] }> {
   try {
+    if (l.mode === 'ai') return await syncAiLink(l, userId)
     const { buf, ext } = await fetchLinkedSheet(l.url)
     const all = layouts(await readGrids(buf, ext))
     const lay = all.find((x) => x.sheet === l.sheet) ?? all[0]
@@ -204,4 +208,19 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
     throw err
   }
 }
-export const LINK_COLS = 'id, name, url, target, subject, forecast_id, currency, sheet, mapping'
+export const LINK_COLS = 'id, name, url, target, subject, forecast_id, currency, sheet, mapping, mode, ai_map'
+
+// A workbook linked with AI: read the cells its map points at (no AI call) and write every actual period.
+export const AI_GRID = { tabs: 30, rows: 700, cols: 60 }
+async function syncAiLink(l: LinkRow, userId: string | null): Promise<{ months: number; skipped: string[] }> {
+  const map = AiMap.safeParse(l.ai_map)
+  if (!map.success) throw apiError('invalid', 'Read the workbook again with AI to refresh this link.', 422)
+  const { buf, ext } = await fetchLinkedSheet(l.url)
+  const r = readWithMap(await readGrids(buf, ext, AI_GRID), map.data)
+  if (!r.periods.length) throw apiError('empty', 'No figures found where they used to be. Use "Read again with AI" on this link.', 422)
+  const w = await writePeriods(l.subject ?? '', r.periods, l.currency, userId)
+  const lost = r.missing.length
+  await db().query('UPDATE financials.sheet_links SET last_synced_at = now(), last_error = $3, last_result = $2 WHERE id = $1',
+    [l.id, JSON.stringify({ ...previewOf(r), months: w.written, skipped: w.skipped }), lost > 3 ? lost + ' mapped rows were not found; the layout may have changed. Use "Read again with AI".' : null])
+  return { months: w.written, skipped: w.skipped }
+}
