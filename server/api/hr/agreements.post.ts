@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   }
   // Draft with AI.
   if (!d.person_id || !d.kind || !HR_DOCS.includes(d.kind)) throw apiError('invalid', 'Choose the person and the kind of agreement.')
-  rateLimit('docgen', user.userId, 25, 60 * 60 * 1000)
+  await rateLimit('docgen', user.userId, 25, 60 * 60 * 1000)
   const t = DOC_TYPES[d.kind]!
   const answers = d.answers ?? {}
   const missing = t.fields.filter((f) => f.required && !answers[f.key]?.trim()).map((f) => f.label)

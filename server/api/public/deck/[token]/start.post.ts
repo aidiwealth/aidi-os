@@ -4,7 +4,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const token = String(getRouterParam(event, 'token') ?? '')
   const { deck, version } = await deckByToken(token)
-  rateLimit('deck_start', (ipOrNull(event) ?? 'x') + token, 30, 60 * 60 * 1000)
+  await rateLimit('deck_start', (ipOrNull(event) ?? 'x') + token, 30, 60 * 60 * 1000)
   const b = z.object({ email: z.string().trim().toLowerCase().max(254).default(''), name: z.string().trim().max(120).default('') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Enter a valid email.')
   if (deck.require_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.data.email)) throw apiError('email_required', 'Enter your email to view this deck.')

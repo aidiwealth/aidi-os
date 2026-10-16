@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const a = b.data.action
   if (a === 'charge_wallet') await payInvoiceFromWallet(id.data, { userId: user.userId, team: true })
   else if (a === 'send') { if (!(await sendCsInvoice(id.data))) throw apiError('state', 'This invoice is ' + inv.status + '.') }
-  else if (a === 'mark_paid') { if (inv.status === 'void') throw apiError('state', 'This invoice is void.'); await db().query("UPDATE services.invoices SET status = 'paid', paid_at = coalesce($2::date, current_date), paid_via = 'manual' WHERE id = $1", [id.data, b.data.paid_on ?? null]) }
+  else if (a === 'mark_paid') { if (inv.status === 'void') throw apiError('state', 'This invoice is void.'); await db().query("UPDATE services.invoices SET status = 'paid', paid_at = coalesce($2::date, current_date), paid_via = 'manual' WHERE id = $1", [id.data, b.data.paid_on ?? null]); await onboardPaidFormation(id.data) }
   else { if (inv.status === 'paid') throw apiError('state', 'A paid invoice cannot be voided.'); await db().query("UPDATE services.invoices SET status = 'void' WHERE id = $1", [id.data]) }
   await audit({ event, actorUserId: user.userId, action: 'services.invoice_' + a, objectType: 'invoice', objectId: id.data, detail: { number: inv.number } })
   return { ok: true }

@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
-  rateLimit('company_lookup', user.userId, 120, 60 * 60 * 1000)
+  await rateLimit('company_lookup', user.userId, 120, 60 * 60 * 1000)
   const b = z.object({ id: z.string().uuid().optional(), name: z.string().trim().max(200).optional(), website: z.string().trim().max(300).optional() }).safeParse(await readBody(event))
   if (!b.success || (!b.data.name && !b.data.website)) throw apiError('invalid', 'Enter the company name or website.')
   const info = await companyInfo({ name: b.data.name, website: b.data.website })

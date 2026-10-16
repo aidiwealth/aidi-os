@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const Body = z.object({ body: z.string().trim().min(1).max(5000) })
 export default defineEventHandler(async (event) => {
-  rateLimit('job_msg', clientIp(event), 30, 60 * 60 * 1000)
+  await rateLimit('job_msg', clientIp(event), 30, 60 * 60 * 1000)
   const j = await jobFromToken(getRouterParam(event, 'token'))
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Write your message.')

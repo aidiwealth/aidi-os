@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'family', 'admin')
-  rateLimit('minutes_ai', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('minutes_ai', user.userId, 30, 60 * 60 * 1000)
   const b = z.object({ title: z.string().max(200).default('Meeting'), kind: z.string().max(20).default('team'), entity_id: z.string().uuid().nullable().optional(), held_at: z.string().max(40).default(''), attendees: z.array(z.string().uuid()).max(100).default([]), guests: z.string().max(1000).default(''), agenda: z.string().max(20000).default(''), notes: z.string().max(60000) }).safeParse(await readBody(event))
   if (!b.success || b.data.notes.replace(/\s/g, '').length < 20) throw apiError('invalid', 'Write or paste your rough notes first (a few lines is enough).')
   const d = b.data

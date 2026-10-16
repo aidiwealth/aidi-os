@@ -5,7 +5,7 @@ const TYPES: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 }
 export default defineEventHandler(async (event) => {
-  rateLimit('job_upload', clientIp(event), 20, 60 * 60 * 1000)
+  await rateLimit('job_upload', clientIp(event), 20, 60 * 60 * 1000)
   const j = await jobFromToken(getRouterParam(event, 'token'))
   const parts = await readMultipartFormData(event)
   const file = parts?.find((p) => p.name === 'file' && p.filename)

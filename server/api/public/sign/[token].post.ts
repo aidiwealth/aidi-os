@@ -1,6 +1,6 @@
 // Sign from the private link. When the last signer signs, the signed PDF is made and the cap table updates.
 export default defineEventHandler(async (event) => {
-  rateLimit('equity_sign_ip', clientIp(event), 30, 60 * 60 * 1000)
+  await rateLimit('equity_sign_ip', clientIp(event), 30, 60 * 60 * 1000)
   const s = await signerByToken(String(getRouterParam(event, 'token') ?? ''))
   if (!s) throw apiError('not_found', 'This link is not valid.', 404)
   if (s.signed_at) return { ok: true, already: true }

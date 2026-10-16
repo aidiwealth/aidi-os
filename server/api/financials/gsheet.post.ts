@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  rateLimit('fin_extract', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('fin_extract', user.userId, 30, 60 * 60 * 1000)
   const b = z.object({ url: z.string().trim().max(500), subject: z.string().max(80), wanted: z.string().max(60).default('latest period') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Paste the Google Sheets link.')
   const buf = await fetchGoogleSheet(b.data.url)

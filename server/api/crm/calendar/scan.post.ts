@@ -1,7 +1,7 @@
 // Read your own calendar (past 30 days, next 90) and suggest investor meetings to add, matched to pipeline investors.
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('cal_scan', user.userId, 20, 60 * 60 * 1000)
+  await rateLimit('cal_scan', user.userId, 20, 60 * 60 * 1000)
   const c = (await db().query<{ source_url: string | null }>('SELECT source_url FROM crm.calendar LIMIT 1')).rows[0]
   const url = c?.source_url ? calendarUrlOk(c.source_url) : null
   if (!url) throw apiError('invalid', 'Add your calendar address first.')

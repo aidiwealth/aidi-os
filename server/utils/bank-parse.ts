@@ -1,4 +1,4 @@
-// Turning bank statement files into transactions. CSV is parsed directly; PDF is read by Claude.
+// Turning bank statement files into transactions. CSV is parsed directly; PDF is read by the AI.
 // Whatever the source, a statement is only saved if opening + money in - money out = closing.
 import { z } from 'zod'
 
@@ -83,7 +83,7 @@ export function parseCsv(text: string, currency: string): ParsedStatement {
   return { period_start: first.date, period_end: last.date, opening, closing: last.balance, txns, notes: 'Read from CSV columns: ' + [ci.date, ci.desc, ci.amount, ci.debit, ci.credit, ci.balance].map((i) => (i >= 0 ? head[i] : '')).filter(Boolean).join(', ') }
 }
 
-// ── PDF (Claude reads the statement; the tie-out check decides whether it can be saved)
+// ── PDF (the AI reads the statement; the tie-out check decides whether it can be saved)
 const Txn = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().max(500), amount: z.number().finite(), balance: z.number().finite().nullable() })
 const Stmt = z.object({
   period_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),

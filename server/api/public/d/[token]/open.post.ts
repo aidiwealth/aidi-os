@@ -1,7 +1,7 @@
 // Open a file from a data room link: checks the NDA, records who and when, returns a short-lived link to view it.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  rateLimit('dr_open', clientIp(event), 120, 60 * 60 * 1000)
+  await rateLimit('dr_open', clientIp(event), 120, 60 * 60 * 1000)
   const ref = String(getRouterParam(event, 'token') ?? '')
   const b0 = z.object({ file_id: z.string().uuid(), email: z.string().trim().max(254).default(''), download: z.boolean().default(false), nda: z.string().max(40).optional() }).safeParse(await readBody(event))
   if (!b0.success) throw apiError('invalid', 'Invalid request.')

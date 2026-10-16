@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('sheet_link', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('sheet_link', user.userId, 60, 60 * 60 * 1000)
   const b = z.object({ url: z.string().trim().min(10).max(600), target: z.enum(['financials', 'forecast']) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Paste the share link to the sheet.')
   await requireModule(event, b.data.target === 'forecast' ? 'forecast' : 'financials')

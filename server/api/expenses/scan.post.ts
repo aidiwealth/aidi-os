@@ -2,7 +2,7 @@
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   await assertReceiptAi()
-  rateLimit('receipt_scan', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('receipt_scan', user.userId, 60, 60 * 60 * 1000)
   const f = ((await readMultipartFormData(event)) ?? []).find((p) => p.name === 'file' && p.filename && p.data.length)
   if (!f) throw apiError('invalid', 'Choose a file.')
   const mime = f.type || ''

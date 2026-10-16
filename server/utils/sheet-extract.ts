@@ -1,4 +1,4 @@
-// Read an uploaded Excel or CSV file into a small text grid, then ask Claude to pull out the month's metrics.
+// Read an uploaded Excel or CSV file into a small text grid, then ask the AI to pull out the month's metrics.
 // The founder always sees and confirms the numbers before anything is saved.
 import type ExcelJS from 'exceljs'
 import { z } from 'zod'

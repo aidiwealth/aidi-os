@@ -2,7 +2,7 @@
 export default defineEventHandler(async (event) => {
   const token = getQuery(event).token
   if (typeof token !== 'string' || token.length < 20) return sendRedirect(event, '/login?error=link', 302)
-  rateLimit('auth_magic_ip', clientIp(event), 30, 15 * 60 * 1000)
+  await rateLimit('auth_magic_ip', clientIp(event), 30, 15 * 60 * 1000)
   try {
     const who = await verifyToken(token)
     const ticket = await mfaTicketFor(who)

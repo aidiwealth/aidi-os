@@ -2,7 +2,7 @@
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   await assertReceiptAi()
-  rateLimit('receipt_scan', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('receipt_scan', user.userId, 60, 60 * 60 * 1000)
   const id = String(getRouterParam(event, 'id') ?? '')
   if (!/^[0-9a-f-]{36}$/.test(id)) throw apiError('invalid', 'Invalid request.')
   const x = (await db().query<{ amount: number; currency: string; reference: string | null; paid_on: string; payee: string; storage_key: string | null; mime_type: string | null }>(

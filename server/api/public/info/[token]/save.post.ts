@@ -1,7 +1,7 @@
 // Save answers (any time) or submit them. Submitting checks required answers, syncs the company and alerts the team.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  rateLimit('info_save', clientIp(event), 60, 60 * 60 * 1000)
+  await rateLimit('info_save', clientIp(event), 60, 60 * 60 * 1000)
   const r = await infoFromToken(getRouterParam(event, 'token'))
   if (r.status === 'submitted') throw apiError('state', 'This information has already been submitted. Contact us to change anything.', 409)
   const b = z.object({ answers: z.record(z.string().regex(/^[a-z_]{2,48}$/), z.unknown()), submit: z.boolean().default(false) }).safeParse(await readBody(event))

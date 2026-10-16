@@ -4,7 +4,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('ai_investor', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('ai_investor', user.userId, 60, 60 * 60 * 1000)
   const b = z.object({ text: z.string().trim().min(2).max(6000), context: z.string().trim().max(300).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Type or paste something about the investor.')
   const s = z.object({ name: z.string().max(200), firm: z.string().max(200), role: z.string().max(120), email: z.string().max(254), ticket_min_usd: z.number().nullable(), ticket_max_usd: z.number().nullable(),

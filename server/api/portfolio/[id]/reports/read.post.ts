@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('portfolio_report', user.userId, 120, 60 * 60 * 1000)
+  await rateLimit('portfolio_report', user.userId, 120, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Company not found', 404)
   const c = (await db().query<{ name: string; holding_entity_id: string | null }>('SELECT name, holding_entity_id FROM portfolio.companies WHERE id = $1', [id.data])).rows[0]

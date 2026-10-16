@@ -15,7 +15,7 @@ const Body = z.object({
   contact: z.object({ name: s(200).min(1), email: z.string().trim().email().max(254), phone: s(40).optional(), country: s(100).optional() })
 })
 export default defineEventHandler(async (event) => {
-  rateLimit('formation', clientIp(event), 6, 60 * 60 * 1000)
+  await rateLimit('formation', clientIp(event), 6, 60 * 60 * 1000)
   await orgBySlug(String(getRouterParam(event, 'slug') ?? ''))
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Please check the form: a company name, at least one owner with ownership, and your name and email.')
@@ -65,7 +65,8 @@ export default defineEventHandler(async (event) => {
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   await audit({ event, actorUserId: null, action: 'services.formation_order', objectType: 'job', objectId: ids.job, detail: { company: names[0], state: d.state, amount } })
   sendJobClientActivity(null, ids.job, d.contact.name, 'Form ' + names[0], 'placed a formation order for ' + names[0] + ' (' + d.state + ')', '').catch((e) => console.error('[formation] alert failed', e))
-  try { const op = currentOrgId(); const ws = await workspaceForClient(event, ids.client); setOrgContext(ws.orgId); try { await sendInviteEmail(email, d.contact.name, 'the Aidi team') } finally { setOrgContext(op) }
+  // The Finvry workspace and invite come after payment (onboardPaidFormation), not here.
+  try {
     await filingsOrdered(ids.client, raw.map((l) => l.code ?? '').filter(Boolean), { vo_term: d.vo_term, ra_free: true }).catch((e) => console.error('[formation] calendar', e)) }
   catch (err) { console.error('[formation] finvry account failed', err) }
   const link = await billUrl(ids.invoice)

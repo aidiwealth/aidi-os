@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('wallet_va', user.userId, 5, 60 * 60 * 1000)
+  await rateLimit('wallet_va', user.userId, 5, 60 * 60 * 1000)
   const b = z.object({ kyc: z.string().regex(/^\d{11}$/), type: z.enum(['bvn', 'nin']).default('bvn') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Enter your 11-digit BVN or NIN.')
   const s = await walletSettings()

@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('docgen', user.userId, 25, 60 * 60 * 1000)
+  await rateLimit('docgen', user.userId, 25, 60 * 60 * 1000)
   const b = z.object({ type: z.string().max(40), entity_id: z.string().uuid().optional(), answers: z.record(z.string(), z.string().max(4000)) }).safeParse(await readBody(event))
   if (!b.success || !DOC_TYPES[b.data.type]) throw apiError('invalid', 'Choose a document.')
   const t = DOC_TYPES[b.data.type]!

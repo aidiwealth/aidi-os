@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   if (getMethod(event) === 'GET') return { enabled: !!row?.enabled_at, enabled_at: row?.enabled_at ?? null, recovery_left: row?.enabled_at ? row.recovery_hashes.length : 0 }
   const b = z.object({ action: z.enum(['start', 'enable', 'disable', 'recovery']), code: z.string().trim().max(20).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
-  rateLimit('mfa_setup', user.userId, 20, 15 * 60 * 1000)
+  await rateLimit('mfa_setup', user.userId, 20, 15 * 60 * 1000)
   const issuer = (await resolveBrand()) === 'finvry' ? 'Finvry' : 'Aidi OS'
   if (b.data.action === 'start') {
     if (row?.enabled_at) throw apiError('state', 'Two-step verification is already on.', 409)

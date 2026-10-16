@@ -1,7 +1,7 @@
 // The client signs an agreement from the job link (no Finvry account needed).
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  rateLimit('agreement_sign_ip', clientIp(event), 20, 60 * 60 * 1000)
+  await rateLimit('agreement_sign_ip', clientIp(event), 20, 60 * 60 * 1000)
   const j = await jobFromToken(getRouterParam(event, 'token'))
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = SignBody.safeParse(await readBody(event))

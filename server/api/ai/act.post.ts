@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ACTION_KINDS, type ActionKind } from '~/server/utils/analyst-tools'
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
-  rateLimit('ai_act', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('ai_act', user.userId, 60, 60 * 60 * 1000)
   const b = z.object({ kind: z.enum(Object.keys(ACTION_KINDS) as [ActionKind, ...ActionKind[]]), args: z.record(z.string(), z.unknown()) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'That action is not available.')
   const spec = ACTION_KINDS[b.data.kind]

@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('memo_ai', user.userId, 15, 60 * 60 * 1000)
+  await rateLimit('memo_ai', user.userId, 15, 60 * 60 * 1000)
   const b = z.object({ notes: z.record(z.string(), z.string().max(3000)).default({}) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const org = (await currentOrg())!

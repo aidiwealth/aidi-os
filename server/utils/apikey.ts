@@ -8,7 +8,7 @@ export async function requireApiKey(event: Parameters<typeof getRequestHeader>[0
   const h = getRequestHeader(event, 'authorization') ?? ''
   const key = h.replace(/^Bearer\s+/i, '').trim()
   if (!/^fv_live_[A-Za-z0-9_-]{20,}$/.test(key)) throw apiError('unauthorized', 'Send your API key as: Authorization: Bearer fv_live_…', 401)
-  rateLimit('api_key', key.slice(0, 20), 600, 60 * 1000)
+  await rateLimit('api_key', key.slice(0, 20), 600, 60 * 1000)
   const k = (await asPlatform(() => db().query<{ id: string; organization_id: string; scopes: string[]; kind: string; status: string }>(
     'SELECT k.id, k.organization_id, k.scopes, o.kind, o.status FROM core.api_keys k JOIN core.organizations o ON o.id = k.organization_id WHERE k.key_hash = $1 AND k.revoked_at IS NULL', [createHash('sha256').update(key).digest('hex')]))).rows[0]
   if (!k || ['suspended', 'closed'].includes(k.status)) throw apiError('unauthorized', 'This API key is not valid.', 401)

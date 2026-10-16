@@ -1,7 +1,7 @@
 // Sign a company's NDA before viewing its investor page, data room or updates. Keeps the exact text signed.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  rateLimit('nda_sign', clientIp(event), 20, 60 * 60 * 1000)
+  await rateLimit('nda_sign', clientIp(event), 20, 60 * 60 * 1000)
   const b = z.object({ kind: z.enum(['page', 'room', 'update']), ref: z.string().min(2).max(120), name: z.string().trim().min(2).max(200), email: z.string().trim().toLowerCase().email().max(254), company: z.string().trim().max(200).default(''), signature: z.string().trim().min(2).max(200), agree: z.literal(true) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Fill in your name, email and signature, and tick to agree.')
   const d = b.data

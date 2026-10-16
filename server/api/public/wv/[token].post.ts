@@ -3,7 +3,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const token = String(getRouterParam(event, 'token') ?? '')
   if (token.length < 20) throw apiError('invalid_link', 'This link is not valid.', 404)
-  rateLimit('wm_view', token.slice(0, 12), 60, 60 * 60 * 1000)
+  await rateLimit('wm_view', token.slice(0, 12), 60, 60 * 60 * 1000)
   const l = (await asPlatform(() => db().query<{ client_id: string; organization_id: string }>('SELECT client_id, organization_id FROM wm.view_links WHERE token_hash = $1 AND NOT revoked', [sha256(token)]))).rows[0]
   if (!l) throw apiError('invalid_link', 'This link is not valid or has been turned off.', 404)
   setOrgContext(l.organization_id)

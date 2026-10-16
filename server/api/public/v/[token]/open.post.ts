@@ -2,7 +2,7 @@
 // returns the figures. Cap tables leave out holders' emails.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  rateLimit('share_open', clientIp(event), 120, 60 * 60 * 1000)
+  await rateLimit('share_open', clientIp(event), 120, 60 * 60 * 1000)
   const b = z.object({ email: z.string().trim().max(254).default(''), name: z.string().trim().max(200).default('') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const l = await findShare(String(getRouterParam(event, 'token') ?? ''))

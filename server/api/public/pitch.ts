@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
   setOrgContext(org.rows[0].id)
   await requireModule(event, 'pitches')
   const ip = clientIp(event)
-  rateLimit('pitch_ip', ip, 5, 60 * 60 * 1000)
+  await rateLimit('pitch_ip', ip, 5, 60 * 60 * 1000)
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw apiError('invalid', 'Please check the form: ' + parsed.error.issues.map((i) => i.path.join('.')).join(', '), 400)
   const b = parsed.data
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
   if (loan && cap && Number(b.loan_amount) > cap) throw apiError('loans_max', 'The most we can lend at the moment is ' + cap.toLocaleString('en-US') + ' ' + (b.loan_currency ?? '') + '.', 400)
   if (loan && !b.loan_amount) throw apiError('invalid', 'Please enter the loan amount you need.', 400)
   // The pitch form no longer asks for BVN/RC; the credit team collects those later on the loan application.
-  rateLimit('pitch_email', email, 3, 24 * 60 * 60 * 1000)
+  await rateLimit('pitch_email', email, 3, 24 * 60 * 60 * 1000)
   const row = await one<{ id: string }>(
     `INSERT INTO deals.pitches (founder_name, email, company, website, deck_url, country, stage, sector, raising_usd, one_liner, description, traction, team, female_founder, ip)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,

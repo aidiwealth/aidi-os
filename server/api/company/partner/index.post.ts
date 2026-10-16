@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  rateLimit('partner_redeem', user.userId, 10, 60 * 60 * 1000)
+  await rateLimit('partner_redeem', user.userId, 10, 60 * 60 * 1000)
   const org = (await currentOrg())!
   if (org.kind !== 'company') throw apiError('not_found', 'Not found', 404)
   const b = z.object({ code: z.string().max(40) }).safeParse(await readBody(event))

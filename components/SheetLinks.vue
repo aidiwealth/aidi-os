@@ -5,7 +5,7 @@
 interface Link { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; mode?: 'rows' | 'ai'; ai_map?: AiM | null; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
 interface AiBlock { sheet: string; title: string; label_col: string; scale: number; periods: { col: string; period_type: string; period_end: string; projected: boolean }[]; rows: { row: number; label: string; to: string; kpi: string; pct: boolean }[]; use?: boolean }
 interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
-interface AiRes { provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null }[] } }
+interface AiRes { document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null }[] } }
 interface Prev { provider: string; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
 const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
 const emit = defineEmits<{ synced: [] }>()
@@ -38,7 +38,7 @@ const prev = ref<Prev | null>(null), map = ref<Record<string, string>>({}), keep
 const tab = computed(() => prev.value?.sheets.find((s) => s.sheet === f.sheet) ?? prev.value?.sheets[0] ?? null)
 function start(l?: Link) {
   Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: l ? (l.mode ?? 'rows') : props.target === 'financials' ? 'ai' : 'rows' })
-  keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
+  keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; fail.value = null; upFile.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
   if (l) { if (f.mode === 'ai') aiRead(); else read() }
 }
 function applyMap() {
@@ -57,20 +57,55 @@ async function read() {
   } catch (e) { msg.value = err(e, 'Could not read that sheet.') } finally { busy.value = false }
 }
 // Read with AI: the whole workbook, any layout.
+// The read runs on the server in the background; this follows it and shows where it is.
+const prog = ref(''), fail = ref<{ message: string; advice: string[] } | null>(null)
+const STAGE: Record<string, string> = { fetch: 'Fetching the workbook…', parse: 'Opening the workbook…', ai: 'Reading the tabs…' }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// Or upload the workbook (an .xlsx or .csv): read the same way, brought in once.
+const upFile = ref<File | null>(null)
+function pickFile(e: Event) { upFile.value = (e.target as HTMLInputElement).files?.[0] ?? null; if (upFile.value) { fail.value = null; void aiRead() } }
 async function aiRead() {
-  if (!f.url.trim()) { msg.value = 'Paste the share link.'; return }
-  busy.value = true; msg.value = ''
+  if (!upFile.value && !f.url.trim()) { msg.value = 'Paste the share link, or upload the file.'; return }
+  busy.value = true; msg.value = ''; fail.value = null; prog.value = upFile.value ? 'Uploading…' : STAGE.fetch!
   try {
-    ai.value = await $fetch<AiRes>('/api/sheet-links/ai-read', { method: 'POST', body: { url: f.url, subject: props.subject, currency: f.currency } })
-    for (const b of ai.value.map.blocks) b.use = true
-    if (!f.name) f.name = ai.value.map.company.name ? ai.value.map.company.name + ' model' : ai.value.provider + ' workbook'
-    step.value = 3
-  } catch (e) { msg.value = err(e, 'Could not read that workbook.') } finally { busy.value = false }
+    let body: FormData | Record<string, string>
+    if (upFile.value) { const fd = new FormData(); fd.append('file', upFile.value); fd.append('subject', props.subject); fd.append('currency', f.currency); body = fd }
+    else body = { url: f.url, subject: props.subject, currency: f.currency }
+    const { id } = await $fetch<{ id: string }>('/api/sheet-links/ai-read', { method: 'POST', body })
+    const started = Date.now()
+    for (;;) {
+      await sleep(2000)
+      const r = await $fetch<{ status: string; stage: string; progress: { done?: number; total?: number; last?: string }; result?: AiRes; error?: { message: string; advice: string[] } }>('/api/sheet-links/ai-read/' + id).catch(() => null)
+      if (!r) { if (Date.now() - started > 15 * 60_000) throw new Error('lost'); continue }
+      if (r.status === 'done' && r.result) {
+        ai.value = r.result
+        for (const b of ai.value.map.blocks) b.use = true
+        if (!f.name) f.name = ai.value.map.company.name ? ai.value.map.company.name + ' model' : ai.value.provider + ' workbook'
+        step.value = 3; break
+      }
+      if (r.status === 'failed') { fail.value = r.error ?? { message: 'The read failed.', advice: ['Try again.'] }; break }
+      prog.value = r.stage === 'ai' && r.progress.total ? 'Reading tab ' + Math.min((r.progress.done ?? 0) + 1, r.progress.total) + ' of ' + r.progress.total + '…' : STAGE[r.stage] ?? 'Working…'
+    }
+  } catch (e) {
+    const status = (e as { status?: number; statusCode?: number }).status ?? (e as { statusCode?: number }).statusCode
+    fail.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message
+      ? { message: err(e, ''), advice: [] }
+      : { message: status === 504 || status === 502 ? 'The server took too long to answer.' : 'We lost contact with the server while reading.', advice: ['Try again in a minute.', 'Or download the workbook as Excel and upload it under Financials → Add figures.'] }
+  } finally { busy.value = false; prog.value = '' }
 }
-function next() { if (f.mode === 'ai') aiRead(); else read() }
+function next() { fail.value = null; if (f.mode === 'ai') aiRead(); else read() }
 async function saveAi() {
   if (!ai.value) return
   busy.value = true; msg.value = ''
+  if (ai.value.document_id) {
+    try {
+      const r = await $fetch<{ months: number; skipped: string[] }>('/api/sheet-links/ai-import', { method: 'POST', body: { document_id: ai.value.document_id, subject: props.subject, currency: f.currency, map: ai.value.map } })
+      open.value = false; noteErr.value = false; upFile.value = null
+      note.value = 'Brought in ' + r.months + ' period' + (r.months === 1 ? '' : 's') + ' from ' + (ai.value.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. An uploaded file does not stay in step; upload it again or link the sheet to keep it current.'
+      emit('synced')
+    } catch (e) { msg.value = err(e, 'Could not bring the figures in.') } finally { busy.value = false }
+    return
+  }
   try {
     const r = await $fetch<{ months?: number; skipped?: string[]; error?: string }>('/api/sheet-links', { method: 'POST', body: { id: f.id || undefined, name: f.name, url: f.url, target: 'financials', subject: props.subject, currency: f.currency, auto: f.auto, mode: 'ai', ai_map: ai.value.map } })
     open.value = false; noteErr.value = !!r.error
@@ -120,8 +155,12 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
         <div v-if="target === 'financials'" class="mo"><label class="ck"><input v-model="f.mode" type="radio" value="ai"> <span><b>Read the whole workbook with AI</b><span class="sub"> For full financial models: many tabs, years or quarters, actuals beside projections, side-by-side tables, two currencies. AI finds where each figure is; the figures are then read straight from your cells on every sync.</span></span></label>
           <label class="ck"><input v-model="f.mode" type="radio" value="rows"> <span><b>Choose rows myself</b><span class="sub"> One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column.</span></span></label>
-          <label v-if="f.mode === 'ai'" class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label></div>
+          <div v-if="f.mode === 'ai'" class="aiu"><label class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
+            <label class="upl">Upload the file instead<span class="sub"> (.xlsx or .csv, read the same way and brought in once)</span><input type="file" accept=".xlsx,.csv" :disabled="busy" @change="pickFile"></label></div></div>
         <p class="sub">Share the file so anyone with the link can view it.</p>
+        <p v-if="prog" class="prg">{{ prog }} <span class="sub">Big workbooks take a minute or two; you can keep this open.</span></p>
+        <div v-if="fail" class="fl2"><b>{{ fail.message }}</b><ul v-if="fail.advice.length"><li v-for="a in fail.advice" :key="a">{{ a }}</li></ul>
+          <span class="fla"><button class="link" type="button" :disabled="busy" @click="aiRead">Try again</button><button v-if="f.mode === 'ai'" class="link" type="button" @click="f.mode = 'rows'; fail = null">Choose rows myself instead</button></span></div>
       </div>
       <div v-else-if="step === 3 && ai" class="slf">
         <div class="g3"><label class="fl">Name<input v-model="f.name" maxlength="120"></label><label class="fl">Currency<input :value="f.currency" disabled></label></div>
@@ -153,13 +192,14 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <div class="tw"><table class="mt" data-nosearch><thead><tr><th>Row in your sheet</th><th class="n">Latest</th><th>Use as</th></tr></thead>
           <tbody><tr v-for="r in tab.rows" :key="r.label" :class="{ off: !map[r.label] }"><td>{{ r.label }}</td><td class="n">{{ fmt(r.last_value) }} <span class="sub">{{ mon(r.last_month) }}</span></td>
             <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'"><option value="">Don't use</option><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></select></td></tr></tbody></table></div>
-        <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <label v-if="!ai?.document_id" class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <p v-else class="sub">An uploaded file is brought in once. To keep figures in step, link the sheet instead.</p>
       </div>
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
         <button class="btn secondary" type="button" @click="step > 1 && !f.id ? (step = 1) : (open = false)">{{ step > 1 && !f.id ? 'Back' : 'Cancel' }}</button>
-        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading every tab…' : 'Reading…') : f.mode === 'ai' ? 'Read with AI' : 'Read sheet' }}</button>
-        <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept" @click="saveAi">{{ busy ? 'Linking…' : 'Link ' + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
+        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading…' : 'Reading…') : f.mode === 'ai' ? 'Read with AI' : 'Read sheet' }}</button>
+        <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept" @click="saveAi">{{ busy ? (ai?.document_id ? 'Bringing in…' : 'Linking…') : (ai?.document_id ? 'Bring in ' : 'Link ') + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
         <button v-else class="btn" type="button" :disabled="busy || !chosen || used.length !== new Set(used).size" @click="save">{{ busy ? 'Linking…' : 'Link ' + chosen + ' row' + (chosen === 1 ? '' : 's') }}</button>
       </template>
     </AppModal>
@@ -192,6 +232,8 @@ select.bad { border-color: var(--c-danger) }
 .ck { display: flex; gap: 8px; align-items: center; font-size: 13px }
 .okm { color: var(--c-ink); font-size: 13px; margin: 8px 0 0 }
 td.n, th.n { text-align: right; white-space: nowrap }
+.aiu { display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap } .upl { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--c-blue-deep); cursor: pointer } .upl input { font-size: 12.5px; color: var(--c-ink-soft) }
+.prg { margin: 0; font-size: 13.5px; color: var(--c-ink) } .fl2 { border: 1px solid var(--c-rule-strong); border-left: 3px solid var(--c-danger); padding: 10px 12px; font-size: 13.5px; display: flex; flex-direction: column; gap: 6px } .fl2 b { font-weight: 500 } .fl2 ul { margin: 0; padding-left: 18px; color: var(--c-ink-soft) } .fla { display: flex; gap: 16px } .fla button { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer }
 .mo { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); padding: 10px 12px } .mo .ck { align-items: flex-start; font-size: 13.5px } .mo .ck input { margin-top: 3px } .mo .ck b { font-weight: 500 } .cur { max-width: 180px }
 .sum { margin: 0; font-size: 14px } h4 { margin: 6px 0 0; font-size: 13px; font-weight: 600 } .tw.sm { max-height: 30vh }
 .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-align: left } tr.sub2 td { background: #fafafa } .rm { display: inline-block; margin: 2px 14px 2px 0; font-size: 12.5px } .rm em { font-style: normal; color: var(--c-muted) }

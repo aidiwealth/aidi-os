@@ -5,7 +5,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
   if (user.roles.length && user.roles.every((r) => r === 'wealth_client')) throw apiError('forbidden', 'Not available.', 403)
-  rateLimit('analyst', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('analyst', user.userId, 60, 60 * 60 * 1000)
   const Act = z.object({ type: z.string().max(20), path: z.string().max(200).optional(), label: z.string().max(60), kind: z.string().max(40).optional(), args: z.record(z.string(), z.unknown()).optional(), summary: z.string().max(300).optional(), done: z.boolean().optional() })
   const b = z.object({ messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000), actions: z.array(Act).max(6).optional() })).min(1).max(60), path: z.string().max(200).default('/'), chat_id: z.string().uuid().nullable().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')

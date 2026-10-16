@@ -5,8 +5,8 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw apiError('invalid', 'Enter your email and the 6-digit code.')
   const email = parsed.data.email.trim().toLowerCase()
-  rateLimit('auth_otp_ip', clientIp(event), 30, 15 * 60 * 1000)
-  rateLimit('auth_otp_email', email, 10, 15 * 60 * 1000)
+  await rateLimit('auth_otp_ip', clientIp(event), 30, 15 * 60 * 1000)
+  await rateLimit('auth_otp_email', email, 10, 15 * 60 * 1000)
   const who = await verifyOtp(email, parsed.data.code)
   const ticket = await mfaTicketFor(who)
   if (ticket) return { mfa_required: true, ticket }

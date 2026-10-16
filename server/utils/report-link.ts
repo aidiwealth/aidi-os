@@ -10,7 +10,7 @@ export interface ReportRequest {
 export async function requestFromToken(event: H3Event): Promise<ReportRequest> {
   const token = getRouterParam(event, 'token') ?? ''
   if (!/^[A-Za-z0-9_-]{30,80}$/.test(token)) throw apiError('invalid_link', 'This link is not valid.', 404)
-  rateLimit('report_link', clientIp(event), 120, 60 * 60 * 1000)
+  await rateLimit('report_link', clientIp(event), 120, 60 * 60 * 1000)
   const r = await asPlatform(() => db().query<ReportRequest & { organization_id: string }>(
     `SELECT r.id, r.company_id, c.name AS company, c.founder_name, to_char(r.period, 'YYYY-MM-DD') AS period, r.months, r.status, r.draft,
             r.expires_at, r.submitted_at, r.organization_id

@@ -5,7 +5,7 @@ const TYPES: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 }
 export default defineEventHandler(async (event) => {
-  rateLimit('info_upload', clientIp(event), 40, 60 * 60 * 1000)
+  await rateLimit('info_upload', clientIp(event), 40, 60 * 60 * 1000)
   const r = await infoFromToken(getRouterParam(event, 'token'))
   if (r.status === 'submitted') throw apiError('state', 'This information has already been submitted.', 409)
   const parts = await readMultipartFormData(event)

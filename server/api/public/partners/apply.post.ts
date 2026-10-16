@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Access-Control-Allow-Origin', '*')
-  rateLimit('partner_apply', clientIp(event), 5, 60 * 60 * 1000)
+  await rateLimit('partner_apply', clientIp(event), 5, 60 * 60 * 1000)
   const b = z.object({ name: z.string().trim().min(2).max(200), kind: z.enum(['vc', 'incubator', 'accelerator', 'startup', 'community', 'university', 'other']), website: z.string().trim().max(300).default(''), contact_name: z.string().trim().min(2).max(200), contact_email: z.string().trim().email().max(254), note: z.string().trim().max(2000).default(''), website2: z.string().max(0).optional() }).safeParse(await (async () => { const raw = await readBody(event); if (typeof raw !== 'string') return raw; try { return JSON.parse(raw) } catch { return {} } })()) // finvry.com posts JSON as text/plain (no CORS preflight)
   if (!b.success) throw apiError('invalid', 'Add your organisation, a contact name and a work email.')
   if (b.data.website2) return { ok: true }

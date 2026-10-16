@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('credit_check', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('credit_check', user.userId, 30, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ kind: z.enum(['individual', 'business']), identifier: z.string().trim().max(30).default(''), monitor: z.boolean().default(false), manual: z.object({ score: z.number().int().min(300).max(850).nullable(), note: z.string().max(3000) }).optional() }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Check the details.')

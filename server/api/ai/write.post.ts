@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin', 'team')
-  rateLimit('ai_write', user.userId, 40, 60 * 60 * 1000)
+  await rateLimit('ai_write', user.userId, 40, 60 * 60 * 1000)
   const b = z.object({ purpose: z.enum(['investor_page', 'raise']), field: z.string().max(40), current: z.string().max(60000).default(''), instruction: z.string().max(600).default(''),
     context: z.record(z.string(), z.union([z.string(), z.number(), z.null()]).transform((v) => (v == null ? '' : String(v)))).default({}) }).safeParse(await readBody(event))
   if (!b.success || !(b.data.field in AI_FIELDS[b.data.purpose])) throw apiError('invalid', 'Invalid request.')

@@ -3,7 +3,7 @@
 // Agreement for the order in the wizard; the signed copy is stored on the job and emailed to them and the team.
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
-  rateLimit('portal_order', u.userId ?? u.clientId, 10, 60 * 60 * 1000)
+  await rateLimit('portal_order', u.userId ?? u.clientId, 10, 60 * 60 * 1000)
   const raw = await readBody<Record<string, unknown>>(event)
   const b = OrderBody.safeParse(raw)
   if (!b.success) throw apiError('invalid', 'Choose at least one service.')

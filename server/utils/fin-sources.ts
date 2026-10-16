@@ -109,7 +109,9 @@ export function periodRange(type: string, end: string): { start: string; end: st
 export async function fetchGoogleSheet(url: string): Promise<Buffer> {
   const m = /docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/.exec(url)
   if (!m) throw apiError('invalid', 'Paste the full Google Sheets link (docs.google.com/spreadsheets/d/…).')
-  const res = await fetch('https://docs.google.com/spreadsheets/d/' + m[1] + '/export?format=xlsx', { redirect: 'follow', signal: AbortSignal.timeout(20000) })
+  // Big workbooks can take a while for Google to export; a timeout or network failure gets its own clear error.
+  const res = await fetch('https://docs.google.com/spreadsheets/d/' + m[1] + '/export?format=xlsx', { redirect: 'follow', signal: AbortSignal.timeout(90000) })
+    .catch((e: Error) => { throw apiError('fetch_timeout', e.name === 'TimeoutError' ? 'Google took too long to send the sheet.' : 'Could not reach Google Sheets.', 504) })
   const ct = res.headers.get('content-type') ?? ''
   if (!res.ok || ct.includes('text/html')) throw apiError('gsheet_private', 'We could not open that sheet. In Google Sheets, click Share and set "Anyone with the link" to Viewer, then try again.', 400)
   const buf = Buffer.from(await res.arrayBuffer())

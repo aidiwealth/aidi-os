@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('update_send', user.userId, 20, 60 * 60 * 1000)
+  await rateLimit('update_send', user.userId, 20, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ mode: z.enum(['test', 'email', 'email_publish', 'publish']) }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')

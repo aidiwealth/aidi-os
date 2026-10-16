@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto'
 import { invoiceForPdf } from '~/utils/pdfDownload'
 export default defineEventHandler(async (event) => {
-  rateLimit('pub_pdf', clientIp(event), 40, 60 * 60 * 1000)
+  await rateLimit('pub_pdf', clientIp(event), 40, 60 * 60 * 1000)
   const body = (await readBody(event).catch(() => null)) as Record<string, unknown> | null
   const bill = typeof body?.bill_token === 'string' ? body.bill_token : '', lpTok = typeof body?.lp_token === 'string' ? body.lp_token : ''
   if (bill) {

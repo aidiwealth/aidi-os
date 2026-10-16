@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   if (token.startsWith('pv.')) throw apiError('preview', 'This is a preview. LPs register interest from their own link.', 400)
   const b = z.object({ pitch_id: z.string().uuid(), note: z.string().trim().max(1000).default('') }).safeParse(await readBody(event))
   if (!b.success || token.length < 20) throw apiError('invalid', 'Invalid request.')
-  rateLimit('lp_interest', token.slice(0, 16), 30, 60 * 60 * 1000)
+  await rateLimit('lp_interest', token.slice(0, 16), 30, 60 * 60 * 1000)
   const lp = (await asPlatform(() => db().query<{ id: string; name: string; organization_id: string }>('SELECT id, name, organization_id FROM funds.lps WHERE portal_token_hash = $1 AND (portal_token_expires IS NULL OR portal_token_expires > now())', [createHash('sha256').update(token).digest('hex')]))).rows[0]
   if (!lp) throw apiError('invalid_link', 'This link is not valid.', 404)
   setOrgContext(lp.organization_id)

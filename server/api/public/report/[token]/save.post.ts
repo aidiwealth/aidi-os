@@ -8,7 +8,7 @@ const Body = z.object({
 })
 export default defineEventHandler(async (event) => {
   const r = await requestFromToken(event)
-  rateLimit('report_save', r.id, 60, 60 * 60 * 1000)
+  await rateLimit('report_save', r.id, 60, 60 * 60 * 1000)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Some numbers are not valid. Use digits only, e.g. 45000.')
   const { values, update, submit } = b.data

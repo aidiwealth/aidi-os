@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'family')
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Account not found', 404)
-  rateLimit('bank_import', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('bank_import', user.userId, 30, 60 * 60 * 1000)
   const a = await db().query<{ currency: string; entity_id: string; bank_name: string; account_name: string }>('SELECT currency, entity_id, bank_name, account_name FROM banking.accounts WHERE id = $1', [id.data])
   const acct = a.rows[0]
   if (!acct) throw apiError('not_found', 'Account not found', 404)

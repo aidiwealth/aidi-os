@@ -56,3 +56,21 @@ export async function workspaceForClient(event: H3Event, clientId: string): Prom
     return { orgId: ws.id, created: true }
   } finally { setOrgContext(prev) }
 }
+
+// A formation order placed from the public form gets its Finvry workspace and invite only once it is paid (card, or
+// marked paid by the team for a bank transfer), so an unpaid or fake order never emails anyone an account.
+export async function onboardPaidFormation(invoiceId: string): Promise<void> {
+  const ev = (() => { try { return useEvent() } catch { return undefined } })()
+  if (!ev) return
+  const r = (await asPlatform(() => db().query<{ client_id: string; workspace_id: string | null; email: string | null; contact_name: string | null; name: string; organization_id: string }>(
+    `SELECT c.id AS client_id, c.workspace_id, c.email, c.contact_name, c.name, i.organization_id FROM services.invoices i JOIN services.jobs j ON j.id = i.job_id JOIN services.clients c ON c.id = i.client_id
+      WHERE i.id = $1 AND i.status = 'paid' AND j.service = 'company_formation'`, [invoiceId]))).rows[0]
+  if (!r || r.workspace_id || !r.email) return
+  const prev = currentOrgId()
+  try {
+    setOrgContext(r.organization_id)
+    const ws = await workspaceForClient(ev, r.client_id)
+    setOrgContext(ws.orgId)
+    await sendInviteEmail(r.email, r.contact_name || r.name, 'the Aidi team')
+  } catch (err) { console.error('[formation] onboarding after payment failed', err) } finally { setOrgContext(prev) }
+}

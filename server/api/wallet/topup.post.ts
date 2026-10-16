@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('wallet_topup', user.userId, 15, 60 * 60 * 1000)
+  await rateLimit('wallet_topup', user.userId, 15, 60 * 60 * 1000)
   const b = z.object({ amount: z.coerce.number().positive().max(100000000) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Enter an amount.')
   const org = (await currentOrg())!

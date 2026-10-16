@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   // Library documents not tied to one of their companies stay hidden from someone limited to some companies.
   const scope = String(event.context.entityScope ?? '')
   if (scope && d.area === 'org' && d.uploaded_by !== user.userId && !(d.entity_id && scope.split(',').includes(d.entity_id))) throw apiError('not_found', 'Document not found', 404)
-  rateLimit('doc_download', user.userId, 120, 60 * 60 * 1000)
+  await rateLimit('doc_download', user.userId, 120, 60 * 60 * 1000)
   const ext = d.storage_key.split('.').pop() ?? 'bin'
   const url = await signedGetUrl({ key: d.storage_key, filename: d.title.replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 80) + '.' + ext, seconds: 60 })
   await audit({ event, actorUserId: user.userId, action: 'document.download', objectType: 'document', objectId: id.data, entityId: d.entity_id ?? undefined, detail: { sensitivity: d.sensitivity } })

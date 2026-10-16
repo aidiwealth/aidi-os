@@ -2,7 +2,7 @@
 import { intakeKindFor } from '~/shared/intake'
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
-  rateLimit('intake', u.clientId, 20, 60 * 60 * 1000)
+  await rateLimit('intake', u.clientId, 20, 60 * 60 * 1000)
   const id = String(getRouterParam(event, 'id') ?? '')
   const j = /^[0-9a-f-]{36}$/.test(id) ? (await db().query<{ codes: string[]; service: string; title: string }>('SELECT codes, service, title FROM services.jobs WHERE id = $1 AND client_id = $2', [id, u.clientId])).rows[0] : undefined
   if (!j) throw apiError('not_found', 'Not found', 404)

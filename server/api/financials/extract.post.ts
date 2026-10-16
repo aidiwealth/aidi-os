@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
-  rateLimit('fin_extract', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('fin_extract', user.userId, 30, 60 * 60 * 1000)
   const parts = await readMultipartFormData(event)
   const file = parts?.find((p) => p.name === 'file' && p.filename)
   const wanted = (parts?.find((p) => p.name === 'wanted')?.data.toString() ?? 'latest period').slice(0, 60)

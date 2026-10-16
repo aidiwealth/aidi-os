@@ -8,7 +8,7 @@ const TYPES: Record<string, { ext: 'xlsx' | 'csv' | 'pdf'; mime: string }> = {
 }
 export default defineEventHandler(async (event) => {
   const r = await requestFromToken(event)
-  rateLimit('report_upload', r.id, 10, 60 * 60 * 1000)
+  await rateLimit('report_upload', r.id, 10, 60 * 60 * 1000)
   const parts = await readMultipartFormData(event)
   const file = parts?.find((p) => p.name === 'file' && p.filename)
   if (!file || !file.data.length) throw apiError('invalid', 'Choose an Excel, CSV or PDF file.')

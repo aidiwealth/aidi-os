@@ -37,7 +37,7 @@ function toLines(rows: Row[]): { lines: string; count: number } {
 }
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('contacts_parse', user.userId, 40, 60 * 60 * 1000)
+  await rateLimit('contacts_parse', user.userId, 40, 60 * 60 * 1000)
   const ct = getRequestHeader(event, 'content-type') ?? ''
   if (ct.includes('multipart/form-data')) {
     const parts = await readMultipartFormData(event)

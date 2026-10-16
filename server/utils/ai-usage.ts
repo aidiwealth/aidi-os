@@ -1,4 +1,4 @@
-// AI allowances, like Claude's: a 5-hour session (starting with the first AI action after the last session ended) and a
+// AI allowances: a 5-hour session (starting with the first AI action after the last session ended) and a
 // calendar week (Monday 00:00 UTC). Beyond either, usage is paid from AI credits; with no credits, AI pauses until reset.
 export const PACKS: Record<string, { tokens: number; usd: number; ngn: number; label: string }> = {
   small: { tokens: 1_000_000, usd: 10, ngn: 15000, label: '1M tokens' }, medium: { tokens: 5_000_000, usd: 40, ngn: 60000, label: '5M tokens' }, large: { tokens: 15_000_000, usd: 100, ngn: 150000, label: '15M tokens' } }

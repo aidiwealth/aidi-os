@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const u = await requirePortal(event)
-  rateLimit('agreement_sign', u.userId ?? u.clientId, 20, 60 * 60 * 1000)
+  await rateLimit('agreement_sign', u.userId ?? u.clientId, 20, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = SignBody.safeParse(await readBody(event))
   if (!id.success) throw apiError('not_found', 'Not found', 404)

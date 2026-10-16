@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
-  rateLimit('sec_screen', user.userId, 60, 60 * 60 * 1000)
+  await rateLimit('sec_screen', user.userId, 60, 60 * 60 * 1000)
   const t = (n: number) => z.string().trim().max(n).optional().nullable()
   const b = z.object({ id: z.string().uuid().optional(), title: t(500), company: t(200), website: t(300), sector: t(120), stage: t(60), lead: t(300), co_investors: t(300),
     min_investment: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : typeof v === 'string' ? Number(v.replace(/[,\s$]/g, '')) : v), z.number().nonnegative().nullable()).optional(),

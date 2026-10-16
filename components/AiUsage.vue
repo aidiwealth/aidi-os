@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Settings → AI usage: session and weekly meters (like Claude), credits, packs and usage history.
+// Settings → AI usage: session and weekly meters, credits, packs and usage history.
 interface U { limited: boolean; session: { used: number; limit: number | null; resets_at: string | null }; weekly: { used: number; limit: number | null; resets_at: string }; credits: number; over: boolean; blocked: boolean
   plan: string; currency: string; wallet_minor: number; packs: { key: string; tokens: number; usd: number; ngn: number; label: string }[]; days: { day: string; tokens: number }[]; tasks: { task: string; runs: number; tokens: number }[]; purchases: { pack: string; tokens: number; amount_minor: number; currency: string; created_at: string }[] }
 const usageUrl: string = '/api/ai/usage'

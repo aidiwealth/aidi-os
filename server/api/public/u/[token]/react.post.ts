@@ -3,7 +3,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const token = String(getRouterParam(event, 'token') ?? '')
   if (token.length < 30) throw apiError('invalid_link', 'This link is not valid.', 404)
-  rateLimit('update_react', token.slice(0, 16), 60, 60 * 60 * 1000)
+  await rateLimit('update_react', token.slice(0, 16), 60, 60 * 60 * 1000)
   const b = z.object({ emoji: z.enum(['up', 'love', 'party', 'rocket', 'clap', 'think']).optional(), on: z.boolean().default(true), note: z.string().trim().max(2000).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const s = (await asPlatform(() => db().query<{ id: string; organization_id: string; update_id: string; name: string; email: string; title: string }>('SELECT s.id, s.organization_id, s.update_id, i.name, i.email, u.title FROM financials.update_sends s JOIN financials.investors i ON i.id = s.investor_id JOIN financials.updates u ON u.id = s.update_id WHERE s.token_hash = $1', [sha256(token)]))).rows[0]

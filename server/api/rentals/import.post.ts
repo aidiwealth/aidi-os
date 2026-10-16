@@ -2,7 +2,7 @@
 // Nothing is saved until the team confirms; both originals are kept as documents.
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
-  rateLimit('rentals_import', user.userId, 30, 60 * 60 * 1000)
+  await rateLimit('rentals_import', user.userId, 30, 60 * 60 * 1000)
   const parts = (await readMultipartFormData(event)) ?? []
   const files = parts.filter((p) => p.filename && p.data.length)
   if (!files.length) throw apiError('invalid', 'Drop the Airbnb CSV and/or the Earnings report PDF.')

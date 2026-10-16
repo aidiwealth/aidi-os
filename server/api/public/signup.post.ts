@@ -4,7 +4,7 @@ import { z } from 'zod'
 const Body = z.object({ website: z.string().max(0).optional(), name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254),
   company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_free', 'company_startup', 'company_scale']), turnstile_token: z.string().max(4000).optional(), agree: SignBody, partner_code: z.string().trim().max(40).optional() })
 export default defineEventHandler(async (event) => {
-  rateLimit('signup_ip', clientIp(event), 5, 60 * 60 * 1000)
+  await rateLimit('signup_ip', clientIp(event), 5, 60 * 60 * 1000)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', b.error.issues.some((i) => i.path[0] === 'agree') ? 'Please sign the Terms of Service and Data Privacy Agreement to continue.' : 'Add your name, a valid email, your company and country.')
   checkSignaturePng(b.data.agree.png, true)
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   await verifyHuman(d.turnstile_token, clientIp(event))
   { const ec = await checkEmail(d.email); if (!ec.ok) throw apiError('bad_email', ec.message!, 400) }
   const email = d.email.toLowerCase()
-  rateLimit('signup_email', email, 3, 60 * 60 * 1000)
+  await rateLimit('signup_email', email, 3, 60 * 60 * 1000)
   const base = d.company.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'company'
   const slug = (base.length < 2 ? base + '-co' : base) + '-' + Math.random().toString(36).slice(2, 6)
   const nigeria = /^nigeria$/i.test(d.country)
