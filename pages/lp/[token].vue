@@ -20,7 +20,7 @@ const doPrint = () => {
   for (const pt of d.participations ?? []) { md.push('## ' + pt.fund + ' (deal by deal)', '', '| Company | Terms | Invested | Estimated value | Status |', '|---|---|---|---|---|'); for (const x of pt.deals) md.push('| ' + [x.company, (x.instrument ?? '-') + (x.cap ? ' cap ' + mm(x.cap, pt.currency) : ''), mm(x.amount, pt.currency), mm(x.value, pt.currency) + (x.realized ? ' + ' + mm(x.realized, pt.currency) + ' realized' : ''), x.status].join(' | ') + ' |'); md.push('') }
   if (d.history.length) { md.push('## Capital calls and distributions', '', '| Fund | Type | Due | Amount | Paid |', '|---|---|---|---|---|'); for (const h of d.history) md.push('| ' + [h.fund, h.kind + ' #' + h.number, h.due_date, mm(Number(h.amount), h.currency), h.paid_on ? mm(Number(h.paid_amount), h.currency) + ' on ' + h.paid_on : '-'].join(' | ') + ' |'); md.push('') }
   md.push('', 'Figures as reported by ' + d.workspace.firm + '. This statement is for information only.')
-  downloadPdf({ kind: 'doc', title: 'Investor statement - ' + d.lp.name, company: d.workspace.firm, md: md.join('\n') }, true)
+  downloadPdf({ kind: 'doc', lp_token: token, title: 'Investor statement - ' + d.lp.name, company: d.workspace.firm, md: md.join('\n') }, true)
 }
 const STAGE: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', later: 'Later stage' }
 const sent = ref<string[]>([]); const iErr = ref('')

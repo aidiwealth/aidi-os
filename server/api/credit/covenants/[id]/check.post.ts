@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     if (next) await client.query('UPDATE credit.covenants SET next_due = $2 WHERE id = $1', [id.data, next])
     else await client.query('UPDATE credit.covenants SET active = false WHERE id = $1', [id.data])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
-      [user.userId, 'credit.covenant_' + b.data.result, 'loan', cov.loan_id, JSON.stringify({ covenant_id: id.data, due_date: cov.next_due }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'credit.covenant_' + b.data.result, 'loan', cov.loan_id, JSON.stringify({ covenant_id: id.data, due_date: cov.next_due }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   return { ok: true, next_due: next }

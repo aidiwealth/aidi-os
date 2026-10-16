@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
     }
     await client.query("UPDATE banking.imports SET status = 'saved' WHERE id = $1", [id.data])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, entity_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [user.userId, 'banking.statement_saved', 'bank_account', row.account_id, row.entity_id, JSON.stringify({ period_start, period_end, opening, closing, txns: txns.length, continuity }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'banking.statement_saved', 'bank_account', row.account_id, row.entity_id, JSON.stringify({ period_start, period_end, opening, closing, txns: txns.length, continuity }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   return { ok: true, statementId, continuity }

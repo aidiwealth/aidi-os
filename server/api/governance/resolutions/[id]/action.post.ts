@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   if (!res) throw apiError('not_found', 'Not found', 404)
   const manager = res.created_by === user.userId || user.roles.includes('admin')
   const signers = await signatories(res.entity_id)
-  const ip = getRequestIP(event, { xForwardedFor: true }) ?? null
+  const ip = ipOrNull(event) ?? null
   const act = b.data.action
 
   if (act === 'circulate' || act === 'withdraw') {

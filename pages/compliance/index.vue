@@ -105,7 +105,7 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
           <button v-if="canEdit" type="button" class="btn sm" @click="openDone(nextUp)">Mark done</button></div>
         <div class="card cal">
           <div class="ch"><button type="button" aria-label="Previous month" @click="shift(-1)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 5-5 5 5 5" /></svg></button><b>{{ monthLabel }}</b><button type="button" aria-label="Next month" @click="shift(1)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m8 5 5 5-5 5" /></svg></button></div>
-          <div class="wk"><span v-for="d in ['M', 'T', 'W', 'T', 'F', 'S', 'S']" :key="d + Math.random()">{{ d }}</span></div>
+          <div class="wk"><span v-for="(d, di) in ['M', 'T', 'W', 'T', 'F', 'S', 'S']" :key="di">{{ d }}</span></div>
           <div class="days"><template v-for="(c, i) in cells" :key="i"><span v-if="!c" class="d blank" /><button v-else type="button" class="d" :class="{ today: c === today, sel: c === pickDay, has: byDay.has(c) }" @click="pickDay = pickDay === c ? '' : c; filter = 'all'">
             <span class="n">{{ dd(c) }}</span><span class="dots"><i v-for="o in (byDay.get(c) ?? []).slice(0, 3)" :key="o.id" :class="tone(o)" /></span></button></template></div>
           <p class="legend"><span><i class="red" /> Overdue</span><span><i class="amber" /> This week</span><span><i class="blue" /> 30 days</span><span><i class="grey" /> Later</span></p>

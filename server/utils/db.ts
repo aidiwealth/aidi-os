@@ -63,9 +63,10 @@ export function setOrgContext(orgId: string | null): void {
 export async function asPlatform<T>(fn: () => Promise<T>): Promise<T> {
   const e = requestEvent()
   if (!e) throw new Error('asPlatform outside a request')
-  const prev = e.context.dbBypass
+  // A depth count, not save-and-restore: two asPlatform calls running at once must not leave the bypass on.
+  e.context.dbBypassDepth = (e.context.dbBypassDepth ?? 0) + 1
   e.context.dbBypass = true
-  try { return await fn() } finally { e.context.dbBypass = prev }
+  try { return await fn() } finally { e.context.dbBypassDepth -= 1; if (e.context.dbBypassDepth <= 0) { e.context.dbBypassDepth = 0; e.context.dbBypass = false } }
 }
 
 // For queries that must return exactly one row: zero rows is an error, never a silent empty result.

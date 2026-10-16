@@ -31,7 +31,7 @@ async function send() {
         <p v-if="p.bio" class="bio">{{ p.bio }}</p>
         <div class="tags"><span v-for="s in p.services" :key="s" class="tag">{{ data.services[s] ?? s }}</span></div>
         <p v-if="p.jurisdictions.length" class="sub">{{ p.jurisdictions.join(' · ') }}</p>
-        <div class="acts"><button class="btn" type="button" @click="ask(p)">Request an introduction</button><a v-if="p.website" :href="p.website" target="_blank" rel="noopener" class="btn secondary">Website</a></div>
+        <div class="acts"><button class="btn" type="button" @click="ask(p)">Request an introduction</button><a v-if="p.website" :href="webUrl(p.website)" target="_blank" rel="noopener" class="btn secondary">Website</a></div>
       </article>
     </div>
     <p v-if="!shown.length" class="card muted">No professionals match yet. More firms are being added.</p>

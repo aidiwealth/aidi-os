@@ -3,7 +3,8 @@
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
   const t = String(getQuery(event).target ?? '')
-  const links = (await db().query<LinkRow>(`SELECT ${LINK_COLS} FROM financials.sheet_links WHERE auto AND ($1 = '' OR target = $1) AND (last_synced_at IS NULL OR last_synced_at < now() - interval '1 hour') ORDER BY last_synced_at NULLS FIRST LIMIT 3`, [t === 'financials' || t === 'forecast' ? t : ''])).rows
+  const on = await enabledModules(), targets = ['financials', 'forecast'].filter((t) => on.has(t))
+  const links = (await db().query<LinkRow>(`SELECT ${LINK_COLS} FROM financials.sheet_links WHERE auto AND ($1 = '' OR target = $1) AND target = ANY($2::text[]) AND (last_synced_at IS NULL OR last_synced_at < now() - interval '1 hour') ORDER BY last_synced_at NULLS FIRST LIMIT 3`, [t === 'financials' || t === 'forecast' ? t : '', targets])).rows
   let synced = 0
   for (const l of links) { try { await syncLink(l, user.userId); synced++ } catch (e) { console.error('[sheet-links] stale sync', l.id, (e as Error).message) } }
   return { synced }

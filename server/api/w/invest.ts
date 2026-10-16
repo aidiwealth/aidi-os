@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     if (!b.agree) throw apiError('invalid', 'Please accept the Alpaca customer agreement.')
     const need = ['given_name', 'family_name', 'date_of_birth', 'tax_id', 'phone', 'street', 'city', 'state', 'postal_code']
     if (need.some((k) => !s(k))) throw apiError('invalid', 'Fill in your name, date of birth, Social Security number, phone and address.')
-    const now = new Date().toISOString(), ip = getRequestIP(event, { xForwardedFor: true }) ?? '0.0.0.0'
+    const now = new Date().toISOString(), ip = ipOrNull(event) ?? '0.0.0.0'
     const agreements = [{ agreement: 'customer_agreement', signed_at: now, ip_address: ip }, ...(b.crypto ? [{ agreement: 'crypto_agreement', signed_at: now, ip_address: ip }] : [])]
     const acct = await alpaca('/v1/accounts', 'POST', { contact: { email_address: r.c.email, phone_number: s('phone'), street_address: [s('street')], city: s('city'), state: s('state', 2).toUpperCase(), postal_code: s('postal_code', 10) },
       identity: { given_name: s('given_name'), family_name: s('family_name'), date_of_birth: s('date_of_birth', 10), tax_id: s('tax_id', 11).replace(/\D/g, '').replace(/^(\d{3})(\d{2})(\d{4})$/, '$1-$2-$3'), tax_id_type: 'USA_SSN', country_of_citizenship: 'USA', country_of_birth: 'USA', country_of_tax_residence: 'USA', funding_source: [s('funding_source') || 'employment_income'] },

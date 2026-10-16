@@ -20,7 +20,7 @@ void refresh
 <template>
   <section v-if="data">
     <NuxtLink to="/funds" class="back">← Funds</NuxtLink>
-    <div class="head"><h1>LP register</h1><button v-if="isGp" class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add LP' }}</button></div>
+    <div class="head"><h1>LP register</h1><ClientOnly><button v-if="isGp" class="btn" type="button" @click="adding = !adding">{{ adding ? 'Close' : 'Add LP' }}</button></ClientOnly></div>
     <form v-if="adding" class="card frm" @submit.prevent="add">
       <label class="label">Name<input v-model="f.name" required maxlength="200"></label>
       <label class="label">Type<select v-model="f.kind"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select></label>

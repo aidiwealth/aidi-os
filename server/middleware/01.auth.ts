@@ -10,7 +10,9 @@ export default defineEventHandler(async (event) => {
   if (!cached) throw apiError('unauthorized', 'Sign in required', 401)
   // A per-request copy: roles added for this request must never reach the cached session.
   const s = { ...cached, roles: [...cached.roles] }
-  if (s.roles.includes('services') && /^\/api\/(services|cs-analytics|documents|records)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']
+  // The services desk role works the services area as team; elsewhere (records of other modules, the group library) it
+  // keeps its own role. Documents: only downloading services and support files.
+  if (s.roles.includes('services') && /^\/api\/(services|cs-analytics)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']
   event.context.user = s
   event.context.orgId = s.orgId
   event.context.entityScope = ''

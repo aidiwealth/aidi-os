@@ -16,7 +16,7 @@ const chips = (s: unknown) => String(s ?? '').split(/[\n,;]+/).map((x) => x.trim
       <div v-if="data.intake.use_of_funds"><h3>Use of funds</h3><div class="md" v-html="mdRender(String(data.intake.use_of_funds))" /></div>
       <div v-if="data.intake.traction"><h3>Traction</h3><div class="md" v-html="mdRender(String(data.intake.traction))" /></div>
       <div v-if="data.intake.target_investors"><h3>Investors they suggest</h3><div class="md" v-html="mdRender(String(data.intake.target_investors))" /></div>
-      <div v-if="data.intake.deck_url"><h3>Deck</h3><a :href="String(data.intake.deck_url)" target="_blank" rel="noopener" class="deck">Open the deck ↗</a></div></div>
+      <div v-if="data.intake.deck_url"><h3>Deck</h3><a :href="webUrl(String(data.intake.deck_url))" target="_blank" rel="noopener" class="deck">Open the deck ↗</a></div></div>
   </div>
 </template>
 <style scoped>

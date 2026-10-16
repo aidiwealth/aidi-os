@@ -57,7 +57,9 @@ async function bulk(action: string, list_id?: string) {
   } catch (e) { msg.value = err(e) }
 }
 // Add the selected contacts (or everything matching) to a fundraising pipeline as investors.
-const { data: pipes } = await useLazyFetch<{ id: string; name: string; status: string }[]>('/api/crm/pipelines', { server: false, default: () => [] })
+// Pipelines only where Fundraising is on (Aidi OS keeps contacts without it).
+const { has: hasModule } = useModuleAccess()
+const { data: pipes } = await useLazyFetch<{ id: string; name: string; status: string }[]>('/api/crm/pipelines', { server: false, default: () => [], immediate: hasModule('fundraising') })
 const toPipe = ref('')
 watch(toPipe, async (v) => {
   if (!v) return

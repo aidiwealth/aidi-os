@@ -18,7 +18,7 @@ async function apply() { ap.busy = true; ap.err = ''; try { const { busy, ok, er
     <ol class="how"><li><b>1</b><span><strong>Get your code</strong>Ask your partner for their Finvry code. Codes are private to each partner's founders.</span></li><li><b>2</b><span><strong>Redeem it</strong>Enter it when you <NuxtLink to="/start">sign up</NuxtLink>, or later in Settings → Plan.</span></li><li><b>3</b><span><strong>Save on your plan</strong>The discount applies to your monthly plan for the period shown.</span></li></ol>
     <div v-if="kinds.length > 1" class="chips"><button :class="{ on: !kind }" @click="kind = ''">All</button><button v-for="k in kinds" :key="k" :class="{ on: kind === k }" @click="kind = k">{{ k }}</button></div>
     <div v-if="list.length" class="grid">
-      <a v-for="p in list" :key="p.id" class="pc" :href="p.website ?? undefined" target="_blank" rel="noopener">
+      <a v-for="p in list" :key="p.id" class="pc" :href="webUrl(p.website)" target="_blank" rel="noopener">
         <span class="lg"><img v-if="p.logo_url" :src="p.logo_url" :alt="p.name"><span v-else>{{ initials(p.name) }}</span></span>
         <span class="pn"><b>{{ p.name }}</b><em>{{ p.kind_label }}</em></span>
         <span class="off"><strong>{{ p.discount_pct }}%</strong> off{{ p.months ? ' for ' + p.months + ' months' : '' }}</span></a>

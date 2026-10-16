@@ -9,7 +9,7 @@ const area = computed(() => props.points.length ? line.value + ' L' + (W - P) + 
 const hover = ref<number | null>(null); const svg = ref<SVGSVGElement | null>(null)
 function move(e: MouseEvent) { if (!svg.value || !props.points.length) return; const r = svg.value.getBoundingClientRect(); hover.value = Math.max(0, Math.min(props.points.length - 1, Math.round(((e.clientX - r.left) / r.width) * (props.points.length - 1)))) }
 const hp = computed(() => (hover.value == null ? null : { ...props.points[hover.value]!, pos: xy(hover.value, props.points[hover.value]!.y) }))
-const gid = 'g' + Math.random().toString(36).slice(2, 8)
+const gid = 'g' + useId().replace(/[^a-zA-Z0-9]/g, '') // the same on server and client
 </script>
 <template>
   <div class="tc">

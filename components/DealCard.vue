@@ -17,7 +17,8 @@ const left = computed(() => {
 })
 </script>
 <template>
-  <component :is="clickable ? 'button' : 'div'" :type="clickable ? 'button' : undefined" class="fcard" :class="{ act: clickable, dimc: passed }" @click="clickable && $emit('open')">
+  <!-- A div, not a button: the card holds its own buttons (pass, star), and buttons cannot sit inside a button. -->
+  <div class="fcard" :class="{ act: clickable, dimc: passed }" :role="clickable ? 'button' : undefined" :tabindex="clickable ? 0 : undefined" @click="clickable && $emit('open')" @keydown.enter.self="clickable && $emit('open')">
     <div class="ftile" :class="tone">
       <h3>{{ deal.title }}</h3>
       <div class="ftags"><span v-if="deal.sector" class="ftag">{{ deal.sector }}</span><span v-if="deal.stage" class="ftag">{{ deal.stage }}</span></div>
@@ -37,10 +38,10 @@ const left = computed(() => {
       </div>
       <slot />
     </div>
-  </component>
+  </div>
 </template>
 <style scoped>
-button.fcard { width: 100%; padding: 0; font: inherit; }
+div.fcard.act:focus-visible { outline: 2px solid var(--c-blue-deep); outline-offset: 2px; }
 .kv { margin-top: 2px; }
 .ic { background: none; border: 0; padding: 4px; color: var(--c-muted); cursor: pointer; display: inline-flex; } .ic:hover { color: var(--c-ink); } .ic.on { color: var(--c-ink); } .ic.st { color: #b8860b; }
 .dimc { opacity: .62; }

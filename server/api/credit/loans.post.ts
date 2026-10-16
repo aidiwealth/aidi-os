@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     if (d.deployment_id) await client.query("UPDATE finance.deployments SET loan_id = $2 WHERE id = $1 AND loan_id IS NULL AND source = 'credit'", [d.deployment_id, loanId])
     for (const r of schedule) await client.query('INSERT INTO credit.schedule (loan_id, seq, due_date, principal_due, interest_due) VALUES ($1,$2,$3,$4,$5)', [loanId, r.seq, r.due_date, r.principal_due, r.interest_due])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
-      [user.userId, 'credit.loan_book', 'loan', loanId, JSON.stringify({ principal: d.principal, currency: d.currency, rate: d.annual_rate, instalments: schedule.length }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'credit.loan_book', 'loan', loanId, JSON.stringify({ principal: d.principal, currency: d.currency, rate: d.annual_rate, instalments: schedule.length }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   return { ok: true, id: loanId }

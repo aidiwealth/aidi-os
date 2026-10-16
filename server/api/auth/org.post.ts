@@ -6,6 +6,8 @@ export default defineEventHandler(async (event) => {
   const s = await requireUser(event)
   const b = Body.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose a workspace.')
+  // Support sign-in sessions stay in the workspace they were opened for.
+  if ((await asPlatform(() => db().query('SELECT 1 FROM core.sessions WHERE id = $1 AND impersonated_by IS NOT NULL', [s.sessionId]))).rowCount) throw apiError('forbidden', 'Support access is limited to this workspace. End it to switch.', 403)
   const ok = await asPlatform(() => db().query(
     `SELECT 1 FROM core.memberships m JOIN core.organizations o ON o.id = m.organization_id
       WHERE m.user_id = $1 AND m.organization_id = $2 AND m.status = 'active' AND o.status = ANY($3::text[])

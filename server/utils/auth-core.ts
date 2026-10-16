@@ -38,10 +38,12 @@ export async function verifyOtp(email: string, code: string): Promise<string> {
     [email])
   const row = r.rows[0]
   if (!row) throw apiError('no_code', 'No active code. Request a new one.', 400)
+  // Count the attempt atomically before comparing, so parallel guesses cannot share one attempt.
+  const n = (await db().query<{ attempts: number }>('UPDATE core.login_codes SET attempts = attempts + 1 WHERE id = $1 AND consumed_at IS NULL RETURNING attempts', [row.id])).rows[0]?.attempts
+  if (!n || n > MAX_OTP_ATTEMPTS) { await db().query('UPDATE core.login_codes SET consumed_at = now() WHERE id = $1', [row.id]); throw apiError('too_many_attempts', 'Too many attempts. Request a new code.', 429) }
   if (!safeEqualHex(sha256(code), row.otp_hash)) {
-    const attempts = row.attempts + 1
-    await db().query('UPDATE core.login_codes SET attempts = $2::int, consumed_at = CASE WHEN $2::int >= $3::int THEN now() ELSE NULL END WHERE id = $1',
-      [row.id, attempts, MAX_OTP_ATTEMPTS])
+    const attempts = n
+    if (attempts >= MAX_OTP_ATTEMPTS) await db().query('UPDATE core.login_codes SET consumed_at = now() WHERE id = $1', [row.id])
     throw apiError(attempts >= MAX_OTP_ATTEMPTS ? 'too_many_attempts' : 'wrong_code',
       attempts >= MAX_OTP_ATTEMPTS ? 'Too many attempts. Request a new code.' : 'That code is not correct.', attempts >= MAX_OTP_ATTEMPTS ? 429 : 400)
   }

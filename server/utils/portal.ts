@@ -7,6 +7,8 @@ export async function requirePortal(event: H3Event): Promise<PortalUser> {
   if (!s?.orgId) throw apiError('signed_out', 'Please sign in.', 401)
   const o = (await asPlatform(() => db().query<{ kind: string }>('SELECT kind FROM core.organizations WHERE id = $1', [s.orgId]))).rows[0]
   if (o?.kind !== 'company') throw apiError('not_found', 'Services are available in Finvry company workspaces.', 404)
+  // The company's own people only: investors or advisers the company invited cannot see raises, jobs or pay invoices.
+  if (!s.roles.some((r) => ['admin', 'gp', 'team', 'family'].includes(r))) throw apiError('forbidden', 'Only the company\'s own team can use services.', 403)
   const c = await clientForWorkspace(s.orgId)
   const who = (await asPlatform(() => db().query<{ name: string | null }>('SELECT p.full_name AS name FROM core.users u LEFT JOIN core.people p ON p.id = u.person_id WHERE u.id = $1', [s.userId]))).rows[0]
   const op = await operatorOrgId()

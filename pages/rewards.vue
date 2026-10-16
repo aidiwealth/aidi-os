@@ -28,7 +28,7 @@ const sel = ref<Perk | null>(null)
     <footer class="ft"><div class="wrap fr"><img src="/brand/finvry-mark.svg" alt="" class="fm"><span>© {{ new Date().getFullYear() }} Finvry</span><span class="sp" /><a href="https://finvry.com">finvry.com</a><NuxtLink to="/partners">Partner discounts</NuxtLink></div></footer>
     <AppModal :open="!!sel" :title="sel?.partner ?? ''" @close="sel = null">
       <div v-if="sel" class="md"><strong class="mh">{{ sel.headline }}</strong><p>{{ sel.summary }}</p><p v-if="sel.audience === 'paid'" class="pd">For companies on a paid Finvry plan.</p><p class="mut">Sign up or sign in to Finvry to claim this perk and get the code.</p></div>
-      <template #foot><a v-if="sel?.website" :href="sel.website" target="_blank" rel="noopener" class="btn secondary">About {{ sel.partner }}</a><span class="sp" /><NuxtLink to="/login" class="btn secondary">Sign in</NuxtLink><NuxtLink to="/start" class="btn">Get started free</NuxtLink></template>
+      <template #foot><a v-if="sel?.website" :href="webUrl(sel.website)" target="_blank" rel="noopener" class="btn secondary">About {{ sel.partner }}</a><span class="sp" /><NuxtLink to="/login" class="btn secondary">Sign in</NuxtLink><NuxtLink to="/start" class="btn">Get started free</NuxtLink></template>
     </AppModal>
   </div>
 </template>

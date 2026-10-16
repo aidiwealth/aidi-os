@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     await client.query('INSERT INTO services.job_events (job_id, kind, body, from_status, to_status, document_id, visible_to_client, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
       [id.data, d.kind, d.body || null, d.kind === 'status' ? job.status : null, d.kind === 'status' ? d.status : null, d.document_id ?? null, visible, user.userId])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
-      [user.userId, 'services.' + d.kind, 'job', id.data, JSON.stringify({ visible, status: d.status ?? null }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'services.' + d.kind, 'job', id.data, JSON.stringify({ visible, status: d.status ?? null }), ipOrNull(event) ?? null])
     await client.query('UPDATE services.jobs SET updated_at = now() WHERE id = $1', [id.data])
     await client.query('COMMIT')
     if (d.kind === 'status' && d.status === 'completed' && job.status !== 'completed') { const codes = (await db().query<{ codes: string[] }>('SELECT codes FROM services.jobs WHERE id = $1', [id.data])).rows[0]?.codes ?? []; if (codes.length) await filingsCompleted(job.client_id, codes, job.title).catch((e) => console.error('[job] compliance', e)) }

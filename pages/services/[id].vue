@@ -149,7 +149,9 @@ const assignee = computed(() => team.value?.find((p) => p.id === job.value.owner
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const day = (s: string) => new Date(s.length === 10 ? s + 'T12:00:00' : s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('')
-const linkify = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/(https?:\/\/[^\s<]+)/g, (u) => '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 60 ? u.slice(0, 57) + '…' : u) + '</a>')
+// Text from clients is escaped (quotes too) before links are added, so nothing they type can become markup.
+const escH = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+const linkify = (s: string) => escH(s).replace(/https?:\/\/[^\s<&]+(?:&amp;[^\s<&]+)*/g, (e) => { const u = e.replace(/&amp;/g, '&'); return '<a href="' + escH(u) + '" target="_blank" rel="noopener noreferrer">' + escH(u.length > 60 ? u.slice(0, 57) + '…' : u) + '</a>' })
 const owners = computed(() => data.value?.people ?? [])
 </script>
 

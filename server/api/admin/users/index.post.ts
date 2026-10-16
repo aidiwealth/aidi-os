@@ -11,6 +11,7 @@ const Body = z.object({
 export default defineEventHandler(async (event) => {
   const admin = await requireRole(event, 'admin')
   const b = Body.safeParse(await readBody(event))
+  if (b.success && b.data.role === 'admin' && b.data.entity_id) throw apiError('invalid', 'Admin covers the whole group. For one company, give GP or Team limited to it.')
   if (!b.success) throw apiError('invalid', 'Add a name, a valid email and a role.')
   const email = b.data.email.toLowerCase()
   const existing = await db().query<{ id: string }>('SELECT id FROM core.users WHERE email = $1', [email])
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
     await client.query('INSERT INTO core.user_roles (user_id, role_code, scope_entity_id, granted_by, include_subsidiaries) VALUES ($1,$2,$3,$4,$5)',
       [userId, b.data.role, b.data.entity_id ?? null, admin.userId, b.data.entity_id ? b.data.include_subsidiaries === true : true])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, entity_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [admin.userId, 'user.invite', 'user', userId, b.data.entity_id ?? null, JSON.stringify({ email, role: b.data.role }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [admin.userId, 'user.invite', 'user', userId, b.data.entity_id ?? null, JSON.stringify({ email, role: b.data.role }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK')

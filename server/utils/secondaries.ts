@@ -3,8 +3,21 @@
 // opportunity is kept once (by its id in the link), so repeated alerts don't duplicate it.
 export interface SecDeal { source: 'meridian' | 'wefunder'; ref: string; title: string; company: string | null; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; url: string; closes_at?: string | null }
 
+// Sender domains are matched exactly (x@angellist.com.evil.io does not count). A forwarded alert (from one of our own
+// people) is recognised by its subject and text; whether the sender may add deals at all is checked by trustedDealSender.
+const VENDOR = { meridian: /@([a-z0-9-]+\.)*angellist\.com$/i, wefunder: /@([a-z0-9-]+\.)*wefunder\.com$/i }
 export const secondarySource = (from: string, subject: string, text: string): 'meridian' | 'wefunder' | null =>
-  /angellist\.com/i.test(from) || /meridian/i.test(subject) && /angellist/i.test(text) ? 'meridian' : /wefunder\.com/i.test(from) || /wefunder/i.test(subject) ? 'wefunder' : null
+  VENDOR.meridian.test(from) || (/meridian/i.test(subject) && /angellist\.com/i.test(text)) ? 'meridian' : VENDOR.wefunder.test(from) || (/wefunder/i.test(subject) && /wefunder\.com/i.test(text)) ? 'wefunder' : null
+// Deals are only added from AngelList / Wefunder themselves (with the mail service's SPF / DKIM checks not failing), or
+// from an alert forwarded by an active member of this workspace. Anyone else's email stays a normal notice.
+export async function trustedDealSender(from: string, raw: Record<string, unknown>): Promise<boolean> {
+  const headers = Array.isArray(raw.Headers) ? (raw.Headers as { Name?: string; Value?: string }[]) : []
+  const auth = headers.filter((h) => /^(authentication-results|received-spf|x-spam-status)$/i.test(h.Name ?? '')).map((h) => String(h.Value ?? '')).join(' ')
+  const failed = /\b(dkim|spf|dmarc)=(fail|softfail|permerror)\b|^\s*(fail|softfail)/im.test(auth) || /\bReceived-SPF:\s*fail/i.test(auth)
+  if ((VENDOR.meridian.test(from) || VENDOR.wefunder.test(from)) && !failed) return true
+  const member = await db().query('SELECT 1 FROM core.users u JOIN core.memberships m ON m.user_id = u.id AND m.status = \'active\' WHERE lower(u.email) = lower($1) AND m.organization_id = core.current_org()', [from])
+  return !!member.rowCount && !failed
+}
 
 const money = (s: string | undefined): number | null => {
   if (!s) return null

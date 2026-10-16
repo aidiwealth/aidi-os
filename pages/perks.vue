@@ -35,12 +35,12 @@ async function copy(c: string) { try { await navigator.clipboard.writeText(c); c
           <p class="gh">Claimed for your company</p>
           <div v-if="sel.code" class="code"><span>Your code</span><b>{{ sel.code }}</b><button type="button" class="btn secondary sm" @click="copy(sel.code!)">{{ copied ? 'Copied' : 'Copy' }}</button></div>
           <div v-if="sel.redeem" class="dt" v-html="renderMarkdown(sel.redeem)" />
-          <a v-if="sel.claim_url" :href="sel.claim_url" target="_blank" rel="noopener" class="btn">Redeem with {{ sel.partner }} →</a>
+          <a v-if="sel.claim_url" :href="webUrl(sel.claim_url)" target="_blank" rel="noopener" class="btn">Redeem with {{ sel.partner }} →</a>
         </div>
         <p v-else-if="sel.locked" class="lock">This perk is for companies on a paid plan. <NuxtLink to="/settings?s=plan">See plans</NuxtLink></p>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
-      <template #foot><a v-if="sel?.website" :href="sel.website" target="_blank" rel="noopener" class="btn secondary">About {{ sel.partner }}</a><span class="sp" /><button class="btn secondary" @click="sel = null">Close</button><button v-if="sel && !sel.claimed_at && !sel.locked" class="btn" :disabled="busy" @click="claim">{{ busy ? 'Claiming…' : 'Claim perk' }}</button></template>
+      <template #foot><a v-if="sel?.website" :href="webUrl(sel.website)" target="_blank" rel="noopener" class="btn secondary">About {{ sel.partner }}</a><span class="sp" /><button class="btn secondary" @click="sel = null">Close</button><button v-if="sel && !sel.claimed_at && !sel.locked" class="btn" :disabled="busy" @click="claim">{{ busy ? 'Claiming…' : 'Claim perk' }}</button></template>
     </AppModal>
   </section>
 </template>

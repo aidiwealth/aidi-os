@@ -1,9 +1,10 @@
-// Images and files embedded in investor updates, investor pages and blog posts. Streamed so they load under the
+// Images and files embedded in investor updates, investor pages and blog posts (only documents uploaded as public
+// media by those editors; a title never makes a document public). Streamed so they load under the
 // app's security policy and in emails.
 export default defineEventHandler(async (event) => {
   const id = String(getRouterParam(event, 'id') ?? '')
   if (!/^[0-9a-f-]{36}$/.test(id)) throw apiError('not_found', 'Not found', 404)
-  const d = (await asPlatform(() => db().query<{ storage_key: string; title: string; mime_type: string }>("SELECT storage_key, title, mime_type FROM core.documents WHERE id = $1 AND (title LIKE 'Update media — %' OR title LIKE 'Blog media — %' OR title LIKE 'Perk logo — %' OR title LIKE 'Company logo — %')", [id]))).rows[0]
+  const d = (await asPlatform(() => db().query<{ storage_key: string; title: string; mime_type: string }>("SELECT storage_key, title, mime_type FROM core.documents WHERE id = $1 AND public_media", [id]))).rows[0]
   if (!d) throw apiError('not_found', 'Not found', 404)
   const name = d.title.replace('Update media — ', '').replace('Blog media — ', '').replace('Perk logo — ', '').replace('Company logo — ', '').replace(/"/g, '')
   setHeader(event, 'content-type', d.mime_type)

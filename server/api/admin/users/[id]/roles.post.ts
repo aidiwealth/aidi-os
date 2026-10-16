@@ -13,6 +13,8 @@ export default defineEventHandler(async (event) => {
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Choose a role.')
   const scope = b.data.entity_id ?? null
+  // Admin is group-wide by definition; a role for one company is GP (or a narrower role) for that company.
+  if (b.data.role === 'admin' && scope && b.data.action === 'add') throw apiError('invalid', 'Admin covers the whole group. For one company, give GP or Team limited to it.')
   const u = await db().query("SELECT status FROM core.memberships WHERE user_id = $1", [id.data])
   if (u.rowCount !== 1) throw apiError('not_found', 'User not found', 404)
   if (b.data.action === 'add') {

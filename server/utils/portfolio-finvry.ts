@@ -9,23 +9,31 @@ async function inOrg<T>(orgId: string, fn: () => Promise<T>): Promise<T> {
   try { return await fn() } finally { setOrgContext(prev) }
 }
 
+// An update counts as shared with us only when the company published it or sent it to one of our own people (an
+// investor whose email belongs to an active member of this workspace). Nothing else of the company's is read.
+const SHARED = (u: string, viewer: string) => `(${u}.status = 'published' OR EXISTS (SELECT 1 FROM financials.update_sends s JOIN financials.investors i ON i.id = s.investor_id
+  WHERE s.update_id = ${u}.id AND lower(i.email) IN (SELECT lower(us.email) FROM core.memberships m JOIN core.users us ON us.id = m.user_id WHERE m.organization_id = ${viewer} AND m.status = 'active')))`
+
+// Finvry workspaces that have shared updates with us, to link to a portfolio company (search by name). No contact details.
 export async function finvryWorkspaces(q: string): Promise<{ id: string; name: string; updates: number; owner_name: string | null; owner_email: string | null }[]> {
+  const viewer = currentOrgId()
   return (await asPlatform(() => db().query<{ id: string; name: string; updates: number; owner_name: string | null; owner_email: string | null }>(
-    `SELECT o.id, o.name, (SELECT count(*)::int FROM financials.updates u WHERE u.organization_id = o.id AND (u.sent_at IS NOT NULL OR u.status = 'published')) AS updates, ow.name AS owner_name, ow.email AS owner_email
-       FROM core.organizations o LEFT JOIN LATERAL (SELECT u.email, p.full_name AS name FROM core.memberships m JOIN core.users u ON u.id = m.user_id LEFT JOIN core.people p ON p.id = u.person_id WHERE m.organization_id = o.id AND m.status = 'active' ORDER BY m.created_at LIMIT 1) ow ON true WHERE o.kind = 'company' AND o.status <> 'closed' AND ($1 = '' OR o.name ILIKE '%' || $1 || '%') ORDER BY o.name LIMIT 20`, [q.trim().slice(0, 80)]))).rows
+    `SELECT o.id, o.name, (SELECT count(*)::int FROM financials.updates u WHERE u.organization_id = o.id AND (u.sent_at IS NOT NULL OR u.status = 'published') AND ${SHARED('u', '$2')}) AS updates, NULL::text AS owner_name, NULL::text AS owner_email
+       FROM core.organizations o WHERE o.kind = 'company' AND o.status <> 'closed' AND ($1 = '' OR o.name ILIKE '%' || $1 || '%')
+        AND EXISTS (SELECT 1 FROM financials.updates u WHERE u.organization_id = o.id AND (u.sent_at IS NOT NULL OR u.status = 'published') AND ${SHARED('u', '$2')}) ORDER BY o.name LIMIT 20`, [q.trim().slice(0, 80), viewer]))).rows
 }
 
 export async function sentUpdates(orgId: string): Promise<SentUpdate[]> {
   return (await asPlatform(() => db().query<SentUpdate>(
     `SELECT id, title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, coalesce(sent_at, published_at) AS sent_at FROM financials.updates
-      WHERE organization_id = $1 AND NOT coalesce(is_template, false) AND (sent_at IS NOT NULL OR status = 'published') ORDER BY coalesce(sent_at, published_at) DESC LIMIT 12`, [orgId]))).rows
+      WHERE organization_id = $1 AND NOT coalesce(is_template, false) AND (sent_at IS NOT NULL OR status = 'published') AND ${SHARED('financials.updates', '$2')} ORDER BY coalesce(sent_at, published_at) DESC LIMIT 12`, [orgId, currentOrgId()]))).rows
 }
 
 const KPI: [RegExp, string][] = [[/customer|client|subscriber|paying/i, 'customers'], [/headcount|employee|staff|team size|fte/i, 'headcount']]
 // The months an update covers (1 or 3), with the portfolio metrics for each, and the update's text.
 export async function updateFigures(orgId: string, updateId: string): Promise<{ title: string; months: { period: string; values: Record<string, number | null> }[]; text: string } | null> {
   const u = (await asPlatform(() => db().query<{ title: string; period_type: string; period_end: string; blocks: Block[] | null; body: string | null; highlights: string | null }>(
-    "SELECT title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, blocks, body, highlights FROM financials.updates WHERE id = $1 AND organization_id = $2 AND (sent_at IS NOT NULL OR status = 'published')", [updateId, orgId]))).rows[0]
+    `SELECT title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, blocks, body, highlights FROM financials.updates WHERE id = $1 AND organization_id = $2 AND (sent_at IS NOT NULL OR status = 'published') AND ${SHARED('financials.updates', '$3')}`, [updateId, orgId, currentOrgId()]))).rows[0]
   if (!u) return null
   const rows = await inOrg(orgId, async () => { const ent = await companyEntityId(); return ent ? loadStatements('entity:' + ent, 'month', 'USD') : [] })
   const n = u.period_type === 'quarter' ? 3 : 1

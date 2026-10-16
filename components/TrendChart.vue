@@ -2,7 +2,7 @@
 // Smooth line with a soft gradient fill, drawn in plain SVG (the Telroi dashboard style, in Aidi colours).
 const props = withDefaults(defineProps<{ title: string; sub?: string; points: { label: string; value: number }[]; unit?: 'usd' | 'count' | 'pct'; foot?: string; symbol?: string }>(), { sub: '', unit: 'count', foot: '', symbol: '$' })
 const W = 560, H = 150, PADY = 16
-const uid = 'tc' + Math.random().toString(36).slice(2, 8)
+const uid = 'tc' + useId().replace(/[^a-zA-Z0-9]/g, '') // the same on server and client
 const max = computed(() => Math.max(1, ...props.points.map((p) => p.value)))
 const pts = computed(() => props.points.map((d, i) => ({
   x: props.points.length > 1 ? (i / (props.points.length - 1)) * W : W / 2,

@@ -1,6 +1,6 @@
 // The last 90 days of wallet transactions as CSV.
 export default defineEventHandler(async (event) => {
-  await requireUser(event)
+  await requireRole(event, 'admin', 'gp', 'team', 'family')
   const r = await db().query<{ created_at: string; kind: string; category: string; reason: string; amount: string; balance: string; currency: string }>(
     "SELECT to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at, kind, category, reason, (amount_minor / 100.0)::text AS amount, (balance_after_minor / 100.0)::text AS balance, currency FROM wallet.ledger WHERE created_at > now() - interval '90 days' ORDER BY created_at DESC")
   const esc = (s: string) => '"' + s.replaceAll('"', '""') + '"'

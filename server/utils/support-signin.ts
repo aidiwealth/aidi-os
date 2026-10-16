@@ -23,7 +23,7 @@ export async function supportSignIn(event: H3Event, staffUserId: string, orgId: 
   const target = t.brand === 'aidi' ? 'aidi' : 'finvry'
   let redirect = '/'
   if (target !== hostBrand(event)) {
-    const h = await sessionHandoff(event, t.user_id, t.email, orgId)
+    const h = await sessionHandoff(event, t.user_id, t.email, orgId, target)
     await asPlatform(() => db().query("UPDATE core.sessions SET impersonated_by = $2, expires_at = least(expires_at, now() + interval '4 hours') WHERE id = $1", [h.sid, staffUserId]))
     const back = brands()[hostBrand(event)].url
     redirect = brands()[target].url + '/api/auth/handoff?t=' + encodeURIComponent(h.token) + '&back=' + encodeURIComponent(back)

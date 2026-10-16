@@ -38,6 +38,7 @@ export default defineNuxtConfig({
     turnstileSecret: '',
     anthropicBaseUrl: 'https://api.anthropic.com',
     aiModelPitchScreen: 'claude-haiku-4-5-20251001',
+    aiModelAnalyst: '', // the AI analyst chat; empty uses Claude Haiku (set NUXT_AI_MODEL_ANALYST for a larger model)
     aiModelSheets: '', // reading complex workbooks; empty uses aiModelPitchScreen (set NUXT_AI_MODEL_SHEETS for a larger model)
     pitchNotifyTo: '',
     pitchAllowedOrigins: 'https://aidiventures.com,https://www.aidiventures.com',

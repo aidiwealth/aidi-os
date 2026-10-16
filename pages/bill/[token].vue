@@ -14,7 +14,7 @@ async function pay() {
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not open the payment page.'; busy.value = false }
 }
 onMounted(() => { if (justPaid.value && data.value?.invoice.status !== 'paid') setTimeout(() => refresh(), 4000) })
-const doPrint = () => data.value && downloadPdf({ kind: 'invoice', invoice: invoiceForPdf(data.value.invoice) }, true)
+const doPrint = () => data.value && downloadPdf({ bill_token: token }, true)
 </script>
 
 <template>

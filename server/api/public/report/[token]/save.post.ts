@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
       [r.company_id, r.period, update.highlights || null, update.challenges || null, update.asks || null])
     await client.query("UPDATE portfolio.requests SET status = 'submitted', submitted_at = now(), draft = '{}'::jsonb WHERE id = $1", [r.id])
     await client.query('INSERT INTO core.audit_log (action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5)',
-      ['portfolio.report_submitted', 'company', r.company_id, JSON.stringify({ period: r.period }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      ['portfolio.report_submitted', 'company', r.company_id, JSON.stringify({ period: r.period }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   sendReportSubmittedAlert(r.company_id, r.company, Number(r.months) === 3 ? requestLabel(r.period, 'quarterly') : periodLabel(r.period)).catch((e) => console.error('[report] alert failed', e))

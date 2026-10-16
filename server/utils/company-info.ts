@@ -1,32 +1,66 @@
 // Company details from its website: name, one-line description, logo, social links and (when the site publishes it)
 // location and founding year. Given only a name, likely addresses (name.com, .ai, .io, .co) are tried and kept only
 // when the page is clearly that company. Public websites only (no private or internal addresses).
-import { lookup } from 'node:dns/promises'
+import { lookup as dnsLookup } from 'node:dns'
+import http from 'node:http'
+import https from 'node:https'
 import { createHash, randomUUID } from 'node:crypto'
 import { isIP } from 'node:net'
 
 export interface CompanyInfo { name: string | null; website: string; domain: string; description: string | null; logo_doc_id: string | null; socials: Record<string, string>; location: string | null; founded: string | null; fetched_at: string }
 
-const PRIVATE = [/^10\./, /^127\./, /^169\.254\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^::1$/, /^f[cd]/i, /^fe80/i]
-async function assertPublic(u: URL) {
-  if (!/^https?:$/.test(u.protocol) || isIP(u.hostname) || !u.hostname.includes('.') || /(^|\.)(local|internal|localhost)$/i.test(u.hostname)) throw apiError('invalid', 'Use the company\'s public website address.')
-  const addrs = await lookup(u.hostname, { all: true }).catch(() => [])
-  if (!addrs.length) throw apiError('not_found', 'That website could not be found.', 404)
-  if (addrs.some((a) => PRIVATE.some((r) => r.test(a.address)))) throw apiError('invalid', 'Use the company\'s public website address.')
+// Public addresses only. The check runs inside the connection's own DNS lookup, so the address that is checked is the
+// address that is connected to (a domain that re-points to an internal address between check and connect gets nowhere).
+function v4Private(ip: string): boolean {
+  const p = ip.split('.').map(Number); if (p.length !== 4 || p.some((x) => !(x >= 0 && x <= 255))) return true
+  const [a, b] = p as [number, number, number, number]
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 192 && b === 0 && p[2] === 0) || (a === 198 && (b === 18 || b === 19))
+}
+export function privateAddress(ip: string): boolean {
+  if (isIP(ip) === 4) return v4Private(ip)
+  if (isIP(ip) !== 6) return true
+  const s = ip.toLowerCase()
+  const mapped = /^(?:0*:)*:?ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(s) ?? /^64:ff9b::(\d+\.\d+\.\d+\.\d+)$/.exec(s)
+  if (mapped) return v4Private(mapped[1]!)
+  if (/^::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(s) || /^64:ff9b:/.test(s)) return true
+  return s === '::' || s === '::1' || /^f[cd]/.test(s) || /^fe[89ab]/.test(s) || /^ff/.test(s) || /^2001:db8/.test(s) || /^100::/.test(s) || /^::/.test(s)
+}
+function safeLookup(host: string, opts: { all?: boolean }, cb: (err: Error | null, addr?: string | { address: string; family: number }[], family?: number) => void) {
+  dnsLookup(host, { all: true }, (err, addrs) => {
+    if (err) return cb(err)
+    if (!addrs.length || addrs.some((a) => privateAddress(a.address))) return cb(Object.assign(new Error('blocked address'), { code: 'EBLOCKED' }))
+    if (opts.all) cb(null, addrs); else cb(null, addrs[0]!.address, addrs[0]!.family)
+  })
+}
+function checkUrl(u: URL) {
+  if (!/^https?:$/.test(u.protocol) || isIP(u.hostname.replace(/^\[|\]$/g, '')) || !u.hostname.includes('.') || /(^|\.)(local|internal|localhost)$/i.test(u.hostname) || (u.port && !['80', '443'].includes(u.port))) throw apiError('invalid', 'Use the company\'s public website address.')
 }
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36'
+function request(u: URL, accept: string, max: number): Promise<{ status: number; location: string | null; type: string; body: Buffer } | null> {
+  return new Promise((resolve) => {
+    const mod = u.protocol === 'https:' ? https : http
+    const req = mod.get(u, { headers: { 'user-agent': UA, accept, 'accept-encoding': 'identity' }, lookup: safeLookup as never, timeout: 9000 }, (res) => {
+      const status = res.statusCode ?? 0
+      if (status >= 300 && status < 400) { res.resume(); return resolve({ status, location: res.headers.location ?? null, type: '', body: Buffer.alloc(0) }) }
+      const chunks: Buffer[] = []; let n = 0
+      res.on('data', (c: Buffer) => { chunks.push(c); n += c.length; if (n > max) { res.destroy(); resolve({ status, location: null, type: String(res.headers['content-type'] ?? ''), body: Buffer.concat(chunks).subarray(0, max) }) } })
+      res.on('end', () => resolve({ status, location: null, type: String(res.headers['content-type'] ?? ''), body: Buffer.concat(chunks).subarray(0, max) }))
+      res.on('error', () => resolve(null))
+    })
+    req.on('timeout', () => { req.destroy(); resolve(null) }); req.on('error', () => resolve(null))
+  })
+}
 // Follows up to 4 redirects, checking each address; stops reading after `max` bytes.
 async function getUrl(url: string, max = 1_500_000, accept = 'text/html,*/*'): Promise<{ url: string; type: string; body: Buffer } | null> {
   let u = new URL(url)
   for (let i = 0; i < 5; i++) {
-    await assertPublic(u)
-    const r = await fetch(u, { redirect: 'manual', headers: { 'user-agent': UA, accept }, signal: AbortSignal.timeout(9000) }).catch(() => null)
+    checkUrl(u)
+    const r = await request(u, accept, max)
     if (!r) return null
-    if (r.status >= 300 && r.status < 400 && r.headers.get('location')) { u = new URL(r.headers.get('location')!, u); continue }
-    if (!r.ok || !r.body) return null
-    const chunks: Buffer[] = []; let n = 0
-    for await (const c of r.body as unknown as AsyncIterable<Uint8Array>) { chunks.push(Buffer.from(c)); n += c.length; if (n > max) break }
-    return { url: u.toString(), type: r.headers.get('content-type') ?? '', body: Buffer.concat(chunks).subarray(0, max) }
+    if (r.status >= 300 && r.status < 400 && r.location) { u = new URL(r.location, u); continue }
+    if (r.status < 200 || r.status >= 300) return null
+    return { url: u.toString(), type: r.type, body: r.body }
   }
   return null
 }
@@ -80,7 +114,7 @@ async function storeLogo(urls: string[], domain: string): Promise<string | null>
     if (!mime) continue
     const id = randomUUID(), ext = mime.includes('svg') ? 'svg' : mime.includes('png') ? 'png' : mime.includes('icon') ? 'ico' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg', key = 'documents/' + id + '.' + ext
     await putObject({ key, body: new Uint8Array(r.body), contentType: mime })
-    await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Company logo — ' + domain + '.' + ext, key, mime, r.body.length, createHash('sha256').update(r.body).digest('hex')])
+    await db().query("INSERT INTO core.documents (public_media, id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES (true, $1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Company logo — ' + domain + '.' + ext, key, mime, r.body.length, createHash('sha256').update(r.body).digest('hex')])
     return id
   }
   return null

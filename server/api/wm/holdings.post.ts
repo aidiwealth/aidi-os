@@ -9,6 +9,10 @@ export default defineEventHandler(async (event) => {
     meta: z.object({ symbol: z.string().max(20).optional(), units: z.number().min(0).optional(), metal: z.enum(['gold', 'silver', 'platinum']).optional(), product: z.string().max(200).optional(), quantity: z.number().min(0).optional(), ounces: z.number().min(0).optional(), dealer: z.string().max(120).optional(), vault: z.string().max(120).optional(), certificate: z.string().max(120).optional(), valuation: z.enum(['manual', 'spot']).optional(), rate: z.number().min(0).max(100).optional(), maturity: z.string().max(20).optional() }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the holding details.')
   const d = b.data
+  // Team works on wealth clients' holdings only; group and family holdings (NAV) need GP or admin.
+  const isClientHolding = async (id: string) => !!(await db().query('SELECT 1 FROM wealth.holdings WHERE id = $1 AND wm_client_id IS NOT NULL', [id])).rowCount
+  const senior = user.roles.includes('admin') || user.roles.includes('gp')
+  if (!senior && ((d.id && !(await isClientHolding(d.id))) || (!d.id && !d.wm_client_id))) throw apiError('forbidden', 'Only GPs and admins can change group and family holdings.', 403)
   if (d.id && d.delete) { await db().query("UPDATE wealth.holdings SET status = 'sold', updated_at = now() WHERE id = $1", [d.id]); return { ok: true } }
   const client = d.wm_client_id ? (await db().query<{ name: string; entity_id: string | null }>('SELECT name, entity_id FROM wm.clients WHERE id = $1', [d.wm_client_id])).rows[0] : undefined
   if (d.wm_client_id && !client) throw apiError('not_found', 'Client not found.', 404)

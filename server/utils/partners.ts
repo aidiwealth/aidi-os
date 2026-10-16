@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 // Partner discounts: VCs, incubators, accelerators, startup communities and universities get a code; their startups
 // redeem it (at sign-up or in Settings) for a discount on Finvry plans. Approved, listed partners appear publicly.
 export const PARTNER_KINDS: Record<string, string> = { vc: 'Venture capital', incubator: 'Incubator', accelerator: 'Accelerator', startup: 'Startup', community: 'Startup community', university: 'University', other: 'Other' }
@@ -35,4 +36,5 @@ export async function publicPartners(): Promise<{ id: string; name: string; kind
   const rows = (await asPlatform(() => db().query<Partner>("SELECT id, name, kind, website, logo_url, discount_pct, months FROM platform.partners WHERE status = 'approved' AND listed AND (expires_on IS NULL OR expires_on >= current_date) ORDER BY name"))).rows
   return rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind, kind_label: PARTNER_KINDS[r.kind] ?? 'Partner', website: r.website, logo_url: r.logo_url, discount_pct: r.discount_pct, months: r.months }))
 }
-export const newPartnerCode = (name: string) => (name.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'PARTNER') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase()
+// 10 random characters (about 50 bits), so codes cannot be guessed from the partner's public name.
+export const newPartnerCode = (name: string) => (name.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'PARTNER') + '-' + Array.from(randomBytes(10), (b) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('')

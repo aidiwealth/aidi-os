@@ -23,5 +23,5 @@ export default defineEventHandler(async (event) => {
   const k = (await db().query<{ overdue: number; soon: number; action: number }>(`SELECT count(*) FILTER (WHERE n.due_date < current_date)::int AS overdue, count(*) FILTER (WHERE n.due_date BETWEEN current_date AND current_date + 14)::int AS soon,
       count(*) FILTER (WHERE ${ACTION})::int AS action FROM inbox.notices n WHERE n.status = 'new'`)).rows[0]
   const base = brands().aidi.url, tok = useRuntimeConfig().inboundEmailToken as string
-  return { rows, total, page: pg, pages, size, counts, open: k, webhook: tok ? base + '/api/public/webhooks/inbound-email?token=' + tok : null, settings: await noticeSettings(), can_edit: me.roles.includes('admin') }
+  return { rows, total, page: pg, pages, size, counts, open: k, webhook: tok && me.roles.includes('admin') ? base + '/api/public/webhooks/inbound-email?token=' + tok : null, settings: await noticeSettings(), can_edit: me.roles.includes('admin') }
 })

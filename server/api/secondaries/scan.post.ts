@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
     "SELECT id, from_email, subject, text_body, html_body, received_at::text FROM inbox.notices WHERE from_email ILIKE '%angellist.com%' OR from_email ILIKE '%wefunder.com%' OR subject ILIKE '%meridian%' OR subject ILIKE '%wefunder%' ORDER BY received_at DESC LIMIT 500")).rows
   let added = 0, emails = 0
   for (const n of ns) {
-    if (!secondarySource(n.from_email ?? '', n.subject, n.text_body ?? '')) continue
+    if (!secondarySource(n.from_email ?? '', n.subject, n.text_body ?? '') || !(await trustedDealSender(n.from_email ?? '', {}))) continue
     emails++; added += await ingestSecondaries(n)
     // Deal alerts live on Secondaries now, so file them away in Notices.
     await db().query("UPDATE inbox.notices SET status = 'done', done_at = now() WHERE id = $1 AND status = 'new'", [n.id])

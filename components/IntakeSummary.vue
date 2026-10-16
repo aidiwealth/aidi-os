@@ -48,7 +48,7 @@ const when = computed(() => (props.at ? new Date(props.at).toLocaleString('en-GB
     </dl>
     <div v-if="fileFields.length" class="isf"><span class="fh">Documents</span>
       <div class="fg"><div v-for="x in fileFields" :key="x.f.key" class="fc"><span class="fl">{{ x.f.label }}</span>
-        <template v-if="x.list.length"><component :is="y.url ? 'a' : 'span'" v-for="y in x.list" :key="y.name" :href="y.url" target="_blank" rel="noopener" class="fi"><FileBadge :name="y.name" size="sm" /><span class="fn">{{ y.name }}</span><span v-if="y.url" class="dl">↓</span></component></template>
+        <template v-if="x.list.length"><component :is="y.url ? 'a' : 'span'" v-for="y in x.list" :key="y.name" :href="webUrl(y.url)" target="_blank" rel="noopener" class="fi"><FileBadge :name="y.name" size="sm" /><span class="fn">{{ y.name }}</span><span v-if="y.url" class="dl">↓</span></component></template>
         <span v-else class="none">Not provided</span></div></div></div>
   </div>
 </template>

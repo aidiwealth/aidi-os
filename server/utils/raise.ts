@@ -6,7 +6,7 @@ export async function raiseView(programId: string, forClient: boolean) {
   if (!p) return null
   const inv = (await db().query<{ id: string; name: string; firm: string | null; email: string | null; ticket: string | null; committed: string | null; status: string; next_step: string | null; notes: string | null; terms: string | null; visible: boolean; updated_at: string }>(
     'SELECT id, name, firm, email, ticket, committed, status, next_step, notes, terms, visible, updated_at, deal_id FROM services.raise_investors WHERE program_id = $1 ' + (forClient ? 'AND visible ' : '') + 'ORDER BY sort, created_at', [programId])).rows
-  const meetings = (await db().query("SELECT m.id, m.title, m.starts_at, m.minutes, m.location, m.agenda, m.investor_id, i.name AS investor FROM services.raise_meetings m LEFT JOIN services.raise_investors i ON i.id = m.investor_id WHERE m.program_id = $1 ORDER BY m.starts_at", [programId])).rows
+  const meetings = (await db().query("SELECT m.id, m.title, m.starts_at, m.minutes, m.location, m.agenda, m.investor_id, i.name AS investor FROM services.raise_meetings m LEFT JOIN services.raise_investors i ON i.id = m.investor_id WHERE m.program_id = $1" + (forClient ? ' AND (m.investor_id IS NULL OR i.visible)' : '') + " ORDER BY m.starts_at", [programId])).rows
   const n = (x: string | null) => (x == null ? 0 : Number(x))
   const committed = inv.filter((i) => ['committed', 'closed'].includes(i.status)).reduce((a, i) => a + n(i.committed ?? i.ticket), 0)
   const closed = inv.filter((i) => i.status === 'closed').reduce((a, i) => a + n(i.committed ?? i.ticket), 0)

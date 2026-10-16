@@ -69,6 +69,8 @@ export default defineNuxtPlugin((nuxtApp) => {
     new MutationObserver((list) => { if (list.some((m) => !(m.target as HTMLElement).closest?.('[data-tsr]'))) later() }).observe(document.body, { childList: true, subtree: true })
     later()
   }
-  nuxtApp.hook('app:mounted', () => { setTimeout(start, 0) })
+  // After hydration has fully finished (async pages included) and the browser is idle; app:mounted is too early, as a
+  // page still hydrating would find these extra elements and mismatch.
+  onNuxtReady(() => { start() })
   nuxtApp.hook('page:finish', () => { if (started) later() })
 })

@@ -3,6 +3,7 @@
 import { z } from 'zod'
 const s = (n: number) => z.string().trim().max(n)
 const Body = z.object({
+  turnstile_token: z.string().max(4000).optional(),
   website: z.string().max(0).optional(),
   state: z.string().trim().min(2).max(60), entity_type: z.enum(['llc', 'c_corp']),
   names: z.array(s(150)).min(1).max(3), purpose: s(500).optional(),
@@ -20,6 +21,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Please check the form: a company name, at least one owner with ownership, and your name and email.')
   const d = b.data
   if (d.website) throw apiError('invalid', 'Please try again.')
+  await verifyHuman(d.turnstile_token, clientIp(event))
   const names = d.names.map((n) => n.trim()).filter(Boolean)
   if (!names.length) throw apiError('invalid', 'Add the company name you want.')
   const total = d.members.reduce((t, m) => t + m.ownership, 0)
@@ -46,8 +48,8 @@ export default defineEventHandler(async (event) => {
   let ids: { client: string; company: string; job: string; invoice: string; number: string }
   try {
     await client.query('BEGIN')
-    const existing = await client.query<{ id: string }>('SELECT id FROM services.clients WHERE lower(email) = $1 ORDER BY created_at LIMIT 1', [email])
-    const clientId = existing.rows[0]?.id ?? (await client.query<{ id: string }>("INSERT INTO services.clients (name, kind, contact_name, email, phone, country, status) VALUES ($1,'individual',$2,$3,$4,$5,'lead') RETURNING id",
+    // Always a new lead: an unauthenticated form never attaches companies or invoices to an existing client's record.
+    const clientId = (await client.query<{ id: string }>("INSERT INTO services.clients (name, kind, contact_name, email, phone, country, status) VALUES ($1,'individual',$2,$3,$4,$5,'lead') RETURNING id",
       [d.contact.name, d.contact.name, email, d.contact.phone || null, d.contact.country || null])).rows[0]!.id
     const co = await client.query<{ id: string }>("INSERT INTO services.companies (client_id, name, entity_type, jurisdiction, country, address, registered_agent, virtual_office, mailbox, status, notes) VALUES ($1,$2,$3,$4,'United States',$5,$6,$7,$8,'forming',$9) RETURNING id",
       [clientId, names[0], d.entity_type, d.state, addr, d.agent, d.virtual && !!cat.virtual, false, 'Alternative names: ' + (names.slice(1).join(' / ') || '—') + (d.purpose ? '\nPurpose: ' + d.purpose : '')])

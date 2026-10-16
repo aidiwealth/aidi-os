@@ -9,6 +9,11 @@ export default defineEventHandler(async (event) => {
   if (!c) throw apiError('not_found', 'Not found', 404)
   const body = await readBody<Record<string, unknown>>(event)
   const a = String(body.action ?? '')
+  // Money and access need GP or admin: fees and invoices (they post to the books), portal invites, and changing the
+  // email of a client who already has portal access. Team does the rest.
+  const senior = user.roles.includes('admin') || user.roles.includes('gp')
+  const emailChange = a === 'update' && typeof body.email === 'string' && body.email.trim().toLowerCase() !== (c.email ?? '').toLowerCase() && !!c.user_id
+  if (!senior && (['invite', 'fee', 'advisory_invoice'].includes(a) || emailChange)) throw apiError('forbidden', 'Only GPs and admins can do that.', 403)
   const s = (k: string, max = 300) => (typeof body[k] === 'string' ? (body[k] as string).trim().slice(0, max) : '')
   const n = (k: string) => (body[k] === '' || body[k] == null ? null : Number(body[k]))
   if (a === 'update') {
@@ -79,6 +84,7 @@ export default defineEventHandler(async (event) => {
     await issueFee(f.id)
   } else if (a === 'fee') {
     if (s('fee_id') && body.status) {
+      if (!(await db().query('SELECT 1 FROM wm.fees WHERE id = $1 AND client_id = $2', [s('fee_id'), id])).rowCount) throw apiError('not_found', 'That fee is not on this client.', 404)
       await db().query("UPDATE wm.fees SET status = $2, paid_on = CASE WHEN $2 = 'paid' THEN coalesce($3::date, current_date) ELSE NULL END WHERE id = $1", [s('fee_id'), z.enum(['due', 'paid', 'waived']).parse(s('status')), s('paid_on') || null])
       if (s('status') === 'paid') await bookFee(s('fee_id')); else await db().query('DELETE FROM finance.journal WHERE wm_fee_id = $1', [s('fee_id')])
     } else {

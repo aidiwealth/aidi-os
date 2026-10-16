@@ -26,10 +26,12 @@ function check(): string {
   return ''
 }
 function next() { msg.value = check(); if (!msg.value) step.value = Math.min(steps.length - 1, step.value + 1) }
+const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), humanReady = ref(false)
 async function pay() {
   busy.value = true; msg.value = ''
   try {
-    const r = await $fetch<{ url: string }>('/api/public/formation/' + slug, { method: 'POST', body: { website: f.website, state: f.state, entity_type: f.entity_type, names: f.names.filter((n) => n.trim()), purpose: f.purpose || undefined,
+    const turnstile_token = (await hc.value?.fresh()) || undefined
+    const r = await $fetch<{ url: string }>('/api/public/formation/' + slug, { method: 'POST', body: { turnstile_token, website: f.website, state: f.state, entity_type: f.entity_type, names: f.names.filter((n) => n.trim()), purpose: f.purpose || undefined,
       address: f.useVirtual ? undefined : f.address, management: f.entity_type === 'llc' ? f.management : 'board', agent: f.agent, agent_details: f.agent_details || undefined,
       members: f.members.map((m) => ({ ...m, ownership: Number(m.ownership) })), addons: f.addons, virtual: f.useVirtual, vo_term: f.vo_term, contact: f.contact } })
     window.location.href = r.url
@@ -110,6 +112,7 @@ async function pay() {
               <dt>Owners</dt><dd>{{ f.members.map((m) => m.name + ' (' + m.ownership + '%)').join(', ') }}</dd><dt>Contact</dt><dd>{{ f.contact.name }} · {{ f.contact.email }}</dd></dl>
           </template>
           <p v-if="msg" class="error" role="alert">{{ msg }}</p>
+          <HumanCheck v-if="step === steps.length - 1" ref="hc" v-model="human" v-model:ready="humanReady" />
           <div class="nav"><button v-if="step > 0" type="button" class="btn secondary" @click="step--">Back</button><span />
             <button v-if="step < steps.length - 1" type="button" class="btn" @click="next">Continue</button>
             <button v-else type="button" class="btn" :disabled="busy" @click="pay">{{ busy ? 'Placing order…' : (data.online ? 'Pay ' + usd(total) + ' by card' : 'Place order for ' + usd(total)) }}</button></div>

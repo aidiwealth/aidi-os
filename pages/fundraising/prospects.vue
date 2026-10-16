@@ -58,7 +58,7 @@ async function doAdd() {
         <div class="sc"><div class="bar"><i :style="{ width: p.score + '%' }" :class="{ hi: p.score >= 70, md: p.score >= 45 && p.score < 70 }" /></div><em>{{ fit(p.score) }}</em></div>
         <p v-if="p.description" class="ds">{{ p.description }}</p>
         <div class="tags"><span v-for="r in p.reasons" :key="r">{{ r }}</span></div>
-        <div class="pf"><span v-if="p.how_to_apply" class="ha">{{ p.how_to_apply }}<template v-if="p.deadline"> · {{ p.deadline }}</template></span><span class="sp" /><a v-if="p.website" :href="p.website" target="_blank" rel="noopener">Website ↗</a><span v-if="p.in_pipeline" class="inp">In your pipeline</span></div>
+        <div class="pf"><span v-if="p.how_to_apply" class="ha">{{ p.how_to_apply }}<template v-if="p.deadline"> · {{ p.deadline }}</template></span><span class="sp" /><a v-if="p.website" :href="webUrl(p.website)" target="_blank" rel="noopener">Website ↗</a><span v-if="p.in_pipeline" class="inp">In your pipeline</span></div>
       </article>
       <EmptyState v-if="!items.length" card icon="fundraising" title="No matches yet" text="Try another location or stage, or clear the sector filters." />
     </div>

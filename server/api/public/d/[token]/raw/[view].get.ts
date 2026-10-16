@@ -8,6 +8,8 @@ export default defineEventHandler(async (event) => {
     `SELECT d.storage_key, f.title, d.mime_type FROM fundraise.views v JOIN fundraise.files f ON f.id = v.file_id JOIN core.documents d ON d.id = f.document_id
       WHERE v.id = $1 AND v.link_id = $2 AND v.started_at > now() - interval '20 minutes'`, [view, l.id]))).rows[0]
   if (!v) throw apiError('expired', 'This view has expired. Open the file again.', 410)
+  // With watermarking on, PDFs are only ever served stamped (through /file/); never the original here.
+  if (v.mime_type === 'application/pdf' && (await brandingOf(l.organization_id)).watermark) throw apiError('watermark', 'Open this file from the data room.', 403)
   setHeader(event, 'content-type', v.mime_type); setHeader(event, 'cache-control', 'private, no-store')
   setHeader(event, 'content-disposition', 'inline; filename="' + v.title.replace(/["\\\r\n]/g, '_') + '"')
   return Buffer.from(await getObject(v.storage_key))

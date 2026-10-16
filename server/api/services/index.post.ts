@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
       [clientId, d.service, d.title, d.description || null, d.priority, d.due_date ?? null, d.fee_usd ?? null, d.company_id ?? null, user.userId])
     jobId = j.rows[0]!.id
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, entity_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [user.userId, 'services.job_create', 'job', jobId, null, JSON.stringify({ service: d.service, title: d.title }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'services.job_create', 'job', jobId, null, JSON.stringify({ service: d.service, title: d.title }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   return { ok: true, id: jobId }

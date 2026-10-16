@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
   if (ext === 'svg' && /<script|on\w+=|javascript:/i.test(file.data.toString('utf8'))) throw apiError('bad_type', 'That SVG has scripts in it. Export a plain logo.')
   const id = randomUUID(), key = 'documents/' + id + '.' + ext
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
-  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Perk logo — ' + (file.filename ?? 'logo').slice(0, 150), key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
+  await db().query("INSERT INTO core.documents (public_media, id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES (true, $1,$2,'other','normal',$3,$4,$5,$6)", [id, 'Perk logo — ' + (file.filename ?? 'logo').slice(0, 150), key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   return { ok: true, url: brands().finvry.url + '/api/public/media/' + id }
 })

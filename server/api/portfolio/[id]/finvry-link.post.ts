@@ -1,7 +1,8 @@
 // Link (or unlink) a portfolio company to its Finvry workspace.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'gp', 'team')
+  const user = await requireRole(event, 'gp')
+  if (String(event.context.entityScope ?? '')) throw apiError('forbidden', 'Linking Finvry workspaces needs access to the whole group.', 403)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ org_id: z.string().uuid().nullable() }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')

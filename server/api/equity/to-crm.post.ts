@@ -68,7 +68,6 @@ export default defineEventHandler(async (event) => {
         [pipelineId, isClosed ? stageClosed : stageFirst, r.name.slice(0, 200), contactId, r.invested > 0 ? Math.round(r.invested * 100) / 100 : null, r.cap || null, r.cap ? (r.post === false ? 'pre' : 'post') : null, r.disc && r.disc < 100 ? r.disc : null,
           ref?.id ?? null, ref?.kind ?? null, ref ? new Date().toISOString() : null])
       toPipeline++; if (isClosed) closed++
-      await noteInvestor((await currentOrg())!.id, r.name)
     }
   }
   await audit({ event, actorUserId: user.userId, action: 'equity.to_crm', objectType: 'captable', objectId: ct, detail: { to_pipeline: toPipeline, closed, contacts } })

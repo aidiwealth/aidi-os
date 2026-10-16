@@ -3,13 +3,15 @@
 import { z } from 'zod'
 
 const blank = (v: unknown) => (v === '' || v === null ? undefined : v)
+// Links must be web addresses: a bare domain gets https://, any other scheme (javascript:, data:) is refused.
+const link = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? (/^https?:\/\//i.test(v) ? v : 'https://' + v.replace(/^\/+/, '')) : null)).refine((v) => !v || /^https?:\/\/[^\s"'<>]+$/i.test(v), 'Enter a web address.')
 const opt = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : null))
 const Body = z.object({
   founder_name: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(254),
   company: z.string().trim().min(1).max(200),
-  website: opt(500),
-  deck_url: opt(1000),
+  website: link(500),
+  deck_url: link(1000),
   country: opt(100),
   stage: z.enum(['pre_seed', 'seed', 'series_a', 'series_b', 'later']),
   sector: opt(100),
@@ -34,7 +36,9 @@ export default defineEventHandler(async (event) => {
     const s = String(getQuery(event).org ?? '') || useRuntimeConfig().defaultOrgSlug
     const o = (await asPlatform(() => db().query<{ form: string | null }>("SELECT settings->>'pitch_form_url' AS form FROM core.organizations WHERE slug = $1", [s]))).rows[0]
     const form = o?.form || (s === 'the-aidi-group' ? 'https://aidiventures.com/pitch' : '')
-    if (form) return sendRedirect(event, form, 302)
+    // Only the Aidi pitch page is redirected to; other workspaces get the address, so the app's domain is never an open redirect.
+    if (form && s === 'the-aidi-group' && /^https:\/\/(www\.)?aidiventures\.com\//.test(form)) return sendRedirect(event, form, 302)
+    if (form) return { pitch_form: form }
     return { message: 'This address receives pitches sent from your website\'s pitch form. It is not a page; set your public pitch form address in Settings.' }
   }
   if (event.method !== 'POST') throw apiError('method_not_allowed', 'Use POST', 405)

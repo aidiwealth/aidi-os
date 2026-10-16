@@ -1,6 +1,6 @@
 // The company's wallet: balance, recent ledger (newest first) and any pending top-ups. ?ref= checks a Paystack return.
 export default defineEventHandler(async (event) => {
-  const user = await requireUser(event)
+  const user = await requireRole(event, 'admin', 'gp', 'team', 'family')
   const org = (await currentOrg())!
   const ref = String(getQuery(event).ref ?? '')
   if (/^wt_[A-Za-z0-9]{8,40}$/.test(ref)) {

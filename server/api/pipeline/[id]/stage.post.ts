@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
     await client.query('INSERT INTO deals.deal_events (deal_id, kind, body, from_stage, to_stage, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
       [id.data, 'stage', b.data.note || null, from, to, user.userId])
     await client.query('INSERT INTO core.audit_log (actor_user_id, action, object_type, object_id, detail, ip) VALUES ($1,$2,$3,$4,$5,$6)',
-      [user.userId, 'pipeline.stage', 'deal', id.data, JSON.stringify({ from, to }), getRequestIP(event, { xForwardedFor: true }) ?? null])
+      [user.userId, 'pipeline.stage', 'deal', id.data, JSON.stringify({ from, to }), ipOrNull(event) ?? null])
     await client.query('COMMIT')
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
   return { ok: true }
