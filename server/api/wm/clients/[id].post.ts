@@ -12,15 +12,22 @@ export default defineEventHandler(async (event) => {
   const s = (k: string, max = 300) => (typeof body[k] === 'string' ? (body[k] as string).trim().slice(0, max) : '')
   const n = (k: string) => (body[k] === '' || body[k] == null ? null : Number(body[k]))
   if (a === 'update') {
+    const prevRisk = (await db().query<{ r: string | null }>('SELECT risk_profile AS r FROM wm.clients WHERE id = $1', [id])).rows[0]?.r ?? null
     const model = s('model') || c.model
     if (model !== c.model) { const cfg = await wmSettings(); if (!cfg[c.country][model === 'managed' ? 'managed' : model === 'advisor' ? 'advisor' : 'self_directed']) throw apiError('model_off', 'That service model is switched off for this country.', 400) }
-    await db().query('UPDATE wm.clients SET name = coalesce(nullif($2, \'\'), name), kind = coalesce(nullif($3, \'\'), kind), model = $4, status = coalesce(nullif($5, \'\'), status), tag = $6, contact_name = $7, email = $8, phone = $9, risk_profile = $10, notes = $11, updated_at = now() WHERE id = $1',
-      [id, s('name', 200), s('kind'), model, s('status'), s('tag', 60) || null, s('contact_name', 200) || null, s('email', 254).toLowerCase() || null, s('phone', 40) || null, s('risk_profile', 60) || null, s('notes', 3000) || null])
+    await db().query('UPDATE wm.clients SET name = coalesce(nullif($2, \'\'), name), kind = coalesce(nullif($3, \'\'), kind), model = $4, status = coalesce(nullif($5, \'\'), status), tag = $6, contact_name = $7, email = $8, phone = $9, risk_profile = CASE WHEN $12::boolean THEN $10 ELSE risk_profile END, notes = $11, updated_at = now() WHERE id = $1',
+      [id, s('name', 200), s('kind'), model, s('status'), s('tag', 60) || null, s('contact_name', 200) || null, s('email', 254).toLowerCase() || null, s('phone', 40) || null, (['conservative', 'moderately_conservative', 'moderate', 'growth', 'aggressive'].includes(s('risk_profile')) ? s('risk_profile') : null), s('notes', 3000) || null, 'risk_profile' in body])
+    const lvl = ['conservative', 'moderately_conservative', 'moderate', 'growth', 'aggressive'].includes(s('risk_profile')) ? s('risk_profile') : null
+    if ('risk_profile' in body && lvl !== prevRisk) await db().query('UPDATE wm.clients SET risk_set_by = $2, risk_set_at = $3 WHERE id = $1', [id, lvl ? 'adviser' : null, lvl ? new Date().toISOString() : null])
     if (/^[0-9a-f-]{36}$/.test(s('entity_id')) && s('entity_id') !== c.entity_id) {
       if (!user.roles.some((r) => ['admin', 'gp'].includes(r))) throw apiError('forbidden', 'Only admins and partners can change the contracting entity.', 403)
       await db().query('UPDATE wm.clients SET entity_id = $2, updated_at = now() WHERE id = $1', [id, s('entity_id')])
       if (c.user_id) await db().query("UPDATE core.user_roles SET scope_entity_id = $2 WHERE user_id = $1 AND role_code = 'wealth_client'", [c.user_id, s('entity_id')])
     }
+  } else if (a === 'risk') {
+    const lvl = ['conservative', 'moderately_conservative', 'moderate', 'growth', 'aggressive'].includes(s('risk_profile')) ? s('risk_profile') : null
+    await db().query('UPDATE wm.clients SET risk_profile = $2, risk_set_by = $3, risk_set_at = $4, updated_at = now() WHERE id = $1', [id, lvl, lvl ? 'adviser' : null, lvl ? new Date().toISOString() : null])
+    await audit({ event, actorUserId: user.userId, action: 'wm.risk_level', objectType: 'wm_client', objectId: id, detail: { level: lvl, by: 'adviser' } })
   } else if (a === 'delete') {
     if (!user.roles.includes('admin')) throw apiError('forbidden', 'Only admins can delete a wealth client.', 403)
     await db().query("UPDATE wealth.holdings SET wm_client_id = NULL WHERE wm_client_id = $1", [id]); await db().query('DELETE FROM wm.clients WHERE id = $1', [id])

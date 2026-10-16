@@ -20,6 +20,7 @@ export default defineEventHandler(async (event): Promise<Record<string, number>>
       if (n) out['/fundraising'] = n
     }
     if (org.kind !== 'company') { const nn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM inbox.notices WHERE status = 'new'").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (nn) out['/notices'] = nn }
+    if (org.kind !== 'company') { const sc = (await db().query<{ n: number }>("SELECT ((SELECT count(*) FROM wm.secondaries WHERE status = 'new') + (SELECT count(*) FROM wm.secondary_interest WHERE status = 'interested'))::int AS n").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (sc) out['/secondaries'] = sc }
     if (org.kind !== 'company' && (org.settings.services_operator === true || org.settings.services_operator === 'true')) {
       const r = (await db().query<{ inbox: number }>("SELECT count(DISTINCT m.thread_id)::int AS inbox FROM services.messages m JOIN services.threads t ON t.id = m.thread_id WHERE NOT m.from_team AND m.read_by_team IS NULL AND t.status = 'open'")).rows[0]!
       if (r.inbox) out['/services/inbox'] = r.inbox

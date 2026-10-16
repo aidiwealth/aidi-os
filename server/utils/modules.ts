@@ -22,6 +22,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },
   { code: 'wealth_mgmt', group: 'wm', label: 'Wealth management', to: '/wealth-mgmt', roles: ['admin', 'gp', 'team'], api: ['/api/wm'], pages: ['/wealth-mgmt'], switchable: true },
+  { code: 'secondaries', group: 'wm', label: 'Secondaries', to: '/secondaries', roles: ['admin', 'gp', 'team'], api: ['/api/secondaries'], pages: ['/secondaries'], switchable: true },
   { code: 'rentals', group: 'wm', label: 'Rental & Real Estate', to: '/rentals', roles: ['admin', 'gp', 'team'], api: ['/api/rentals'], pages: ['/rentals'], switchable: true },
   { code: 'wm_portal', group: 'wm', label: 'My wealth', to: '/w', roles: ['wealth_client'], api: ['/api/w/'], pages: ['/w'], switchable: false },
   { code: 'tax_docs', group: 'admin', label: 'Tax documents', to: '/tax-documents', roles: ['admin', 'gp', 'team'], api: ['/api/tax-docs'], pages: ['/tax-documents'], switchable: true },

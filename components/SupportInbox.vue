@@ -14,9 +14,35 @@ async function setStatus(a: 'open' | 'close') { try { await $fetch('/api/service
 // Incoming HTML is shown in a sandboxed frame (no scripts, no forms); plain text otherwise.
 const frame = (h: string) => '<base target="_blank"><style>body{font:14px/1.55 -apple-system,Helvetica,Arial,sans-serif;color:#1f1f1f;margin:0}img{max-width:100%;height:auto}</style>' + h
 async function openDoc(id: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank', 'noopener') } catch (e) { msg.value = err(e) } }
+// Email set-up: a Google Apps Script in the support mailbox sends labelled mail here every few minutes (no Postmark).
+const setupOpen = ref(false), copied = ref('')
+const { data: setup } = await useLazyFetch<{ address: string; webhook: string | null; last_received: string | null }>('/api/services/support/setup', { key: 'support-setup' })
+const script = computed(() => `// Sends Gmail messages labelled "Finvry support" to the Services desk inbox. Runs every 5 minutes.
+const WEBHOOK = '${setup.value?.webhook ?? 'PASTE-THE-WEBHOOK-URL'}'
+const LABEL = 'Finvry support'
+function sendSupportMail() {
+  const label = GmailApp.getUserLabelByName(LABEL) || GmailApp.createLabel(LABEL)
+  const sent = GmailApp.getUserLabelByName(LABEL + '/sent') || GmailApp.createLabel(LABEL + '/sent')
+  label.getThreads(0, 20).forEach(function (thread) {
+    thread.getMessages().forEach(function (m) {
+      const from = m.getFrom(), email = (from.match(/<([^>]+)>/) || [null, from])[1], name = from.replace(/<.*>/, '').replace(/"/g, '').trim()
+      if (email.toLowerCase() === '${setup.value?.address ?? 'support@finvry.com'}') return // our own replies
+      const files = m.getAttachments({ includeInlineImages: false }).filter(function (a) { return a.getSize() < 10e6 }).slice(0, 10)
+        .map(function (a) { return { filename: a.getName(), contentType: a.getContentType(), content: Utilities.base64Encode(a.getBytes()) } })
+      const res = UrlFetchApp.fetch(WEBHOOK, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ message_id: m.getHeader('Message-ID') || m.getId(), in_reply_to: m.getHeader('In-Reply-To'), references: m.getHeader('References'),
+          from: email, from_name: name, to: '${setup.value?.address ?? 'support@finvry.com'}', subject: m.getSubject(), text: m.getPlainBody(), html: m.getBody(), attachments: files }) })
+      if (res.getResponseCode() >= 300) throw new Error('Finvry said ' + res.getResponseCode() + ': ' + res.getContentText())
+    })
+    thread.removeLabel(label); thread.addLabel(sent)
+  })
+}`)
+async function copy(t: string, k: string) { await navigator.clipboard.writeText(t); copied.value = k; setTimeout(() => (copied.value = ''), 1500) }
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 </script>
 <template>
+  <div class="sup">
+  <div class="sbar"><span class="mut">Emails to <b>{{ setup?.address ?? 'support@finvry.com' }}</b>{{ setup?.last_received ? ' · last received ' + when(setup.last_received) : ' · nothing received yet' }}</span><button class="btn secondary sm" type="button" @click="setupOpen = true">Email setup</button></div>
   <div class="ib">
     <aside class="ls"><div class="lt"><button :class="{ on: status === 'open' }" @click="status = 'open'; cur = ''">Open</button><button :class="{ on: status === 'closed' }" @click="status = 'closed'; cur = ''">Closed</button></div>
       <input v-model="q" class="sr" placeholder="Search support email">
@@ -34,8 +60,24 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
     </section>
     <section v-else class="cv empty"><p class="mut">Choose a conversation.</p></section>
   </div>
+  <AppModal :open="setupOpen" title="Connect support email" wide @close="setupOpen = false">
+    <p class="mut lead2">No Postmark needed. A small Google script inside the {{ setup?.address }} mailbox sends new emails here every 5 minutes, with what's needed to keep replies in the same conversation. Gmail keeps its copy.</p>
+    <ol class="steps">
+      <li><b>One-time setting:</b> <code>NUXT_INBOUND_EMAIL_TOKEN</code> must be set in DigitalOcean (the same one Notices uses). <span v-if="!setup?.webhook" class="warn">Not set yet: add it, wait for the redeploy, then reopen this.</span><span v-else class="mut"> Set.</span></li>
+      <li><b>In Gmail, signed in as {{ setup?.address }}</b>: Settings → <i>Filters and blocked addresses</i> → <i>Create a new filter</i> → To: <code>{{ setup?.address }}</code> <button class="lk" type="button" @click="copy(setup?.address ?? '', 'to')">{{ copied === 'to' ? 'Copied' : 'Copy' }}</button> → <i>Create filter</i> → tick <i>Apply the label</i> → new label <code>Finvry support</code>. Tick "Also apply to matching conversations" to bring in recent emails.</li>
+      <li><b>Add the script:</b> open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> while signed in as {{ setup?.address }}, delete what's there, paste this and save:
+        <div class="code"><button class="btn secondary sm" type="button" @click="copy(script, 'script')">{{ copied === 'script' ? 'Copied' : 'Copy script' }}</button><pre>{{ script }}</pre></div></li>
+      <li><b>Run it once</b> (choose <code>sendSupportMail</code> → Run) and allow access. Then <i>Triggers</i> (clock icon) → <i>Add trigger</i> → <code>sendSupportMail</code> → Time-driven → Minutes timer → Every 5 minutes.</li>
+      <li><b>Test:</b> send an email to {{ setup?.address }} from another address. It appears here within 5 minutes and is relabelled <i>Finvry support/sent</i> in Gmail.</li></ol>
+    <p class="mut">The mailbox must be a Google Workspace account you can sign in to (not only an alias). If you used a Postmark forward before, remove it in Gmail → Settings → Forwarding so emails don't arrive twice (duplicates are skipped either way).</p>
+    <template #foot><button class="btn" @click="setupOpen = false">Done</button></template>
+  </AppModal>
+  </div>
 </template>
 <style scoped>
+.sbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; } .sbar b { font-weight: 500; color: var(--c-ink); }
+.lead2 { margin: 0 0 12px; font-size: 13.5px; } .steps { display: flex; flex-direction: column; gap: 12px; padding-left: 18px; font-size: 13.5px; line-height: 1.55; } .code { position: relative; margin-top: 8px; } .code pre { background: #0c1a2e; color: #e6edf6; padding: 12px; font-size: 11.5px; overflow-x: auto; max-height: 260px; margin: 0; } .code .btn { position: absolute; top: 6px; right: 6px; }
+code { background: var(--c-paper-2); padding: 1px 5px; font-size: 12.5px; } .warn { color: var(--c-warn); } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
 .ib { display: grid; grid-template-columns: 340px 1fr; gap: 0; border: 1px solid var(--c-rule); background: #fff; min-height: 70vh; } .ls { border-right: 1px solid var(--c-rule); display: flex; flex-direction: column; max-height: 78vh; overflow-y: auto; }
 .lt { display: flex; border-bottom: 1px solid var(--c-rule); } .lt button { flex: 1; background: none; border: 0; padding: 11px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-muted); border-bottom: 2px solid transparent; } .lt button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); }
 .sr { margin: 10px; font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); }

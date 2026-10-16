@@ -4,7 +4,7 @@ const N = z.union([z.coerce.number().finite(), z.literal('').transform(() => nul
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   const b = z.object({ wm_client_id: z.string().uuid().nullable().optional(), id: z.string().uuid().optional(), entity_id: z.string().uuid().nullable().optional(), client_name: z.string().trim().max(200).nullable().optional(), section: z.enum(['family', 'wealth', 'venture', 'real_estate', 'client']),
-    category: z.enum(['venture', 'private_stake', 'public_securities', 'fund', 'bonds', 'retirement', 'cash', 'crypto', 'precious_metals', 'real_estate', 'other', 'liability']), name: z.string().trim().min(1).max(200), platform: z.string().trim().max(120).nullable().optional(),
+    category: z.enum(['venture', 'private_stake', 'secondaries', 'public_securities', 'fund', 'bonds', 'retirement', 'cash', 'crypto', 'precious_metals', 'real_estate', 'other', 'liability']), name: z.string().trim().min(1).max(200), platform: z.string().trim().max(120).nullable().optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).default('USD'), cost: N, current_value: N, realized: N, ownership_pct: N, status: z.enum(['active', 'realized', 'at_cost', 'nil', 'written_off', 'sold']).default('active'),
     last_valuation: N, as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), notes: z.string().max(3000).nullable().optional(), in_nav: z.boolean().default(true), in_aum: z.boolean().default(true) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the holding details.')

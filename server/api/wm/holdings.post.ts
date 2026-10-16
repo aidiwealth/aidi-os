@@ -4,7 +4,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
   const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), wm_client_id: z.string().uuid().nullable().optional(),
-    category: z.enum(['public_securities', 'crypto', 'precious_metals', 'bonds', 'cash', 'fund', 'real_estate', 'retirement', 'other']).optional(), name: z.string().trim().min(1).max(200).optional(), platform: z.string().trim().max(120).optional(),
+    category: z.enum(['secondaries', 'public_securities', 'crypto', 'precious_metals', 'bonds', 'cash', 'fund', 'real_estate', 'retirement', 'other']).optional(), name: z.string().trim().min(1).max(200).optional(), platform: z.string().trim().max(120).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(), cost: z.number().min(0).nullable().optional(), current_value: z.number().min(0).nullable().optional(), as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), notes: z.string().max(3000).optional(),
     meta: z.object({ symbol: z.string().max(20).optional(), units: z.number().min(0).optional(), metal: z.enum(['gold', 'silver', 'platinum']).optional(), product: z.string().max(200).optional(), quantity: z.number().min(0).optional(), ounces: z.number().min(0).optional(), dealer: z.string().max(120).optional(), vault: z.string().max(120).optional(), certificate: z.string().max(120).optional(), valuation: z.enum(['manual', 'spot']).optional(), rate: z.number().min(0).max(100).optional(), maturity: z.string().max(20).optional() }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the holding details.')

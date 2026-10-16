@@ -15,7 +15,7 @@ async function connect() {
     const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST' })
     const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid
     P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); emit('changed'); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
-  } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as Error).message } finally { busy.value = false }
+  } catch (e) { const x = e as { data?: { data?: { error?: { message?: string } } }; statusCode?: number }; msg.value = x.data?.data?.error?.message ?? (x.statusCode ? 'Could not start the bank connection (error ' + x.statusCode + '). Please try again in a minute.' : 'Could not load the bank connection window. Check your internet connection or ad blocker and try again.') } finally { busy.value = false }
 }
 async function disconnect(id: string, name: string | null) { if (!confirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
 const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago' }

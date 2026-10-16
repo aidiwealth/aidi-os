@@ -40,7 +40,7 @@ export async function fortressView(clientId: string) {
     const v = await usd(Number(h.current_value ?? h.cost ?? 0), h.currency), m = (h.meta ?? {}) as Record<string, unknown>
     if (h.category === 'retirement') { retirement += v; continue }
     if (COMPANY_RX.test(h.name + ' ' + (h.notes ?? '')) || (h.category === 'private_stake' && m.employer)) { company += v; continue }
-    const k = h.category === 'cash' ? (m.rate ? 'tbills' : 'cash') : ['public_securities', 'fund', 'private_stake', 'venture'].includes(h.category) ? 'stocks' : h.category === 'real_estate' ? 'real_estate' : h.category === 'precious_metals' ? 'metals' : h.category === 'bonds' ? 'tbills' : h.category === 'crypto' ? 'crypto' : 'other'
+    const k = h.category === 'cash' ? (m.rate ? 'tbills' : 'cash') : ['public_securities', 'fund', 'private_stake', 'venture', 'secondaries'].includes(h.category) ? 'stocks' : h.category === 'real_estate' ? 'real_estate' : h.category === 'precious_metals' ? 'metals' : h.category === 'bonds' ? 'tbills' : h.category === 'crypto' ? 'crypto' : 'other'
     have[k] = (have[k] ?? 0) + v
   }
   for (const a of s.accounts) { const v = await usd(Number(a.balance), a.currency); const k = a.kind === 'bank' ? 'cash' : a.kind === 'savings' ? 'tbills' : a.kind === 'brokerage' ? 'stocks' : a.kind === 'crypto' ? 'crypto' : a.kind === 'retirement' ? 'retirement' : 'other'; if (k === 'retirement') retirement += v; else have[k] = (have[k] ?? 0) + v }

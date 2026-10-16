@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const q = String(getQuery(event).client ?? '')
   const id = user.roles.includes('admin') && /^[0-9a-f-]{36}$/.test(q) ? q : await wmClientOfUser(user.userId)
   if (!id) throw apiError('not_found', 'Your wealth account is not set up yet. Contact Aidi Wealth.', 404)
-  const c = (await db().query("SELECT id, name, kind, country, model, status, kyc_status, contact_name, email FROM wm.clients WHERE id = $1", [id])).rows[0]
+  const c = (await db().query("SELECT id, name, kind, country, model, status, kyc_status, contact_name, email, risk_profile, risk_set_by, to_char(risk_set_at, 'YYYY-MM-DD') AS risk_set_at FROM wm.clients WHERE id = $1", [id])).rows[0]
   const cfg = await wmSettings(), cc = cfg[(c.country as 'US' | 'NG')]
   return { client: c, summary: await clientSummary(id), members: (await db().query('SELECT id, name, relationship, email FROM wm.members WHERE client_id = $1', [id])).rows,
     views: (await db().query('SELECT name, email, viewed_at FROM wm.views WHERE client_id = $1 ORDER BY viewed_at DESC LIMIT 30', [id])).rows,

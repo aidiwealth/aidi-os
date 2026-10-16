@@ -4,9 +4,20 @@ export async function plaid<T>(path: string, body: Record<string, unknown>): Pro
   const c = useRuntimeConfig()
   if (!plaidOn()) throw apiError('plaid_off', 'Bank connections are not set up yet.', 503)
   const env = (c.plaidEnv as string) === 'production' ? 'production' : 'sandbox'
-  const r = await fetch('https://' + env + '.plaid.com' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: c.plaidClientId, secret: c.plaidSecret, ...body }), signal: AbortSignal.timeout(20000) })
-  const j = await r.json() as T & { error_message?: string; error_code?: string }
-  if (!r.ok) { console.error('[plaid]', path, j.error_code, j.error_message); throw apiError('plaid', 'The bank connection returned an error: ' + (j.error_message ?? r.status), 502) }
+  // Fail fast with a clear message instead of hanging until the load balancer gives up (504); one retry on a
+  // network error or a 5xx answer.
+  let r: Response | null = null, lastErr = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const t0 = Date.now()
+    try { r = await fetch('https://' + env + '.plaid.com' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: c.plaidClientId, secret: c.plaidSecret, ...body }), signal: AbortSignal.timeout(12000) }) }
+    catch (e) { lastErr = (e as Error).name === 'TimeoutError' ? 'timeout' : String((e as Error).message).slice(0, 200); r = null }
+    console.log('[plaid]', path, env, r ? r.status : lastErr, Date.now() - t0 + 'ms', 'attempt ' + attempt)
+    if (r && r.status < 500) break
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 800))
+  }
+  if (!r) throw apiError('bank_feed_unreachable', lastErr === 'timeout' ? 'The bank feed did not answer in time. Please try again in a minute.' : 'The bank feed could not be reached. Please try again in a minute.', 503)
+  const j = await r.json().catch(() => ({})) as T & { error_message?: string; error_code?: string }
+  if (!r.ok) { console.error('[plaid]', path, r.status, j.error_code, j.error_message); throw apiError('bank_feed', 'The bank feed returned an error: ' + (j.error_message ?? 'HTTP ' + r.status), 502) }
   return j
 }
 interface PAcct { account_id: string; name: string; official_name?: string; mask?: string; type?: string; subtype?: string; balances: { current: number | null; available: number | null; iso_currency_code: string | null; unofficial_currency_code: string | null } }

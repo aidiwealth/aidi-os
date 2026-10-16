@@ -2,6 +2,7 @@
 // in the Aidi workspace; AI adds a summary, any deadline and the action needed. Protected by ?token= (NUXT_INBOUND_EMAIL_TOKEN).
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
+import { secondarySource, ingestSecondaries } from '~/server/utils/secondaries'
 const TYPES = /^(application\/pdf|image\/(png|jpe?g|gif|webp)|text\/(plain|csv)|application\/(vnd\.openxmlformats-officedocument\.[a-z.]+|msword|vnd\.ms-excel))$/
 export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig().inboundEmailToken as string, given = String(getQuery(event).token ?? '')
@@ -28,6 +29,14 @@ export default defineEventHandler(async (event) => {
   }
   const row = await one<{ id: string }>('INSERT INTO inbox.notices (message_id, from_name, from_email, to_email, subject, text_body, html_body, attachments) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
     [m.message_id, m.from_name || null, m.from_email || null, m.to_email || null, m.subject, m.text || null, m.html || null, JSON.stringify(files)])
+  // Meridian (AngelList) and Wefunder deal alerts go straight onto Secondaries; the notice is filed as done.
+  if (secondarySource(m.from_email, m.subject, m.text)) {
+    try {
+      const added = await ingestSecondaries({ id: row.id, from_email: m.from_email, subject: m.subject, text_body: m.text, html_body: m.html })
+      await db().query("UPDATE inbox.notices SET status = 'done', done_at = now(), summary = $2, action = 'No action needed' WHERE id = $1", [row.id, added ? added + ' new opportunit' + (added === 1 ? 'y' : 'ies') + ' added to Secondaries (Wealth management).' : 'Deal alert; the opportunities are already on Secondaries.'])
+      return { ok: true, secondaries: added }
+    } catch (err) { console.error('[inbound] secondaries', (err as Error).message) }
+  }
   // Gmail forwarding confirmation: surface the code and link
   const gmail = /forwarding-noreply@google\.com/i.test(m.from_email) || /Gmail Forwarding Confirmation/i.test(m.subject)
   if (gmail) { const code = m.text.match(/Confirmation code:\s*(\d+)/i)?.[1]; const link = m.text.match(/https:\/\/mail[^\s]*google\.com\/[^\s]+/i)?.[0]
