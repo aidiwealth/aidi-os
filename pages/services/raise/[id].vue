@@ -13,6 +13,14 @@ const { data: pls, refresh: rpls } = await useFetch<{ pipelines: { id: string; n
 const pl = reactive({ to: '', new_name: '' })
 const ie = reactive({ open: false, ...blankI() })
 function editI(i?: I) { pl.to = i ? '' : (pls.value?.current ?? pls.value?.pipelines[0]?.id ?? (pls.value?.workspace ? 'new' : '')); pl.new_name = ''; Object.assign(ie, blankI(), i ? { ...i, firm: i.firm ?? '', email: i.email ?? '', ticket: i.ticket ?? '', committed: i.committed ?? '', next_step: i.next_step ?? '', notes: i.notes ?? '', terms: i.terms ?? '' } : {}, { open: true }) }
+// AI fill: only empty fields change.
+function fillI(g: import('~/shared/investor').InvestorGuess) {
+  if (!ie.name) ie.name = g.name; if (!ie.firm) ie.firm = g.firm; if (!ie.email && g.email) ie.email = g.email
+  if (ie.ticket === '' && (g.ticket_max_usd || g.ticket_min_usd)) ie.ticket = g.ticket_max_usd ?? g.ticket_min_usd ?? ''
+  const bits = [g.role && g.firm ? g.role + ', ' + g.firm : g.role, g.location, g.stages.length ? 'Stages: ' + g.stages.join(', ') : '', g.sectors.length ? 'Sectors: ' + g.sectors.join(', ') : ''].filter(Boolean)
+  if (!ie.notes && (g.profile || bits.length)) ie.notes = (g.profile ? '<p>' + esc(g.profile) + '</p>' : '') + (bits.length ? '<p>' + esc(bits.join(' · ')) + '</p>' : '')
+}
+const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 async function saveI() { const { open, deal_id, ...rest } = ie; void open; const pipeline = !deal_id && pl.to ? (pl.to === 'new' ? { id: 'new' as const, new_name: pl.new_name } : { id: pl.to }) : undefined; if (await post({ investor: { ...rest, id: rest.id || undefined, pipeline } })) { ie.open = false; await rpls() } }
 async function delI() { if (ie.id && confirm('Remove ' + ie.name + ' from the list?')) { await post({ investor: { id: ie.id, delete: true } }); ie.open = false } }
 const me = reactive({ open: false, investor_id: '', title: '', date: '', time: '10:00', minutes: 30, location: '', agenda: '' })
@@ -36,7 +44,7 @@ async function delProgram() { if (!confirm('Delete this fundraising program, its
       <aside><div class="card"><h2>Meetings</h2><div v-for="m in data.meetings" :key="m.id" class="mt"><b>{{ when(m.starts_at) }}</b><span>{{ m.title }}{{ m.investor ? ' · ' + m.investor : '' }} ({{ m.minutes }} min)</span><span v-if="m.location" class="s">{{ m.location }}</span><button class="lk red" @click="delM(m.id)">Cancel</button></div><p v-if="!data.meetings.length" class="s">None yet. The client gets an email when you book one, and reminders 1 day and 1 hour before.</p></div></aside></div>
     <RaiseBrief v-if="data.program.job_id" :job-id="data.program.job_id" in-workspace class="bfull" />
     <AppModal :open="ie.open" :title="ie.id ? 'Edit investor' : 'Add investor'" wide @close="ie.open = false">
-      <div class="ef"><div class="g3"><label class="label">Investor *<input v-model="ie.name" maxlength="200"></label><label class="label">Firm<input v-model="ie.firm" maxlength="200"></label><label class="label">Email (not shown to client)<input v-model="ie.email" maxlength="254"></label>
+      <div class="ef"><InvestorAssist v-if="!ie.id" :key="String(ie.open)" @fill="fillI" /><div class="g3"><label class="label">Investor *<input v-model="ie.name" maxlength="200"></label><label class="label">Firm<input v-model="ie.firm" maxlength="200"></label><label class="label">Email (not shown to client)<input v-model="ie.email" maxlength="254"></label>
         <label class="label">Ticket size<input v-model="ie.ticket" inputmode="decimal"></label><label class="label">Committed<input v-model="ie.committed" inputmode="decimal"></label><label class="label">Status<select v-model="ie.status"><option v-for="(l, k) in data.labels" :key="k" :value="k">{{ l }}</option></select></label></div>
         <label class="label">Next step<input v-model="ie.next_step" maxlength="500" placeholder="e.g. Send data room; partner meeting Tuesday"></label>
         <div class="label">Notes<ClientOnly><RichEditor v-model="ie.notes" compact :min-height="90" :max-length="5000" /></ClientOnly></div><div class="label">Terms they raised<ClientOnly><RichEditor v-model="ie.terms" compact :min-height="70" :max-length="5000" placeholder="e.g. $8M cap, pro-rata, board observer" /></ClientOnly></div>

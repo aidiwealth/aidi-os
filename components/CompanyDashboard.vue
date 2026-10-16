@@ -14,8 +14,8 @@ const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€
 const lbl = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const pts = (k: string) => (data.value?.series ?? []).filter((r) => r[k] != null).map((r) => ({ label: lbl(r.period), value: r[k] as number }))
 const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
-const hour = new Date().getHours()
-const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+const greet = ref('Welcome')
+onMounted(() => { const h = new Date().getHours(); greet.value = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' })
 const done = computed(() => steps.value.filter((s) => s.done).length)
 const folded = ref(false)
 onMounted(() => { folded.value = localStorage.getItem('finvry-setup-folded') === '1' })

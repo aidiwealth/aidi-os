@@ -25,7 +25,7 @@ const okMsg = ref('')
 async function bulk(s: string) { const n = sel.value.length; await $fetch('/api/notices/bulk', { method: 'POST', body: { ids: sel.value, status: s } }); sel.value = []; okMsg.value = n + ' notice' + (n === 1 ? '' : 's') + (s === 'done' ? ' marked done.' : s === 'archived' ? ' archived.' : ' moved back to New.'); await refresh() }
 // One notice.
 const open = ref<N | null>(null); const showHtml = ref(false); const saving = ref('')
-async function view(r: R) { open.value = await $fetch<N>('/api/notices/' + r.id); showHtml.value = false; rmOpen.value = false; Object.assign(rm, { title: r.subject.slice(0, 200), recurrence: 'none' }); det.entity_id = r.entity_id ?? ''; det.due = r.due_date ?? ''; msg.value = '' }
+async function view(r: R) { open.value = await $fetch<N>('/api/notices/' + r.id); showHtml.value = !!open.value.html_body; rmOpen.value = false; Object.assign(rm, { title: r.subject.slice(0, 200), recurrence: 'none' }); det.entity_id = r.entity_id ?? ''; det.due = r.due_date ?? ''; msg.value = '' }
 const det = reactive({ entity_id: '', due: '' })
 async function saveDet(k: 'entity_id' | 'due_date') { if (!open.value) return; saving.value = k; try { await $fetch('/api/notices/' + open.value.id, { method: 'POST', body: k === 'entity_id' ? { entity_id: det.entity_id || null } : { due_date: det.due } }); await refresh() } finally { saving.value = '' } }
 async function setStatus(s: string) { if (!open.value) return; await $fetch('/api/notices/' + open.value.id, { method: 'POST', body: { status: s } }); open.value = null; await refresh() }
@@ -125,7 +125,7 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
           <div v-if="open.summary" class="sumc"><span class="k">Summary</span><p>{{ open.summary }}</p>
             <dl><template v-if="open.action"><dt>Action</dt><dd>{{ open.action }}</dd></template><template v-if="open.due_date"><dt>Deadline</dt><dd>{{ dueLabel(open.due_date) }} ({{ dueNote(open.due_date) }})</dd></template></dl></div>
           <div v-if="open.attachments.length" class="att"><span class="k">Attachments</span><a v-for="a in open.attachments" :key="a.doc_id" :href="'/api/notices/' + open.id + '/file/' + a.doc_id" target="_blank" class="fa"><FileBadge :name="a.name" size="sm" /><span>{{ a.name }}</span></a></div>
-          <div class="em"><nav class="tabs sm"><button :class="{ on: !showHtml }" @click="showHtml = false">Email text</button><button v-if="open.html_body" :class="{ on: showHtml }" @click="showHtml = true">Original layout</button></nav>
+          <div class="em"><nav class="etabs"><button v-if="open.html_body" type="button" :class="{ on: showHtml }" @click="showHtml = true">Original layout</button><button type="button" :class="{ on: !showHtml }" @click="showHtml = false">Email text</button></nav>
             <iframe v-if="showHtml && open.html_body" sandbox="" :srcdoc="open.html_body" title="Email" class="ifr" /><div v-else class="txt" v-html="bodyHtml" /></div>
         </div>
         <aside class="ns">
@@ -165,6 +165,7 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
   </section>
 </template>
 <style scoped>
+.etabs { display: flex; gap: 28px; padding: 0 18px; border-bottom: 1px solid var(--c-rule); } .etabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 0; margin: 0; font: inherit; font-size: 13.5px; color: var(--c-muted); cursor: pointer; } .etabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; } .head h1 { margin: 0; } .lead { color: var(--c-muted); margin: 4px 0 0; max-width: 720px; }
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 0 0 12px; } .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 0; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; } .tabs button.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .tabs em { font-style: normal; font-size: 12px; margin-left: 6px; color: var(--c-muted); }
 .tabs.sm { gap: 18px; margin-bottom: 0; } .tabs.sm button { padding: 8px 0; font-size: 13px; }

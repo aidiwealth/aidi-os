@@ -55,3 +55,25 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 .tpg-n { margin-right: auto; } .tpg-s { display: flex; align-items: center; gap: 6px; } .tpg-s select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
 .tpg button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 5px 11px; font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; } .tpg button:disabled { color: var(--c-muted); cursor: default; opacity: .6; } .tpg button:not(:disabled):hover { border-color: var(--c-navy); }
 .tpg-p { color: var(--c-ink-soft); } @media print { .tpg { display: none; } }
+
+/* Surfaces (Meridian-style): white panels on the paper background, a hairline edge, and a soft shadow only on hover;
+   square corners. Applies to cards, stat tiles and table boxes across Aidi OS and Finvry. */
+.card, .fx-st, .box, .tw.card, .card.tc { border-color: var(--c-line-soft); box-shadow: none; transition: box-shadow .15s, border-color .15s; }
+.card:hover, .fx-st:hover, .box:hover { box-shadow: var(--shadow-card); }
+.card.lift, a.card, .fx-st.fx-act { transition: box-shadow .15s, border-color .15s; } .card.lift:hover, a.card:hover, .fx-st.fx-act:hover { box-shadow: var(--shadow-lift); }
+.table td, .table th { border-color: var(--c-line-soft); }
+/* Label / value rows with hairlines (deal terms, summaries). */
+.kv { display: flex; flex-direction: column; } .kv > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 13px 0; border-top: 1px solid var(--c-line-soft); font-size: 14px; }
+.kv > div:first-child { border-top: 0; } .kv > div > span { color: var(--c-muted); } .kv > div > b { font-weight: 500; color: var(--c-ink); text-align: right; }
+/* Feature card: a coloured tile with the headline and tags, and a details panel beside it. */
+.fcard { display: grid; grid-template-columns: minmax(220px, 40%) 1fr; background: #fff; border: 1px solid var(--c-line-soft); box-shadow: none; text-align: left; color: inherit; text-decoration: none; transition: box-shadow .15s; }
+.fcard:hover { box-shadow: var(--shadow-card); } .fcard.act { cursor: pointer; } .fcard.act:hover { box-shadow: var(--shadow-lift); }
+.ftile { position: relative; color: #fff; padding: 22px 24px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-height: 210px; overflow: hidden; }
+.ftile h3 { margin: 0; color: #fff; font-size: 19px; line-height: 1.32; font-weight: 600; letter-spacing: -.005em; }
+.ftile .fsub { color: rgba(255,255,255,.78); font-size: 13px; margin-top: 6px; display: block; }
+.ftags { display: flex; gap: 8px; flex-wrap: wrap; } .ftag { background: rgba(255,255,255,.16); color: #fff; font-size: 12.5px; font-weight: 500; padding: 5px 10px; }
+.fbody { padding: 18px 24px; display: flex; flex-direction: column; min-width: 0; }
+.fwho { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--c-line-soft); } .fwho .fav { width: 40px; height: 40px; flex: none; display: grid; place-items: center; background: var(--c-paper-2); color: var(--c-ink-soft); font-weight: 600; font-size: 14px; overflow: hidden; border: 1px solid var(--c-line-soft); } .fwho .fav img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.fwho b { display: block; font-weight: 500; color: var(--c-ink); font-size: 15px; } .fwho em { font-style: normal; font-size: 13px; color: var(--c-muted); } .fwho .fx { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.tone-1 { background: #1f3a5f; } .tone-2 { background: #3b5874; } .tone-3 { background: #5c4636; } .tone-4 { background: #7a6022; } .tone-5 { background: #4f3d5a; } .tone-6 { background: #2f343b; }
+@media (max-width: 760px) { .fcard { grid-template-columns: 1fr; } .ftile { min-height: 150px; } }

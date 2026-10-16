@@ -2,7 +2,8 @@
 // Secondaries: SPV and secondary opportunities from Meridian (AngelList) and Wefunder, picked up from Notices as the
 // alerts arrive, plus any added by hand. Review, mark interest, record what was invested.
 useHead({ title: 'Secondaries' })
-interface S { id: string; source: 'meridian' | 'wefunder' | 'other'; ref: string | null; title: string; company: string | null; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; currency: string; url: string | null; notice_id: string | null; received_at: string; status: string; amount: number | null; notes: string | null; fits: boolean | null; fit_note: string | null; client_visible: boolean; pipeline_deal_id: string | null; portfolio_company_id: string | null; closes_at: string | null; interest: number }
+interface Info { name: string | null; website: string; domain: string; description: string | null; logo_doc_id: string | null; socials: Record<string, string>; location: string | null; founded: string | null }
+interface S { website: string | null; logo_doc_id: string | null; company_info: Info | null; id: string; source: 'meridian' | 'wefunder' | 'other'; ref: string | null; title: string; company: string | null; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; currency: string; url: string | null; notice_id: string | null; received_at: string; status: string; amount: number | null; notes: string | null; fits: boolean | null; fit_note: string | null; client_visible: boolean; pipeline_deal_id: string | null; portfolio_company_id: string | null; closes_at: string | null; interest: number }
 const route = useRoute(), router = useRouter()
 const STATUSES = [['new', 'New'], ['reviewing', 'Reviewing'], ['interested', 'Interested'], ['invested', 'Invested'], ['passed', 'Passed'], ['expired', 'Expired']] as const
 const SOURCES: Record<string, string> = { meridian: 'Meridian', wefunder: 'Wefunder', other: 'Other' }
@@ -21,17 +22,36 @@ const day = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numer
 const from = computed(() => (data.value ? (data.value.page - 1) * data.value.size + 1 : 0)), to = computed(() => (data.value ? Math.min(data.value.total, data.value.page * data.value.size) : 0))
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const okMsg = ref(''), msg = ref('')
+const view = ref<'cards' | 'table'>('cards')
+onMounted(() => { try { const v = localStorage.getItem('sec-view'); if (v === 'table' || v === 'cards') view.value = v } catch { /* ignore */ } })
+function setView(v: 'cards' | 'table') { view.value = v; try { localStorage.setItem('sec-view', v) } catch { /* ignore */ } }
 async function setStatus(r: S, s: string) { try { await $fetch('/api/secondaries', { method: 'POST', body: { id: r.id, status: s } }); await refresh() } catch (e) { msg.value = err(e) } }
 // Pick up deal alerts already in Notices.
 const scanning = ref(false)
 async function scan() { scanning.value = true; msg.value = ''; try { const r = await $fetch<{ emails: number; added: number }>('/api/secondaries/scan', { method: 'POST' }); okMsg.value = r.emails ? r.added + ' new opportunit' + (r.added === 1 ? 'y' : 'ies') + ' from ' + r.emails + ' deal alert' + (r.emails === 1 ? '' : 's') + ' in Notices.' : 'No Meridian or Wefunder alerts in Notices yet.'; await refresh() } catch (e) { msg.value = err(e) } finally { scanning.value = false } }
 // One opportunity: view and edit.
-const blank = () => ({ id: '', title: '', company: '', sector: '', stage: '', lead: '', co_investors: '', min_investment: '' as string | number, valuation: '', url: '', status: 'new', amount: '' as string | number, notes: '', source: 'other' as S['source'], notice_id: null as string | null, received_at: '', client_visible: true, closes_at: '', pipeline_deal_id: null as string | null, portfolio_company_id: null as string | null, fits: null as boolean | null, fit_note: null as string | null })
+const blank = () => ({ id: '', title: '', company: '', sector: '', stage: '', lead: '', co_investors: '', min_investment: '' as string | number, valuation: '', url: '', status: 'new', amount: '' as string | number, notes: '', source: 'other' as S['source'], notice_id: null as string | null, received_at: '', client_visible: true, closes_at: '', pipeline_deal_id: null as string | null, portfolio_company_id: null as string | null, fits: null as boolean | null, fit_note: null as string | null, website: '', logo_doc_id: null as string | null, company_info: null as Info | null })
 const f = reactive({ open: false, busy: false, msg: '', ...blank() })
-function edit(r?: S) { det.value = null; inv.client_id = ''; inv.amount = ''; inv.msg = ''; if (r) void loadDet(r.id); Object.assign(f, blank(), r ? { ...r, company: r.company ?? '', sector: r.sector ?? '', stage: r.stage ?? '', lead: r.lead ?? '', co_investors: r.co_investors ?? '', min_investment: r.min_investment ?? '', valuation: r.valuation ?? '', url: r.url ?? '', amount: r.amount ?? '', notes: r.notes ?? '', closes_at: r.closes_at ?? '' } : {}, { open: true, busy: false, msg: '' }) }
+function edit(r?: S) { det.value = null; inv.client_id = ''; inv.amount = ''; inv.msg = ''; if (r) void loadDet(r.id); Object.assign(f, blank(), r ? { ...r, company: r.company ?? '', sector: r.sector ?? '', stage: r.stage ?? '', lead: r.lead ?? '', co_investors: r.co_investors ?? '', min_investment: r.min_investment ?? '', valuation: r.valuation ?? '', url: r.url ?? '', amount: r.amount ?? '', notes: r.notes ?? '', closes_at: r.closes_at ?? '', website: r.website ?? '' } : {}, { open: true, busy: false, msg: '' }); lk.key = key(); lk.msg = ''; if (r && (r.company || r.website) && !r.company_info) void nextTick(() => lookup(true)) }
+// Company details from its website (or name): looked up when the name or website changes.
+const SOCIAL: Record<string, string> = { linkedin: 'LinkedIn', x: 'X', crunchbase: 'Crunchbase', github: 'GitHub' }
+const info = computed(() => f.company_info)
+const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '·'
+const lk = reactive({ busy: false, msg: '', key: '' })
+const key = () => (f.company || '').trim().toLowerCase() + '|' + (f.website || '').trim().toLowerCase()
+async function lookup(force = false) {
+  if (lk.busy || (!f.company.trim() && !f.website.trim())) return
+  if (!force && (lk.key === key() || f.website.trim())) return
+  lk.busy = true; lk.msg = ''; lk.key = key()
+  try {
+    const r = await $fetch<{ found: boolean; info?: Info }>('/api/secondaries/lookup', { method: 'POST', body: { id: f.id || undefined, name: f.company || undefined, website: f.website || undefined } })
+    if (r.found && r.info) { if (!f.company) f.company = r.info.name ?? ''; f.website = r.info.website; f.logo_doc_id = r.info.logo_doc_id ?? f.logo_doc_id; f.company_info = r.info; lk.key = key(); if (f.id) await refresh() }
+    else lk.msg = f.website ? 'Could not read that website. Check the address.' : 'No website found for that name. Add the website to fill in the details.'
+  } catch (e) { lk.msg = err(e) } finally { lk.busy = false }
+}
 async function save() {
   f.busy = true; f.msg = ''
-  try { const { open: _o, busy: _b, msg: _m, notice_id: _n, received_at: _r, pipeline_deal_id: _p, portfolio_company_id: _pc, fits: _f, fit_note: _fn, id, ...body } = f; await $fetch('/api/secondaries', { method: 'POST', body: { id: id || undefined, ...body } }); f.open = false; await refresh() }
+  try { const { open: _o, busy: _b, msg: _m, notice_id: _n, received_at: _r, pipeline_deal_id: _p, portfolio_company_id: _pc, fits: _f, fit_note: _fn, id, ...body } = f; if (!body.company_info) delete (body as Record<string, unknown>).company_info; await $fetch('/api/secondaries', { method: 'POST', body: { id: id || undefined, ...body } }); f.open = false; await refresh() }
   catch (e) { f.msg = err(e) } finally { f.busy = false }
 }
 // Deal detail: wealth clients interested and investments recorded.
@@ -73,12 +93,20 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
     <nav class="tabs"><button :class="{ on: status === 'open' }" @click="status = 'open'">Open<em>{{ openCount }}</em></button><button v-for="[k, l] in STATUSES" :key="k" :class="{ on: status === k }" @click="status = k">{{ l }}<em>{{ cnt(k) }}</em></button><button :class="{ on: status === 'all' }" @click="status = 'all'">All</button></nav>
     <div class="tools"><div class="srch"><input v-model="q" type="search" placeholder="Search deal, sector, lead or co-investor" aria-label="Search"><button v-if="q" class="clr" aria-label="Clear search" @click="q = ''">×</button></div>
       <select v-model="source" aria-label="Source"><option value="">All sources</option><option value="meridian">Meridian</option><option value="wefunder">Wefunder</option><option value="other">Added by hand</option></select>
-      <span class="rc">{{ data.total ? from + '–' + to + ' of ' + data.total : '' }}</span></div>
+      <span class="rc">{{ data.total ? from + '–' + to + ' of ' + data.total : '' }}</span><span class="vw" role="group" aria-label="View"><button :class="{ on: view === 'cards' }" @click="setView('cards')">Cards</button><button :class="{ on: view === 'table' }" @click="setView('table')">Table</button></span></div>
     <p v-if="okMsg" class="okm">{{ okMsg }}</p><p v-if="msg" class="error">{{ msg }}</p>
-    <div v-if="data.rows.length" class="box" :class="{ dim: pending }">
+    <div v-if="data.rows.length && view === 'cards'" class="cards" :class="{ dim: pending }">
+      <DealCard v-for="r in data.rows" :key="r.id" :deal="r" clickable react :source="r.source === 'other' ? null : SOURCES[r.source]" :starred="r.status === 'interested' || r.status === 'invested'" :passed="r.status === 'passed'"
+        :star-label="r.status === 'interested' ? 'Interested (click to undo)' : 'Mark interested'" :pass-label="r.status === 'passed' ? 'Passed (click to undo)' : 'Pass'"
+        @open="edit(r)" @star="r.status !== 'invested' && setStatus(r, r.status === 'interested' ? 'reviewing' : 'interested')" @pass="r.status !== 'invested' && setStatus(r, r.status === 'passed' ? 'new' : 'passed')">
+        <p v-if="r.fit_note || r.interest || r.pipeline_deal_id || r.portfolio_company_id" class="cnote" :class="{ out: r.fits === false }">{{ [r.fit_note ? (r.fits === false ? 'Outside criteria: ' : 'Check: ') + r.fit_note : '', r.interest ? r.interest + ' client' + (r.interest === 1 ? '' : 's') + ' interested' : '', r.pipeline_deal_id ? 'In Pipeline' : '', r.portfolio_company_id ? 'Portfolio company' : ''].filter(Boolean).join(' · ') }}</p>
+      </DealCard>
+      <div v-if="data.total > 25" class="pg"><span>{{ from }}–{{ to }} of {{ data.total }}</span><button class="btn secondary sm" :disabled="data.page <= 1" @click="page = data.page - 1">‹ Prev</button><span>Page {{ data.page }} of {{ data.pages }}</span><button class="btn secondary sm" :disabled="data.page >= data.pages" @click="page = data.page + 1">Next ›</button></div>
+    </div>
+    <div v-else-if="data.rows.length" class="box" :class="{ dim: pending }">
       <table data-nosearch><thead><tr><th>Deal</th><th class="ld">Lead and co-investors</th><th class="n">Minimum</th><th class="cl">Clients</th><th class="src">Source</th><th class="rd">Closes</th><th class="st">Status</th></tr></thead>
         <tbody><tr v-for="r in data.rows" :key="r.id" @click="edit(r)">
-          <td class="mn"><b>{{ r.company ? r.company + ' · ' : '' }}{{ r.title }}</b><span>{{ [r.sector, r.stage].filter(Boolean).join(' · ') || '—' }}{{ r.valuation ? ' · ' + r.valuation : '' }}{{ r.status === 'invested' && r.amount ? ' · invested ' + usd(r.amount) : '' }}</span><em v-if="r.fit_note" class="fn" :class="{ out: r.fits === false }">{{ r.fits === false ? 'Outside criteria: ' : 'Check: ' }}{{ r.fit_note }}</em><em v-if="r.pipeline_deal_id || r.portfolio_company_id" class="fn">{{ [r.pipeline_deal_id ? 'In Pipeline' : '', r.portfolio_company_id ? 'Portfolio company' : ''].filter(Boolean).join(' · ') }}</em></td>
+          <td class="mn"><span class="rl"><img v-if="r.logo_doc_id" :src="'/api/public/media/' + r.logo_doc_id" alt=""><i v-else>{{ initials(r.company || r.title) }}</i></span><div class="rt"><b>{{ r.company ? r.company + ' · ' : '' }}{{ r.title }}</b><span>{{ [r.sector, r.stage].filter(Boolean).join(' · ') || '—' }}{{ r.valuation ? ' · ' + r.valuation : '' }}{{ r.status === 'invested' && r.amount ? ' · invested ' + usd(r.amount) : '' }}</span><em v-if="r.fit_note" class="fn" :class="{ out: r.fits === false }">{{ r.fits === false ? 'Outside criteria: ' : 'Check: ' }}{{ r.fit_note }}</em><em v-if="r.pipeline_deal_id || r.portfolio_company_id" class="fn">{{ [r.pipeline_deal_id ? 'In Pipeline' : '', r.portfolio_company_id ? 'Portfolio company' : ''].filter(Boolean).join(' · ') }}</em></div></td>
           <td class="ld">{{ r.lead || '—' }}<em v-if="r.co_investors">with {{ r.co_investors }}</em></td>
           <td class="n">{{ usd(r.min_investment) }}</td><td class="cl">{{ r.interest ? r.interest + ' interested' : '—' }}</td>
           <td class="src">{{ SOURCES[r.source] }}<a v-if="r.url" :href="r.url" target="_blank" rel="noopener" @click.stop>View ↗</a></td>
@@ -89,32 +117,51 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
     </div>
     <EmptyState v-else card icon="funnel" :title="qd || source ? 'No deals match' : status === 'open' ? 'No open deals yet' : 'Nothing here'" text="Meridian and Wefunder deal alerts that reach Notices are added here automatically. Already have some in Notices? Check Notices to pick them up."><button class="btn secondary" :disabled="scanning" @click="scan">Check Notices</button></EmptyState>
 
-    <AppModal :open="f.open" :title="f.id ? 'Deal' : 'Add a deal'" wide @close="f.open = false">
-      <form id="scf" class="frm" @submit.prevent="save">
-        <p v-if="f.id" class="mut">{{ SOURCES[f.source] }}{{ f.received_at ? ' · received ' + new Date(f.received_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '' }}<template v-if="f.url"> · <a :href="f.url" target="_blank" rel="noopener">Open on {{ SOURCES[f.source] === 'Other' ? 'the site' : SOURCES[f.source] }} ↗</a></template><template v-if="f.notice_id"> · <NuxtLink to="/notices?status=all">From Notices</NuxtLink></template></p>
-        <label class="label">What it is<textarea v-model="f.title" rows="2" maxlength="500" required placeholder="e.g. Speech AI for emotion and speaking style" /></label>
-        <div class="g3"><label class="label">Company (once known)<input v-model="f.company" maxlength="200"></label><label class="label">Sector<input v-model="f.sector" maxlength="120" placeholder="e.g. AI / ML"></label><label class="label">Stage<input v-model="f.stage" maxlength="60" placeholder="e.g. Seed, Series B+"></label></div>
-        <div class="g2"><label class="label">Lead<input v-model="f.lead" maxlength="300"></label><label class="label">Co-investors<input v-model="f.co_investors" maxlength="300"></label></div>
-        <div class="g3"><label class="label">Minimum (USD)<input v-model="f.min_investment" inputmode="decimal"></label><label class="label">Valuation or cap<input v-model="f.valuation" maxlength="120"></label><label class="label">Link<input v-model="f.url" type="url" maxlength="1000" placeholder="https://"></label></div>
-        <div class="g3"><label class="label">Status<select v-model="f.status"><option v-for="[k, l] in STATUSES" :key="k" :value="k">{{ l }}</option></select></label><label class="label">Amount invested (USD)<input v-model="f.amount" inputmode="decimal" :disabled="f.status !== 'invested'" :placeholder="f.status === 'invested' ? '' : 'When invested'"></label>
-          <label class="label">Closes on<input v-model="f.closes_at" type="date"></label>
-          <label v-if="!f.id" class="label">Source<select v-model="f.source"><option value="meridian">Meridian</option><option value="wefunder">Wefunder</option><option value="other">Other</option></select></label></div>
-        <label class="ck"><input v-model="f.client_visible" type="checkbox"> Show to wealth management clients (on their dashboard, without the source or link)</label>
-        <p v-if="f.fit_note" class="mut">{{ f.fits === false ? 'Outside our criteria' : 'Check fit' }}: {{ f.fit_note }}</p>
-        <label class="label">Notes<textarea v-model="f.notes" rows="3" maxlength="5000" placeholder="Thesis, questions, who looked at it" /></label>
-        <p v-if="f.msg" class="error">{{ f.msg }}</p></form>
-      <div v-if="f.id" class="xs">
-        <div class="xh"><b>Pipeline</b><NuxtLink v-if="f.pipeline_deal_id" :to="'/pipeline/' + f.pipeline_deal_id" class="btn secondary sm">Open in Pipeline</NuxtLink><button v-else class="btn secondary sm" type="button" :disabled="pipeBusy" @click="toPipeline">{{ pipeBusy ? 'Moving…' : 'Move to Pipeline' }}</button></div>
-        <div class="xh"><b>Portfolio</b><NuxtLink v-if="det?.portfolio" :to="'/portfolio/' + det.portfolio.id" class="btn secondary sm">Open {{ det.portfolio.name }}{{ det.portfolio.held_by ? ' (' + det.portfolio.held_by + ')' : '' }}</NuxtLink><template v-else><button v-for="m in det?.matches ?? []" :key="m.id" class="btn secondary sm" type="button" :disabled="pf.busy" @click="toPortfolio(m.id)">Link to {{ m.name }}{{ m.held_by ? ' (' + m.held_by + ')' : '' }}</button><button v-if="!pf.open" class="btn secondary sm" type="button" @click="openPf">Add to Portfolio</button></template></div>
-        <div v-if="pf.open && !det?.portfolio" class="pff"><select v-model="pf.entity" aria-label="Held by"><option value="" disabled>Held by…</option><option v-for="e in (det?.entities ?? []).filter((x) => ['fund', 'spv'].includes(x.kind))" :key="e.id" :value="e.id">{{ e.name }}</option></select><input v-model="pf.founder_name" maxlength="200" placeholder="Founder name" aria-label="Founder name"><input v-model="pf.founder_email" type="email" maxlength="254" placeholder="Founder email" aria-label="Founder email"><button class="btn sm" type="button" :disabled="pf.busy || !pf.entity || !pf.founder_name || !pf.founder_email" @click="toPortfolio()">Add</button><button class="lk" type="button" @click="pf.open = false">Cancel</button><p v-if="pf.msg" class="error">{{ pf.msg }}</p></div>
-        <div class="xh"><b>Wealth clients</b><span class="mut">{{ det?.interest.filter((i) => i.status !== 'withdrawn').length ?? 0 }} interested</span></div>
-        <div v-for="i in det?.interest ?? []" :key="i.id" class="ir"><span><b>{{ i.client }}</b><em>{{ i.status === 'invested' ? 'Invested' : i.status === 'withdrawn' ? 'Withdrew' : 'Interested' }}{{ i.amount ? ' · ' + usd(i.amount) : '' }}{{ i.note ? ' · ' + i.note : '' }}<template v-if="i.above_risk"> · <span class="wr">{{ i.risk_profile ? 'Above their risk level' : 'Risk level not set' }}</span></template></em></span><button v-if="i.status === 'interested'" class="lk" type="button" @click="investFor(i)">Record investment</button></div>
-        <div class="xh"><b>Investments</b><span class="mut">Each one is a holding in the Secondaries asset class</span></div>
-        <div v-for="x in det?.investments ?? []" :key="x.id" class="ir"><span><b>{{ x.investor }}</b><em>{{ usd(x.amount) }} on {{ x.date }}{{ x.value != null && x.value !== x.amount ? ' · now ' + usd(x.value) + ' (' + (x.value / x.amount).toFixed(2) + 'x)' : '' }}</em></span></div>
-        <div class="ivf"><select v-model="inv.client_id" aria-label="Investor"><option value="">The group (Investments &amp; AUM)</option><optgroup v-if="det?.entities.length" label="Our funds and companies"><option v-for="e in det.entities" :key="e.id" :value="'e:' + e.id">{{ e.name }}</option></optgroup><optgroup v-if="det?.clients.length" label="Wealth clients"><option v-for="c in det.clients" :key="c.id" :value="'c:' + c.id">{{ c.name }}{{ c.above_risk ? ' (above risk level)' : '' }}</option></optgroup></select><input v-model="inv.amount" inputmode="decimal" placeholder="Amount (USD)" aria-label="Amount"><input v-model="inv.value" inputmode="decimal" placeholder="Value now (optional)" aria-label="Value now"><input v-model="inv.date" type="date" aria-label="Date invested"><button class="btn sm" type="button" :disabled="inv.busy || !inv.amount" @click="invest">{{ inv.busy ? 'Saving…' : 'Record investment' }}</button></div>
-        <p v-if="inv.msg" class="mut">{{ inv.msg }}</p>
+    <AppModal :open="f.open" xl @close="f.open = false">
+      <template #head><div class="ch">
+        <span class="lg"><img v-if="f.logo_doc_id" :src="'/api/public/media/' + f.logo_doc_id" :alt="(f.company || 'Company') + ' logo'"><b v-else>{{ initials(f.company || f.title) }}</b></span>
+        <div class="cm"><h2>{{ f.company || (f.id ? 'Company not named yet' : 'Add a deal') }}</h2>
+          <span class="cl2"><a v-if="f.website" :href="f.website" target="_blank" rel="noopener">{{ f.website.replace(/^https?:\/\//, '') }} ↗</a><span v-if="info?.location">{{ info.location }}</span><span v-if="info?.founded">Founded {{ String(info.founded).slice(0, 4) }}</span><a v-for="(u, k) in info?.socials ?? {}" :key="k" :href="u" target="_blank" rel="noopener">{{ SOCIAL[k] ?? k }}</a><span v-if="!f.website && !lk.busy" class="mut">{{ f.company ? 'Add the website to fill in the details' : "Add the company's name or website to fill this in" }}</span><span v-if="lk.busy" class="mut">Looking up…</span></span></div></div></template>
+      <div class="dv">
+        <form id="scf" class="dm" @submit.prevent="save">
+          <p v-if="info?.description" class="about">{{ info.description }}</p>
+          <section><span class="k">Company</span>
+            <div class="g2"><label class="label">Name<input v-model="f.company" maxlength="200" placeholder="e.g. Mercury" @blur="lookup()"></label>
+              <label class="label">Website<span class="wsi"><input v-model="f.website" maxlength="300" placeholder="e.g. mercury.com" @blur="lookup(true)"><button type="button" class="lk" :disabled="lk.busy || (!f.company && !f.website)" @click="lookup(true)">{{ lk.busy ? 'Looking…' : 'Look up' }}</button></span></label></div>
+            <p v-if="lk.msg" class="mut">{{ lk.msg }}</p></section>
+          <section><span class="k">The deal</span>
+            <label class="label">What it is<textarea v-model="f.title" rows="2" maxlength="500" required placeholder="e.g. Speech AI for emotion and speaking style" /></label>
+            <div class="g3"><label class="label">Sector<input v-model="f.sector" maxlength="120" placeholder="e.g. AI / ML"></label><label class="label">Stage<input v-model="f.stage" maxlength="60" placeholder="e.g. Seed, Series B+"></label><label class="label">Minimum (USD)<input v-model="f.min_investment" inputmode="decimal"></label></div>
+            <div class="g2"><label class="label">Lead<input v-model="f.lead" maxlength="300"></label><label class="label">Co-investors<input v-model="f.co_investors" maxlength="300"></label></div>
+            <div class="g2"><label class="label">Valuation or cap<input v-model="f.valuation" maxlength="120"></label><label class="label">Deal link<input v-model="f.url" type="url" maxlength="1000" placeholder="https://"></label></div></section>
+          <section><label class="label">Notes<textarea v-model="f.notes" rows="3" maxlength="5000" placeholder="Thesis, questions, who looked at it" /></label></section>
+          <p v-if="f.msg" class="error">{{ f.msg }}</p>
+        </form>
+        <aside class="ds">
+          <div class="sb"><span class="k">Source</span><span>{{ SOURCES[f.source] }}{{ f.received_at ? ' · ' + new Date(f.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '' }}</span>
+            <span class="lks"><a v-if="f.url" :href="f.url" target="_blank" rel="noopener">Open on {{ SOURCES[f.source] === 'Other' ? 'the site' : SOURCES[f.source] }} ↗</a><NuxtLink v-if="f.notice_id" to="/notices?status=all">From Notices</NuxtLink></span>
+            <select v-if="!f.id" v-model="f.source" aria-label="Source"><option value="meridian">Meridian</option><option value="wefunder">Wefunder</option><option value="other">Other</option></select></div>
+          <label class="sb"><span class="k">Status</span><select v-model="f.status"><option v-for="[k, l] in STATUSES" :key="k" :value="k">{{ l }}</option></select></label>
+          <p v-if="f.fit_note" class="fitn" :class="{ out: f.fits === false }">{{ f.fits === false ? 'Outside our criteria' : 'Check fit' }}: {{ f.fit_note }}</p>
+          <label class="sb"><span class="k">Closes on</span><input v-model="f.closes_at" type="date"></label>
+          <label v-if="f.status === 'invested'" class="sb"><span class="k">Amount invested (USD)</span><input v-model="f.amount" inputmode="decimal"></label>
+          <label class="ckb"><input v-model="f.client_visible" type="checkbox"> Show to wealth clients (without the source or link)</label>
+          <template v-if="f.id">
+            <div class="sb bt"><span class="k">Pipeline</span><NuxtLink v-if="f.pipeline_deal_id" :to="'/pipeline/' + f.pipeline_deal_id" class="btn secondary sm full">Open in Pipeline</NuxtLink><button v-else class="btn secondary sm full" type="button" :disabled="pipeBusy" @click="toPipeline">{{ pipeBusy ? 'Moving…' : 'Move to Pipeline' }}</button></div>
+            <div class="sb"><span class="k">Portfolio</span><NuxtLink v-if="det?.portfolio" :to="'/portfolio/' + det.portfolio.id" class="btn secondary sm full">Open {{ det.portfolio.name }}{{ det.portfolio.held_by ? ' (' + det.portfolio.held_by + ')' : '' }}</NuxtLink>
+              <template v-else><button v-for="m in det?.matches ?? []" :key="m.id" class="btn secondary sm full" type="button" :disabled="pf.busy" @click="toPortfolio(m.id)">Link to {{ m.name }}{{ m.held_by ? ' (' + m.held_by + ')' : '' }}</button><button v-if="!pf.open" class="btn secondary sm full" type="button" @click="openPf">Add to Portfolio</button>
+                <div v-else class="stk"><select v-model="pf.entity" aria-label="Held by"><option value="" disabled>Held by…</option><option v-for="e in (det?.entities ?? []).filter((x) => ['fund', 'spv'].includes(x.kind))" :key="e.id" :value="e.id">{{ e.name }}</option></select><input v-model="pf.founder_name" maxlength="200" placeholder="Founder name"><input v-model="pf.founder_email" type="email" maxlength="254" placeholder="Founder email"><span class="rb"><button class="btn sm" type="button" :disabled="pf.busy || !pf.entity || !pf.founder_name || !pf.founder_email" @click="toPortfolio()">Add</button><button class="lk" type="button" @click="pf.open = false">Cancel</button></span><p v-if="pf.msg" class="error">{{ pf.msg }}</p></div></template></div>
+            <div class="sb"><span class="k">Wealth clients · {{ det?.interest.filter((i) => i.status !== 'withdrawn').length ?? 0 }} interested</span>
+              <div v-for="i in det?.interest ?? []" :key="i.id" class="ir"><span><b>{{ i.client }}</b><em>{{ i.status === 'invested' ? 'Invested' : i.status === 'withdrawn' ? 'Withdrew' : 'Interested' }}{{ i.amount ? ' · ' + usd(i.amount) : '' }}{{ i.note ? ' · ' + i.note : '' }}<template v-if="i.above_risk"> · <span class="wr">{{ i.risk_profile ? 'Above their risk level' : 'Risk level not set' }}</span></template></em></span><button v-if="i.status === 'interested'" class="lk" type="button" @click="investFor(i)">Record</button></div></div>
+            <div class="sb"><span class="k">Investments</span>
+              <div v-for="x in det?.investments ?? []" :key="x.id" class="ir"><span><b>{{ x.investor }}</b><em>{{ usd(x.amount) }} on {{ x.date }}{{ x.value != null && x.value !== x.amount ? ' · now ' + usd(x.value) + ' (' + (x.value / x.amount).toFixed(2) + 'x)' : '' }}</em></span></div>
+              <div class="stk"><select v-model="inv.client_id" aria-label="Investor"><option value="">The group (Investments &amp; AUM)</option><optgroup v-if="det?.entities.length" label="Our funds and companies"><option v-for="e in det.entities" :key="e.id" :value="'e:' + e.id">{{ e.name }}</option></optgroup><optgroup v-if="det?.clients.length" label="Wealth clients"><option v-for="c in det.clients" :key="c.id" :value="'c:' + c.id">{{ c.name }}{{ c.above_risk ? ' (above risk level)' : '' }}</option></optgroup></select>
+                <span class="two"><input v-model="inv.amount" inputmode="decimal" placeholder="Amount (USD)" aria-label="Amount"><input v-model="inv.value" inputmode="decimal" placeholder="Value now" aria-label="Value now"></span><input v-model="inv.date" type="date" aria-label="Date invested">
+                <button class="btn sm" type="button" :disabled="inv.busy || !inv.amount" @click="invest">{{ inv.busy ? 'Saving…' : 'Record investment' }}</button></div>
+              <p v-if="inv.msg" class="mut">{{ inv.msg }}</p></div>
+          </template>
+        </aside>
       </div>
-
       <template #foot><DeleteButton v-if="f.id" type="secondary" :id="f.id" :name="f.title" link @deleted="f.open = false; refresh()" /><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button class="btn" type="submit" form="scf" :disabled="f.busy">{{ f.busy ? 'Saving…' : 'Save' }}</button></template>
     </AppModal>
     <AppModal :open="cr.open" title="What we invest in" @close="cr.open = false">
@@ -128,6 +175,19 @@ async function saveCriteria() { cr.busy = true; cr.msg = ''; try { const r = awa
   </section>
 </template>
 <style scoped>
+.cards { display: flex; flex-direction: column; gap: 16px; } .cards.dim { opacity: .6; } .cst { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); background: #fff; } .cnote { margin: 12px 0 0; font-size: 12.5px; color: var(--c-muted); } .cnote.out { color: var(--c-warn); }
+.vw { display: inline-flex; border: 1px solid var(--c-rule-strong); } .vw button { background: #fff; border: 0; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--c-ink-soft); cursor: pointer; } .vw button.on { background: var(--c-navy); color: #fff; }
+.mn { display: flex; gap: 12px; align-items: flex-start; } .rl { width: 34px; height: 34px; flex: none; border: 1px solid var(--c-rule); display: grid; place-items: center; background: #fff; overflow: hidden; } .rl img { width: 100%; height: 100%; object-fit: contain; } .rl i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-ink-soft); } .rt { min-width: 0; }
+.ch { display: flex; gap: 14px; align-items: center; min-width: 0; } .lg { width: 52px; height: 52px; flex: none; border: 1px solid var(--c-rule); display: grid; place-items: center; background: #fff; overflow: hidden; } .lg img { width: 100%; height: 100%; object-fit: contain; padding: 4px; } .lg b { font-size: 16px; color: var(--c-ink-soft); }
+.cm { min-width: 0; } .cm h2 { margin: 0 0 4px; font-size: 22px; } .cl2 { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--c-ink-soft); } .cl2 a { color: var(--c-blue-deep); text-decoration: none; }
+.dv { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; } .dm { display: flex; flex-direction: column; gap: 18px; min-width: 0; } .dm section { display: flex; flex-direction: column; gap: 10px; }
+.about { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--c-ink); background: #fbfaf7; border: 1px solid var(--c-rule); padding: 12px 14px; }
+.wsi { display: flex; gap: 8px; align-items: center; } .wsi input { flex: 1; min-width: 0; }
+.ds { display: flex; flex-direction: column; gap: 14px; border-left: 1px solid var(--c-rule); padding-left: 20px; } .ds .sb { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; } .ds .sb.bt { border-top: 1px solid var(--c-rule); padding-top: 14px; } .ds select, .ds input { width: 100%; }
+.lks { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; } .lks a { color: var(--c-blue-deep); text-decoration: none; } .fitn { margin: 0; font-size: 12.5px; color: var(--c-muted); } .fitn.out { color: var(--c-warn); }
+.ckb { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; } .ckb input { width: auto; margin-top: 2px; } .btn.full { width: 100%; justify-content: center; text-align: center; }
+.stk { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; } .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .stk .btn { align-self: flex-start; }
+@media (max-width: 860px) { .dv { grid-template-columns: 1fr; } .ds { border-left: 0; padding-left: 0; border-top: 1px solid var(--c-rule); padding-top: 14px; } }
 .wr { color: var(--c-warn); }
 .crit { font-size: 13.5px; color: var(--c-ink-soft); margin: 10px 0 0; } .crit b { font-weight: 500; color: var(--c-ink); } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
 .fn { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); margin-top: 2px; } .fn.out { color: var(--c-warn); } .cl { width: 100px; color: var(--c-ink-soft); white-space: nowrap; }

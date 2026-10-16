@@ -34,10 +34,10 @@ async function openVis() { vis.open = true; vis.msg = ''; try { vis.data = await
 const allowedFor = (k: string, r: string) => !!vis.data?.visible[k]?.includes(r)
 function flip(k: string, r: string) { if (!vis.data) return; const cur = new Set(vis.data.visible[k] ?? []); if (cur.has(r)) cur.delete(r); else cur.add(r); vis.data.visible[k] = [...cur] }
 async function saveVis() { if (!vis.data) return; vis.busy = true; try { await $fetch('/api/overview/visibility', { method: 'POST', body: { visible: vis.data.visible } }); vis.open = false; await refreshO() } catch { vis.msg = 'Could not save.' } finally { vis.busy = false } }
-const hour = new Date().getHours()
-const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+// Greeting and date follow the viewer's own clock, so they are set in the browser (the server's clock is UTC).
+const greeting = ref('Welcome'), dateLabel = ref('')
+onMounted(() => { const h = new Date().getHours(); greeting.value = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; dateLabel.value = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) })
 const first = computed(() => (data.value?.name ?? '').split(' ')[0])
-const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 const money = (v: number, c = 'USD') => { const a = Math.abs(v); const s = a >= 1e9 ? (v / 1e9).toFixed(1) + 'bn' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : a >= 1e4 ? (v / 1e3).toFixed(1) + 'k' : Math.round(v).toLocaleString(); return (c === 'USD' ? '$' : c === 'NGN' ? '₦' : c === 'GBP' ? '£' : c === 'EUR' ? '€' : c + ' ') + s }
 const pts = (s?: Pt[]) => (s ?? []).map((x) => ({ label: new Date(x.period + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), value: x.value }))
 const month = (p: string | null) => (p ? new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' }) : '')
@@ -71,7 +71,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
 <template>
   <section v-if="data" class="ov">
     <div class="head">
-      <div><p class="date">{{ dateLabel }}</p><h1>{{ greeting }}{{ first ? ', ' + first : '' }}</h1></div>
+      <div><p class="date">{{ dateLabel || "\u00a0" }}</p><h1>{{ greeting }}{{ first ? ', ' + first : '' }}</h1></div>
       <div v-if="data.quick.length || data.admin" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink><button v-if="data.admin" type="button" class="btn secondary" title="Choose which charts, lists and analytics tabs each role sees" @click="openVis">Who sees what</button></div>
     </div>
 

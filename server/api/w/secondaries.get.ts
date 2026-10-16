@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const lvl = (await db().query<{ r: string | null }>('SELECT risk_profile AS r FROM wm.clients WHERE id = $1', [client])).rows[0]?.r ?? null
   const cfg = await riskConfig(), rating = cfg.ratings.secondaries ?? 5
   if (!allowedFor(lvl, rating, cfg)) return { deals: [], risk: { level: lvl, rating, allowed: false } }
-  const deals = (await db().query(`SELECT s.id, coalesce(s.company, '') AS company, s.title, s.sector, s.stage, s.lead, s.co_investors, s.min_investment::float, s.valuation, s.currency, to_char(s.received_at, 'YYYY-MM-DD') AS received, to_char(s.closes_at, 'YYYY-MM-DD') AS closes_at, s.status = 'expired' AS closed,
+  const deals = (await db().query(`SELECT s.id, coalesce(s.company, '') AS company, s.website, s.logo_doc_id, s.company_info->>'description' AS about, s.title, s.sector, s.stage, s.lead, s.co_investors, s.min_investment::float, s.valuation, s.currency, to_char(s.received_at, 'YYYY-MM-DD') AS received, to_char(s.closes_at, 'YYYY-MM-DD') AS closes_at, s.status = 'expired' AS closed,
       i.status AS my_status, i.amount::float AS my_amount
     FROM wm.secondaries s LEFT JOIN wm.secondary_interest i ON i.secondary_id = s.id AND i.client_id = $1
     WHERE s.client_visible AND (s.status IN ('new','reviewing','interested') OR i.id IS NOT NULL) AND s.fits IS NOT FALSE
