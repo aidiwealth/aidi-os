@@ -155,15 +155,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
         <div v-if="target === 'financials'" class="mo"><label class="ck"><input v-model="f.mode" type="radio" value="ai"> <span><b>Read the whole workbook with AI</b><span class="sub"> For full financial models: many tabs, years or quarters, actuals beside projections, side-by-side tables, two currencies. AI finds where each figure is; the figures are then read straight from your cells on every sync.</span></span></label>
           <label class="ck"><input v-model="f.mode" type="radio" value="rows"> <span><b>Choose rows myself</b><span class="sub"> One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column.</span></span></label>
-          <div v-if="f.mode === 'ai'" class="aiu"><label class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
-            <label class="upl">Upload the file instead<span class="sub"> (.xlsx or .csv, read the same way and brought in once)</span><input type="file" accept=".xlsx,.csv" :disabled="busy" @change="pickFile"></label></div></div>
+          <template v-if="f.mode === 'ai'"><label class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
+            <DropZone accept=".xlsx,.csv" :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv, read the same way and brought in once · or click to choose'" @change="pickFile" /></template></div>
         <p class="sub">Share the file so anyone with the link can view it.</p>
         <p v-if="prog" class="prg">{{ prog }} <span class="sub">Big workbooks take a minute or two; you can keep this open.</span></p>
         <div v-if="fail" class="fl2"><b>{{ fail.message }}</b><ul v-if="fail.advice.length"><li v-for="a in fail.advice" :key="a">{{ a }}</li></ul>
           <span class="fla"><button class="link" type="button" :disabled="busy" @click="aiRead">Try again</button><button v-if="f.mode === 'ai'" class="link" type="button" @click="f.mode = 'rows'; fail = null">Choose rows myself instead</button></span></div>
       </div>
       <div v-else-if="step === 3 && ai" class="slf">
-        <div class="g3"><label class="fl">Name<input v-model="f.name" maxlength="120"></label><label class="fl">Currency<input :value="f.currency" disabled></label></div>
+        <div class="g3"><label v-if="!ai.document_id" class="fl">Name<input v-model="f.name" maxlength="120"></label><label class="fl">Currency<input :value="f.currency" disabled></label></div>
         <p class="sub">{{ ai.provider }} · read {{ ai.tabs.length }} tab{{ ai.tabs.length === 1 ? '' : 's' }}{{ ai.map.company.name ? ' · ' + ai.map.company.name : '' }}{{ ai.map.fiscal_year_end ? ' · year ends ' + ai.map.fiscal_year_end : '' }} · into {{ subjectLabel || 'this company' }}</p>
         <p class="sum">Brings in actuals for {{ [ai.preview.months ? ai.preview.months + ' month' + (ai.preview.months === 1 ? '' : 's') : '', ai.preview.quarters ? ai.preview.quarters + ' quarter' + (ai.preview.quarters === 1 ? '' : 's') : '', ai.preview.years ? ai.preview.years + ' year' + (ai.preview.years === 1 ? '' : 's') : ''].filter(Boolean).join(', ') || 'no periods' }}{{ ai.preview.projected ? '. ' + ai.preview.projected + ' projected or unfinished period' + (ai.preview.projected === 1 ? ' is' : 's are') + ' left out of actuals' : '' }}.</p>
         <h4>Tables found</h4>
@@ -179,7 +179,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <p v-if="ai.map.notes" class="sub">{{ ai.map.notes }}</p>
         <p v-if="ai.preview.missing.length" class="sub">Not found in the cells: {{ ai.preview.missing.slice(0, 6).join('; ') }}{{ ai.preview.missing.length > 6 ? '…' : '' }}</p>
         <details class="sub"><summary>What each tab holds</summary><ul class="sg"><li v-for="t in ai.map.tabs" :key="t.sheet"><b>{{ t.sheet }}</b> {{ t.what }}{{ t.used ? '' : ' (not used)' }}</li></ul></details>
-        <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <label v-if="!ai?.document_id" class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <p v-else class="sub">An uploaded file is brought in once. To keep figures in step, link the sheet instead.</p>
       </div>
       <div v-else-if="prev && tab" class="slf">
         <div class="g3">
@@ -192,8 +193,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <div class="tw"><table class="mt" data-nosearch><thead><tr><th>Row in your sheet</th><th class="n">Latest</th><th>Use as</th></tr></thead>
           <tbody><tr v-for="r in tab.rows" :key="r.label" :class="{ off: !map[r.label] }"><td>{{ r.label }}</td><td class="n">{{ fmt(r.last_value) }} <span class="sub">{{ mon(r.last_month) }}</span></td>
             <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'"><option value="">Don't use</option><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></select></td></tr></tbody></table></div>
-        <label v-if="!ai?.document_id" class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
-        <p v-else class="sub">An uploaded file is brought in once. To keep figures in step, link the sheet instead.</p>
+        <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
       </div>
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
@@ -232,7 +232,6 @@ select.bad { border-color: var(--c-danger) }
 .ck { display: flex; gap: 8px; align-items: center; font-size: 13px }
 .okm { color: var(--c-ink); font-size: 13px; margin: 8px 0 0 }
 td.n, th.n { text-align: right; white-space: nowrap }
-.aiu { display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap } .upl { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--c-blue-deep); cursor: pointer } .upl input { font-size: 12.5px; color: var(--c-ink-soft) }
 .prg { margin: 0; font-size: 13.5px; color: var(--c-ink) } .fl2 { border: 1px solid var(--c-rule-strong); border-left: 3px solid var(--c-danger); padding: 10px 12px; font-size: 13.5px; display: flex; flex-direction: column; gap: 6px } .fl2 b { font-weight: 500 } .fl2 ul { margin: 0; padding-left: 18px; color: var(--c-ink-soft) } .fla { display: flex; gap: 16px } .fla button { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer }
 .mo { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); padding: 10px 12px } .mo .ck { align-items: flex-start; font-size: 13.5px } .mo .ck input { margin-top: 3px } .mo .ck b { font-weight: 500 } .cur { max-width: 180px }
 .sum { margin: 0; font-size: 14px } h4 { margin: 6px 0 0; font-size: 13px; font-weight: 600 } .tw.sm { max-height: 30vh }
