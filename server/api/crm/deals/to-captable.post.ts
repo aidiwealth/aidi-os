@@ -8,8 +8,8 @@ export default defineEventHandler(async (event) => {
     class_id: z.string().uuid().optional(), price: z.preprocess((v) => (typeof v === 'string' ? v.replace(/[,\s$₦]/g, '') : v), z.coerce.number().positive()).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose the investors and the date.')
   const d = b.data, ct = await capTableId(d.captable_id)
-  const deals = (await db().query<{ id: string; investor: string; amount: number | null; kind: string; instrument: string; currency: string; valuation_cap: number | null; discount: number | null; post_money: boolean; email: string | null; equity_at: string | null }>(
-    `SELECT d.id, d.investor, d.amount::float, s.kind, p.instrument, p.currency, coalesce(d.valuation_cap, p.valuation_cap)::float AS valuation_cap, coalesce(d.discount, p.discount)::float AS discount, (d.valuation_cap IS NULL OR coalesce(d.cap_basis, 'post') = 'post') AS post_money, CASE WHEN d.added_by_team THEN NULL ELSE c.email END AS email, d.equity_at
+  const deals = (await db().query<{ id: string; investor: string; amount: number | null; kind: string; instrument: string; own: string | null; currency: string; valuation_cap: number | null; discount: number | null; post_money: boolean; email: string | null; equity_at: string | null }>(
+    `SELECT d.id, d.investor, d.amount::float, s.kind, coalesce(d.instrument, p.instrument) AS instrument, d.instrument AS own, p.currency, coalesce(d.valuation_cap, p.valuation_cap)::float AS valuation_cap, coalesce(d.discount, p.discount)::float AS discount, (d.valuation_cap IS NULL OR coalesce(d.cap_basis, 'post') = 'post') AS post_money, CASE WHEN d.added_by_team THEN NULL ELSE c.email END AS email, d.equity_at
        FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id JOIN crm.pipelines p ON p.id = d.pipeline_id LEFT JOIN crm.contacts c ON c.id = d.contact_id
       WHERE d.id = ANY($1::uuid[])`, [d.ids])).rows
   if (deals.some((x) => x.instrument === 'priced')) {
@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   let added = 0; const skipped: { investor: string; reason: string }[] = []
   for (const x of deals) {
     if (x.equity_at) { skipped.push({ investor: x.investor, reason: 'already on the cap table' }); continue }
+    if (['grant', 'debt', 'mixed'].includes(x.instrument)) { skipped.push({ investor: x.investor, reason: x.instrument === 'debt' ? 'debt (not equity)' : x.instrument === 'grant' ? 'a grant (non-dilutive)' : 'no instrument set' }); continue }
     if (x.kind !== 'won') { skipped.push({ investor: x.investor, reason: 'not closed yet' }); continue }
     if (!x.amount || x.amount <= 0) { skipped.push({ investor: x.investor, reason: 'no amount' }); continue }
     const holder = (await db().query<{ id: string }>('SELECT id FROM equity.holders WHERE captable_id = $1 AND lower(name) = lower($2) LIMIT 1', [ct, x.investor])).rows[0]?.id

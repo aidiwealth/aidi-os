@@ -79,9 +79,9 @@ export function round(d: Data, r: RoundIn, today: string) {
 
 // Exit waterfall: preferred classes by seniority take their preference (multiple x money invested), unless converting
 // to common pays more; participating preferred also share in the rest. Options count as common (exercise price ignored).
-export function waterfall(d: Data, exit: number, today: string) {
+export function waterfall(d: Data, exit: number, today: string, extraCommon = 0) {
   const t = table(d, today)
-  const commonShares = t.issued + t.granted - d.issuances.filter((i) => d.classes.find((c) => c.id === i.class_id)?.kind === 'preferred').reduce((s, i) => s + i.shares, 0)
+  const commonShares = t.issued + t.granted + extraCommon - d.issuances.filter((i) => d.classes.find((c) => c.id === i.class_id)?.kind === 'preferred').reduce((s, i) => s + i.shares, 0)
   const prefs = d.classes.filter((c) => c.kind === 'preferred').map((c) => { const iss = d.issuances.filter((i) => i.class_id === c.id); return { c, shares: iss.reduce((s, i) => s + i.shares, 0), invested: iss.reduce((s, i) => s + i.shares * (i.price ?? 0), 0) } }).filter((p) => p.shares > 0)
   const convert = new Set<string>()
   let result: { name: string; amount: number; how: string }[] = []
@@ -100,4 +100,48 @@ export function waterfall(d: Data, exit: number, today: string) {
     convert.add(gain.p.c.id)
   }
   return { rows: result, per_common: commonShares ? (result.find((x) => x.name === 'Common and options')?.amount ?? 0) / commonShares : 0 }
+}
+
+// What each holder receives at an exit: preferred classes by their share of the class, common and exercised shares at
+// the common price, options at the price less their strike, and SAFEs / notes either paid back (cash-out) or converted
+// at their cap or discount, whichever is worth more to them (converted ones dilute common, and the choice is settled
+// over a few passes). Estimates for planning; the documents decide.
+export function exitByHolder(d: Data, exit: number, today: string): { rows: { holder: string; amount: number; how: string }[]; per_common: number; exit: number } {
+  const prefIds = new Set(d.classes.filter((c) => c.kind === 'preferred').map((c) => c.id))
+  const t = table(d, today)
+  const capBase = Math.max(1, t.issued + t.granted)
+  const open = d.convertibles.filter((c) => c.status === 'outstanding')
+  const totalConv = open.reduce((s, c) => s + c.amount, 0)
+  let wf = waterfall(d, exit, today), per = wf.per_common
+  let plan = open.map((c) => ({ c, shares: 0, cash: true }))
+  for (let pass = 0; pass < 6; pass++) {
+    plan = open.map((c) => {
+      const capPrice = c.valuation_cap ? (c.post_money ? Math.max(1, c.valuation_cap - totalConv) : c.valuation_cap) / capBase : null
+      const discPrice = c.discount_pct && per > 0 ? per * (1 - c.discount_pct / 100) : null
+      const price = [capPrice, discPrice].filter((x): x is number => !!x && x > 0).reduce((m, x) => Math.min(m, x), Infinity)
+      const shares = Number.isFinite(price) ? c.amount / price : 0
+      return { c, shares, cash: shares * per <= c.amount }
+    })
+    const cashOut = plan.filter((p) => p.cash).reduce((s, p) => s + p.c.amount, 0)
+    // Options under water take nothing, so they leave the common count.
+    const underwater = d.grants.reduce((s, g) => s + ((g.strike ?? 0) >= per ? Math.max(0, liveShares(g, today) - (g.exercised ?? 0)) : 0), 0)
+    const extra = plan.filter((p) => !p.cash).reduce((s, p) => s + p.shares, 0) - underwater
+    const next = waterfall(d, Math.max(0, exit - cashOut), today, extra)
+    const done = Math.abs(next.per_common - per) < 1e-9
+    wf = next; per = next.per_common
+    if (done) break
+  }
+  const cashOut = plan.filter((p) => p.cash).reduce((s, p) => s + p.c.amount, 0)
+  const scale = exit > 0 && cashOut > exit ? exit / cashOut : 1 // not enough to pay every SAFE back: pro rata
+  const by = new Map<string, { amount: number; how: Set<string> }>()
+  const add = (hid: string, v: number, how: string) => { if (!v) return; const x = by.get(hid) ?? { amount: 0, how: new Set<string>() }; x.amount += v; x.how.add(how); by.set(hid, x) }
+  for (const c of d.classes.filter((c) => prefIds.has(c.id))) {
+    const iss = d.issuances.filter((i) => i.class_id === c.id), tot = iss.reduce((s, i) => s + i.shares, 0), amt = wf.rows.find((r) => r.name === c.name)?.amount ?? 0
+    for (const i of iss) add(i.holder_id, tot ? amt * i.shares / tot : 0, c.name)
+  }
+  for (const i of d.issuances.filter((i) => !prefIds.has(i.class_id))) add(i.holder_id, i.shares * per, 'common')
+  for (const g of d.grants) { const live = Math.max(0, liveShares(g, today) - (g.exercised ?? 0)); add(g.holder_id, live * Math.max(0, per - (g.strike ?? 0)), 'options') }
+  for (const p of plan) add(p.c.holder_id, p.cash ? p.c.amount * scale : p.shares * per, p.cash ? (p.c.kind === 'note' ? 'note repaid' : 'SAFE cash-out') : (p.c.kind === 'note' ? 'note converted' : 'SAFE converted'))
+  const name = (id: string) => d.holders.find((h) => h.id === id)?.name ?? 'Holder'
+  return { rows: [...by.entries()].map(([id, x]) => ({ holder: name(id), amount: x.amount, how: [...x.how].join(' + ') })).sort((a, b) => b.amount - a.amount), per_common: per, exit }
 }

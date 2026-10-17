@@ -2,14 +2,24 @@
 // Everything goes in as a PDF; a forecast can also go in as an Excel model.
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { currentPrice } from '~/shared/positions'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update', 'forecast', 'captable']), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional(), format: z.enum(['pdf', 'xlsx']).default('pdf'), room_id: z.string().uuid().optional() }).safeParse(await readBody(event))
+  const b = z.object({ kind: z.enum(['safe', 'memo', 'nda', 'update', 'forecast', 'captable', 'proforma']), price: z.coerce.number().positive().max(1e9).optional(), price_note: z.string().trim().max(120).optional(), id: z.string().uuid().optional(), folder: z.string().trim().max(60).optional(), format: z.enum(['pdf', 'xlsx']).default('pdf'), room_id: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose a document.')
   const d = b.data, org = (await currentOrg())!
   let title = '', docs: { title: string; md: string }[] = [], folder = d.folder || ''
   let xlsx: Buffer | null = null
-  if (d.kind === 'forecast' || d.kind === 'captable') {
+  if (d.kind === 'proforma') {
+    await requireModule(event, 'equity')
+    const ct = await capTableId(d.id); const c = (await db().query<{ name: string; row_order: string[] }>('SELECT name, row_order FROM equity.captables WHERE id = $1', [ct])).rows[0]!
+    const data = await loadCapTable(ct), cp = currentPrice(data as import('~/shared/captable').Data)
+    const price = d.price ?? cp.price
+    if (!price) throw apiError('invalid', 'Enter the price per share to value the positions (e.g. your last round\'s price).')
+    const rights = (await db().query<{ holder_id: string | null; kind: string }>('SELECT holder_id, kind FROM equity.rights WHERE captable_id = $1', [ct])).rows
+    title = 'Pro forma cap table - ' + c.name; folder ||= 'Financing'
+    docs = [{ title, md: proformaMd(c.name, data as import('~/shared/captable').Data, { price, source: d.price ? (d.price_note || 'set by the company') : cp.source, order: c.row_order ?? [], rights }) }]
+  } else if (d.kind === 'forecast' || d.kind === 'captable') {
     await requireModule(event, d.kind === 'forecast' ? 'forecast' : 'equity')
     if (d.kind === 'forecast') {
       const f = d.id ? (await db().query<{ name: string; assumptions: import('~/shared/forecast').Assumptions }>('SELECT name, assumptions FROM financials.forecasts WHERE id = $1', [d.id])).rows[0] : undefined

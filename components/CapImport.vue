@@ -15,6 +15,8 @@ interface Prop { as_of: string | null; currency: string
   stated: { issued: number | null; fully_diluted: number | null; pool_available: number | null }; notes: string[] }
 const files = ref<File[]>([]), keep = ref(true), busy = ref(false), msg = ref(''), p = ref<Prop | null>(null), read = ref<string[]>([]), mode = ref<'replace' | 'add' | 'new'>(props.hasData ? 'add' : 'replace'), newName = ref(''), step = ref<'files' | 'review'>('files')
 const src = ref<'pulley' | 'carta' | 'files'>('files')
+// Permission to attach each source document to the holders it describes (Documents → Financing, data room → Financing).
+const keptDocs = ref<{ name: string; id: string }[]>([]), attachDocs = ref(true), attachRoom = ref(true)
 const SRC = { pulley: { label: 'From Pulley', how: 'Export your cap table and your securities list (shares, options, SAFEs) from Pulley as Excel or CSV, and add any signed SAFE, option grant or stock purchase PDFs. Pulley stops operating on 8 December 2026, so export before then.' }, carta: { label: 'From Carta', how: 'Download your cap table and your securities ledger (certificates, option grants, convertibles) from Carta as Excel or CSV, and add any signed agreements as PDFs.' }, files: { label: 'Lawyer\'s files or other', how: 'Your lawyer\'s cap table or pro forma (Excel or PDF), SAFE and note agreements, share certificates, stock purchase agreements, board consents and option grant letters. Exports from other cap table tools work too.' } } as const
 watch(() => props.open, (o) => { if (o) { src.value = props.from ?? 'files'; files.value = [...(props.initial ?? [])]; p.value = null; step.value = 'files'; msg.value = ''; mode.value = props.hasData ? 'add' : 'replace'; newName.value = 'Imported ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) } })
 const MAX = 10
@@ -24,7 +26,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function readDocs() {
   busy.value = true; msg.value = ''
   const fd = new FormData(); for (const f of files.value) fd.append('files', f, f.name); fd.append('keep', keep.value ? '1' : '0'); fd.append('source', src.value)
-  try { const r = await $fetch<{ proposal: Prop; files: string[] }>('/api/equity/read-docs', { method: 'POST', body: fd }); p.value = r.proposal; read.value = r.files; step.value = 'review' }
+  try { const r = await $fetch<{ proposal: Prop; files: string[]; kept_docs?: { name: string; id: string }[] }>('/api/equity/read-docs', { method: 'POST', body: fd }); p.value = r.proposal; read.value = r.files; keptDocs.value = r.kept_docs ?? []; attachDocs.value = true; attachRoom.value = true; step.value = 'review' }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 // Preview the proposal with the same maths the cap table uses.
@@ -50,7 +52,7 @@ const sec = ref<'holders' | 'issuances' | 'grants' | 'convertibles' | 'classes'>
 async function save() {
   if (mode.value === 'replace' && props.hasData && !confirm('Replace your current cap table with this one? Everything entered so far will be removed.')) return
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ ct: string; issuances: number; grants: number; convertibles: number; skipped: number }>('/api/equity/import-apply', { method: 'POST', body: { proposal: p.value, mode: mode.value, ct: props.ct, name: newName.value } }); emit('saved', r.ct); emit('close'); if (r.skipped) alert(r.skipped + ' rows were already on your cap table and were skipped.') }
+  try { const r = await $fetch<{ ct: string; issuances: number; grants: number; convertibles: number; skipped: number }>('/api/equity/import-apply', { method: 'POST', body: { proposal: p.value, mode: mode.value, ct: props.ct, name: newName.value, attach: attachDocs.value && keptDocs.value.length ? { docs: keptDocs.value, room: attachRoom.value } : undefined } }); emit('saved', r.ct); emit('close'); if (r.skipped) alert(r.skipped + ' rows were already on your cap table and were skipped.') }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 </script>
@@ -92,6 +94,8 @@ async function save() {
         </template>
       </div>
       <div v-if="hasData" class="md"><label><input v-model="mode" type="radio" value="add"> Add to "{{ ctName }}" <em>(rows already there are skipped)</em></label><label><input v-model="mode" type="radio" value="replace"> Replace "{{ ctName }}"</label><label><input v-model="mode" type="radio" value="new"> Save as a new cap table</label><input v-if="mode === 'new'" v-model="newName" class="nn" maxlength="120" aria-label="New cap table name"></div>
+      <div v-if="keptDocs.length" class="att"><label><input v-model="attachDocs" type="checkbox"> Attach each document ({{ keptDocs.length }}) to the SAFE holder or shareholder it belongs to, and file it in Documents under Financing</label>
+        <label v-if="attachDocs" class="sub2"><input v-model="attachRoom" type="checkbox"> Also add them to the data room, in the Financing room by funding round</label></div>
       <p class="mut sm2">AI can misread documents. Check share counts against your lawyer's records; this is not legal advice.</p>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>
@@ -119,4 +123,5 @@ async function save() {
 .t input, .t select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; } .t input.w { width: 100%; min-width: 180px; } .t input.nm { width: 120px; text-align: right; } .t input.sm { width: 52px; text-align: right; } .t input[type="checkbox"] { padding: 0; }
 .src { font-size: 12px; color: var(--c-muted); max-width: 180px; } .vs { white-space: nowrap; font-size: 12.5px; color: var(--c-muted); } .pm { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; font-size: 12px; color: var(--c-muted); }
 .md { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; } .md label { display: flex; gap: 8px; align-items: center; } .md .nn { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); max-width: 320px; margin-left: 24px; } .md em { font-style: normal; color: var(--c-muted); font-size: 12.5px; }
+.att { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--c-rule); padding: 10px 12px; font-size: 13.5px; } .att label { display: flex; gap: 8px; align-items: flex-start; } .att input { margin-top: 3px; } .att .sub2 { padding-left: 22px; color: var(--c-ink-soft); }
 </style>

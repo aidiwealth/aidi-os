@@ -1,8 +1,8 @@
 // Cap tables: a company can keep several (today's, a pro forma, a what-if). Every record belongs to one.
 import { table as capTableCalc } from '~/shared/captable'
-export interface CapTableRow { id: string; name: string; note: string | null; is_main: boolean; updated_at: string }
+export interface CapTableRow { id: string; name: string; note: string | null; is_main: boolean; updated_at: string; row_order: string[] }
 export async function capTables(): Promise<CapTableRow[]> {
-  return (await db().query<CapTableRow>('SELECT id, name, note, is_main, updated_at FROM equity.captables ORDER BY is_main DESC, created_at')).rows
+  return (await db().query<CapTableRow>('SELECT id, name, note, is_main, updated_at, row_order FROM equity.captables ORDER BY is_main DESC, created_at')).rows
 }
 // The cap table a request is about: the one asked for, else the main one (made on first use).
 export async function capTableId(want?: unknown): Promise<string> {
@@ -30,7 +30,7 @@ export async function copyCapTable(from: string, name: string, by: string): Prom
   const c = await db().connect()
   try {
     await c.query('BEGIN')
-    const to = (await c.query<{ id: string }>('INSERT INTO equity.captables (name, note, created_by) SELECT $2, note, $3 FROM equity.captables WHERE id = $1 RETURNING id', [from, name, by])).rows[0]?.id
+    const to = (await c.query<{ id: string }>('INSERT INTO equity.captables (name, note, created_by, row_order) SELECT $2, note, $3, row_order FROM equity.captables WHERE id = $1 RETURNING id', [from, name, by])).rows[0]?.id
     if (!to) throw apiError('not_found', 'Not found', 404)
     const map = async (t: string, cols: string, fk: string[] = []) => {
       const rows = (await c.query<Record<string, unknown> & { id: string }>('SELECT id, ' + cols + ' FROM equity.' + t + ' WHERE captable_id = $1', [from])).rows
@@ -47,6 +47,7 @@ export async function copyCapTable(from: string, name: string, by: string): Prom
     await map('issuances', 'holder_id, class_id, shares, price, issued_on, certificate, notes', ['holder_id', 'class_id'])
     await map('grants', 'plan_id, holder_id, kind, shares, strike, granted_on, vest_start, vest_months, cliff_months, exercised, cancelled_on', ['plan_id', 'holder_id'])
     await map('convertibles', 'holder_id, kind, amount, currency, valuation_cap, discount_pct, post_money, mfn, interest_pct, issued_on, maturity_on, status', ['holder_id'])
+    await map('rights', 'holder_id, party, kind, summary, impact, terms, clause, document_id', ['holder_id'])
     await c.query('COMMIT'); return to
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e } finally { c.release() }
 }

@@ -2,13 +2,14 @@
 // Finvry cap table: who owns what, the option pool and vesting, SAFEs and notes, and what a priced round or an exit
 // would mean for everyone.
 import { table, round, waterfall, vested, liveShares, type Data } from '~/shared/captable'
+import { positions, orderRows, commonHolders, currentPrice, type Right } from '~/shared/positions'
 useHead({ title: 'Cap table' })
 type D = Data & { captable: string; captables: { id: string; name: string; note: string | null; is_main: boolean; updated_at: string; views?: number }[]; holders: (Data['holders'][number] & { email: string | null })[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; company: string }
 const route = useRoute(), router = useRouter()
 const ct = ref(String(route.query.ct ?? ''))
 const { data, refresh } = await useFetch<D>('/api/equity', { query: { ct } })
 watch(() => data.value?.captable, (id) => { if (id && id !== ct.value) ct.value = id })
-const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['signing', 'Signing'], ['round', 'Model a round'], ['exit', 'Exit']] as const
+const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['rights', 'Rights & positions'], ['signing', 'Signing'], ['round', 'Model a round'], ['exit', 'Exit']] as const
 const tab = ref<string>(String(route.query.t ?? 'overview')); watch([tab, ct], ([t, c]) => router.replace({ query: { ...route.query, t, ct: c || undefined, share: undefined } }))
 // Several cap tables (today's, a pro forma, a what-if), each shareable.
 const shareOpen = ref(route.query.share === '1')
@@ -19,7 +20,7 @@ function ctForm(mode: typeof cm.mode) { cm.mode = mode; cm.name = mode === 'rena
 async function ctAct(action: 'create' | 'copy' | 'rename' | 'main' | 'delete') {
   if (action === 'delete' && !confirm('Delete "' + curCt.value?.name + '" and everything on it? Its share links stop working.')) return
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ id: string }>('/api/equity/captables', { method: 'POST', body: { action, id: action === 'create' ? undefined : ct.value, name: cm.name || undefined, note: cm.note } }); cm.open = false; if (action === 'create' || action === 'copy') ct.value = r.id; else if (action === 'delete') ct.value = ''; await refresh() }
+  try { const r = await $fetch<{ id: string }>('/api/equity/captables', { method: 'POST', body: { action, id: action === 'create' ? undefined : ct.value || data.value?.captable, name: cm.name || undefined, note: cm.note } }); cm.open = false; if (action === 'create' || action === 'copy') ct.value = r.id; else if (action === 'delete') ct.value = ''; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
 const today = new Date().toISOString().slice(0, 10)
@@ -30,7 +31,7 @@ const hn = (id: string) => data.value?.holders.find((h) => h.id === id)?.name ??
 const cn = (id: string) => data.value?.classes.find((c) => c.id === id)?.name ?? '—'
 const toCrm = ref(false)
 // After an import, offer to bring the investors into Fundraising and Contacts.
-async function afterImport(id: string) { ct.value = id; await refresh(); tab.value = 'overview'; if (data.value?.holders.some((h) => h.kind === 'investor')) toCrm.value = true }
+async function afterImport(id: string) { ct.value = id; await refresh(); await refreshDocs(); tab.value = 'overview'; if (data.value?.holders.some((h) => h.kind === 'investor')) toCrm.value = true }
 const KIND: Record<string, string> = { founder: 'Founder', employee: 'Employee', advisor: 'Advisor', investor: 'Investor', other: 'Other' }
 const mix = computed(() => { if (!t.value) return []; const m: Record<string, number> = {}; for (const r of t.value.rows) m[KIND[r.holder.kind] ?? 'Other'] = (m[KIND[r.holder.kind] ?? 'Other'] ?? 0) + r.fd; if (t.value.pool) m['Option pool (available)'] = t.value.pool; return Object.entries(m).map(([label, value]) => ({ label, value })) })
 // One form for every record type.
@@ -48,7 +49,7 @@ function edit(type: Ty, row?: Record<string, any>) { f.type = type; f.id = row?.
 async function save(del = false) {
   if (del && !confirm('Delete this record?')) return
   busy.value = true; msg.value = ''
-  try { await $fetch('/api/equity', { method: 'POST', body: del ? { type: f.type, id: f.id, delete: true, ct: ct.value } : { type: f.type, id: f.id || undefined, data: f.d, ct: ct.value } }); f.open = false; await refresh() }
+  try { await $fetch('/api/equity', { method: 'POST', body: del ? { type: f.type, id: f.id, delete: true, ct: ct.value || data.value?.captable } : { type: f.type, id: f.id || undefined, data: f.d, ct: ct.value || data.value?.captable } }); f.open = false; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
 const imp = ref(false), pre = ref<File[]>([]), impFrom = ref<'pulley' | 'carta' | 'files'>('files')
@@ -68,16 +69,54 @@ async function signSent(v: { id: string; my_link: string | null; consent: string
 async function consentSent(v: { id: string; my_link: string | null }) { cs.open = false; tab.value = 'signing'; await refreshEs(); signOk.value = { text: 'Board consent sent to the directors.', link: v.my_link } }
 async function esChanged() { await Promise.all([refreshEs(), refresh()]) }
 const certBusy = ref('')
-async function certs(ids?: string[]) { certBusy.value = ids?.[0] ?? 'all'; msg.value = ''; try { await $fetch('/api/equity/certificates', { method: 'POST', body: { ct: ct.value, ids } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not issue certificates.' } finally { certBusy.value = '' } }
+async function certs(ids?: string[]) { certBusy.value = ids?.[0] ?? 'all'; msg.value = ''; try { await $fetch('/api/equity/certificates', { method: 'POST', body: { ct: ct.value || data.value?.captable, ids } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not issue certificates.' } finally { certBusy.value = '' } }
+// Documents attached to holders (SAFEs, notes, share purchase agreements, certificates).
+interface HD { id: string; holder_id: string; convertible_id: string | null; issuance_id: string | null; document_id: string; kind: string; round: string | null; in_room: boolean; title: string }
+const { data: hdocs, refresh: refreshDocs } = await useFetch<HD[]>('/api/equity/docs', { query: { ct }, default: () => [] })
+const att = reactive({ open: false, preset: {} as { holder_id?: string; convertible_id?: string; issuance_id?: string } })
+function attach(preset: typeof att.preset = {}) { att.preset = preset; att.open = true }
+const { data: rights, refresh: refreshRights } = await useFetch<Right[]>('/api/equity/rights', { query: { ct }, default: () => [] })
+// Flags on the overview: several rounds, power positions.
+const pos = computed(() => (data.value ? positions(data.value, today, rights.value ?? [], hdocs.value ?? []) : null))
+const flagsOf = (hid: string) => pos.value?.rows.find((r) => r.holder.id === hid)
+const docsFor = (k: 'holder_id' | 'convertible_id' | 'issuance_id', id: string) => (hdocs.value ?? []).filter((d) => d[k] === id)
+async function detach(d: HD) { if (!confirm('Detach "' + d.title + '"? It stays in Documents.')) return; await $fetch('/api/equity/docs/' + d.id, { method: 'DELETE' }).catch(() => {}); await refreshDocs() }
 async function openDoc(id: string) { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') }
 // Signed documents reach the cap table on their own; check now and then while some are out.
 let esTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { esTimer = setInterval(() => { if ((es.value?.docs ?? []).some((d) => d.status === 'sent')) esChanged() }, 30000) })
 onBeforeUnmount(() => clearInterval(esTimer))
-async function importSafes() { busy.value = true; try { await $fetch('/api/equity/import-safes', { method: 'POST', body: { ids: data.value!.safes.map((s) => s.id), ct: ct.value } }); await refresh() } finally { busy.value = false } }
-async function setupCommon() { await $fetch('/api/equity', { method: 'POST', body: { type: 'class', ct: ct.value, data: { name: 'Common', kind: 'common', liq_pref: 0, seniority: 0 } } }); await refresh() }
+async function importSafes() { busy.value = true; try { await $fetch('/api/equity/import-safes', { method: 'POST', body: { ids: data.value!.safes.map((s) => s.id), ct: ct.value || data.value?.captable } }); await refresh() } finally { busy.value = false } }
+async function setupCommon() { await $fetch('/api/equity', { method: 'POST', body: { type: 'class', ct: ct.value || data.value?.captable, data: { name: 'Common', kind: 'common', liq_pref: 0, seniority: 0 } } }); await refresh() }
 // Round and exit models.
 const rd = reactive({ pre_money: 8000000, new_money: 2000000, pool_target_pct: 10, investor: 'New investors', on: today })
+// Rows of the round model in the founder's order (founders and common holders first by default); drag to reorder.
+const savedOrder = ref<string[]>([])
+watch(() => curCt.value, (c) => { savedOrder.value = ((c as unknown as { row_order?: string[] })?.row_order ?? []).slice() }, { immediate: true })
+const ovRows = computed(() => (t.value && data.value ? orderRows(t.value.rows.map((r) => ({ ...r, key: r.holder.name, name: r.holder.name, kind: r.holder.kind, size: r.fd })), savedOrder.value, commonHolders(data.value)) : []))
+// Pro forma for the data room: every position in shares, % and value at today's price per share, as converted,
+// and what each holder would receive in a sale today.
+const pf = reactive({ open: false, price: '' as string | number, note: '', busy: false, msg: '', done: '' })
+const cp = computed(() => (data.value ? currentPrice(data.value) : { price: null, source: '' }))
+function openPf() { Object.assign(pf, { open: true, price: cp.value.price ?? '', note: cp.value.price ? '' : '', busy: false, msg: '', done: '' }) }
+const pfVal = computed(() => { const p = Number(pf.price) || 0; return p && t.value ? { fd: t.value.fd * p } : null })
+async function savePf() {
+  pf.busy = true; pf.msg = ''
+  try { const r = await $fetch<{ title: string; folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: 'proforma', id: data.value!.captable, price: Number(pf.price) || undefined, price_note: Number(pf.price) !== cp.value.price ? (pf.note || 'set by the company') : undefined } }); pf.done = r.title + ' is in the data room, in ' + r.folder + '.' }
+  catch (e) { pf.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.' } finally { pf.busy = false }
+}
+const rkey = (r: { name: string; kind: string }) => (r.kind === 'new' ? '__new' : r.kind === 'pool' ? '__pool' : r.name)
+const rrRows = computed(() => (rr.value && data.value ? orderRows(rr.value.rows.map((r) => ({ ...r, key: rkey(r), size: r.after })), savedOrder.value, commonHolders(data.value)) : []))
+const dragK = ref(''), overK = ref('')
+async function dropRow(target: string) {
+  const keys = rrRows.value.map((r) => r.key), from = keys.indexOf(dragK.value), to = keys.indexOf(target)
+  dragK.value = ''; overK.value = ''
+  if (from < 0 || to < 0 || from === to) return
+  keys.splice(to, 0, keys.splice(from, 1)[0]!); savedOrder.value = keys
+  await $fetch('/api/equity/order', { method: 'POST', body: { ct: data.value?.captable, order: keys } }).catch(() => {})
+}
+function moveRow(k: string, by: number) { const keys = rrRows.value.map((r) => r.key), i = keys.indexOf(k), j = i + by; if (i < 0 || j < 0 || j >= keys.length) return; dragK.value = k; void dropRow(keys[j]!) }
+async function resetOrder() { savedOrder.value = []; await $fetch('/api/equity/order', { method: 'POST', body: { ct: data.value?.captable, order: [] } }).catch(() => {}) }
 const rr = computed(() => (data.value && t.value?.fd ? round(data.value, { ...rd, pre_money: Number(rd.pre_money) || 0, new_money: Number(rd.new_money) || 0, pool_target_pct: Number(rd.pool_target_pct) || 0 }, today) : null))
 const ex = ref(25000000)
 const wf = computed(() => (data.value && t.value?.fd ? waterfall(data.value, Number(ex.value) || 0, today) : null))
@@ -91,30 +130,31 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
       <div class="acts"><button class="btn secondary" @click="impFrom = 'files'; imp = true">Import (Pulley, Carta, files)</button><button class="btn secondary" @click="edit('convertible')">Add SAFE or note</button><button class="btn secondary" @click="edit('grant')" :disabled="!data.plans.length">Grant options</button><button class="btn" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
     <div v-if="!data.classes.length" class="start card"><h3>Set up your cap table</h3><p>Moving from Pulley or Carta, or have a cap table from your lawyer, SAFEs, certificates or grant letters? Drop the exports or files in and AI builds it for you. Or start by hand with common shares.</p><div class="mvb"><button class="btn secondary" @click="impFrom = 'pulley'; imp = true">Import from Pulley</button><button class="btn secondary" @click="impFrom = 'carta'; imp = true">Import from Carta</button></div><DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" label="Drop your cap table documents here" hint="Spreadsheets, SAFEs, notes, certificates, board consents · AI reads them together" @change="(e: Event) => { pre = Array.from(((e.target as HTMLInputElement).files ?? []) as ArrayLike<File>); impFrom = 'files'; imp = true }" /><button class="btn" @click="setupCommon">Create common shares</button></div>
     <div class="ctb"><nav class="cts"><button v-for="c in data.captables" :key="c.id" :class="{ on: c.id === data.captable }" @click="ct = c.id">{{ c.name }}<span v-if="c.is_main && data.captables.length > 1" class="mn">Main</span></button><button class="add" @click="ctForm('create')">+ New cap table</button></nav>
-      <div class="cta"><button class="lk" @click="ctForm('copy')">Copy as a what-if</button><button class="lk" @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" class="lk" @click="ctAct('main')">Make main</button><button v-if="data.captables.length > 1" class="lk red" @click="ctAct('delete')">Delete</button><AddToRoom v-if="hasRoom" kind="captable" :id="data.captable" label="Add to data room" /><button class="btn secondary sm" @click="shareOpen = true">Share</button></div></div>
+      <div class="cta"><button class="lk" @click="ctForm('copy')">Copy as a what-if</button><button class="lk" @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" class="lk" @click="ctAct('main')">Make main</button><button v-if="data.captables.length > 1" class="lk red" @click="ctAct('delete')">Delete</button><AddToRoom v-if="hasRoom" kind="captable" :id="data.captable" label="Add to data room" /><button v-if="hasRoom" class="btn secondary sm" @click="openPf">Pro forma for investors</button><button class="btn secondary sm" @click="shareOpen = true">Share</button></div></div>
     <p v-if="curCt?.note" class="ctn">{{ curCt.note }}</p>
     <nav class="tabs"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
 
     <template v-if="tab === 'overview'">
       <div class="fx-stats"><StatTile label="Fully diluted shares" :value="n(t.fd)" note="Issued, options and the unallocated pool" full /><StatTile label="Shares issued" :value="n(t.issued)" full /><StatTile label="Option pool available" :value="n(t.pool)" :note="n(t.reserved) + ' reserved · ' + n(t.allocated) + ' granted'" full /><StatTile label="SAFEs and notes" :value="briefMoney(t.convertibleTotal, 'USD')" :note="t.convertibles.length + ' outstanding, convert at the next round'" /></div>
       <div class="two"><div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Holder</th><th v-for="c in data.classes" :key="c.id" class="r">{{ c.name }}</th><th class="r">Options</th><th class="r">Fully diluted</th><th class="r">% FD</th><th class="r">% issued</th></tr></thead>
-        <tbody><tr v-for="r in t.rows" :key="r.holder.id"><td><b>{{ r.holder.name }}</b><span class="sub">{{ KIND[r.holder.kind] }}</span></td><td v-for="c in data.classes" :key="c.id" class="r">{{ r.byClass[c.id] ? n(r.byClass[c.id]!) : '—' }}</td><td class="r">{{ r.options ? n(r.options) : '—' }}</td><td class="r">{{ n(r.fd) }}</td><td class="r b">{{ pct(r.pctFd) }}</td><td class="r">{{ pct(r.pctIssued) }}</td></tr>
+        <tbody><tr v-for="r in ovRows" :key="r.holder.id"><td><b>{{ r.holder.name }}</b><span class="sub">{{ KIND[r.holder.kind] }}</span><span v-if="flagsOf(r.holder.id)?.rounds.length! > 1 && r.holder.kind !== 'founder'" class="pf mr" :title="flagsOf(r.holder.id)!.rounds.join(', ')">{{ flagsOf(r.holder.id)!.rounds.length }} rounds</span><button v-if="flagsOf(r.holder.id)?.power" class="pf pw" :title="flagsOf(r.holder.id)!.flags.map((f) => f.text).join(' · ')" @click="tab = 'rights'">Power position</button></td><td v-for="c in data.classes" :key="c.id" class="r">{{ r.byClass[c.id] ? n(r.byClass[c.id]!) : '—' }}</td><td class="r">{{ r.options ? n(r.options) : '—' }}</td><td class="r">{{ n(r.fd) }}</td><td class="r b">{{ pct(r.pctFd) }}</td><td class="r">{{ pct(r.pctIssued) }}</td></tr>
           <tr v-if="t.pool" class="mut"><td>Option pool (available)</td><td v-for="c in data.classes" :key="c.id" /><td class="r">{{ n(t.pool) }}</td><td class="r">{{ n(t.pool) }}</td><td class="r">{{ pct(t.pool / t.fd * 100) }}</td><td /></tr>
           <tr class="tot"><td>Total</td><td v-for="c in data.classes" :key="c.id" class="r">{{ n(data.issuances.filter((i) => i.class_id === c.id).reduce((s, i) => s + i.shares, 0)) }}</td><td class="r">{{ n(t.granted + t.pool) }}</td><td class="r">{{ n(t.fd) }}</td><td class="r">100%</td><td class="r">100%</td></tr></tbody></table>
         <EmptyState v-if="!t.rows.length" compact icon="equity" title="No shares issued yet" /></div>
         <div class="card"><DonutChart title="Ownership, fully diluted" total-label="Shares" :segments="mix" /></div></div>
+      <p v-if="pos?.warnings.length" class="note wrn">{{ pos.warnings[0] }} <button class="lk" @click="tab = 'rights'">See positions and rights</button></p>
       <p v-if="t.convertibles.length" class="note">SAFEs and notes are not in these percentages: they become shares at your next priced round. See <button class="lk" @click="tab = 'round'">Model a round</button>.</p>
     </template>
 
     <template v-else-if="tab === 'shares'">
       <div class="card pad0"><div class="ch"><h3>Share issuances</h3><div class="row"><button v-if="data.issuances.some((i) => !(i as any).certificate_doc_id)" class="btn secondary sm" :disabled="!!certBusy" @click="certs()">{{ certBusy === 'all' ? 'Issuing…' : 'Issue electronic certificates' }}</button><button class="btn secondary sm" :disabled="!data.classes.length" @click="startSign('issuance', { class_id: data.classes[0]?.id, shares: '', price: '', issued_on: today })">Send to sign</button><button class="btn sm" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
         <table class="t" data-nosearch><thead><tr><th>Date</th><th>Holder</th><th>Class</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Paid</th><th>Certificate</th><th /></tr></thead>
-          <tbody><tr v-for="i in data.issuances" :key="i.id"><td>{{ i.issued_on }}</td><td>{{ hn(i.holder_id) }}</td><td>{{ cn(i.class_id) }}</td><td class="r">{{ n(i.shares) }}</td><td class="r">{{ usd(i.price) }}</td><td class="r">{{ i.price ? usd(i.price * i.shares) : '—' }}</td><td>{{ (i as any).certificate || '—' }}<span class="sub"><button v-if="(i as any).certificate_doc_id" class="lk" @click="openDoc((i as any).certificate_doc_id)">Open certificate</button><button v-else class="lk" :disabled="!!certBusy" @click="certs([i.id])">{{ certBusy === i.id ? 'Issuing…' : 'Issue certificate' }}</button></span><span v-if="(i as any).esign_doc_id" class="sub">Signed in Finvry</span></td><td class="r"><button class="lk" @click="edit('issuance', i)">Edit</button></td></tr></tbody></table>
+          <tbody><tr v-for="i in data.issuances" :key="i.id"><td>{{ i.issued_on }}</td><td>{{ hn(i.holder_id) }}</td><td>{{ cn(i.class_id) }}</td><td class="r">{{ n(i.shares) }}</td><td class="r">{{ usd(i.price) }}</td><td class="r">{{ i.price ? usd(i.price * i.shares) : '—' }}</td><td>{{ (i as any).certificate || '—' }}<span class="sub"><button v-if="(i as any).certificate_doc_id" class="lk" @click="openDoc((i as any).certificate_doc_id)">Open certificate</button><button v-else class="lk" :disabled="!!certBusy" @click="certs([i.id])">{{ certBusy === i.id ? 'Issuing…' : 'Issue certificate' }}</button></span><span v-if="(i as any).esign_doc_id" class="sub">Signed in Finvry</span><span v-for="d in docsFor('issuance_id', i.id)" :key="d.id" class="sub"><button class="lk" @click="openDoc(d.document_id)">{{ d.title }}</button></span></td><td class="r"><button class="lk" @click="attach({ holder_id: i.holder_id, issuance_id: i.id })">Attach</button> <button class="lk" @click="edit('issuance', i)">Edit</button></td></tr></tbody></table>
         <EmptyState v-if="!data.issuances.length" compact icon="equity" title="No shares issued yet" /></div>
       <div class="two"><div class="card pad0"><div class="ch"><h3>Share classes</h3><button class="btn secondary sm" @click="edit('class')">Add a class</button></div>
         <table class="t" data-nosearch><thead><tr><th>Class</th><th>Type</th><th class="r">Liquidation preference</th><th>Seniority</th><th /></tr></thead><tbody><tr v-for="c in data.classes" :key="c.id"><td><b>{{ c.name }}</b></td><td>{{ c.kind === 'preferred' ? 'Preferred' : 'Common' }}</td><td class="r">{{ c.kind === 'preferred' ? c.liq_pref + '×' + (c.participating ? ', participating' : ', non-participating') : '—' }}</td><td>{{ c.seniority }}</td><td class="r"><button class="lk" @click="edit('class', c)">Edit</button></td></tr></tbody></table></div>
-        <div class="card pad0"><div class="ch"><h3>Holders</h3><div class="row"><button v-if="data.holders.length" class="btn secondary sm" @click="toCrm = true">Add to Fundraising</button><button class="btn secondary sm" @click="edit('holder')">Add a holder</button></div></div>
-          <table class="t" data-nosearch><tbody><tr v-for="h in data.holders" :key="h.id"><td><b>{{ h.name }}</b><span class="sub">{{ KIND[h.kind] }}{{ h.email ? ' · ' + h.email : '' }}</span></td><td class="r"><button class="lk" @click="edit('holder', h)">Edit</button></td></tr></tbody></table></div></div>
+        <div class="card pad0"><div class="ch"><h3>Holders</h3><div class="row"><button v-if="data.holders.length" class="btn secondary sm" @click="attach()">Attach a document</button><button v-if="data.holders.length" class="btn secondary sm" @click="toCrm = true">Add to Fundraising</button><button class="btn secondary sm" @click="edit('holder')">Add a holder</button></div></div>
+          <table class="t" data-nosearch><tbody><tr v-for="h in data.holders" :key="h.id"><td><b>{{ h.name }}</b><span class="sub">{{ KIND[h.kind] }}{{ h.email ? ' · ' + h.email : '' }}</span><span v-if="docsFor('holder_id', h.id).length" class="dch"><span v-for="d in docsFor('holder_id', h.id)" :key="d.id" class="dc"><button class="lk" :title="d.round ? d.round + (d.in_room ? ' · in the data room' : '') : ''" @click="openDoc(d.document_id)">{{ d.title }}</button><button class="x" :aria-label="'Detach ' + d.title" @click="detach(d)">×</button></span></span></td><td class="r"><button class="lk" @click="attach({ holder_id: h.id })">Attach</button> <button class="lk" @click="edit('holder', h)">Edit</button></td></tr></tbody></table></div></div>
     </template>
 
     <template v-else-if="tab === 'signing'">
@@ -137,16 +177,20 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
       <div v-if="data.safes.length" class="note">{{ data.safes.length }} SAFE{{ data.safes.length === 1 ? '' : 's' }} drafted in Fundraising {{ data.safes.length === 1 ? 'is' : 'are' }} not on the cap table yet ({{ data.safes.map((s) => s.investor_name).join(', ') }}). <button class="lk" :disabled="busy" @click="importSafes">Add {{ data.safes.length === 1 ? 'it' : 'them' }}</button></div>
       <div class="card pad0"><div class="ch"><h3>SAFEs and convertible notes</h3><button class="btn sm" @click="edit('convertible')">Add SAFE or note</button></div>
         <table class="t" data-nosearch><thead><tr><th>Investor</th><th>Type</th><th class="r">Amount</th><th class="r">Valuation cap</th><th class="r">Discount</th><th>Date</th><th>Status</th><th /></tr></thead>
-          <tbody><tr v-for="c in data.convertibles" :key="c.id"><td><b>{{ hn(c.holder_id) }}</b></td><td>{{ c.kind === 'safe' ? (c.post_money ? 'Post-money SAFE' : 'Pre-money SAFE') : 'Note' + (c.interest_pct ? ' · ' + c.interest_pct + '%' : '') }}{{ c.mfn ? ' · MFN' : '' }}</td><td class="r">{{ usd(c.amount, c.currency) }}</td><td class="r">{{ c.valuation_cap ? usd(c.valuation_cap, c.currency) : '—' }}</td><td class="r">{{ c.discount_pct ? c.discount_pct + '%' : '—' }}</td><td>{{ c.issued_on }}</td><td>{{ c.status === 'outstanding' ? 'Outstanding' : c.status === 'converted' ? 'Converted' : 'Cancelled' }}</td><td class="r"><button class="lk" @click="edit('convertible', c)">Edit</button></td></tr></tbody></table>
+          <tbody><tr v-for="c in data.convertibles" :key="c.id"><td><b>{{ hn(c.holder_id) }}</b></td><td>{{ c.kind === 'safe' ? (c.post_money ? 'Post-money SAFE' : 'Pre-money SAFE') : 'Note' + (c.interest_pct ? ' · ' + c.interest_pct + '%' : '') }}{{ c.mfn ? ' · MFN' : '' }}</td><td class="r">{{ usd(c.amount, c.currency) }}</td><td class="r">{{ c.valuation_cap ? usd(c.valuation_cap, c.currency) : '—' }}</td><td class="r">{{ c.discount_pct ? c.discount_pct + '%' : '—' }}</td><td>{{ c.issued_on }}</td><td>{{ c.status === 'outstanding' ? 'Outstanding' : c.status === 'converted' ? 'Converted' : 'Cancelled' }}</td><td class="r"><button class="lk" :title="docsFor('convertible_id', c.id).map((d) => d.title).join(', ')" @click="docsFor('convertible_id', c.id)[0] ? openDoc(docsFor('convertible_id', c.id)[0]!.document_id) : attach({ holder_id: c.holder_id, convertible_id: c.id })">{{ docsFor('convertible_id', c.id).length ? 'Open SAFE' : 'Attach SAFE' }}</button> <button class="lk" @click="edit('convertible', c)">Edit</button></td></tr></tbody></table>
         <EmptyState v-if="!data.convertibles.length" compact icon="equity" title="No SAFEs or notes" /></div>
     </template>
 
+    <template v-else-if="tab === 'rights'">
+      <RightsPositions :data="data" :ct="data.captable" :rights="rights ?? []" :docs="hdocs ?? []" @changed="refreshRights(); refreshDocs()" @open="openDoc" />
+    </template>
     <template v-else-if="tab === 'round'">
       <div class="card frm4"><label>Pre-money valuation<input v-model.number="rd.pre_money" type="number" min="0" step="100000"></label><label>Raising<input v-model.number="rd.new_money" type="number" min="0" step="50000"></label><label>Option pool after the round (%)<input v-model.number="rd.pool_target_pct" type="number" min="0" max="50" step="0.5"></label><label>Lead investor<input v-model="rd.investor" maxlength="80"></label></div>
       <template v-if="rr">
         <div class="fx-stats"><StatTile label="Price per share" :value="usd(rr.price)" full /><StatTile label="Post-money valuation" :value="briefMoney(rr.post_money, 'USD')" /><StatTile label="New shares to investors" :value="n(rr.new_shares)" full /><StatTile label="Pool top-up" :value="n(rr.topup)" note="Added before the round (comes out of the pre-money)" full /></div>
+        <p class="ordh">Founders and common holders come first. Drag a row (or focus ⋮⋮ and use the arrow keys) to change the order; it is kept for this cap table and the pro forma.<button v-if="savedOrder.length" class="lk" @click="resetOrder">Reset order</button></p>
         <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Holder</th><th class="r">Before (fully diluted)</th><th class="r">% before</th><th class="r">After</th><th class="r">% after</th><th class="r">Change</th></tr></thead>
-          <tbody><tr v-for="r in rr.rows" :key="r.name" :class="{ new: r.kind === 'new' }"><td><b>{{ r.name }}</b></td><td class="r">{{ r.before ? n(r.before) : '—' }}</td><td class="r">{{ r.before ? pct(r.before_pct) : '—' }}</td><td class="r">{{ n(r.after) }}</td><td class="r b">{{ pct(r.after_pct) }}</td><td class="r" :class="{ neg: r.before && r.after_pct < r.before_pct }">{{ r.before ? (r.after_pct - r.before_pct > 0 ? '+' : '') + (Math.round((r.after_pct - r.before_pct) * 100) / 100).toFixed(2) + ' pts' : 'new' }}</td></tr></tbody></table></div>
+          <tbody><tr v-for="r in rrRows" :key="r.key" :class="{ new: r.kind === 'new', drg: dragK === r.key, ovr: overK === r.key && dragK !== r.key }" draggable="true" @dragstart="dragK = r.key" @dragover.prevent="overK = r.key" @dragleave="overK === r.key && (overK = '')" @drop.prevent="dropRow(r.key)" @dragend="dragK = ''; overK = ''"><td><span class="hrow"><span class="grip" title="Drag to move, or use the arrow keys" tabindex="0" :aria-label="'Move ' + r.name" @keydown.up.prevent="moveRow(r.key, -1)" @keydown.down.prevent="moveRow(r.key, 1)">⋮⋮</span><b>{{ r.name }}</b></span></td><td class="r">{{ r.before ? n(r.before) : '—' }}</td><td class="r">{{ r.before ? pct(r.before_pct) : '—' }}</td><td class="r">{{ n(r.after) }}</td><td class="r b">{{ pct(r.after_pct) }}</td><td class="r" :class="{ neg: r.before && r.after_pct < r.before_pct }">{{ r.before ? (r.after_pct - r.before_pct > 0 ? '+' : '') + (Math.round((r.after_pct - r.before_pct) * 100) / 100).toFixed(2) + ' pts' : 'new' }}</td></tr></tbody></table></div>
         <div v-if="rr.conversions.length" class="card pad0"><div class="ch"><h3>How the SAFEs and notes convert</h3></div><table class="t" data-nosearch><thead><tr><th>Investor</th><th class="r">Amount (with interest)</th><th>Converts at</th><th class="r">Price</th><th class="r">Shares</th></tr></thead>
           <tbody><tr v-for="c in rr.conversions" :key="c.conv.id"><td>{{ c.holder }}</td><td class="r">{{ usd(c.amount, c.conv.currency) }}</td><td>{{ c.method === 'cap' ? 'Valuation cap' : c.method === 'discount' ? 'Discount' : 'Round price' }}</td><td class="r">{{ usd(c.price) }}</td><td class="r">{{ n(c.shares) }}</td></tr></tbody></table></div>
         <p class="fine">An estimate for planning, using standard terms: post-money SAFEs convert at cap ÷ capitalisation including the SAFEs and the new pool; the pool top-up and conversions come out of the pre-money. Your term sheet and SAFEs decide the final numbers.</p>
@@ -155,7 +199,8 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
     </template>
 
     <template v-else>
-      <div class="card frm4"><label>Exit value (sale price of the company)<input v-model.number="ex" type="number" min="0" step="1000000"></label></div>
+      <ClientOnly><ExitPlanner :data="data" :ct="data.captable" :has-shares="!!t?.fd" /></ClientOnly>
+      <div class="card frm4"><label>Or try any exit value (sale price of the company)<input v-model.number="ex" type="number" min="0" step="1000000"></label></div>
       <div v-if="wf" class="two"><div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Who</th><th>How they are paid</th><th class="r">Proceeds</th><th class="r">Share</th></tr></thead>
         <tbody><tr v-for="r in wf.rows" :key="r.name"><td><b>{{ r.name }}</b></td><td>{{ r.how }}</td><td class="r">{{ usd(r.amount) }}</td><td class="r">{{ ex ? pct(r.amount / ex * 100) : '—' }}</td></tr></tbody></table></div>
         <div class="card"><DonutChart title="Who gets what" total-label="Exit" currency="USD" :segments="wf.rows.map((r) => ({ label: r.name, value: Math.round(r.amount) }))" /><p class="fine">About {{ usd(wf.per_common) }} per common share. Preferred classes take their preference or convert, whichever pays more. SAFEs not converted yet and option exercise prices are left out.</p></div></div>
@@ -184,6 +229,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
         <p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button v-if="f.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button v-if="!f.id && ['issuance', 'grant', 'convertible'].includes(f.type)" class="btn secondary" :disabled="busy" title="Draft the agreement, have it signed, and let it update the cap table" @click="startSign(f.type as 'issuance' | 'grant' | 'convertible', { ...f.d })">Send for e-signature</button><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : f.id ? 'Save' : 'Record only' }}</button></template>
     </AppModal>
+ <AttachHolderDoc :open="att.open" :ct="data.captable" :holders="data.holders" :convertibles="data.convertibles as any" :issuances="data.issuances as any" :classes="data.classes" :preset="att.preset" @close="att.open = false" @done="refreshDocs()" />
     <CapToCrm :open="toCrm" :ct="data.captable" @close="toCrm = false" />
     <EquitySign :open="sg.open" :ct="data.captable" :type="sg.type" :seed="sg.seed" :holders="data.holders" :consents="consents" :me="es?.me ?? { name: '', email: '' }" @close="sg.open = false" @sent="signSent" />
     <EquityConsent :open="cs.open" :ct="data.captable" :pending="awaiting" :preselect="cs.pre" :me="es?.me ?? { name: '', email: '' }" @close="cs.open = false" @sent="consentSent" />
@@ -194,6 +240,14 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
       <template #foot><span class="sp" /><button class="btn secondary" @click="cm.open = false">Cancel</button><button class="btn" :disabled="busy || !cm.name" @click="ctAct(cm.mode)">{{ cm.mode === 'rename' ? 'Save' : 'Create' }}</button></template>
     </AppModal>
     <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="afterImport" />
+    <AppModal :open="pf.open" title="Pro forma cap table for investors" @close="pf.open = false">
+      <div class="pfm"><p class="mut">A PDF in the data room (Financing) showing every position today: shares, options, % and value at the price per share below; the same once SAFEs and notes convert at their cap; and what each holder would receive if the company were sold today at that value. Rows follow your order (founders and common holders first).</p>
+        <label class="label">Price per share (USD)<input v-model="pf.price" type="number" min="0" step="0.0001" :placeholder="cp.price ? String(cp.price) : 'e.g. 1.25'"><span class="mut">{{ cp.price ? 'Suggested: ' + usd(cp.price) + ', from your ' + cp.source + '.' : 'No priced round recorded yet: enter a price (e.g. a 409A or your SAFE cap ÷ fully diluted shares).' }}</span></label>
+        <label v-if="cp.price && Number(pf.price) !== cp.price" class="label">Where this price comes from<input v-model="pf.note" maxlength="120" placeholder="e.g. 409A valuation, March 2026"></label>
+        <p v-if="pfVal" class="mut">Implied value today: <b>{{ usd(pfVal.fd) }}</b> fully diluted.</p>
+        <p v-if="pf.done" class="ok">{{ pf.done }} <NuxtLink to="/fundraising?t=room">Open the data room</NuxtLink></p><p v-if="pf.msg" class="error">{{ pf.msg }}</p></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="pf.open = false">{{ pf.done ? 'Close' : 'Cancel' }}</button><button v-if="!pf.done" class="btn" :disabled="pf.busy || !Number(pf.price)" @click="savePf">{{ pf.busy ? 'Adding…' : 'Add to data room' }}</button></template>
+    </AppModal>
   </section>
 </template>
 <style scoped>
@@ -207,6 +261,9 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 .t .r { text-align: right; } .t .b { font-weight: 600; } .t tr.tot td { font-weight: 600; background: #fbfaf7; } .t tr.mut td { color: var(--c-muted); } .t tr.new td { background: #f4f6f9; } .t td.neg { color: var(--c-danger); }
 .sub { display: block; font-size: 12px; color: var(--c-muted); font-weight: 400; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
 .note { margin: 0; background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; font-size: 13.5px; color: var(--c-ink-soft); }
+.sp { flex: 1 } .pfm { display: flex; flex-direction: column; gap: 12px } .pfm label.label { display: flex; flex-direction: column; gap: 6px } .pfm input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff }
+.ordh { display: flex; gap: 12px; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--c-muted); margin: 0 } .hrow { display: flex; align-items: center } .grip { cursor: grab; color: var(--c-muted); margin-right: 10px; letter-spacing: -2px; user-select: none } tr.drg { opacity: .45 } tr.ovr td { box-shadow: inset 0 2px 0 var(--c-navy) } tr[draggable=true] { cursor: grab }
+.note.wrn { background: #fbf3e2; border-color: #efdcb4; color: #6b4a0e } .pf { display: inline-block; margin: 3px 6px 0 0; font: inherit; font-size: 11px; padding: 1px 6px; border: 0; } .pf.mr { background: #e9ecf5; color: #2c3e70 } .pf.pw { background: #fbf0dc; color: #7a5a14; cursor: pointer }
 .vb { display: inline-block; width: 46px; height: 5px; background: #e6e9ee; margin-right: 8px; vertical-align: 2px; } .vb i { display: block; height: 100%; background: var(--c-navy); }
 .frm4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; } .frm4 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .frm4 input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 .fine { margin: 0; font-size: 12px; color: var(--c-muted); line-height: 1.5; } .card .fine { margin-top: 10px; }
@@ -217,4 +274,5 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 .cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; } .cta .lk { font-size: 13px; } .ctn { margin: 4px 0 0; color: var(--c-muted); font-size: 13px; }
 .ch .row { display: flex; gap: 6px; flex-wrap: wrap; } .ok { color: var(--c-ink-soft); background: var(--c-paper-3); padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .ok a { color: var(--c-blue-deep); }
 .mvb { display: flex; gap: 8px; flex-wrap: wrap; }
+.dch { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; } .dc { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; } .dc .x { background: none; border: 0; color: var(--c-muted); cursor: pointer; font-size: 14px; padding: 0 2px; }
 </style>

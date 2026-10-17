@@ -24,9 +24,10 @@ const COMPANY_LEVELS = [
 const isCompany = computed(() => meD.value?.org?.kind === 'company')
 const levels = computed(() => (isCompany.value ? COMPANY_LEVELS : LEVELS).filter((l) => l.roles.some((r) => me.value?.roles.includes(r))))
 const levelName = (v: string) => (isCompany.value ? { normal: 'Everyone', family: 'Admins only', restricted: 'Admins only' }[v] : { normal: 'Normal', family: 'Family only', restricted: 'Admins only' }[v]) ?? v
-const entityFilter = ref('')
-const shown = computed(() => (docs.value ?? []).filter((d) => !entityFilter.value || d.entity_name === entityFilter.value))
-const KINDS = ['agreement', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']
+const entityFilter = ref(''), kindFilter = ref('')
+const shown = computed(() => (docs.value ?? []).filter((d) => (!entityFilter.value || d.entity_name === entityFilter.value) && (!kindFilter.value || d.kind === kindFilter.value)))
+const kindsHere = computed(() => [...new Set((docs.value ?? []).map((d) => d.kind))].sort())
+const KINDS = ['agreement', 'financing', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']
 const form = reactive({ title: '', kind: 'other', sensitivity: 'normal', entity_id: '' })
 const fileEl = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
@@ -108,6 +109,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
     <p v-if="error" class="error" role="alert">Could not load documents.</p>
     <EmptyState v-else-if="!docs?.length" compact icon="documents" title="No documents yet" />
     <label v-if="docs?.length" class="filter"><span class="label">Entity</span><select v-model="entityFilter"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.name">{{ e.name }}</option></select></label>
+    <label v-if="docs?.length && kindsHere.length > 1" class="filter"><span class="label">Type</span><select v-model="kindFilter"><option value="">All types</option><option v-for="k in kindsHere" :key="k" :value="k">{{ k[0]!.toUpperCase() + k.slice(1) }}</option></select></label>
     <table v-if="docs?.length" class="table">
       <thead><tr><th>Title</th><th>Entity</th><th>Type</th><th>Access</th><th>Size</th><th>Added</th></tr></thead>
       <tbody>

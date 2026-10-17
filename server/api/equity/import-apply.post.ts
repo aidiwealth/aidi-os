@@ -3,7 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
-  const body = (await readBody(event)) as { proposal?: unknown; mode?: string; ct?: string; name?: string }
+  const body = (await readBody(event)) as { proposal?: unknown; mode?: string; ct?: string; name?: string; attach?: { docs?: { name: string; id: string }[]; room?: boolean } }
   const mode = z.enum(['replace', 'add', 'new']).parse(body.mode ?? 'add')
   const ct = mode === 'new' ? (await one<{ id: string }>('INSERT INTO equity.captables (name, is_main, created_by) VALUES ($1, NOT EXISTS (SELECT 1 FROM equity.captables), $2) RETURNING id', [String(body.name ?? '').trim().slice(0, 120) || 'Imported cap table', user.userId])).id : await capTableId(body.ct)
   const p0 = ProposalSchema.safeParse(body.proposal)
@@ -40,6 +40,25 @@ export default defineEventHandler(async (event) => {
     await c.query('UPDATE equity.captables SET updated_at = now() WHERE id = $1', [ct])
     await c.query('COMMIT')
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e } finally { c.release() }
-  await audit({ event, actorUserId: user.userId, action: 'equity.imported', objectType: 'equity_import', detail: { mode, ...n } })
-  return { ok: true, ct, ...n }
+  // With the founder's permission: each source document is attached to the holders (and SAFEs / notes / share
+  // issuances) it was read from, filed under Financing, and put in the data room's Financing room by round.
+  let attached = 0
+  const docs = (body.attach?.docs ?? []).filter((d) => d && typeof d.id === 'string' && /^[0-9a-f-]{36}$/.test(d.id) && typeof d.name === 'string').slice(0, 50)
+  if (docs.length) {
+    const from = (src: string | null | undefined) => docs.filter((d) => (src ?? '').toLowerCase().includes(d.name.toLowerCase()) || (src ?? '').toLowerCase().includes(d.name.toLowerCase().replace(/\.[a-z0-9]+$/, '')))
+    const holderId = async (name: string) => (await db().query<{ id: string }>('SELECT id FROM equity.holders WHERE captable_id = $1 AND lower(name) = lower($2) LIMIT 1', [ct, name.trim()])).rows[0]?.id
+    const tryAttach = async (a: Parameters<typeof attachHolderDoc>[0]) => { try { await attachHolderDoc(a); attached++ } catch (e) { console.error('[equity] attach', (e as Error).message) } }
+    for (const v of p.convertibles) for (const d of from(v.source)) {
+      const h = await holderId(v.holder); if (!h) continue
+      const cv = (await db().query<{ id: string }>('SELECT id FROM equity.convertibles WHERE captable_id = $1 AND holder_id = $2 AND kind = $3 AND amount = $4 ORDER BY created_at DESC LIMIT 1', [ct, h, v.kind, v.amount])).rows[0]?.id
+      await tryAttach({ captableId: ct, holderId: h, convertibleId: cv ?? null, documentId: d.id, kind: v.kind === 'note' ? 'note' : 'safe', hint: d.name, toRoom: body.attach?.room !== false, userId: user.userId })
+    }
+    for (const i of p.issuances) for (const d of from(i.source)) {
+      const h = await holderId(i.holder); if (!h) continue
+      const is = (await db().query<{ id: string }>('SELECT i.id FROM equity.issuances i JOIN equity.classes c ON c.id = i.class_id WHERE i.captable_id = $1 AND i.holder_id = $2 AND i.shares = $3 AND lower(c.name) = lower($4) ORDER BY i.created_at DESC LIMIT 1', [ct, h, i.shares, i.class])).rows[0]?.id
+      await tryAttach({ captableId: ct, holderId: h, issuanceId: is ?? null, documentId: d.id, kind: /certificate|cert\b/i.test(d.name + ' ' + (i.source ?? '')) ? 'certificate' : 'spa', hint: d.name, toRoom: body.attach?.room !== false, userId: user.userId })
+    }
+  }
+  await audit({ event, actorUserId: user.userId, action: 'equity.imported', objectType: 'equity_import', detail: { mode, ...n, documents_attached: attached } })
+  return { ok: true, ct, ...n, attached }
 })

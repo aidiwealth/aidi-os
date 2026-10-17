@@ -13,5 +13,6 @@ export default defineEventHandler(async (event) => {
   catch (e) { if ((e as { statusCode?: number }).statusCode) throw e; console.error('[equity] read failed', e); throw apiError('ai_failed', 'Could not read those files just now. Try again, or try fewer files at once.', 502) }
   const kept = keep ? await Promise.all(files.map((f) => keepFile(f, entity).catch(() => null))) : []
   await audit({ event, actorUserId: user.userId, action: 'equity.docs_read', objectType: 'equity_import', detail: { files: files.map((f) => f.name), kept: kept.filter(Boolean).length } })
-  return { proposal, files: files.map((f) => f.name), kept: kept.filter(Boolean).length }
+  // The kept files (with their ids), so the review step can offer to attach each one to the holders it is about.
+  return { proposal, files: files.map((f) => f.name), kept: kept.filter(Boolean).length, kept_docs: files.map((f, i) => ({ name: f.name, id: kept[i] ?? null })).filter((x) => x.id) }
 })

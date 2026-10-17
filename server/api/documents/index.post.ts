@@ -11,7 +11,7 @@ const TYPES: Record<string, string> = {
 }
 const Meta = z.object({
   title: z.string().trim().min(1).max(200),
-  kind: z.enum(['agreement', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']),
+  kind: z.enum(['agreement', 'financing', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']),
   sensitivity: z.enum(['normal', 'family', 'restricted']),
   entity_id: z.string().uuid().optional().or(z.literal('').transform(() => undefined))
 })

@@ -16,7 +16,10 @@ export default defineEventHandler(async (event) => {
   for (const p of list) {
     if (have.has(p.name.toLowerCase())) continue
     const note = [(p.kind === 'grant' ? 'Grant · ' : '') + (PROSPECT_TYPE_LABEL[p.type] ?? ''), p.description, p.how_to_apply ? 'How to apply: ' + p.how_to_apply : '', p.website ?? ''].filter(Boolean).join('\n').slice(0, 3000)
-    await db().query('INSERT INTO crm.deals (pipeline_id, stage_id, investor, notes) VALUES ($1,$2,$3,$4)', [pid, stage, p.name.slice(0, 200), note])
+    // Grants and lenders keep their kind, so they stay off the cap table and show their deadline.
+    const inst = p.kind === 'grant' ? 'grant' : p.type === 'lender' ? 'debt' : null
+    const dl = /^\d{4}-\d{2}-\d{2}$/.test(p.deadline ?? '') ? p.deadline : null
+    await db().query('INSERT INTO crm.deals (pipeline_id, stage_id, investor, notes, instrument, deadline, meta) VALUES ($1,$2,$3,$4,$5,$6,$7)', [pid, stage, p.name.slice(0, 200), note, inst, dl, JSON.stringify(p.deadline && !dl ? { deadline: p.deadline.slice(0, 80) } : {})])
     added++
   }
   // Remember the stage and sectors the founder searched with, as the default next time.

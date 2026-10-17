@@ -44,6 +44,8 @@ function cellVal(v: ExcelJS.CellValue): Cell {
   if (typeof v === 'object') {
     if ('result' in v) return cellVal((v as { result: ExcelJS.CellValue }).result)
     if ('richText' in v) return (v as { richText: { text: string }[] }).richText.map((t) => t.text).join('').trim() || null
+    // A link cell: its address when the shown text is just "Open link" or similar, else the text.
+    if ('hyperlink' in v && typeof (v as { hyperlink?: unknown }).hyperlink === 'string') { const tx = String((v as { text?: unknown }).text ?? '').trim(); return /^(open|link|open link|website|here|view|click)?$/i.test(tx) || !tx ? String((v as { hyperlink: string }).hyperlink) : tx }
     if ('text' in v) return String((v as { text: unknown }).text).trim() || null
   }
   return null
