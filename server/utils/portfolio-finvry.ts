@@ -1,3 +1,4 @@
+import { withSecurities } from '~/shared/fin-view'
 // A portfolio company that is also a Finvry workspace. When it sends (or publishes) an investor update, the team that
 // holds it in Aidi OS is told and can import that update's figures (from the company's Financials for the update's
 // months) and text into the portfolio. Only updates the company has already sent to investors are read.
@@ -89,13 +90,13 @@ export async function notifyPortfolioOfUpdate(orgId: string, updateId: string, t
 export async function finvryPrefill(companyId: string, period: string, months: 1 | 3): Promise<{ values: Record<string, number | null>; from: string } | null> {
   const c = (await asPlatform(() => db().query<{ finvry_org_id: string | null }>('SELECT finvry_org_id FROM portfolio.companies WHERE id = $1', [companyId]))).rows[0]
   if (!c?.finvry_org_id) return null
-  const rows = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return ent ? loadStatements('entity:' + ent, 'month', 'USD') : [] })
+  const { rows, sec } = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return { rows: ent ? await loadStatements('entity:' + ent, 'month', 'USD') : [], sec: await cashPolicy() } })
   const end = period.slice(0, 7), start = new Date(end + '-01T00:00:00Z'); start.setUTCMonth(start.getUTCMonth() - (months - 1))
   const from = start.toISOString().slice(0, 7)
   const inP = rows.filter((r) => r.period_end.slice(0, 7) >= from && r.period_end.slice(0, 7) <= end)
   if (!inP.length) return null
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-  const ds = inP.map((r) => derive(r.lines, 'month'))
+  const ds = inP.map((r) => withSecurities(derive(r.lines, 'month'), sec))
   const tot = (k: string) => { const v = ds.map((d) => d[k]).filter((x): x is number => x !== null && x !== undefined); return v.length ? v.reduce((a, x) => a + x, 0) : null }
   const rev = tot('revenue'), gp = tot('gross_profit'), burn = tot('burn')
   const lastRow = inP[inP.length - 1]!, lastD = ds[ds.length - 1]!

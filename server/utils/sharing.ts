@@ -17,10 +17,27 @@ Signing by typing your name below is your electronic signature.`
 export interface Branding { logo_url: string | null; bg: string | null; fg: string | null; hide_finvry: boolean; watermark: boolean; nda_enabled: boolean; nda_scopes: string[]; nda_text: string; org_key: string }
 export async function brandingOf(orgId: string): Promise<Branding> {
   const r = (await asPlatform(() => db().query<{ logo_id: string | null; bg: string | null; fg: string | null; hide_finvry: boolean; watermark: boolean; nda_enabled: boolean; nda_scopes: string[]; nda_text: string | null; plan_code: string; name: string }>(
-    'SELECT b.logo_id, b.bg, b.fg, b.hide_finvry, b.watermark, b.nda_enabled, b.nda_scopes, b.nda_text, o.plan_code, o.name FROM core.organizations o LEFT JOIN fundraise.brand b ON b.organization_id = o.id WHERE o.id = $1', [orgId]))).rows[0]
+    'SELECT coalesce(b.logo_id, (SELECT p.logo_id FROM financials.public_pages p WHERE p.organization_id = o.id)) AS logo_id, b.bg, b.fg, b.hide_finvry, b.watermark, b.nda_enabled, b.nda_scopes, b.nda_text, o.plan_code, o.name FROM core.organizations o LEFT JOIN fundraise.brand b ON b.organization_id = o.id WHERE o.id = $1', [orgId]))).rows[0]
   const paid = !!r && r.plan_code !== 'company_free'
   return { logo_url: r?.logo_id ? brands().finvry.url + '/api/public/media/' + r.logo_id : null, bg: r?.bg ?? null, fg: r?.fg ?? null, hide_finvry: paid && !!r?.hide_finvry, watermark: !!r?.watermark,
     nda_enabled: !!r?.nda_enabled, nda_scopes: r?.nda_scopes ?? ['room'], nda_text: (r?.nda_text || DEFAULT_NDA).replaceAll('{{COMPANY}}', r?.name ?? 'the Company'), org_key: orgId }
+}
+// The company logo: set once in Settings and used by the investor page, data room, shared links, updates and
+// financial statements (an older investor page logo counts until a new one is set). Current workspace.
+export async function companyLogoId(): Promise<string | null> {
+  return (await db().query<{ id: string | null }>('SELECT coalesce((SELECT logo_id FROM fundraise.brand LIMIT 1), (SELECT logo_id FROM financials.public_pages LIMIT 1)) AS id')).rows[0]?.id ?? null
+}
+export async function setCompanyLogo(id: string | null): Promise<void> {
+  await db().query('INSERT INTO fundraise.brand (logo_id) VALUES ($1) ON CONFLICT (organization_id) DO UPDATE SET logo_id = EXCLUDED.logo_id, updated_at = now()', [id])
+  await db().query('UPDATE financials.public_pages SET logo_id = NULL WHERE logo_id IS NOT NULL')
+}
+export const logoUrl = (id: string | null) => (id ? brands().finvry.url + '/api/public/media/' + id : null)
+// The logo as image bytes for PDFs and Excel (PNG or JPG only).
+export async function companyLogoImage(): Promise<{ data: Buffer; ext: 'png' | 'jpeg' } | null> {
+  const id = await companyLogoId(); if (!id) return null
+  const doc = (await db().query<{ storage_key: string; mime_type: string }>('SELECT storage_key, mime_type FROM core.documents WHERE id = $1', [id])).rows[0]
+  if (!doc || !/png|jpe?g/.test(doc.mime_type)) return null
+  return getObject(doc.storage_key).then((x) => ({ data: Buffer.from(x), ext: (/png/.test(doc.mime_type) ? 'png' : 'jpeg') as 'png' | 'jpeg' })).catch(() => null)
 }
 export const ndaOn = (b: Branding, scope: string) => b.nda_enabled && b.nda_scopes.includes(scope)
 // A signature is valid for the company for 12 months.

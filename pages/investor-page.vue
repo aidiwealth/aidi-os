@@ -12,11 +12,11 @@ const { data: boards } = await useFetch<{ boards: { id: string; name: string; au
 const { data: fcs } = await useFetch<{ forecasts: { id: string; name: string }[] }>('/api/forecast', { key: 'page-fcs', immediate: canPath('/forecast'), default: () => ({ forecasts: [] }) })
 const { data: cts } = await useFetch<{ captables: { id: string; name: string }[] }>('/api/equity', { key: 'page-cts', immediate: canPath('/cap-table'), default: () => ({ captables: [] }) })
 const { data: mainDeck } = await useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })
-async function upImg(kind: 'logo_id' | 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
+async function upImg(kind: 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
   busy.value = true; msg.value = ''; ok.value = ''
   if (publish !== undefined) f.published = publish
-  try { const r = await $fetch<{ url: string }>('/api/investor-page', { method: 'POST', body: f }); ok.value = f.published ? 'Live at ' + r.url : 'Saved (not published).'; await refresh() }
+  try { const r = await $fetch<{ url: string }>('/api/investor-page', { method: 'POST', body: { ...f, logo_id: undefined } }); ok.value = f.published ? 'Live at ' + r.url : 'Saved (not published).'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
 async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { await $fetch('/api/investor-page', { method: 'POST', body: { ...f, room: on } }); await refresh(); ok.value = on ? 'Data room button added.' : 'Data room button removed.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false } }
@@ -32,7 +32,7 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <form class="grid" @submit.prevent="save()">
       <div class="card frm">
-        <div class="imgs"><div class="label">Logo<div class="lg"><img v-if="f.logo_id" :src="'/api/public/media/' + f.logo_id" alt=""><span v-else class="ph">{{ data.company.slice(0, 1) }}</span><div><DropZone compact accept=".png,.jpg,.jpeg,.webp,.svg,.gif" label="Upload logo" hint="Square works best" @change="upImg('logo_id', $event)" /><button v-if="f.logo_id" type="button" class="lk" @click="f.logo_id = null; save()">Remove</button></div></div></div>
+        <div class="imgs"><div class="label">Logo<CompanyLogo :company="data.company" note="Your logo is set once in Settings." /></div>
           <div class="label">Cover image<div class="cv"><img v-if="f.cover_id" :src="'/api/public/media/' + f.cover_id" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.webp" :label="f.cover_id ? 'Replace cover image' : 'Upload a cover image'" hint="Wide image, e.g. 1600 × 600" @change="upImg('cover_id', $event)" /><button v-if="f.cover_id" type="button" class="lk" @click="f.cover_id = null; save()">Remove</button></div></div></div>
         <label class="label">Page address<span class="addr"><span>{{ data.base }}</span><input v-model="f.slug" required maxlength="41"></span></label>
         <div class="label"><span class="lh">Headline<AiWrite v-model="f.headline" purpose="investor_page" field="headline" :context="{ about: f.about, website: f.website }" /></span><input v-model="f.headline" maxlength="200" placeholder="e.g. AI voice infrastructure for Africa"></div>

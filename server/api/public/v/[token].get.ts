@@ -8,6 +8,5 @@ export default defineEventHandler(async (event) => {
   const obj = await shareObject(l.kind, l.object_id)
   if (!obj) throw apiError('not_found', 'This link is not valid.', 404)
   const company = (await currentOrg())?.name ?? ''
-  const pl = (await db().query<{ logo_id: string | null }>('SELECT logo_id FROM financials.public_pages LIMIT 1').catch(() => ({ rows: [] as { logo_id: string | null }[] }))).rows[0]?.logo_id ?? null
-  return { kind: l.kind, title: obj.name, company, logo: pl ? brands().finvry.url + '/api/public/media/' + pl : null, require_email: l.require_email, workspace: await publicWorkspace() }
+  return { kind: l.kind, title: obj.name, company, logo: logoUrl(await companyLogoId().catch(() => null)), require_email: l.require_email, workspace: await publicWorkspace() }
 })

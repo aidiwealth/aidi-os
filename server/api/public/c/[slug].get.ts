@@ -42,9 +42,9 @@ export default defineEventHandler(async (event) => {
   const mediaUrl = (x: string | null) => (x ? brands().finvry.url + '/api/public/media/' + x : null)
   const roomUrl = roomRow && !roomRow.dead && roomRow.slug ? appBase + '/' + (p as unknown as { page_slug: string }).page_slug + '/' + roomRow.slug : null
   // Link previews can't show SVG, so the preview image is the logo only when it is a bitmap.
-  const lid = (p as unknown as { logo_id: string | null }).logo_id
+  const lid = await companyLogoId()
   const lmime = lid ? (await asPlatform(() => db().query<{ mime_type: string }>('SELECT mime_type FROM core.documents WHERE id = $1', [lid]))).rows[0]?.mime_type ?? '' : ''
   const og_image = lid && /^image\/(png|jpe?g|webp|gif)$/.test(lmime) ? mediaUrl(lid) : null
-  return { financials: await investorFinancials().catch(() => null), forecast, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid) ?? branding.logo_url ?? null, cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
+  return { financials: await investorFinancials().catch(() => null), forecast, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? ((org.settings.currency as string) || 'USD'), metrics, workspace: await publicWorkspace() }
 })

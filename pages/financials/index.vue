@@ -18,7 +18,7 @@ watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.curren
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
 const original = ref(false)
 const rawQ = computed(() => (original.value ? '1' : undefined))
-const { data, refresh } = await useFetch<{ name: string; statements: St[] }>('/api/financials', { query: { subject, period_type: periodType, currency, raw: rawQ }, watch: [subject, periodType, currency, original] })
+const { data, refresh } = await useFetch<{ name: string; statements: St[]; cash_with_securities?: boolean; cash_policy?: boolean | null }>('/api/financials', { query: { subject, period_type: periodType, currency, raw: rawQ }, watch: [subject, periodType, currency, original] })
 const converting = computed(() => !!co.value?.reporting && !original.value && rows.value.some((r) => r.currency === co.value?.reporting))
 const rows = computed(() => data.value?.statements ?? [])
 // Monthly figures, for quarters and years that were only entered month by month, and for a custom range.
@@ -38,6 +38,28 @@ const rangeTotal = computed(() => (view.value === 'custom' && inRange.value.leng
 const latest = computed(() => (rangeTotal.value as unknown as St | null) ?? vrows.value[vrows.value.length - 1]); const prev = computed(() => (view.value === 'custom' ? undefined : vrows.value[vrows.value.length - 2]))
 // Cash: the latest period that has it (a P&L-only month should not blank the balance).
 const cashKnown = computed(() => { const src = view.value === 'custom' ? inRange.value : vrows.value; for (let i = src.length - 1; i >= 0; i--) { const v = src[i]!.derived.cash; if (v != null) return { v, at: src[i]!.period_end } } return null })
+// Treasury bills and other marketable securities (the investments line): asked once whether to count them as cash.
+const hasSec = computed(() => monthly.value.some((r) => typeof r.lines.investments === 'number' && r.lines.investments !== 0))
+const secOn = computed(() => !!data.value?.cash_with_securities)
+async function setSec(v: boolean) { try { await $fetch('/api/financials/visibility', { method: 'POST', body: { cash_with_securities: v } }); await refresh(); await refreshM() } catch (e) { msg.value = errOf(e, 'Could not save.') } }
+// Standard statements (PDF or Excel) with the logo and comments.
+const sf = reactive({ open: false, period_type: 'month', count: 12, format: 'pdf', comments: '', note_income: '', note_balance: '', note_cash: '', room: false, busy: false, msg: '' })
+function openStatements() { Object.assign(sf, { open: true, period_type: view.value === 'custom' ? 'month' : view.value, count: view.value === 'year' ? 3 : view.value === 'quarter' ? 4 : 12, msg: '', busy: false }) }
+async function draftComments() {
+  sf.msg = ''
+  try { const a = await $fetch<{ headline: string; insights: { title: string; detail: string }[]; flags: { item: string; why: string }[] } | null>('/api/financials/analysis', { query: { subject: co.value?.subject ?? subject.value } }); if (a) sf.comments = [a.headline, ...a.insights.map((i) => i.title + '. ' + i.detail)].join('\n\n') }
+  catch (e) { sf.msg = errOf(e, 'Could not draft comments.') }
+}
+async function makeStatements() {
+  sf.busy = true; sf.msg = ''
+  try {
+    const fd = new FormData(); for (const k of ['period_type', 'count', 'format', 'comments', 'note_income', 'note_balance', 'note_cash'] as const) fd.append(k, String(sf[k])); fd.append('subject', co.value?.subject ?? subject.value); fd.append('room', sf.room ? '1' : '0')
+    const res = await fetch('/api/financials/statements-file', { method: 'POST', body: fd, credentials: 'same-origin' })
+    if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the statements.') }
+    const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'financial-statements.' + sf.format; a.click(); URL.revokeObjectURL(a.href)
+    ok.value = 'Statements downloaded' + (sf.room ? ' and added to the data room (Financials).' : '.'); sf.open = false
+  } catch (e) { sf.msg = (e as Error).message } finally { sf.busy = false }
+}
 const runwayKnown = computed(() => { const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
@@ -47,9 +69,16 @@ const lbl = (d: string, t: string = view.value === 'custom' ? 'month' : view.val
 const rangeLbl = computed(() => (inRange.value.length ? lbl(inRange.value[0]!.period_end, 'month') + ' – ' + lbl(inRange.value[inRange.value.length - 1]!.period_end, 'month') : ''))
 const pts = (k: string) => vrows.value.filter((r) => r.derived[k] != null).map((r) => ({ label: lbl(r.period_end), value: r.derived[k] as number }))
 const change = (k: string) => { const a = latest.value?.derived[k], b = prev.value?.derived[k]; return a == null || b == null || b === 0 ? null : Math.round(((a - b) / Math.abs(b)) * 100) }
-const mix = computed(() => { const d = latest.value?.derived ?? {}; return [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l!, value: Number(d[k!] ?? 0) })) })
+// Operating expenses only (no cost of revenue; R&D is left out as it may be capitalised).
+const mix = computed(() => { const d = latest.value?.derived ?? {}; return [['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_ga', 'General & admin'], ['opex_other', 'Other operating']].map(([k, l]) => ({ label: l!, value: Number(d[k!] ?? 0) })) })
 const pctFmt = (v: number | null | undefined) => (v == null ? '—' : v + '%')
 const tab = ref<'overview' | 'statements' | 'shares'>('overview')
+// Bulk delete / clear.
+const picked = ref<string[]>([]); const clearOpen = ref(false)
+watch([subject, periodType], () => { picked.value = [] })
+const allPicked = computed(() => { const ids = rows.value.filter((r) => r.id).map((r) => r.id as string); return ids.length > 0 && ids.every((i) => picked.value.includes(i)) })
+function pickAll(on: boolean) { picked.value = on ? rows.value.filter((r) => r.id).map((r) => r.id as string) : [] }
+async function cleared(m: string) { clearOpen.value = false; picked.value = []; ok.value = m; await Promise.all([refresh(), refreshM()]) }
 // Figures that do not add up, across every saved period.
 const { data: checks } = await useLazyFetch<{ checks: { period_end: string; period_type: string; what: string; detail: string; severity: string; source: string | null }[] }>('/api/financials/checks', { query: { subject }, watch: [subject], server: false, default: () => ({ checks: [] }) })
 const checksOpen = ref(false)
@@ -150,6 +179,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
+        <button v-if="rows.length || monthly.length" class="btn secondary" type="button" @click="openStatements">Statements (PDF / Excel)</button>
         <button v-if="canEdit" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
@@ -161,29 +191,30 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <ClientOnly><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
     <p v-if="rolled" class="hint">Added up from your monthly figures (no {{ view === 'year' ? 'yearly' : 'quarterly' }} statements were entered).</p>
+    <div v-if="co && canEdit && hasSec && data?.cash_policy == null" class="secq"><span><b>Your figures include investments such as treasury bills.</b> Count them with cash and show "Cash & marketable securities"? Runway then uses both.</span><span class="sb"><button class="btn sm" type="button" @click="setSec(true)">Yes, add them to cash</button><button class="btn secondary sm" type="button" @click="setSec(false)">No, bank balance only</button></span></div>
     <template v-if="vrows.length && latest">
       <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Sharing <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
           <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
-          <StatTile label="Cash" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
+          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
         <div class="charts">
           <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="view === 'custom' ? 'Total, ' + rangeLbl : vrows.length + ' periods'" :foot-value="latest.derived.revenue ?? null" />
           <TrendChart title="Profit and loss" unit="usd" bars :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" :foot="view === 'custom' ? 'Net income, ' + rangeLbl : 'Net income after all costs'" :foot-value="latest.derived.net_income ?? null" />
-          <TrendChart title="Cash" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
+          <TrendChart :title="secOn ? 'Cash & securities' : 'Cash'" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
         <FinAnalysis v-if="co" :subject="co.subject" />
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
           <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
-        <div class="two"><div class="card"><DonutChart :title="'Cost mix · ' + lbl(latest.period_end)" total-label="Total costs" :currency="cur" :segments="mix" /></div>
+        <div class="two"><div class="card"><DonutChart :title="'Operating expenses · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" total-label="Operating expenses" :currency="cur" :segments="mix" /></div>
           <div class="card"><h3>Latest periods</h3><div v-for="r in [...vrows].reverse().slice(0, 5)" :key="r.period_end" class="lp"><span>{{ lbl(r.period_end) }}</span><span><Money :value="r.derived.revenue" :currency="r.currency" /></span><span :class="{ neg: (r.derived.net_income ?? 0) < 0 }"><Money :value="r.derived.net_income" :currency="r.currency" /></span></div>
             <button class="link" @click="tab = 'statements'">All statements →</button></div></div>
       </template>
-      <div v-else-if="tab === 'statements'" class="card flat"><div class="scroll"><table class="table"><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
-        <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end"><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'sheet' ? 'Linked sheet' : r.source === 'api' ? 'From the API' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
+      <div v-else-if="tab === 'statements'" class="card flat"><div v-if="canEdit && !converting && subject !== 'group'" class="bulk"><span>{{ picked.length ? picked.length + ' selected' : 'Select periods to delete them, or clear some figures' }}</span><button v-if="picked.length" class="link" type="button" @click="picked = []">Unselect</button><button class="btn secondary sm" type="button" @click="clearOpen = true">{{ picked.length ? 'Delete or clear selected' : 'Delete or clear figures' }}</button></div><div class="scroll"><table class="table"><thead><tr><th v-if="canEdit && !converting && subject !== 'group'" class="cb"><input type="checkbox" :checked="allPicked" aria-label="Select all" @change="pickAll(($event.target as HTMLInputElement).checked)"></th><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
+        <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end" :class="{ pk: r.id && picked.includes(r.id) }"><td v-if="canEdit && !converting && subject !== 'group'" class="cb"><input v-if="r.id" v-model="picked" type="checkbox" :value="r.id" :aria-label="'Select ' + lbl(r.period_end)"></td><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'sheet' ? 'Linked sheet' : r.source === 'api' ? 'From the API' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
           <td class="n"><Money :value="r.derived.revenue" :currency="r.currency" /></td><td class="n">{{ pctFmt(r.derived.gross_margin) }}</td><td class="n"><Money :value="r.derived.ebitda" :currency="r.currency" /></td>
           <td class="n"><Money :value="r.derived.net_income" :currency="r.currency" /></td><td class="n"><Money :value="r.derived.cash" :currency="r.currency" /></td>
           <td class="n"><template v-if="r.id && canEdit && !converting"><button class="link" type="button" @click="openForm(r)">Edit</button> · <DeleteButton type="statement" :id="r.id" :name="lbl(r.period_end) + ' statement'" link @deleted="refresh()" /></template></td></tr></tbody></table></div></div>
@@ -234,6 +265,21 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       </form>
       <template #foot><button class="btn secondary" type="button" @click="showForm = false">Cancel</button><button class="btn" type="submit" form="finf" :disabled="busy">Save figures</button></template>
     </AppModal>
+    <AppModal :open="sf.open" title="Financial statements" wide @close="sf.open = false">
+      <div class="frm"><p class="hint">Income statement, balance sheet and cash flow in a standard layout, with your logo and comments. Unaudited management figures.</p>
+        <div class="g4"><label class="label">Columns<select v-model="sf.period_type"><option value="month">Months</option><option value="quarter">Quarters</option><option value="year">Years</option></select></label>
+          <label class="label">How many<select v-model.number="sf.count"><option v-for="n in (sf.period_type === 'year' ? [1, 2, 3, 5] : sf.period_type === 'quarter' ? [4, 6, 8, 12] : [3, 6, 12, 18, 24])" :key="n" :value="n">Last {{ n }}</option></select></label>
+          <label class="label">Format<select v-model="sf.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label>
+</div>
+        <CompanyLogo :company="co?.name ?? title" note="The logo on the statements is the one set in Settings." />
+        <label class="label">Management comments<textarea v-model="sf.comments" rows="5" maxlength="8000" placeholder="What happened in the period, what drove the numbers, what comes next" /><button type="button" class="link" @click="draftComments">Draft from the analysis</button></label>
+        <div class="g3b"><label class="label">Comment on the income statement<textarea v-model="sf.note_income" rows="2" maxlength="1500" /></label><label class="label">On the balance sheet<textarea v-model="sf.note_balance" rows="2" maxlength="1500" /></label><label class="label">On the cash flow<textarea v-model="sf.note_cash" rows="2" maxlength="1500" /></label></div>
+        <label v-if="co" class="chk"><input v-model="sf.room" type="checkbox"> Also add it to the data room (Financials folder)</label>
+        <p v-if="secOn" class="hint">Treasury bills and similar are shown as marketable securities, with a "Cash and marketable securities" line.</p>
+        <p v-if="sf.msg" class="error">{{ sf.msg }}</p></div>
+      <template #foot><button class="btn secondary" @click="sf.open = false">Cancel</button><button class="btn" :disabled="sf.busy" @click="makeStatements">{{ sf.busy ? 'Making…' : 'Download ' + (sf.format === 'pdf' ? 'PDF' : 'Excel') }}</button></template>
+    </AppModal>
+    <ClientOnly><FinClear :open="clearOpen" :subject="co?.subject ?? subject" :selected="picked" :lines="subj?.lines ?? []" :months="rows.map((r) => r.period_end)" @close="clearOpen = false" @done="cleared" /></ClientOnly>
     <AppModal :open="qbWall" title="QuickBooks" wide @close="qbWall = false"><Paywall code="quickbooks" label="QuickBooks" /></AppModal>
   </section>
 </template>
@@ -258,12 +304,14 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 @media (max-width: 1000px) { .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
 .feeds { margin: 12px 0; }
+.secq { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #f5f7fb; border: 1px solid #d9e2ef; padding: 12px 16px; font-size: 13.5px; margin: 0 0 12px; } .secq .sb { display: flex; gap: 8px; } .btn.sm { padding: 6px 12px; font-size: 13px; } .g3b { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; } @media (max-width: 800px) { .g3b { grid-template-columns: 1fr; } }
 .rng { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 4px 0 10px; font-size: 13px; color: var(--c-muted); } .rng label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .ck2 { background: #fff; border: 1px solid var(--c-rule); margin: 0 0 12px; } .ckh { width: 100%; display: flex; gap: 10px; align-items: baseline; background: none; border: 0; padding: 12px 16px; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; flex-wrap: wrap; } .ckh .dot { width: 8px; height: 8px; border-radius: 50%; background: #c98a1c; align-self: center; } .ckh span:not(.dot) { color: var(--c-muted); font-size: 13px; flex: 1; } .ckh em { font-style: normal; color: var(--c-blue-deep); }
 .ck2 ul { list-style: none; margin: 0; padding: 0 16px 10px; } .ck2 li { display: grid; grid-template-columns: 220px 1fr auto; gap: 12px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .ck2 li b { font-weight: 500; } .ck2 li.error b { color: var(--c-danger); } .ck2 li span { color: var(--c-ink-soft); } .ck2 li em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 @media (max-width: 800px) { .ck2 li { grid-template-columns: 1fr; } }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
 .bdl { text-decoration: none; }
+.bulk { display: flex; gap: 12px; align-items: center; justify-content: flex-end; padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13px; color: var(--c-muted); } .bulk > span { margin-right: auto; } .cb { width: 34px; padding-right: 0; } .cb input { margin: 0; } tr.pk td { background: #f5f7fb; }
 .srcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .src { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .sl { display: flex; flex-direction: column; } .sl b { font-size: 13.5px; } .sl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sr { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; } .sr input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .lnk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; }
 .rc { font-size: 12.5px; color: var(--c-warn); }
 .lock { font-size: 11.5px; font-weight: 600; padding: 3px 8px; background: #fff6e6; color: #a5650b; white-space: nowrap; }

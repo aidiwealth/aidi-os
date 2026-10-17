@@ -56,7 +56,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 
     <ClientOnly><BankFeeds v-if="fin" compact class="feeds" /></ClientOnly>
     <div class="three">
-      <div v-if="fin" class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Where the money goes" total-label="Costs this month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>
+      <div v-if="fin" class="card"><DonutChart v-if="data.mix.some((m) => m.value > 0)" title="Operating expenses" total-label="This month" :currency="data.currency" :segments="data.mix" /><template v-else><h3>Where the money goes</h3><p class="muted">Your cost mix appears once you add costs.</p></template></div>
       <div v-if="canPath('/investor-page')" class="card"><h3>Investors</h3>
         <div class="li"><span>Investor page</span><b>{{ data.page?.published ? 'Live' : 'Not published' }}</b></div>
         <div class="li"><span>Investor page views</span><b>{{ data.page?.views ?? 0 }}</b></div>

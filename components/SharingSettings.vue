@@ -7,7 +7,7 @@ watchEffect(() => { const d = data.value; if (d) { const b = d.brand; Object.ass
 const msg = ref(''); const ok = ref(''); const busy = ref(false); const showNda = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function save() { busy.value = true; msg.value = ''; ok.value = ''; try { await $fetch('/api/sharing', { method: 'POST', body: { ...f, bg: f.bg === '#ffffff' ? '' : f.bg, fg: f.fg === '#1d1d1f' ? '' : f.fg, nda_text: f.nda_text === data.value?.default_nda ? '' : f.nda_text } }); ok.value = 'Saved.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-async function logo(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f.logo_id = (await $fetch<{ id: string }>('/api/sharing/logo', { method: 'POST', body: fd })).id } catch (e) { msg.value = err(e) } }
+const { data: clogo } = await useFetch<{ id: string | null; url: string | null; pdf_ok: boolean }>('/api/company/logo', { key: 'company-logo', default: () => ({ id: null, url: null, pdf_ok: false }) })
 </script>
 <template>
   <form v-if="data" class="ss" @submit.prevent="save">
@@ -15,9 +15,9 @@ async function logo(ev: Event) { const file = (ev.target as HTMLInputElement).fi
       <label class="addr"><span>{{ data.base }}</span><input v-model="f.handle" required maxlength="41"></label>
       <p class="mut">Example: <code>{{ data.base }}{{ f.handle }}/bridge-deck</code>{{ data.published ? '' : ' · Publish your investor page to show it at this address.' }}</p></div>
     <div class="card sec"><h2>Branding</h2>
-      <div class="lg"><img v-if="f.logo_id" :src="'/api/public/media/' + f.logo_id" alt="Logo"><span v-else class="ph">Logo</span><DropZone compact accept=".png,.jpg,.jpeg,.webp" :label="f.logo_id ? 'Drop a new logo' : 'Drop your logo here'" hint="PNG, JPG or WebP · or click" @change="logo" /><button v-if="f.logo_id" type="button" class="lk" @click="f.logo_id = null">Remove</button></div>
+      <CompanyLogo edit class="lgc" />
       <div class="cols"><label class="cl"><input v-model="f.bg" type="color"> Viewer background</label><label class="cl"><input v-model="f.fg" type="color"> Viewer text colour</label></div>
-      <div class="prev" :style="{ background: f.bg, color: f.fg }"><img v-if="f.logo_id" :src="'/api/public/media/' + f.logo_id" alt=""><b>Data room</b><span>Preview of your viewer colours</span></div>
+      <div class="prev" :style="{ background: f.bg, color: f.fg }"><img v-if="clogo?.url" :src="clogo.url" alt=""><b>Data room</b><span>Preview of your viewer colours</span></div>
       <label class="tg" :class="{ dis: !data.paid }"><input v-model="f.hide_finvry" type="checkbox" :disabled="!data.paid"><span class="sw" /><span><b>Remove Finvry branding</b><em>{{ data.paid ? 'From your investor page, data room and update emails.' : 'Available on Startup and Scale.' }}</em></span></label></div>
     <div class="card sec"><h2>Protection</h2>
       <label class="tg"><input v-model="f.watermark" type="checkbox"><span class="sw" /><span><b>Watermark documents</b><em>Stamps the viewer's email and the date on every page of PDFs in your data room, including downloads. Images show it on screen. Other file types must be shared as PDF while this is on.</em></span></label>
@@ -31,7 +31,7 @@ async function logo(ev: Event) { const file = (ev.target as HTMLInputElement).fi
 <style scoped>
 .ss { display: flex; flex-direction: column; gap: 12px; } .sec { display: flex; flex-direction: column; gap: 10px; } .sec h2 { margin: 0; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; } code { font-size: 12.5px; background: var(--c-paper-2); padding: 1px 6px; }
 .addr { display: flex; align-items: center; border: 1px solid var(--c-rule-strong); } .addr span { padding: 0 10px; font-size: 13.5px; color: var(--c-muted); background: var(--c-paper-2); align-self: stretch; display: flex; align-items: center; } .addr input { border: 0; flex: 1; font: inherit; font-size: 15px; padding: 9px 10px; }
-.lg { display: flex; align-items: center; gap: 12px; } .lg img { max-height: 44px; max-width: 160px; } .ph { width: 90px; height: 44px; border: 1px dashed var(--c-rule-strong); display: grid; place-items: center; color: var(--c-muted); font-size: 12px; } .up { position: relative; overflow: hidden; } .up input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.lgc { margin-bottom: 14px; } .lg { display: flex; align-items: center; gap: 12px; } .lg img { max-height: 44px; max-width: 160px; } .ph { width: 90px; height: 44px; border: 1px dashed var(--c-rule-strong); display: grid; place-items: center; color: var(--c-muted); font-size: 12px; } .up { position: relative; overflow: hidden; } .up input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .cols { display: flex; gap: 20px; } .cl { display: flex; gap: 8px; align-items: center; font-size: 14px; } .cl input { width: 42px; height: 30px; border: 1px solid var(--c-rule-strong); padding: 2px; background: #fff; }
 .prev { padding: 16px 18px; border: 1px solid var(--c-rule); display: flex; gap: 12px; align-items: center; } .prev img { max-height: 28px; } .prev span { font-size: 13px; opacity: .75; }
 .tg { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; padding: 6px 0; } .tg input { position: absolute; opacity: 0; width: 0; } .tg.dis { opacity: .6; cursor: default; }

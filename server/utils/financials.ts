@@ -124,3 +124,5 @@ export async function loadStatements(subject: string, periodType: string, curren
   }
   return out
 }
+// Whether this workspace counts marketable securities (treasury bills) with cash (asked once on Financials).
+export async function cashPolicy(): Promise<boolean> { return (await currentOrg())?.settings.cash_with_securities === true }

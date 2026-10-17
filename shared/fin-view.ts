@@ -86,3 +86,12 @@ export function checkRows(rows: FinRow[]): Check[] {
   }
   return out
 }
+
+// "Cash and marketable securities": when the company chose to count treasury bills and similar (the investments line)
+// as cash, cash shown and runway use both; the bank balance alone is kept as bank_cash.
+export function withSecurities<T extends Record<string, number | null | undefined>>(d: T, on: boolean): T {
+  if (!on || typeof d.investments !== 'number') return d
+  const cash = (typeof d.cash === 'number' ? d.cash : 0) + (d.investments as number)
+  const burn = typeof d.burn === 'number' ? d.burn : null
+  return { ...d, bank_cash: d.cash ?? null, cash, runway: burn ? Math.round((cash / burn) * 10) / 10 : d.runway ?? null }
+}

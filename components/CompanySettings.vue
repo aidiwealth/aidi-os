@@ -6,7 +6,7 @@ interface D { reporting_currency?: string; name: string; website: string; countr
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, logo, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
+const SECTIONS = [['company', 'Company', 'Name, logo, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
@@ -36,7 +36,8 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
       <nav class="side"><button v-for="[k, l, d] in SECTIONS" :key="k" type="button" :class="{ on: sec === k }" @click="go(k)"><b>{{ l }}</b><span>{{ d }}</span></button></nav>
       <div class="main">
         <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
-        <form v-if="sec === 'company'" class="card frm" @submit.prevent="saveProfile">
+        <template v-if="sec === 'company'"><div class="card frm lgo"><h2>Company logo</h2><div class="wide"><CompanyLogo edit :company="f.name" /></div></div>
+        <form class="card frm" @submit.prevent="saveProfile">
           <h2>Company</h2>
           <label class="label wide">Company name<input v-model="f.name" required maxlength="200"></label>
           <label class="label wide">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label>
@@ -47,7 +48,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option v-for="s in data.states" :key="s">{{ s }}</option></select></label>
           <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders for this legal form to Compliance</label>
           <div class="wide"><button class="btn" type="submit" :disabled="busy">Save changes</button></div>
-        </form>
+        </form></template>
         <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
         <div v-else-if="sec === 'ai'"><AiUsage /></div>
         <div v-else-if="sec === 'api'"><ApiKeys /></div>
@@ -87,4 +88,5 @@ input, select { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px s
 .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); } .btn { text-decoration: none; }
 @media (max-width: 900px) { .lay { grid-template-columns: 1fr; } .plans, .frm { grid-template-columns: 1fr; } }
 .pcard { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; } .pch { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .pon { font-size: 12.5px; font-weight: 600; padding: 3px 10px; background: #e9f6ee; color: #23784a; } .pcard .muted { margin: 0; font-size: 13.5px; } .pcard a { color: var(--c-blue-deep); } .prow { display: flex; gap: 8px; max-width: 460px; } .prow input { flex: 1; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); text-transform: uppercase; }
+.lgo { margin-bottom: 12px; }
 </style>

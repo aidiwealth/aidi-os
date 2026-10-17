@@ -1,3 +1,4 @@
+import { withSecurities } from '~/shared/fin-view'
 // The company dashboard: headline figures and trends from Financials, what is due, services, investor page, setup steps.
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
@@ -6,7 +7,8 @@ export default defineEventHandler(async (event) => {
   const ent = await companyEntityId()
   const rows = ent ? await loadStatements('entity:' + ent, 'month', (org.settings.currency as string) || 'USD') : []
   type Pt = Record<string, number | null> & { period: string; currency: string }
-  const series: Pt[] = rows.slice(-12).map((r) => Object.assign({}, derive(r.lines, r.period_type), { period: r.period_end, currency: r.currency }) as Pt)
+  const sec = org.settings.cash_with_securities === true
+  const series: Pt[] = rows.slice(-12).map((r) => Object.assign({}, withSecurities(derive(r.lines, r.period_type), sec), { period: r.period_end, currency: r.currency }) as Pt)
   const last = series[series.length - 1] ?? null, prev = series[series.length - 2] ?? null
   const lr = last ? last.revenue ?? null : null, pr = prev ? prev.revenue ?? null : null
   const growth = lr != null && pr ? Math.round(((lr - pr) / Math.abs(pr)) * 1000) / 10 : null
@@ -26,7 +28,7 @@ export default defineEventHandler(async (event) => {
   const name = (await asPlatform(() => db().query<{ n: string | null }>('SELECT p.full_name AS n FROM core.users u LEFT JOIN core.people p ON p.id = u.person_id WHERE u.id = $1', [user.userId]))).rows[0]?.n
   return {
     company: org.name, first: (name ?? user.email).split(' ')[0], currency: last?.currency ?? ((org.settings.currency as string) || 'USD'), plan: org.plan_code, status: org.status,
-    last, growth, series, mix: last ? [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
+    last, growth, series, mix: last ? [['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_ga', 'General & admin'], ['opex_other', 'Other operating']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
     due: due.rows, page, shares, services, wallet: await walletOf(org.id),
     setup: await (async () => {
       const mods = await usableModules(user.roles, event)
