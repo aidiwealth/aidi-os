@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { rollUp, combine, type FinRow } from '~/shared/fin-view'
 const { canPath } = useModuleAccess()
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
@@ -12,7 +13,7 @@ const scoped = computed(() => !!me.value?.entity_scoped)
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const co = computed(() => subj.value?.company ?? null)
 const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
-const subject = ref(co.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const currency = ref(co.value?.currency ?? 'USD')
+const subject = ref(co.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(co.value?.currency ?? 'USD')
 watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.currency } })
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
 const original = ref(false)
@@ -20,17 +21,38 @@ const rawQ = computed(() => (original.value ? '1' : undefined))
 const { data, refresh } = await useFetch<{ name: string; statements: St[] }>('/api/financials', { query: { subject, period_type: periodType, currency, raw: rawQ }, watch: [subject, periodType, currency, original] })
 const converting = computed(() => !!co.value?.reporting && !original.value && rows.value.some((r) => r.currency === co.value?.reporting))
 const rows = computed(() => data.value?.statements ?? [])
-const latest = computed(() => rows.value[rows.value.length - 1]); const prev = computed(() => rows.value[rows.value.length - 2])
+// Monthly figures, for quarters and years that were only entered month by month, and for a custom range.
+const { data: mdata, refresh: refreshM } = await useFetch<{ statements: St[] }>('/api/financials', { query: { subject, period_type: 'month', currency, raw: rawQ }, watch: [subject, currency, original] })
+const monthly = computed(() => mdata.value?.statements ?? [])
+watch(data, () => { if (periodType.value !== 'month') void refreshM() })
+const range = reactive({ from: '', to: '' })
+watch(monthly, (m) => { if (m.length && !range.to) { range.to = m[m.length - 1]!.period_end.slice(0, 7); range.from = m[Math.max(0, m.length - 12)]!.period_end.slice(0, 7) } }, { immediate: true })
+const inRange = computed(() => monthly.value.filter((r) => r.period_end.slice(0, 7) >= range.from && r.period_end.slice(0, 7) <= range.to))
+const vrows = computed<St[]>(() => {
+  if (view.value === 'custom') return inRange.value
+  if (view.value === 'month' || rows.value.length) return rows.value
+  return rollUp(monthly.value as unknown as FinRow[], view.value).map((r) => ({ ...r, id: null, notes: null, show_to_lps: false, source: 'rolled' })) as unknown as St[]
+})
+const rolled = computed(() => view.value !== 'month' && view.value !== 'custom' && !rows.value.length && vrows.value.length > 0)
+const rangeTotal = computed(() => (view.value === 'custom' && inRange.value.length ? combine(inRange.value as unknown as FinRow[], inRange.value[inRange.value.length - 1]!.period_end, 'custom') : null))
+const latest = computed(() => (rangeTotal.value as unknown as St | null) ?? vrows.value[vrows.value.length - 1]); const prev = computed(() => (view.value === 'custom' ? undefined : vrows.value[vrows.value.length - 2]))
+// Cash: the latest period that has it (a P&L-only month should not blank the balance).
+const cashKnown = computed(() => { const src = view.value === 'custom' ? inRange.value : vrows.value; for (let i = src.length - 1; i >= 0; i--) { const v = src[i]!.derived.cash; if (v != null) return { v, at: src[i]!.period_end } } return null })
+const runwayKnown = computed(() => { const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? [] : subj.value?.currencies ?? [])])])
 const curName = (c: string) => ({ USD: 'US dollar (USD)', NGN: 'Naira (NGN)', GBP: 'Pound (GBP)', EUR: 'Euro (EUR)' } as Record<string, string>)[c] ?? c
-const lbl = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', periodType.value === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
-const pts = (k: string) => rows.value.filter((r) => r.derived[k] != null).map((r) => ({ label: lbl(r.period_end), value: r.derived[k] as number }))
+const lbl = (d: string, t: string = view.value === 'custom' ? 'month' : view.value) => t === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + d.slice(2, 4) : new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', t === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
+const rangeLbl = computed(() => (inRange.value.length ? lbl(inRange.value[0]!.period_end, 'month') + ' – ' + lbl(inRange.value[inRange.value.length - 1]!.period_end, 'month') : ''))
+const pts = (k: string) => vrows.value.filter((r) => r.derived[k] != null).map((r) => ({ label: lbl(r.period_end), value: r.derived[k] as number }))
 const change = (k: string) => { const a = latest.value?.derived[k], b = prev.value?.derived[k]; return a == null || b == null || b === 0 ? null : Math.round(((a - b) / Math.abs(b)) * 100) }
 const mix = computed(() => { const d = latest.value?.derived ?? {}; return [['cogs', 'Cost of revenue'], ['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_rnd', 'R&D'], ['opex_ga', 'G&A'], ['opex_other', 'Other']].map(([k, l]) => ({ label: l!, value: Number(d[k!] ?? 0) })) })
 const pctFmt = (v: number | null | undefined) => (v == null ? '—' : v + '%')
 const tab = ref<'overview' | 'statements' | 'shares'>('overview')
+// Figures that do not add up, across every saved period.
+const { data: checks } = await useLazyFetch<{ checks: { period_end: string; period_type: string; what: string; detail: string; severity: string; source: string | null }[] }>('/api/financials/checks', { query: { subject }, watch: [subject], server: false, default: () => ({ checks: [] }) })
+const checksOpen = ref(false)
 const title = computed(() => co.value?.name ?? data.value?.name ?? 'Financials')
 
 // add / edit (popup)
@@ -124,7 +146,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <optgroup v-if="subj?.companies.length" label="Portfolio and group companies"><option v-for="c in subj.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}{{ c.relationship === 'subsidiary' ? ' (subsidiary)' : '' }}</option></optgroup></select>
         <span v-else class="co">{{ co.name }}</span></div>
       <div class="tools">
-        <div class="seg" role="group" aria-label="Period"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly']]" :key="k" :class="{ on: periodType === k }" @click="periodType = k">{{ l }}</button></div>
+        <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
         <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
@@ -137,22 +159,27 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
     <ClientOnly><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
-    <template v-if="rows.length && latest">
-      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Share links <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
+    <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
+    <p v-if="rolled" class="hint">Added up from your monthly figures (no {{ view === 'year' ? 'yearly' : 'quarterly' }} statements were entered).</p>
+    <template v-if="vrows.length && latest">
+      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Sharing <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
-          <StatTile :label="'Revenue · ' + lbl(latest.period_end)" icon="money" tone="b" :note="change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
-          <StatTile label="Net income" icon="chart" tone="n"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
-          <StatTile label="Cash" icon="billing" tone="g" :note="latest.derived.runway ? latest.derived.runway + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : '—'"><Money :value="latest.derived.cash" :currency="cur" /></StatTile>
+          <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
+          <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
+          <StatTile label="Cash" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
         <div class="charts">
-          <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="rows.length + ' periods'" />
-          <TrendChart title="Net income" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" foot="After all costs" />
-          <TrendChart title="Cash" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" foot="Period end" />
+          <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="view === 'custom' ? 'Total, ' + rangeLbl : vrows.length + ' periods'" :foot-value="latest.derived.revenue ?? null" />
+          <TrendChart title="Profit and loss" unit="usd" bars :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" :foot="view === 'custom' ? 'Net income, ' + rangeLbl : 'Net income after all costs'" :foot-value="latest.derived.net_income ?? null" />
+          <TrendChart title="Cash" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
+        <FinAnalysis v-if="co" :subject="co.subject" />
+        <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
+          <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
         <div class="two"><div class="card"><DonutChart :title="'Cost mix · ' + lbl(latest.period_end)" total-label="Total costs" :currency="cur" :segments="mix" /></div>
-          <div class="card"><h3>Latest periods</h3><div v-for="r in [...rows].reverse().slice(0, 5)" :key="r.period_end" class="lp"><span>{{ lbl(r.period_end) }}</span><span><Money :value="r.derived.revenue" :currency="r.currency" /></span><span :class="{ neg: (r.derived.net_income ?? 0) < 0 }"><Money :value="r.derived.net_income" :currency="r.currency" /></span></div>
+          <div class="card"><h3>Latest periods</h3><div v-for="r in [...vrows].reverse().slice(0, 5)" :key="r.period_end" class="lp"><span>{{ lbl(r.period_end) }}</span><span><Money :value="r.derived.revenue" :currency="r.currency" /></span><span :class="{ neg: (r.derived.net_income ?? 0) < 0 }"><Money :value="r.derived.net_income" :currency="r.currency" /></span></div>
             <button class="link" @click="tab = 'statements'">All statements →</button></div></div>
       </template>
       <div v-else-if="tab === 'statements'" class="card flat"><div class="scroll"><table class="table"><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
@@ -161,6 +188,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <td class="n"><Money :value="r.derived.net_income" :currency="r.currency" /></td><td class="n"><Money :value="r.derived.cash" :currency="r.currency" /></td>
           <td class="n"><template v-if="r.id && canEdit && !converting"><button class="link" type="button" @click="openForm(r)">Edit</button> · <DeleteButton type="statement" :id="r.id" :name="lbl(r.period_end) + ' statement'" link @deleted="refresh()" /></template></td></tr></tbody></table></div></div>
       <template v-else>
+        <FinVisibility v-if="co && canEdit" />
         <div class="card frm"><div class="sh"><div><h3>Share your financials</h3><p class="hint">A private link showing only the metrics you pick. It expires, and you get an email when it is viewed.</p></div></div>
           <div class="g3"><label class="label">Title<input v-model="sh.title" :placeholder="title" maxlength="200"></label><label class="label">Expires after<select v-model.number="sh.days"><option :value="7">7 days</option><option :value="30">30 days</option><option :value="90">90 days</option><option :value="365">1 year</option></select></label></div>
           <div class="mets"><label v-for="m in metricOptions" :key="m.key" class="chk"><input v-model="sh.metrics" type="checkbox" :value="m.key" :disabled="!sh.metrics.includes(m.key) && sh.metrics.length >= 8"> {{ m.label }}</label></div>
@@ -230,6 +258,10 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 @media (max-width: 1000px) { .g4 { grid-template-columns: 1fr 1fr; } .charts, .two, .g3 { grid-template-columns: 1fr; } }
 .feeds { margin: 12px 0; }
+.rng { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 4px 0 10px; font-size: 13px; color: var(--c-muted); } .rng label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.ck2 { background: #fff; border: 1px solid var(--c-rule); margin: 0 0 12px; } .ckh { width: 100%; display: flex; gap: 10px; align-items: baseline; background: none; border: 0; padding: 12px 16px; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; flex-wrap: wrap; } .ckh .dot { width: 8px; height: 8px; border-radius: 50%; background: #c98a1c; align-self: center; } .ckh span:not(.dot) { color: var(--c-muted); font-size: 13px; flex: 1; } .ckh em { font-style: normal; color: var(--c-blue-deep); }
+.ck2 ul { list-style: none; margin: 0; padding: 0 16px 10px; } .ck2 li { display: grid; grid-template-columns: 220px 1fr auto; gap: 12px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .ck2 li b { font-weight: 500; } .ck2 li.error b { color: var(--c-danger); } .ck2 li span { color: var(--c-ink-soft); } .ck2 li em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+@media (max-width: 800px) { .ck2 li { grid-template-columns: 1fr; } }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
 .bdl { text-decoration: none; }
 .srcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .src { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .sl { display: flex; flex-direction: column; } .sl b { font-size: 13.5px; } .sl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sr { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; } .sr input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .lnk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; }

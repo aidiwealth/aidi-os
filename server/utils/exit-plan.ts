@@ -22,8 +22,8 @@ export function cleanBuyer(b: any, now: string, prev?: Buyer): Buyer {
 // founder's own projections (periods after this month, e.g. from an imported financial model). Each figure says
 // where it came from, so the exit scenarios rest on the numbers the founder uploaded.
 export interface Basis { arr: number | null; arr_source: string; revenue_ttm: number | null; ttm_source: string; ebitda_ttm: number | null; growth_pct: number | null; growth_source: string
-  latest: string | null; currency: string; reporting: string | null; fx: number | null; months: number; period: 'month' | 'quarter' | 'year' | null; projected: { year: number; revenue: number }[] }
-const EMPTY: Basis = { arr: null, arr_source: '', revenue_ttm: null, ttm_source: '', ebitda_ttm: null, growth_pct: null, growth_source: '', latest: null, currency: 'USD', reporting: null, fx: null, months: 0, period: null, projected: [] }
+  latest: string | null; currency: string; reporting: string | null; fx: number | null; months: number; period: 'month' | 'quarter' | 'year' | null; projected: { year: number; revenue: number }[]; note: string }
+const EMPTY: Basis = { arr: null, arr_source: '', revenue_ttm: null, ttm_source: '', ebitda_ttm: null, growth_pct: null, growth_source: '', latest: null, currency: 'USD', reporting: null, fx: null, months: 0, period: null, projected: [], note: '' }
 const kpi = (k: Record<string, unknown> | undefined, re: RegExp) => { const v = Object.entries(k ?? {}).find(([n]) => re.test(n.trim()))?.[1]; return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null }
 export async function revenueBasis(): Promise<Basis> {
   const ent = await companyEntityId()
@@ -33,11 +33,15 @@ export async function revenueBasis(): Promise<Basis> {
   const reporting = (org?.settings.reporting_currency as string | undefined) || null
   const rates = new Map<string, number | null>()
   const toUsd = async (cur: string) => { if (cur === 'USD') return 1; if (!rates.has(cur)) rates.set(cur, await fxRate(cur, 'USD').catch(() => null)); return rates.get(cur) ?? null }
+  let seen = 0; const noRate = new Set<string>()
   const load = async (pt: 'month' | 'quarter' | 'year') => {
-    const raw = await loadStatements('entity:' + ent, pt, 'USD', { raw: true }).catch(() => [])
+    // As Financials shows them (in the reporting currency), then in US dollars where a rate is known; without a rate
+    // the figures are kept in their own currency rather than dropped.
+    const raw = await loadStatements('entity:' + ent, pt, 'USD').catch((e) => { console.error('[exit] statements', (e as Error).message); return [] })
+    seen += raw.length
     const out: { end: string; rev: number | null; ebitda: number | null; arr: number | null; mrr: number | null; cur: string }[] = []
-    for (const r of raw) { const k = await toUsd(r.currency); if (k == null) continue; const v = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x * k : null)
-      out.push({ end: r.period_end, rev: v(r.lines.revenue), ebitda: v(r.lines.ebitda), arr: v(kpi(r.kpis, /^(arr|annual recurring revenue)( \(.*\))?$/i)), mrr: v(kpi(r.kpis, /^(mrr|monthly recurring revenue)( \(.*\))?$/i)), cur: r.currency }) }
+    for (const r of raw) { const rate = await toUsd(r.currency); if (rate == null) noRate.add(r.currency); const k = rate ?? 1; const v = (x: unknown) => { const n = typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN; return Number.isFinite(n) ? n * k : null }
+      out.push({ end: r.period_end, rev: v(r.lines.revenue ?? (r.lines as Record<string, unknown>).total_revenue), ebitda: v(r.lines.ebitda), arr: v(kpi(r.kpis, /^(arr|annual recurring revenue)( \(.*\))?$/i)), mrr: v(kpi(r.kpis, /^(mrr|monthly recurring revenue)( \(.*\))?$/i)), cur: r.currency }) }
     return { actual: out.filter((x) => x.end <= monthEnd && (x.rev != null || x.arr != null || x.mrr != null)), future: out.filter((x) => x.end > monthEnd && x.rev != null) }
   }
   const m = await load('month'), q = m.actual.some((x) => x.rev != null) ? null : await load('quarter'), y = await load('year')
@@ -69,6 +73,8 @@ export async function revenueBasis(): Promise<Basis> {
   const fut = new Map<number, number>()
   for (const r of [...m.future, ...(q?.future ?? [])]) fut.set(Number(r.end.slice(0, 4)), (fut.get(Number(r.end.slice(0, 4))) ?? 0) + r.rev!)
   for (const r of y.future) if (!fut.has(Number(r.end.slice(0, 4)))) fut.set(Number(r.end.slice(0, 4)), r.rev!)
+  if (!src) b.note = seen ? seen + ' statement' + (seen === 1 ? '' : 's') + ' found, but none with revenue up to this month.' : 'No statements found in Financials yet.'
+  else if (noRate.size) { b.note = 'No exchange rate for ' + [...noRate].join(', ') + ' yet: figures are shown as recorded.'; b.currency = [...noRate][0]! }
   b.projected = [...fut.entries()].sort((a, c) => a[0] - c[0]).map(([year, revenue]) => ({ year, revenue: Math.round(revenue) })).slice(0, 10)
   return b
 }

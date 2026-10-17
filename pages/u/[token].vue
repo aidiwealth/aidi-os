@@ -12,7 +12,7 @@ useHead({ titleTemplate: '%s', title: () => data.value?.title ?? 'Investor updat
   <section class="wrap">
     <NdaGate v-if="data && data.gated && data.nda" :company="data.company" :text="data.nda.text" kind="update" :ref-key="token" :org-key="data.nda.key" @signed="goNda" />
     <div v-else-if="error" class="card"><h1>This link is not valid</h1></div>
-    <template v-else-if="data"><UpdateView :html="data.html" :title="data.title" :label="data.label" :body="data.body" :company="data.company" :currency="data.figures.currency" :current="data.figures.current" :previous="data.figures.previous" />
+    <template v-else-if="data"><UpdateView :html="data.html" :title="data.title" :label="data.label" :body="data.body" :company="data.company" :currency="data.figures.currency" :current="data.figures.current" :previous="data.figures.previous" /><FinSummary :fin="(data as any).financials" />
       <ClientOnly><UpdateReact :token="token" :company="data.company" /></ClientOnly>
       <p v-if="data.page" class="more"><NuxtLink :to="'/c/' + data.page">See {{ data.company }}'s investor page →</NuxtLink></p></template>
   </section>

@@ -3,7 +3,7 @@
 const props = defineProps<{ companyId: string }>()
 const emit = defineEmits<{ imported: [] }>()
 interface U { id: string; title: string; label: string; sent_at: string | null; imported_at: string | null; new: boolean }
-const { data, refresh } = await useFetch<{ linked: { id: string; name: string } | null; updates: U[] }>(() => '/api/portfolio/' + props.companyId + '/finvry')
+const { data, refresh } = await useFetch<{ linked: { id: string; name: string } | null; auto?: boolean; updates: U[] }>(() => '/api/portfolio/' + props.companyId + '/finvry')
 // Collapsed by default; opens by itself when there is a new update to import.
 const open = ref(false); watch(data, (d) => { if (d?.updates.some((u) => u.new)) open.value = true }, { immediate: true })
 const summary = computed(() => { const d = data.value; if (!d?.linked) return 'Not linked'; const n = d.updates.length, nw = d.updates.filter((u) => u.new).length; return 'Linked to ' + d.linked.name + ' · ' + (n ? n + ' update' + (n === 1 ? '' : 's') + ' sent' : 'no updates yet') + (nw ? '' : '') })
@@ -11,6 +11,7 @@ const picking = ref(false); const busy = ref(''); const msg = ref(''); const ok 
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function link(orgId: string | null) { msg.value = ''; ok.value = ''; try { await $fetch('/api/portfolio/' + props.companyId + '/finvry-link', { method: 'POST', body: { org_id: orgId } }); picking.value = false; await refresh() } catch (e) { msg.value = err(e) } }
 async function imp(u: U) { busy.value = u.id; msg.value = ''; ok.value = ''; try { const r = await $fetch<{ months: number; values: number }>('/api/portfolio/' + props.companyId + '/finvry-import', { method: 'POST', body: { update_id: u.id } }); ok.value = r.values ? 'Imported ' + r.values + ' figure' + (r.values === 1 ? '' : 's') + ' across ' + r.months + ' month' + (r.months === 1 ? '' : 's') + ' from "' + u.title + '".' : 'Imported the notes from "' + u.title + '". The company has no Financials for that period yet.'; await refresh(); emit('imported') } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
+async function setAuto(v: boolean) { try { await $fetch('/api/portfolio/' + props.companyId + '/finvry-link', { method: 'POST', body: { auto: v } }); await refresh(); emit('imported') } catch (e) { msg.value = err(e) } }
 const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 </script>
 <template>
@@ -23,6 +24,7 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
       <FinvryPicker @pick="(w) => link(w.id)" />
     </template>
     <template v-else>
+      <label class="au"><input type="checkbox" :checked="data.auto !== false" @change="setAuto(($event.target as HTMLInputElement).checked)"> Bring in figures and notes automatically each time they send an update (the team's corrections are kept)</label>
       <table v-if="data.updates.length" class="t"><thead><tr><th>Investor update</th><th>Sent</th><th /></tr></thead>
         <tbody><tr v-for="u in data.updates" :key="u.id"><td><b>{{ u.title }}</b><span v-if="u.new" class="nw">New</span><span class="sub">{{ u.label }}</span></td><td class="muted">{{ day(u.sent_at) }}</td>
           <td class="r"><span v-if="u.imported_at && busy !== u.id" class="dn">Imported {{ day(u.imported_at) }} · </span><button type="button" class="btn sm" :class="{ secondary: !!u.imported_at }" :disabled="busy === u.id" @click="imp(u)">{{ busy === u.id ? 'Importing…' : u.imported_at ? 'Re-import' : 'Import figures' }}</button></td></tr></tbody></table>
@@ -39,4 +41,5 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-size: 12px; font-weight: 400; color: var(--c-muted); padding: 8px 6px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 6px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: middle; }
 .sub { display: block; font-size: 12px; color: var(--c-muted); } .r { text-align: right; white-space: nowrap; } .dn { font-size: 12px; color: var(--c-ok); } .nw { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; }
 .btn.sm { padding: 6px 12px; font-size: 13px; } .ok { color: var(--c-ok); margin: 0; font-size: 13.5px; } .error { color: var(--c-danger); margin: 0; }
+.au { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--c-ink-soft); margin: 4px 0 10px; }
 </style>

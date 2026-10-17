@@ -1,0 +1,15 @@
+// What the figures say, for the founder: insights and what to raise with the executive team, the CFO and the board.
+import { deriveLines, type FinRow } from '~/shared/fin-view'
+export default defineEventHandler(async (event) => {
+  const user = await requireRole(event, 'gp', 'team', 'admin')
+  const q = getQuery(event)
+  const subject = String(q.subject ?? '')
+  if (!/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
+  if (q.refresh === '1') await rateLimit('fin_analysis', user.userId, 20, 60 * 60 * 1000)
+  const org = (await currentOrg())!
+  let rows = await loadStatements(subject, 'month', (org.settings.currency as string) || 'USD')
+  if (rows.length < 3) rows = await loadStatements(subject, 'quarter', (org.settings.currency as string) || 'USD')
+  const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: deriveLines(r.lines, r.period_type === 'quarter' ? 3 : r.period_type === 'year' ? 12 : 1) }))
+  if (!fr.length) return null
+  return await analyseFinancials(subject, fr, fr[fr.length - 1]!.currency, await subjectName(subject), q.refresh === '1')
+})

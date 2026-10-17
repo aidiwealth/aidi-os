@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Finvry cap table: who owns what, the option pool and vesting, SAFEs and notes, and what a priced round or an exit
 // would mean for everyone.
-import { table, round, waterfall, vested, liveShares, type Data } from '~/shared/captable'
+import { table, round, vested, liveShares, type Data } from '~/shared/captable'
 import { positions, orderRows, commonHolders, currentPrice, type Right } from '~/shared/positions'
 useHead({ title: 'Cap table' })
 type D = Data & { captable: string; captables: { id: string; name: string; note: string | null; is_main: boolean; updated_at: string; views?: number }[]; holders: (Data['holders'][number] & { email: string | null })[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; company: string }
@@ -118,8 +118,6 @@ async function dropRow(target: string) {
 function moveRow(k: string, by: number) { const keys = rrRows.value.map((r) => r.key), i = keys.indexOf(k), j = i + by; if (i < 0 || j < 0 || j >= keys.length) return; dragK.value = k; void dropRow(keys[j]!) }
 async function resetOrder() { savedOrder.value = []; await $fetch('/api/equity/order', { method: 'POST', body: { ct: data.value?.captable, order: [] } }).catch(() => {}) }
 const rr = computed(() => (data.value && t.value?.fd ? round(data.value, { ...rd, pre_money: Number(rd.pre_money) || 0, new_money: Number(rd.new_money) || 0, pool_target_pct: Number(rd.pool_target_pct) || 0 }, today) : null))
-const ex = ref(25000000)
-const wf = computed(() => (data.value && t.value?.fd ? waterfall(data.value, Number(ex.value) || 0, today) : null))
 const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.id === pid); return p ? p.reserved - (data.value?.grants.filter((g) => g.plan_id === pid).reduce((s, g) => s + liveShares(g, today), 0) ?? 0) : 0 }
 </script>
 <template>
@@ -200,11 +198,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 
     <template v-else>
       <ClientOnly><ExitPlanner :data="data" :ct="data.captable" :has-shares="!!t?.fd" /></ClientOnly>
-      <div class="card frm4"><label>Or try any exit value (sale price of the company)<input v-model.number="ex" type="number" min="0" step="1000000"></label></div>
-      <div v-if="wf" class="two"><div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Who</th><th>How they are paid</th><th class="r">Proceeds</th><th class="r">Share</th></tr></thead>
-        <tbody><tr v-for="r in wf.rows" :key="r.name"><td><b>{{ r.name }}</b></td><td>{{ r.how }}</td><td class="r">{{ usd(r.amount) }}</td><td class="r">{{ ex ? pct(r.amount / ex * 100) : '—' }}</td></tr></tbody></table></div>
-        <div class="card"><DonutChart title="Who gets what" total-label="Exit" currency="USD" :segments="wf.rows.map((r) => ({ label: r.name, value: Math.round(r.amount) }))" /><p class="fine">About {{ usd(wf.per_common) }} per common share. Preferred classes take their preference or convert, whichever pays more. SAFEs not converted yet and option exercise prices are left out.</p></div></div>
-      <EmptyState v-else card icon="equity" title="Add your shares first" />
+      
     </template>
 
     <AppModal :open="f.open" :title="(f.id ? 'Edit · ' : '') + TITLE[f.type]" wide @close="f.open = false">
@@ -256,7 +250,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 .start > :deep(.dz) { align-self: stretch; } .start { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .start h3 { margin: 0; } .start p { margin: 0; color: var(--c-ink-soft); }
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); } .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 0; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; margin-bottom: -1px; } .tabs button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); font-weight: 500; }
 .two { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; } .pad0 { padding: 0; overflow-x: auto; }
-.ch { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--c-rule); } .ch h3 { margin: 0; font-size: 15px; }
+.ch { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--c-rule); } .ch h3 { margin: 0; font-size: 15px; }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 9px 12px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; white-space: nowrap; } .t td { padding: 9px 12px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 .t .r { text-align: right; } .t .b { font-weight: 600; } .t tr.tot td { font-weight: 600; background: #fbfaf7; } .t tr.mut td { color: var(--c-muted); } .t tr.new td { background: #f4f6f9; } .t td.neg { color: var(--c-danger); }
 .sub { display: block; font-size: 12px; color: var(--c-muted); font-weight: 400; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
@@ -272,7 +266,7 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 @media (max-width: 1000px) { .two, .frm4, .g3 { grid-template-columns: 1fr; } }
 .ctb { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 2px; } .cts { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; overflow-x: auto; max-width: 100%; } .cts button { background: none; border: 0; padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .cts button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); } .cts .add { color: var(--c-blue-deep); } .mn { font-size: 10.5px; font-weight: 500; color: var(--c-muted); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; } .cta .lk { font-size: 13px; } .ctn { margin: 4px 0 0; color: var(--c-muted); font-size: 13px; }
-.ch .row { display: flex; gap: 6px; flex-wrap: wrap; } .ok { color: var(--c-ink-soft); background: var(--c-paper-3); padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .ok a { color: var(--c-blue-deep); }
+.ch .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; } .ok { color: var(--c-ink-soft); background: var(--c-paper-3); padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .ok a { color: var(--c-blue-deep); }
 .mvb { display: flex; gap: 8px; flex-wrap: wrap; }
 .dch { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; } .dc { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; } .dc .x { background: none; border: 0; color: var(--c-muted); cursor: pointer; font-size: 14px; padding: 0 2px; }
 </style>

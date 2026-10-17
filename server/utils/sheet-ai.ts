@@ -1,3 +1,4 @@
+import { checkRows } from '~/shared/fin-view'
 // Linked workbooks read with AI: for financial models too complex for "months across one row" (many tabs, years or
 // quarters, actuals beside projections, side-by-side tables, two currencies). The AI reads the workbook once and
 // returns a map: which tab, row and column holds which figure for which period. Figures are then always read from
@@ -211,6 +212,9 @@ export async function writePeriods(subject: string, periods: PeriodOut[], curren
 // A short view of what will come in, for the review step.
 export function previewOf(r: ReturnType<typeof readWithMap>) {
   const by = (t: string) => r.periods.filter((p) => p.period_type === t)
-  return { months: by('month').length, quarters: by('quarter').length, years: by('year').length, projected: r.projected, missing: r.missing.slice(0, 20), found: r.found,
+  // Where the sheet's own totals do not add up (flagged, not changed: the founder decides).
+  const today = new Date().toISOString().slice(0, 10)
+  const checks = (['month', 'quarter', 'year'] as const).flatMap((t) => checkRows(by(t).filter((p) => p.period_end <= today).map((p) => ({ period_end: p.period_end, period_type: p.period_type, currency: '', lines: p.lines, kpis: p.kpis, derived: {} })))).slice(-40)
+  return { checks, months: by('month').length, quarters: by('quarter').length, years: by('year').length, projected: r.projected, missing: r.missing.slice(0, 20), found: r.found,
     periods: r.periods.slice(-40).map((p) => ({ period_type: p.period_type, period_end: p.period_end, lines: Object.keys(p.lines).length, kpis: Object.keys(p.kpis).length, revenue: p.lines.revenue ?? null, net_income: p.lines.net_income ?? null, cash: p.lines.cash ?? null })) }
 }

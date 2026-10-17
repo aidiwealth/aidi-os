@@ -42,6 +42,7 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
       <template v-else>
         <p v-if="data.watermark" class="wmn">Documents are watermarked with your email and today's date, including downloads.</p>
         <p v-if="msg" class="error">{{ msg }}</p>
+        <FinSummary :fin="(data as any).financials" />
         <div v-if="data.files.length" class="dr"><nav class="side" aria-label="Folders"><button :class="{ on: folder === 'all' }" @click="folder = 'all'"><span>All documents</span><em>{{ data.files.length }}</em></button><button v-for="[g, list] in allGroups" :key="'n' + g" :class="{ on: folder === g }" @click="folder = g"><span>{{ g }}</span><em>{{ list.length }}</em></button></nav><div class="main">
         <div v-for="[g, list] in groups" :key="g" class="grp"><h2>{{ g }}</h2>
           <div v-for="f in list" :key="f.id" class="card fi"><FileBadge :name="f.title" :mime="f.mime_type" size="lg" /><span class="ft"><b>{{ f.title }}</b><em>{{ size(f.size_bytes) }}</em></span>

@@ -2,7 +2,7 @@
 // Live-linked spreadsheets: link a shared Google Sheet, Excel online or Dropbox file, choose which rows feed
 // Financials (statement lines and custom metrics) or a forecast, and it stays in step: read on open, daily, or on
 // "Sync now".
-interface Link { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; mode?: 'rows' | 'ai'; ai_map?: AiM | null; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
+interface Link { show_source?: boolean; id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; mode?: 'rows' | 'ai'; ai_map?: AiM | null; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
 interface AiBlock { sheet: string; title: string; label_col: string; scale: number; periods: { col: string; period_type: string; period_end: string; projected: boolean }[]; rows: { row: number; label: string; to: string; kpi: string; pct: boolean }[]; use?: boolean }
 interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
 interface AiRes { document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null }[] } }
@@ -12,6 +12,7 @@ const emit = defineEmits<{ synced: [] }>()
 const links = ref<Link[]>([])
 const shown = computed(() => links.value.filter((l) => props.target === 'forecast' || !props.subject || l.subject === props.subject))
 const err = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as { data?: { error?: { message?: string } } }).data?.error?.message ?? d
+async function showSource(l: Link, v: boolean) { try { await $fetch('/api/financials/visibility', { method: 'POST', body: { link_id: l.id, show_source: v } }); l.show_source = v } catch { /* left as it was */ } }
 async function load() { try { links.value = (await $fetch<{ links: Link[] }>('/api/sheet-links', { query: { target: props.target } })).links } catch { links.value = [] } }
 onMounted(async () => {
   await load()
@@ -146,7 +147,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
       <li v-for="l in shown" :key="l.id">
         <div class="slm"><b>{{ l.name }}</b><span>{{ l.target === 'forecast' ? 'Forecast: ' + (l.forecast ?? '—') : l.mode === 'ai' ? 'Read with AI · ' + l.currency : (l.sheet ? 'Tab ' + l.sheet + ' · ' : '') + l.currency }} · {{ l.mode === 'ai' ? (l.ai_map?.blocks.length ?? 0) + ' table' + (l.ai_map?.blocks.length === 1 ? '' : 's') : l.mapping.length + ' row' + (l.mapping.length === 1 ? '' : 's') }} · synced {{ ago(l.last_synced_at) }}{{ l.last_result?.months !== undefined && !l.last_error ? ' (' + l.last_result.months + (l.mode === 'ai' ? ' periods' : ' months') + ')' : '' }}{{ l.auto ? '' : ' · manual only' }}</span>
           <span v-if="l.last_error" class="slx">{{ l.last_error }}</span><span v-if="l.mode === 'ai' && l.ai_map?.suggestions?.length" class="sgl">Worth adding to the sheet: {{ l.ai_map.suggestions.slice(0, 4).map((x) => x.metric).join(', ') }}</span></div>
-        <div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">{{ l.mode === 'ai' ? 'Read again with AI' : 'Edit' }}</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
+        <label v-if="canEdit && l.target === 'financials'" class="shs" title="Investors see this sheet's link as the source of the figures (data room, investor page, updates)"><input type="checkbox" :checked="!!l.show_source" @change="showSource(l, ($event.target as HTMLInputElement).checked)"> Show investors this as the source</label><div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">{{ l.mode === 'ai' ? 'Read again with AI' : 'Edit' }}</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
       </li>
     </ul>
     <p v-else-if="target === 'financials' && (!subject || subject === 'group')" class="sub">Choose a company or entity to link a sheet.</p>
@@ -176,6 +177,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <template v-if="ai.map.facts.length"><h4>Also in the workbook</h4>
           <div class="fg"><div v-for="(xs, g) in factGroups" :key="g"><b>{{ g }}</b><span v-for="x in xs" :key="x.sheet + x.label" class="fx">{{ x.label }}: {{ x.value }}</span></div></div></template>
         <template v-if="ai.map.suggestions.length"><h4>Worth adding to the sheet</h4><ul class="sg"><li v-for="x in ai.map.suggestions" :key="x.metric"><b>{{ x.metric }}</b> {{ x.why }}</li></ul></template>
+        <div v-if="(ai.preview as any).checks?.length" class="chk2"><b>{{ (ai.preview as any).checks.length }} figure{{ (ai.preview as any).checks.length === 1 ? '' : 's' }} in the sheet do not add up</b><span class="sub">They come in as they are; fix them in the sheet and sync again.</span>
+          <ul><li v-for="(c, i) in (ai.preview as any).checks.slice(-8).reverse()" :key="i" :class="c.severity"><b>{{ perLabel(c.period_type, c.period_end) }} · {{ c.what }}</b> {{ c.detail }}</li></ul></div>
         <p v-if="ai.map.notes" class="sub">{{ ai.map.notes }}</p>
         <p v-if="ai.preview.missing.length" class="sub">Not found in the cells: {{ ai.preview.missing.slice(0, 6).join('; ') }}{{ ai.preview.missing.length > 6 ? '…' : '' }}</p>
         <details class="sub"><summary>What each tab holds</summary><ul class="sg"><li v-for="t in ai.map.tabs" :key="t.sheet"><b>{{ t.sheet }}</b> {{ t.what }}{{ t.used ? '' : ' (not used)' }}</li></ul></details>
@@ -238,4 +241,6 @@ td.n, th.n { text-align: right; white-space: nowrap }
 .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-align: left } tr.sub2 td { background: #fafafa } .rm { display: inline-block; margin: 2px 14px 2px 0; font-size: 12.5px } .rm em { font-style: normal; color: var(--c-muted) }
 .fg { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px; font-size: 13px } .fg b { display: block; font-weight: 500; margin-bottom: 2px } .fg .fx { display: block; color: var(--c-ink-soft); overflow-wrap: anywhere }
 .sg { margin: 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft) } .sg b { font-weight: 500; color: var(--c-ink) } .sgl { color: var(--c-muted) }
+.chk2 { border: 1px solid #efd9b0; background: #fdf8ee; padding: 10px 12px; font-size: 13px; } .chk2 ul { margin: 8px 0 0; padding-left: 18px; } .chk2 li { margin: 3px 0; color: var(--c-ink-soft); } .chk2 li.error b { color: var(--c-danger); }
+.shs { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); white-space: nowrap; }
 </style>

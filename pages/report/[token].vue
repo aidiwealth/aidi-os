@@ -2,17 +2,25 @@
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
 interface Metric { key: string; label: string; unit: string; hint: string }
-interface Data { company: string; founderName: string; period: string; periodLabel: string; quarterly?: boolean; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string>; workspace: { name: string; firm: string; brand: string } }
+interface Data { company: string; founderName: string; period: string; periodLabel: string; quarterly?: boolean; status: string; submittedAt: string | null; expiresAt: string; metrics: Metric[]; values: Record<string, number | null>; update: Record<string, string>; cap?: Record<string, unknown>; prefill?: { values: Record<string, number | null>; from: string } | null; workspace: { name: string; firm: string; brand: string } }
 const { data, error } = await useFetch<Data>('/api/public/report/' + token, { key: 'pub-report-' + token })
 useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · ' + data.value.periodLabel + ' update — ' + data.value.workspace.firm : 'Founder update'), meta: [{ name: 'robots', content: 'noindex' }] })
 const vals = reactive<Record<string, string>>({})
 const upd = reactive({ highlights: '', challenges: '', asks: '' })
+// Optional: new money and ownership, asked lightly so the team's records stay in line with the company's.
+const cap = reactive({ new_money: '', kind: 'priced', round_name: '', amount: '', price_per_share: '', valuation_cap: '', post_money: '', fd_shares: '' })
+const capOpen = ref(false)
+const prefilled = ref(false)
+function usePrefill() { const p = data.value?.prefill; if (!p) return; for (const [k, v] of Object.entries(p.values)) if (v !== null && v !== undefined && !vals[k]) vals[k] = String(v); prefilled.value = true }
 const state = reactive({ busy: false, msg: '', ok: '', aiNote: '', submitted: false })
 watchEffect(() => {
   if (!data.value) return
   for (const m of data.value.metrics) if (!(m.key in vals)) vals[m.key] = data.value.values[m.key] == null ? '' : String(data.value.values[m.key])
   upd.highlights ||= data.value.update.highlights ?? ''; upd.challenges ||= data.value.update.challenges ?? ''; upd.asks ||= data.value.update.asks ?? ''
   state.submitted = data.value.status === 'submitted'
+  const c = data.value.cap ?? {}
+  for (const k of Object.keys(cap) as (keyof typeof cap)[]) if (c[k] !== undefined && c[k] !== null && !cap[k]) cap[k] = String(c[k])
+  if (cap.new_money || cap.fd_shares) capOpen.value = true
 })
 function parseNum(s: string): number | null | 'bad' {
   const t = s.trim().replace(/[$,\s%]/g, '').toLowerCase()
@@ -31,9 +39,11 @@ async function save(submit: boolean) {
     values[m.key] = n
   }
   if (submit && Object.values(values).every((v) => v === null)) { state.msg = 'Add at least one figure before submitting.'; return }
+  const capOut: Record<string, unknown> = { new_money: cap.new_money, kind: cap.new_money === 'yes' ? cap.kind : '', round_name: cap.round_name }
+  for (const k of ['amount', 'price_per_share', 'valuation_cap', 'post_money', 'fd_shares'] as const) { const n = parseNum(cap[k]); if (n === 'bad') { state.msg = 'Ownership: use numbers only, e.g. 2000000 or 2m.'; return } capOut[k] = n }
   state.busy = true
   try {
-    await $fetch('/api/public/report/' + token + '/save', { method: 'POST', body: { values, update: { ...upd }, submit } })
+    await $fetch('/api/public/report/' + token + '/save', { method: 'POST', body: { values, update: { ...upd }, submit, cap: capOut } })
     if (submit) { state.submitted = true; window.scrollTo({ top: 0, behavior: 'smooth' }) }
     else state.ok = 'Saved. You can close this page and come back with the same link to finish.'
   } catch (e) { state.msg = errText(e) } finally { state.busy = false }
@@ -82,6 +92,7 @@ async function upload(f: File | undefined) {
       </div>
       <p v-if="state.aiNote" class="ai" role="status">{{ state.aiNote }}</p>
 
+      <div v-if="data.prefill && !prefilled && !state.submitted" class="pre"><span>Your figures for {{ data.periodLabel }} are already in <b>{{ data.prefill.from }}</b>.</span><button type="button" class="btn secondary sm" @click="usePrefill">Fill them in</button></div>
       <form class="card form" @submit.prevent="save(true)">
         <h2>Key figures for {{ data.periodLabel }}</h2>
         <div class="grid">
@@ -95,6 +106,23 @@ async function upload(f: File | undefined) {
         <label><span class="label">Highlights</span><textarea v-model="upd.highlights" rows="3" maxlength="4000" placeholder="Wins, launches, hires" /></label>
         <label><span class="label">Challenges</span><textarea v-model="upd.challenges" rows="3" maxlength="4000" /></label>
         <label><span class="label">How can we help?</span><textarea v-model="upd.asks" rows="2" maxlength="4000" placeholder="Intros, hiring, fundraising" /></label>
+        <div class="own">
+          <button type="button" class="ownh" :aria-expanded="capOpen" @click="capOpen = !capOpen"><span><b>Ownership check</b> <em>optional · about a minute</em></span><span class="chev">{{ capOpen ? '−' : '+' }}</span></button>
+          <div v-if="capOpen" class="ownb">
+            <p class="hint">Helps us keep our records in line with yours. Seen only by the {{ data.workspace.firm }} team. Skip anything you'd rather not share.</p>
+            <div class="seg2" role="radiogroup" aria-label="New money since your last update"><span class="label">Any new money in since your last update?</span>
+              <label><input v-model="cap.new_money" type="radio" value="no"> No</label><label><input v-model="cap.new_money" type="radio" value="yes"> Yes</label><label><input v-model="cap.new_money" type="radio" value="call"> Happy to share on a call</label></div>
+            <div v-if="cap.new_money === 'yes'" class="grid">
+              <label><span class="label">How it came in</span><select v-model="cap.kind"><option value="priced">Priced round (shares)</option><option value="safe">SAFE</option><option value="note">Convertible note</option><option value="other">Other</option></select></label>
+              <label><span class="label">Round name (optional)</span><input v-model="cap.round_name" maxlength="80" placeholder="e.g. Seed extension"></label>
+              <label><span class="label">Amount raised (USD)</span><input v-model="cap.amount" inputmode="decimal" placeholder="e.g. 1.5m"></label>
+              <label v-if="cap.kind === 'priced'"><span class="label">Price per share (USD)</span><input v-model="cap.price_per_share" inputmode="decimal" placeholder="e.g. 1.25"></label>
+              <label v-if="cap.kind === 'priced'"><span class="label">Post-money valuation (if known)</span><input v-model="cap.post_money" inputmode="decimal" placeholder="e.g. 20m"></label>
+              <label v-else><span class="label">Valuation cap (if any)</span><input v-model="cap.valuation_cap" inputmode="decimal" placeholder="e.g. 15m"></label>
+            </div>
+            <label class="fd"><span class="label">Fully diluted shares today (optional)</span><input v-model="cap.fd_shares" inputmode="decimal" placeholder="e.g. 12,500,000"><span class="hint">All shares plus the option pool. Lets us keep our ownership right without asking for your cap table.</span></label>
+          </div>
+        </div>
         <div class="row">
           <button class="btn" type="submit" :disabled="state.busy">{{ state.submitted ? 'Update submission' : 'Submit update' }}</button>
           <button v-if="!state.submitted" class="btn secondary" type="button" :disabled="state.busy" @click="save(false)">Save and continue later</button>
@@ -124,6 +152,10 @@ label { display: flex; flex-direction: column; gap: 6px; }
 input, textarea { font: inherit; font-size: 15px; color: var(--c-ink); padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; }
 textarea { resize: vertical; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
+.pre { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #eef4f9; border: 1px solid #cfe0ee; padding: 10px 14px; font-size: 13.5px; margin: 0 0 12px; } .btn.sm { padding: 6px 12px; font-size: 13px; }
+.own { border: 1px solid var(--c-rule); } .ownh { width: 100%; display: flex; justify-content: space-between; align-items: center; background: #fbfaf7; border: 0; padding: 12px 14px; font: inherit; cursor: pointer; text-align: left; } .ownh em { font-style: normal; font-size: 12.5px; color: var(--c-muted); margin-left: 6px; } .chev { color: var(--c-muted); font-size: 18px; }
+.ownb { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 14px; } .ownb .hint { margin: 0; } .seg2 { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; } .seg2 .label { width: 100%; } .seg2 label { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; } .seg2 input { width: auto; }
+select { font: inherit; font-size: 15px; color: var(--c-ink); padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; } .fd { max-width: 360px; }
 .error { color: var(--c-danger); margin: 0; } .ok { color: var(--c-ok); margin: 0; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
 </style>

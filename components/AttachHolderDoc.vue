@@ -37,10 +37,10 @@ async function save() {
 <template>
   <AppModal :open="open" title="Attach a document" wide @close="emit('close')">
     <div class="ad">
-      <div class="g3"><label class="label">Holder<select v-model="f.holder_id" @change="f.link = ''"><option v-for="h in holders" :key="h.id" :value="h.id">{{ h.name }}</option></select></label>
+      <div class="g2"><label class="label w">Holder<select v-model="f.holder_id" @change="f.link = ''"><option v-for="h in holders" :key="h.id" :value="h.id">{{ h.name }}</option></select></label>
         <label class="label">For<select v-model="f.link"><option value="">The holder in general</option><option v-for="l in links" :key="l.v" :value="l.v">{{ l.l }}</option></select></label>
-        <label class="label">Document<select v-model="f.kind"><option value="safe">SAFE</option><option value="note">Convertible note</option><option value="spa">Share purchase agreement</option><option value="certificate">Share certificate</option><option value="side_letter">Side letter</option><option value="other">Other</option></select></label></div>
-      <div class="g3"><label class="label">Funding round<select v-model="f.round"><option v-for="r in ROUNDS" :key="r" :value="r">{{ r || 'Work it out (from the class or document)' }}</option></select></label></div>
+        <label class="label">Document<select v-model="f.kind"><option value="safe">SAFE</option><option value="note">Convertible note</option><option value="spa">Share purchase agreement</option><option value="certificate">Share certificate</option><option value="side_letter">Side letter</option><option value="other">Other</option></select></label>
+      <label class="label">Funding round<select v-model="f.round"><option v-for="r in ROUNDS" :key="r" :value="r">{{ r || 'Work it out (from the class or document)' }}</option></select></label></div>
       <DropZone accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.xlsx" multiple :disabled="f.busy" label="Drop the signed document here" hint="PDF, Word or image · or click to choose" @change="pick" />
       <ul v-if="files.length" class="fl"><li v-for="(x, i) in files" :key="x.name + x.size"><span>{{ x.name }}</span><button type="button" class="lk" @click="files.splice(i, 1)">Remove</button></li></ul>
       <label class="ck"><input v-model="f.room" type="checkbox"> Also add it to the data room (Financing room, in a folder for its round)</label>
@@ -51,7 +51,9 @@ async function save() {
   </AppModal>
 </template>
 <style scoped>
-.ad { display: flex; flex-direction: column; gap: 12px; } .g3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; }
+.ad { display: flex; flex-direction: column; gap: 14px; } .g2 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; } .w { grid-column: 1 / -1; }
+label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--c-ink-soft); min-width: 0; margin: 0; text-transform: none; letter-spacing: 0; } select { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); text-overflow: ellipsis; }
+@media (max-width: 700px) { .g2 { grid-template-columns: 1fr; } }
 .fl { list-style: none; margin: 0; padding: 0; font-size: 13.5px; } .fl li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--c-rule); }
 .ck { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .mut { margin: 0; font-size: 12.5px; color: var(--c-muted); } .error { color: var(--c-danger); font-size: 13px; margin: 0; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }

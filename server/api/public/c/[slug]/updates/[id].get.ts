@@ -7,5 +7,5 @@ export default defineEventHandler(async (event) => {
   setOrgContext(p.organization_id)
   const branding = await brandingOf(p.organization_id)
   if (ndaOn(branding, 'updates') && !(await ndaSigned(p.organization_id, getQuery(event).nda))) return { gated: true, nda: { required: true, text: branding.nda_text, key: branding.org_key }, branding, company: (await currentOrg())!.name, html: '', title: '', body: '', label: '', figures: { currency: 'USD', current: null, previous: null }, workspace: await publicWorkspace() }
-  return { gated: false, branding, ...(await publicUpdate(id, true)) }
+  return { gated: false, branding, ...(await publicUpdate(id, true)), financials: await investorFinancials().catch(() => null) }
 })

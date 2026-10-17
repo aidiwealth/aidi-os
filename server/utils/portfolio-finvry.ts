@@ -51,7 +51,7 @@ export async function updateFigures(orgId: string, updateId: string): Promise<{ 
 }
 
 // Import an update into a portfolio company (in the current Aidi OS workspace). Team overrides are kept.
-export async function importFinvryUpdate(companyId: string, updateId: string, userId: string): Promise<{ months: number; values: number }> {
+export async function importFinvryUpdate(companyId: string, updateId: string, userId: string | null): Promise<{ months: number; values: number }> {
   const c = (await db().query<{ finvry_org_id: string | null }>('SELECT finvry_org_id FROM portfolio.companies WHERE id = $1', [companyId])).rows[0]
   if (!c?.finvry_org_id) throw apiError('not_linked', 'Link this company to its Finvry workspace first.')
   const f = await updateFigures(c.finvry_org_id, updateId)
@@ -72,7 +72,9 @@ export async function importFinvryUpdate(companyId: string, updateId: string, us
 // Called when a Finvry workspace sends or publishes an update: flag it on linked portfolio companies and email the
 // holding team. Never tells the Finvry company anything about who holds it.
 export async function notifyPortfolioOfUpdate(orgId: string, updateId: string, title: string, company: string): Promise<void> {
-  const links = (await asPlatform(() => db().query<{ id: string; organization_id: string; name: string }>('UPDATE portfolio.companies SET finvry_new_update = $2 WHERE finvry_org_id = $1 AND active RETURNING id, organization_id, name', [orgId, updateId]))).rows
+  const links = (await asPlatform(() => db().query<{ id: string; organization_id: string; name: string; finvry_auto: boolean }>('UPDATE portfolio.companies SET finvry_new_update = $2 WHERE finvry_org_id = $1 AND active RETURNING id, organization_id, name, finvry_auto', [orgId, updateId]))).rows
+  // Linked companies take the figures in straight away (the team can still correct them).
+  for (const l of links.filter((x) => x.finvry_auto)) await inOrg(l.organization_id, () => importFinvryUpdate(l.id, updateId, null)).catch((e) => console.error('[portfolio] auto import', (e as Error).message))
   const base = brands().aidi.url
   for (const l of links) {
     try {
@@ -80,4 +82,24 @@ export async function notifyPortfolioOfUpdate(orgId: string, updateId: string, t
       for (const e of to) await sendPortfolioUpdateNotice(e, l.name || company, title, base + '/portfolio/' + l.id)
     } catch (err) { console.error('[portfolio] update notice failed', err) }
   }
+}
+
+// A founder filling in our report whose company is on Finvry: their own figures for the period, offered to fill the
+// form (they check and send). Read from their Financials; nothing is shared until they submit.
+export async function finvryPrefill(companyId: string, period: string, months: 1 | 3): Promise<{ values: Record<string, number | null>; from: string } | null> {
+  const c = (await asPlatform(() => db().query<{ finvry_org_id: string | null }>('SELECT finvry_org_id FROM portfolio.companies WHERE id = $1', [companyId]))).rows[0]
+  if (!c?.finvry_org_id) return null
+  const rows = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return ent ? loadStatements('entity:' + ent, 'month', 'USD') : [] })
+  const end = period.slice(0, 7), start = new Date(end + '-01T00:00:00Z'); start.setUTCMonth(start.getUTCMonth() - (months - 1))
+  const from = start.toISOString().slice(0, 7)
+  const inP = rows.filter((r) => r.period_end.slice(0, 7) >= from && r.period_end.slice(0, 7) <= end)
+  if (!inP.length) return null
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const ds = inP.map((r) => derive(r.lines, 'month'))
+  const tot = (k: string) => { const v = ds.map((d) => d[k]).filter((x): x is number => x !== null && x !== undefined); return v.length ? v.reduce((a, x) => a + x, 0) : null }
+  const rev = tot('revenue'), gp = tot('gross_profit'), burn = tot('burn')
+  const lastRow = inP[inP.length - 1]!, lastD = ds[ds.length - 1]!
+  const values: Record<string, number | null> = { revenue: rev === null ? null : Math.round(rev), gross_margin: rev && gp !== null ? Math.round((gp / rev) * 1000) / 10 : null, net_burn: burn === null ? null : Math.round(burn / inP.length), cash: lastD.cash ?? null, customers: null, headcount: null }
+  for (const [k, v] of Object.entries(lastRow.kpis ?? {})) for (const [re, key] of KPI) if (re.test(k) && values[key] === null) values[key] = num(v)
+  return Object.values(values).some((v) => v !== null) ? { values, from: 'your Finvry financials (' + (months === 3 ? from + ' to ' + end : end) + ')' } : null
 }

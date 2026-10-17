@@ -3,6 +3,8 @@ import type { PortfolioRow } from '~/server/api/portfolio/index.get'
 useHead({ title: 'Portfolio' })
 const { data, error, refresh } = await useFetch<PortfolioRow[]>('/api/portfolio')
 const { data: candidates, refresh: refreshC } = await useFetch<{ id: string; company: string; founder_name: string | null; email: string | null }[]>('/api/portfolio/candidates')
+const { data: pos } = await useLazyFetch<Record<string, { cost: number; recorded: number | null; implied: number | null; latest: string | null; currency: string }>>('/api/portfolio/positions', { server: false, default: () => ({}) })
+const posTot = computed(() => { const v = rows.value.map((r) => pos.value?.[r.id]).filter((x): x is NonNullable<typeof x> => !!x); return v.length ? { cost: v.reduce((a, x) => a + x.cost, 0), recorded: v.reduce((a, x) => a + (x.recorded ?? x.cost), 0), implied: v.reduce((a, x) => a + (x.implied ?? x.recorded ?? x.cost), 0), n: v.length } : null })
 const adding = ref(false)
 const form = reactive({ deal_id: '', name: '', founder_name: '', founder_email: '', holding_entity_id: '', relationship: 'investment', finvry_org_id: '' })
 const fv = ref<{ id: string; name: string } | null>(null); const fvPick = ref(false)
@@ -42,14 +44,14 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
     </form></AppModal>
     <p v-if="error" class="error" role="alert">Could not load the portfolio.</p>
     <EmptyState v-else-if="!data?.length" card icon="portfolio" title="No portfolio companies yet" text="Add a company by hand, or mark a deal Invested in Pipeline and bring it across. Founders then send monthly figures through a secure link."><button class="btn" @click="adding = true">Add a company</button><NuxtLink to="/pipeline" class="btn secondary">Open pipeline</NuxtLink></EmptyState>
-    <template v-else><div class="dk"><div class="k"><em>Companies</em><b>{{ rows.length }}</b></div><div class="k"><em>Reporting figures</em><b>{{ rows.filter((r) => r.latest_period).length }}</b></div><div class="k"><em>Combined revenue (latest)</em><b>{{ brief(usd(String(rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0)))) }}</b></div><div class="k"><em>Requests pending</em><b>{{ rows.filter((r) => r.last_request_status && r.last_request_status !== 'submitted').length }}</b></div></div>
+    <template v-else><div v-if="posTot" class="pt"><span><em>Invested</em><b>{{ usd(String(posTot.cost)) }}</b></span><span><em>Recorded value</em><b>{{ usd(String(posTot.recorded)) }}</b></span><span><em>On latest rounds</em><b>{{ usd(String(posTot.implied)) }}</b></span><span><em>Multiple</em><b>{{ posTot.cost ? (posTot.implied / posTot.cost).toFixed(2) + '×' : '—' }}</b></span><span class="mut">{{ posTot.n }} compan{{ posTot.n === 1 ? 'y' : 'ies' }} matched to Investments &amp; AUM</span></div><div class="dk"><div class="k"><em>Companies</em><b>{{ rows.length }}</b></div><div class="k"><em>Reporting figures</em><b>{{ rows.filter((r) => r.latest_period).length }}</b></div><div class="k"><em>Combined revenue (latest)</em><b>{{ brief(usd(String(rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0)))) }}</b></div><div class="k"><em>Requests pending</em><b>{{ rows.filter((r) => r.last_request_status && r.last_request_status !== 'submitted').length }}</b></div></div>
     <div class="tw"><table class="table">
-      <thead><tr><th>Company</th><th>Held by</th><th>Latest figures</th><th>Revenue / month</th><th>Cash</th><th>Runway</th><th>Last request</th></tr></thead>
+      <thead><tr><th>Company</th><th>Held by</th><th>Latest figures</th><th>Revenue / month</th><th>Cash</th><th>Runway</th><th class="r">Invested</th><th class="r">Value on latest round</th><th>Last request</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
           <td><NuxtLink :to="'/portfolio/' + r.id" class="co">{{ r.name }}</NuxtLink><NuxtLink v-if="r.finvry_new" :to="'/portfolio/' + r.id" class="fvn" title="New investor update on Finvry: import its figures">New update</NuxtLink><span class="sub">{{ r.founder_name }}{{ r.finvry ? ' · on Finvry' : '' }}</span></td>
           <td>{{ r.holder ?? '—' }}<span class="sub">{{ REL[r.relationship] }}</span></td>
-          <td>{{ mon(r.latest_period) }}</td><td>{{ usd(r.revenue) }}</td><td>{{ usd(r.cash) }}</td><td>{{ runway(r) }}</td>
+          <td>{{ mon(r.latest_period) }}</td><td>{{ usd(r.revenue) }}</td><td>{{ usd(r.cash) }}</td><td>{{ runway(r) }}</td><td class="r">{{ pos?.[r.id] ? usd(String(pos[r.id]!.cost)) : '—' }}</td><td class="r">{{ pos?.[r.id]?.implied != null ? usd(String(pos[r.id]!.implied)) : pos?.[r.id]?.recorded != null ? usd(String(pos[r.id]!.recorded)) : '—' }}<span v-if="pos?.[r.id]?.implied != null && pos[r.id]!.cost" class="sub">{{ (pos[r.id]!.implied! / pos[r.id]!.cost).toFixed(2) }}× · {{ pos[r.id]!.latest }}</span></td>
           <td class="muted">{{ r.last_request_status ? STATUS[r.last_request_status] + ' · ' + mon(r.last_request_period) : 'None yet' }}</td>
         </tr>
       </tbody>
@@ -58,6 +60,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 </template>
 
 <style scoped>
+.pt { display: flex; gap: 28px; align-items: baseline; flex-wrap: wrap; margin: 0 0 12px; padding: 12px 16px; background: #fff; border: 1px solid var(--c-rule); } .pt em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .pt b { font-size: 18px; font-weight: 500; color: var(--c-navy); } .pt .mut { margin-left: auto; font-size: 12.5px; color: var(--c-muted); } td.r, th.r { text-align: right; }
 .fvp { display: flex; gap: 10px; align-items: center; font-size: 14px; } .lkb { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .fvn { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; text-decoration: none; }
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; }
 .tools { display: flex; gap: 10px; align-items: center; }

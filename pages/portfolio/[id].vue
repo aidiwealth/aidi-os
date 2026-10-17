@@ -136,6 +136,7 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
 
     <!-- Overview -->
     <div v-if="tab === 'overview'" class="ov">
+      <PortfolioPosition :company-id="id" :can-edit="canUpload" />
       <div class="two">
         <PortfolioBars :title="g === 'quarter' ? 'Revenue by quarter' : 'Revenue by month'" :sub="g === 'quarter' ? 'Quarter totals, US dollars' : 'US dollars'" unit="usd" :points="pts('revenue')" />
         <div class="card ins">

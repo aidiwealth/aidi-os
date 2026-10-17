@@ -34,6 +34,7 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
       <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
       <header class="hero"><img v-if="data.logo" :src="data.logo" :alt="data.company" class="clogo"><p class="label">Investor relations</p><h1>{{ data.company }}</h1><p v-if="data.headline" class="hl">{{ data.headline }}</p>
         <div class="links"><a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="btn">View our deck</a><a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="btn secondary">Open data room</a><a v-if="data.website" :href="webUrl(data.website)" target="_blank" rel="noopener" class="btn secondary">Website</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="btn secondary">Contact us</a></div></header>
+      <FinSummary :fin="(data as any).financials" class="pfs" />
       <BoardView v-if="data.board" :data="data.board.data" :metrics="data.board.metrics" class="pboard" />
       <template v-else>
       <div class="cards"><div v-for="m in data.metrics" :key="m.key" class="card k"><span class="l">{{ m.label }}</span><b>{{ fmt(m.key, last(m).cur?.value) }}</b><span class="s" :class="{ up: (chg(m) ?? 0) > 0, dn: (chg(m) ?? 0) < 0 }">{{ chg(m) == null ? (last(m).cur ? lbl(last(m).cur!.period) : 'Not reported yet') : (chg(m)! > 0 ? '+' : '') + chg(m) + '% vs previous' }}</span></div></div>
