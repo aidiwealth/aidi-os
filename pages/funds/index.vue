@@ -17,6 +17,11 @@ const pending = computed(() => (data.value ?? []).filter((f) => !f.fund_id))
 const STATUS: Record<string, string> = { raising: 'Raising', investing: 'Investing', harvesting: 'Harvesting', closed: 'Closed' }
 void refresh
 const setupOpen = ref(false)
+// LP fundraising: pipelines for each fund raise, debt facility or co-investment.
+interface PL { id: string; name: string; kind: string; currency: string; target: number | null; target_close: string | null; status: string; fund: string | null; deal: string | null; company: string | null; lps: number; committed: number; closed: number; in_play: number }
+const { data: pls } = await useFetch<{ pipelines: PL[] }>('/api/funds/pipelines', { default: () => ({ pipelines: [] }) })
+const plOpen = ref(false)
+const PK: Record<string, string> = { fund: 'Fund raise', debt: 'Debt facility', co_invest: 'Co-investment / SPV' }
 const live = computed(() => (data.value ?? []).filter((f) => f.fund_id))
 const cur = computed(() => live.value[0]?.currency ?? 'USD')
 const sumT = (k: 'committed' | 'distributed' | 'paidIn') => live.value.reduce((a, f) => a + (f.totals?.[k] ?? 0), 0)
@@ -30,7 +35,7 @@ const companies = computed(() => live.value.reduce((a, f) => a + (f.deals?.compa
 <template>
   <section v-if="data">
     <p class="label">Venture Capital</p>
-    <div class="head"><h1>Funds &amp; LPs</h1><div class="tools"><NuxtLink to="/funds/lps" class="btn secondary">LP register</NuxtLink><button v-if="isGp" class="btn" type="button" @click="setupOpen = true">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</button></div></div>
+    <div class="head"><h1>Funds &amp; LPs</h1><div class="tools"><NuxtLink to="/funds/prospects" class="btn secondary">LP prospects</NuxtLink><NuxtLink to="/funds/lps" class="btn secondary">LP register</NuxtLink><button v-if="isGp" class="btn secondary" type="button" @click="plOpen = true">New LP pipeline</button><button v-if="isGp" class="btn" type="button" @click="setupOpen = true">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</button></div></div>
     <div v-if="live.length" class="fx-stats five">
       <StatTile icon="briefcase" tone="n" label="Funds" :value="live.length" full :note="live.filter((f) => f.rolling).length ? live.filter((f) => f.rolling).length + ' deal by deal' : 'Closed-end'" />
       <StatTile icon="users" tone="b" label="LPs" :value="lpCount" full :note="coInv ? coInv + ' co-investors on deals' : 'With a commitment'" />
@@ -53,6 +58,12 @@ const companies = computed(() => live.value.reduce((a, f) => a + (f.deals?.compa
       </NuxtLink>
       <button v-if="isGp && pending.length" type="button" class="card fund add" @click="setupOpen = true"><b>{{ pending.length }} fund{{ pending.length === 1 ? '' : 's' }} not set up</b><span>{{ pending.map((p) => p.name).join(', ') }}</span><em>Set up →</em></button>
     </div>
+    <div class="lph"><h2>LP fundraising</h2><span class="muted">Fund raises, debt facilities and co-investments, with each LP's stage and likelihood. <NuxtLink to="/funds/prospects">LP prospects</NuxtLink></span></div>
+    <div v-if="pls?.pipelines.length" class="pls"><NuxtLink v-for="p in pls.pipelines" :key="p.id" :to="'/funds/pipelines/' + p.id" class="card plc"><div class="fh"><div><b>{{ p.name }}</b><span class="ty">{{ PK[p.kind] }}{{ p.fund ? ' · ' + p.fund : '' }}{{ p.deal || p.company ? ' · ' + (p.company ?? p.deal) : '' }}</span></div><span class="pill" :data-s="p.status === 'open' ? 'raising' : ''">{{ p.status === 'open' ? 'Open' : 'Closed' }}</span></div>
+      <div class="pln"><div><em>Committed</em><b>{{ money(p.committed, p.currency) }}</b></div><div><em>In play</em><b>{{ money(p.in_play, p.currency) }}</b></div><div><em>LPs</em><b>{{ p.lps }}</b></div></div>
+      <div v-if="p.target" class="prog"><div class="tr"><i :style="{ width: Math.min(100, p.committed / p.target * 100) + '%' }" /></div><span>{{ Math.round(p.committed / p.target * 100) }}% of {{ money(p.target, p.currency) }}</span></div></NuxtLink></div>
+    <p v-else class="muted lpe">No LP pipelines yet. <button v-if="isGp" class="lnk" type="button" @click="plOpen = true">Start one</button> for a fund raise, a debt facility or a co-investment, then import your LP tracker or find LPs with AI.</p>
+    <LpPipelineForm :open="plOpen" @close="plOpen = false" @saved="(id: string) => navigateTo('/funds/pipelines/' + id)" />
     <EmptyState v-if="!live.length" card icon="funds" title="Set up your first fund" text="Track each fund's LPs and commitments, capital calls (with two-GP approval), distributions and NAV, with DPI, TVPI and net IRR per fund and per LP. Every LP gets a private, read-only portal."><button v-if="isGp" class="btn" @click="setupOpen = true">Set up a fund</button></EmptyState>
     <AppModal :open="setupOpen" :title="pending.length ? 'Set up a fund' : 'Add a fund'" wide @close="setupOpen = false"><form v-if="isGp" class="frm mfund" @submit.prevent="doSetup">
       <h2 class="wide">{{ pending.length ? 'Set up a fund' : 'Add a fund' }}</h2>
@@ -83,7 +94,10 @@ dl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 0; 
 .add { border-style: dashed; background: none; font: inherit; text-align: left; cursor: pointer; justify-content: center; gap: 6px; } .add b { color: var(--c-navy); } .add span { font-size: 13px; color: var(--c-muted); } .add em { font-style: normal; font-size: 13px; color: var(--c-blue-deep); }
 .frm { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; align-items: end; } .hint { grid-column: 1 / -1; font-size: 12.5px; color: var(--c-muted); margin: 0; } .frm label { display: flex; flex-direction: column; gap: 6px; } .wide, .row { grid-column: 1 / -1; } .row { display: flex; gap: 12px; align-items: center; }
 input, select { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }
-.muted { color: var(--c-muted); } .error { color: var(--c-danger); }
+.muted { color: var(--c-muted); }
+.lph { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 22px 0 10px; } .lph h2 { margin: 0; font-size: 18px; } .lph .muted { font-size: 13px; } .lph a { color: var(--c-blue-deep); }
+.pls { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-bottom: 18px; } .plc { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; } .plc:hover { border-color: var(--c-navy); text-decoration: none; } .plc b { display: block; font-size: 16px; }
+.pln { display: grid; grid-template-columns: repeat(3, 1fr); } .pln em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .pln b { font-size: 17px; font-weight: 500; color: var(--c-navy); } .lpe { font-size: 13.5px; margin: 0 0 18px; } .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .five { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
 @media (max-width: 900px) { .frm { grid-template-columns: 1fr 1fr; } dl { grid-template-columns: repeat(3, 1fr); } .grid { grid-template-columns: 1fr; } .five { grid-template-columns: 1fr 1fr !important; } }
 .frm.mfund { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 14px 16px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: none !important; } .frm.mfund > h2 { display: none !important; } .frm.mfund label { display: flex !important; flex-direction: column; gap: 6px; grid-column: auto !important; } .frm.mfund input, .frm.mfund select { width: 100%; box-sizing: border-box; } .frm.mfund .hint, .frm.mfund .row { grid-column: 1 / -1 !important; } .frm.mfund .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; }

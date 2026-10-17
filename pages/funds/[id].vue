@@ -16,6 +16,9 @@ const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].
 useHead({ title: () => data.value?.fund.name ?? 'Fund' })
 const { money, x, pct, day } = useMoney()
 const cur = computed(() => data.value?.fund.currency ?? 'USD')
+const { data: pls } = await useFetch<{ pipelines: { id: string; name: string; fund_id: string | null; currency: string; committed: number; lps: number }[] }>('/api/funds/pipelines', { default: () => ({ pipelines: [] }) })
+const fundPls = computed(() => (pls.value?.pipelines ?? []).filter((p) => p.fund_id === data.value?.fund.id))
+const plOpen = ref(false)
 const tab = ref<string>('overview')
 const TABS = computed(() => (data.value?.rolling ? [['overview', 'Overview'], ['deals', 'Investments'], ['lps', 'Co-investors']] : [['overview', 'Overview'], ['lps', 'LPs & commitments'], ['calls', 'Calls & distributions'], ['nav', 'NAV'], ['terms', 'Terms']]))
 const coInv = computed(() => { const m = new Map<string, { name: string; email: string; invested: number; deals: string[]; value: number; realized: number }>()
@@ -46,6 +49,8 @@ const commitmentOf = (lpId: string) => data.value?.commitments.find((c) => c.lp_
     <h1>{{ data.fund.name }}</h1>
     <p class="meta">{{ data.fund.status }}<template v-if="data.fund.vintage"> · vintage {{ data.fund.vintage }}</template><template v-if="data.fund.target_size"> · target {{ money(data.fund.target_size, cur) }}</template><template v-if="data.navDate"> · NAV at {{ day(data.navDate) }}</template></p>
     <p class="adm" :class="{ self: data.fund.administrator === 'self' }"><template v-if="data.fund.administrator !== 'self'">Administered by <b>{{ adminLabel }}</b><a v-if="data.fund.admin_portal_url" :href="webUrl(data.fund.admin_portal_url)" target="_blank" rel="noopener">Open {{ adminLabel }} →</a><span>Formation, KYC, money movement, official statements and tax sit with them. Finvry tracks and reports.</span></template><template v-else>Self-administered.</template></p>
+    <p v-if="fundPls.length || isGp" class="lpr">LP raise: <NuxtLink v-for="p in fundPls" :key="p.id" :to="'/funds/pipelines/' + p.id">{{ p.name }} ({{ money(p.committed, p.currency) }} committed, {{ p.lps }} LPs)</NuxtLink><button v-if="isGp" class="lnk" type="button" @click="plOpen = true">{{ fundPls.length ? '+ another pipeline' : 'Start the LP pipeline' }}</button></p>
+    <LpPipelineForm :open="plOpen" :fund-id="data.fund.id" @close="plOpen = false" @saved="(pid: string) => navigateTo('/funds/pipelines/' + pid)" />
     <nav class="subnav" role="tablist"><button v-for="[k, l] in TABS" :key="k" role="tab" :aria-selected="tab === k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
     <template v-if="data.rolling">
     <p v-if="tab === 'overview'" class="rollnote">Rolling fund: investors join deal by deal, and the terms (instrument, valuation cap, amounts) are set for each startup. There is no fund-level target, fee or term.</p>
@@ -173,4 +178,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 7px 10px; bor
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } .frm { grid-template-columns: 1fr; } }
 .rollnote { font-size: 13.5px; color: var(--c-ink-soft); background: var(--c-signal-soft); padding: 10px 14px; margin: 8px 0 14px; } .rdeals { margin: 14px 0; overflow-x: auto; } .rdeals h2 { margin: 0 0 8px; } .rdeals td { vertical-align: top; font-size: 13.5px; } .rdeals .sub { display: block; font-size: 12px; color: var(--c-muted); } .rdeals .n { text-align: right; white-space: nowrap; }
 .subnav { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0 16px; width: fit-content; max-width: 100%; overflow-x: auto; } .subnav button { background: none; border: 0; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; color: var(--c-ink-soft); white-space: nowrap; } .subnav button.on { background: #fff; color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
+.lpr { font-size: 13px; color: var(--c-muted); display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; } .lpr a { color: var(--c-blue-deep); } .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 </style>
