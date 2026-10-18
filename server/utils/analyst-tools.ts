@@ -173,12 +173,12 @@ finvryExtra.push(
       }
       return { entities: out, note: es.length > 1 ? 'Pick a subsidiary or "Group" from the name next to Financials.' : 'No subsidiaries yet: add one from the name next to Financials (paid plans).' }
     } },
-  { name: 'burn_check', module: 'financials', description: 'Burn and runway checked three ways on the last three months (operating and investing cash flow, fall in cash excluding money raised, net loss with depreciation added back): the figure used, the runway, the cash date, and anything that does not add up.', input_schema: S(),
+  { name: 'burn_check', module: 'financials', description: 'Burn and runway checked on the last three months (operating and investing cash flow; cash flow worked out from the balance sheet, i.e. the loss adjusted for payables, receivables and other working capital; fall in cash excluding money raised; net loss with depreciation added back): the figure used, the runway, the cash date, what explains a gap between cash burn and the loss, and anything that does not add up.', input_schema: S(),
     run: async () => {
       const ent = await companyEntityId(); if (!ent) return { note: 'No company entity yet.' }
       const rows = (await db().query<{ period_end: string; period_type: string; currency: string; lines: Record<string, number> }>("SELECT to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines FROM financials.statements WHERE entity_id = $1 AND period_type = 'month' ORDER BY period_end", [ent])).rows
       const r = burnReview(rows.map((x) => ({ ...x, kpis: {}, derived: deriveLines(x.lines, 1) })))
-      return { monthly_burn: r.burn, basis: r.basis, runway_months: r.runway, cash: r.cash, cash_as_of: r.cash_at, methods: r.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) })), status: r.status, issues: r.issues }
+      return { monthly_burn: r.burn, basis: r.basis, runway_months: r.runway, cash: r.cash, cash_as_of: r.cash_at, methods: r.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) })), status: r.status, issues: r.issues, notes: r.notes, drivers: r.drivers.map((d) => d.label), burn_at_loss: r.loss_burn, runway_if_bills_paid: r.runway_at_loss }
     } })
 
 export const sheetsTool: ATool = { name: 'linked_sheets', module: 'financials', description: 'Spreadsheets linked to Financials or forecasts: when each last synced, how many periods it brought in, any error, and (for workbooks read with AI) the figures worth adding to the sheet.', input_schema: S(),

@@ -1,12 +1,13 @@
+import { fillCashFlow } from '~/shared/fin-view'
 // Standard financial lines, derived figures, and the consolidated (group) view.
 export const LINES: { key: string; label: string; section: 'pl' | 'bs' | 'cf' }[] = [
   { key: 'revenue', label: 'Revenue', section: 'pl' }, { key: 'cogs', label: 'Cost of revenue', section: 'pl' }, { key: 'gross_profit', label: 'Gross profit', section: 'pl' },
   { key: 'opex_payroll', label: 'Payroll', section: 'pl' }, { key: 'opex_marketing', label: 'Sales & marketing', section: 'pl' }, { key: 'opex_rnd', label: 'Research & development', section: 'pl' },
   { key: 'opex_ga', label: 'General & administrative', section: 'pl' }, { key: 'opex_other', label: 'Other operating costs', section: 'pl' }, { key: 'opex_total', label: 'Total operating costs', section: 'pl' },
-  { key: 'ebitda', label: 'EBITDA', section: 'pl' }, { key: 'depreciation', label: 'Depreciation & amortisation', section: 'pl' }, { key: 'interest', label: 'Interest', section: 'pl' },
-  { key: 'tax', label: 'Tax', section: 'pl' }, { key: 'net_income', label: 'Net income', section: 'pl' },
-  { key: 'cash', label: 'Cash', section: 'bs' }, { key: 'receivables', label: 'Receivables', section: 'bs' }, { key: 'investments', label: 'Investments (fair value)', section: 'bs' },
-  { key: 'other_assets', label: 'Other assets', section: 'bs' }, { key: 'total_assets', label: 'Total assets', section: 'bs' }, { key: 'payables', label: 'Payables', section: 'bs' },
+  { key: 'ebitda', label: 'EBITDA', section: 'pl' }, { key: 'depreciation', label: 'Depreciation & amortisation', section: 'pl' }, { key: 'interest', label: 'Interest expense', section: 'pl' },
+  { key: 'other_income', label: 'Other income (interest, dividends, gains)', section: 'pl' }, { key: 'tax', label: 'Tax', section: 'pl' }, { key: 'net_income', label: 'Net income', section: 'pl' },
+  { key: 'cash', label: 'Cash', section: 'bs' }, { key: 'receivables', label: 'Receivables', section: 'bs' }, { key: 'investments', label: 'Short-term investments (treasury bills, deposits)', section: 'bs' },
+  { key: 'long_term_investments', label: 'Long-term investments and stakes', section: 'bs' }, { key: 'other_assets', label: 'Other assets', section: 'bs' }, { key: 'total_assets', label: 'Total assets', section: 'bs' }, { key: 'payables', label: 'Payables', section: 'bs' },
   { key: 'debt', label: 'Debt', section: 'bs' }, { key: 'other_liabilities', label: 'Other liabilities', section: 'bs' }, { key: 'total_liabilities', label: 'Total liabilities', section: 'bs' },
   { key: 'equity', label: 'Equity', section: 'bs' },
   { key: 'operating_cf', label: 'Operating cash flow', section: 'cf' }, { key: 'investing_cf', label: 'Investing cash flow', section: 'cf' }, { key: 'financing_cf', label: 'Financing cash flow', section: 'cf' }
@@ -82,6 +83,11 @@ export async function subjectName(subject: string): Promise<string> {
   return r.rows[0].name
 }
 
+// How the lines that are easy to get wrong are mapped, for every AI that reads figures.
+export const INVEST_RULES = 'investments is ONLY short-term, liquid holdings that can be turned into cash within a year (treasury bills, money market, fixed deposits, marketable securities); a row that already says "Cash and marketable securities" is cash. ' +
+  'Strategic investments, equity stakes in other companies, investments in associates or subsidiaries, notes receivable and loans given are NEVER cash or investments: use long_term_investments for stakes and long-term holdings, and other_assets for loans and notes receivable. ' +
+  'interest is interest EXPENSE only. Interest income, dividend income, FX gains, gains or losses on disposal and other non-operating items go to other_income (income positive, losses negative). ' +
+  'equity is TOTAL equity (Total equity, Total stockholders\' or shareholders\' equity, Net assets, Shareholders\' funds), never one part of it such as paid-in capital, share capital or retained earnings; when there is no total, leave equity null and list the parts as categories with line "equity".'
 // AI reads an uploaded sheet into the standard lines. Never estimates; the user confirms before saving.
 const numN = { type: ['number', 'null'] }
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['period_end', 'period_type', 'currency', 'lines', 'kpis', 'notes', 'categories'], properties: {
@@ -103,9 +109,10 @@ export async function extractStatement(text: string, wanted: string, inputRef: s
   const Out = z.object({ period_end: z.string().nullable(), period_type: z.enum(['month', 'quarter', 'year']), currency: z.string().max(3), lines: Lines, kpis: Kpis, notes: z.string().max(600),
     more_periods: z.array(z.object({ period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), period_type: z.enum(['month', 'quarter', 'year']), lines: Lines, kpis: Kpis, categories: Cats })).max(24).default([]), categories: Cats })
   const ask = 'Period wanted: ' + wanted
-  const { output } = await runAiTool({ task: 'financials_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'financials-extract-v2', inputRef,
+  const { output } = await runAiTool({ task: 'financials_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'financials-extract-v3', inputRef,
     system: 'You read a financial document and map it to standard lines. It may be a spreadsheet or a PDF: a profit and loss, balance sheet, cash flow, management accounts, a KPI sheet, or a BANK STATEMENT. ' +
       'Only use numbers that appear in it; if a line is not clearly present, return null, never estimate. Costs and expenses are positive numbers; net income, EBITDA and cash flows keep their sign (losses negative). ' +
+      INVEST_RULES + ' ' +
       'For a bank statement: cash = the closing balance at the end of each month; operating_cf = money in minus money out for that month; put "Money in" and "Money out" totals in kpis; never treat deposits as revenue. ' +
       'Use the requested period for the main figures (else the latest) and put EVERY other period the document covers in more_periods, so they can all be saved at once. Convert thousands notation to full numbers and apply any stated units (e.g. "in thousands").',
     user: ask + '\n\nSpreadsheet:\n' + text,
@@ -116,8 +123,11 @@ export async function extractStatement(text: string, wanted: string, inputRef: s
 
 // Statements for a subject. Companies with a reporting currency see figures converted at the latest daily rate
 // (display only; stored figures are unchanged). Pass { raw: true } for the original currency.
-export async function loadStatements(subject: string, periodType: string, currency: string, opts: { raw?: boolean } = {}): Promise<Awaited<ReturnType<typeof loadStatementsBase>>> {
-  const rows = await loadStatementsBase(subject, periodType, currency)
+// When the company said yes, periods without a cash flow statement get one worked out from the P&L and balance sheet
+// (marked cf_generated; stored figures are unchanged).
+export async function loadStatements(subject: string, periodType: string, currency: string, opts: { raw?: boolean } = {}): Promise<(Awaited<ReturnType<typeof loadStatementsBase>>[number] & { cf_generated?: boolean })[]> {
+  const base = await loadStatementsBase(subject, periodType, currency)
+  const rows = parseSubject(subject).kind !== 'group' && (await cashFlowPolicy(subject)) === true ? fillCashFlow(base) : base
   if (opts.raw || parseSubject(subject).kind === 'group') return rows
   const org = await currentOrg()
   const rep = org?.kind === 'company' ? (org.settings.reporting_currency as string | undefined) : undefined
@@ -130,6 +140,12 @@ export async function loadStatements(subject: string, periodType: string, curren
     out.push({ ...row, currency: rep, lines: Object.fromEntries(Object.entries(row.lines).map(([key, v]) => [key, typeof v === 'number' ? Math.round(v * k * 100) / 100 : v])) as typeof row.lines })
   }
   return out
+}
+// Whether the company asked for a cash flow statement worked out from its P&L and balance sheet: true, false, or null
+// (not asked yet). Kept per company or entity.
+export async function cashFlowPolicy(subject: string): Promise<boolean | null> {
+  const v = ((await currentOrg())?.settings.cf_auto as Record<string, boolean> | undefined)?.[subject]
+  return typeof v === 'boolean' ? v : null
 }
 // Whether this workspace counts marketable securities (treasury bills) with cash (asked once on Financials).
 export async function cashPolicy(): Promise<boolean> { return (await currentOrg())?.settings.cash_with_securities === true }

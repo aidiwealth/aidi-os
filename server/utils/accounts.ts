@@ -39,3 +39,17 @@ export async function ensureAccounts(cats: Cat[]) {
 export async function listAccounts(): Promise<{ id: string; name: string; parent: string }[]> {
   return (await db().query<{ id: string; name: string; parent: string }>('SELECT id, name, parent FROM financials.accounts ORDER BY parent, lower(name)').catch(() => ({ rows: [] }))).rows
 }
+// A sheet sync replaces the parts of a statement it gives: when it has any balance sheet line, the old balance sheet
+// lines (and their categories) it no longer gives are dropped, and the same for the income statement and cash flow. So a
+// row that moved to another line (e.g. strategic investments out of short-term investments) does not leave the old
+// figure behind. Lines in a part the sheet does not cover, and figures typed in or uploaded (source other than sheet),
+// are kept.
+export function mergeStatement(old: { lines?: Record<string, number>; detail?: Record<string, number>; source?: string } | undefined, lines: Record<string, number>, detail: Record<string, number>) {
+  if (old && old.source !== 'sheet') return { lines: { ...(old.lines ?? {}), ...lines }, detail: { ...(old.detail ?? {}), ...detail } }
+  const sect = new Map(LINES.map((l) => [l.key, l.section]))
+  const covered = new Set([...Object.keys(lines), ...Object.keys(detail).map((k) => k.slice(0, k.indexOf('|')))].map((k) => sect.get(k)).filter(Boolean))
+  const keep = (k: string) => !covered.has(sect.get(k)!)
+  const ol = Object.fromEntries(Object.entries(old?.lines ?? {}).filter(([k]) => keep(k)))
+  const od = Object.fromEntries(Object.entries(old?.detail ?? {}).filter(([k]) => { const p = k.slice(0, k.indexOf('|')); return !p || keep(p) }))
+  return { lines: { ...ol, ...lines }, detail: { ...od, ...detail } }
+}

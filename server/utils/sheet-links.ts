@@ -147,24 +147,44 @@ const SYN: Record<string, string[]> = {
   revenue: ['revenue', 'total revenue', 'net revenue', 'sales', 'net sales', 'turnover', 'total income', 'income'],
   cogs: ['cost of revenue', 'cost of sales', 'cogs', 'cost of goods sold', 'direct costs'],
   gross_profit: ['gross profit', 'gross margin'], opex_payroll: ['payroll', 'salaries', 'salaries and wages', 'staff costs', 'wages', 'personnel'],
-  opex_marketing: ['sales and marketing', 'marketing', 'advertising'], opex_rnd: ['research and development', 'r d', 'product and engineering', 'engineering'],
-  opex_ga: ['general and administrative', 'g a', 'admin', 'administrative expenses', 'general admin'], opex_other: ['other operating costs', 'other expenses', 'other opex'],
+  opex_marketing: ['sales and marketing', 'sales marketing', 'sales and marketing expenses', 'sales marketing expenses', 'marketing', 'marketing expenses', 'advertising'], opex_rnd: ['research and development', 'r d', 'product and engineering', 'engineering'],
+  opex_ga: ['general and administrative', 'general administrative', 'g a', 'admin', 'administrative expenses', 'general admin'], opex_other: ['other operating costs', 'other expenses', 'other opex'],
   opex_total: ['total operating costs', 'total operating expenses', 'total opex', 'total expenses', 'operating expenses'], ebitda: ['ebitda'],
-  depreciation: ['depreciation', 'depreciation and amortisation', 'depreciation and amortization', 'd a'], interest: ['interest', 'interest expense', 'finance costs'],
+  depreciation: ['depreciation', 'depreciation and amortisation', 'depreciation and amortization', 'd a'], interest: ['interest', 'interest expense', 'finance costs', 'interest paid'],
+  other_income: ['other income', 'interest income', 'finance income', 'investment income', 'dividend income', 'non operating income', 'other income expense', 'other gains'],
   tax: ['tax', 'taxes', 'income tax'], net_income: ['net income', 'net profit', 'profit after tax', 'net profit loss', 'net loss', 'profit loss'],
-  cash: ['cash', 'cash balance', 'closing cash', 'cash at bank', 'cash and cash equivalents', 'ending cash'], receivables: ['receivables', 'accounts receivable', 'debtors'],
-  total_assets: ['total assets'], payables: ['payables', 'accounts payable', 'creditors'], debt: ['debt', 'loans', 'borrowings'], total_liabilities: ['total liabilities'],
-  equity: ['equity', 'total equity', 'shareholders equity'], operating_cf: ['operating cash flow', 'net cash from operating activities', 'cash from operations'],
+  cash: ['cash', 'cash balance', 'closing cash', 'cash at bank', 'cash and cash equivalents', 'cash cash equivalents', 'ending cash', 'cash and marketable securities', 'cash marketable securities', 'cash and short term investments'],
+  receivables: ['receivables', 'accounts receivable', 'trade receivables', 'debtors', 'receivables and prepayments', 'receivables prepayments'],
+  investments: ['short term investments', 'treasury bills', 't bills', 'marketable securities', 'money market', 'fixed deposits'],
+  long_term_investments: ['investments', 'long term investments', 'strategic investments', 'equity investments', 'investments in associates', 'investment in associates', 'investments in subsidiaries'],
+  total_assets: ['total assets'], payables: ['payables', 'accounts payable', 'trade payables', 'creditors'], debt: ['debt', 'loans', 'borrowings', 'debt and finance leases', 'debt finance leases'], total_liabilities: ['total liabilities'],
+  equity: ['equity', 'total equity', 'shareholders equity', 'shareholder equity', 'stockholders equity', 'stockholder equity', 'total shareholders equity', 'total stockholders equity', 'members equity', 'total members equity', 'net assets', 'shareholders funds', 'total shareholders funds', 'owners equity'], operating_cf: ['operating cash flow', 'net cash from operating activities', 'cash from operations'],
   investing_cf: ['investing cash flow', 'net cash from investing activities'], financing_cf: ['financing cash flow', 'net cash from financing activities'] }
 const FC_FROM_LINE: Record<string, string> = { revenue: 'revenue', cogs: 'cogs', opex_payroll: 'payroll', opex_marketing: 'marketing', opex_rnd: 'rnd', opex_ga: 'ga', opex_other: 'other', tax: 'tax' }
 const FC_SYN: Record<string, string[]> = { customers: ['customers', 'paying customers', 'active customers', 'clients'], headcount: ['headcount', 'employees', 'fte', 'team size'], funding: ['funding', 'funding raised', 'equity raised', 'investment received'] }
+// Financials also fill gaps. An unknown row inside a section goes into a category under that section's line: between the
+// operating cost lines and their total, under other operating costs; among the assets, other assets; among the
+// liabilities, other liabilities; under the liabilities total, equity. Several rows can share a line (they are added up),
+// and the parts of equity become categories, so a missing equity total is their sum and never one part of it.
+const EQ_PART = /(paid in|share capital|capital stock|common stock|preferred stock|additional paid|share premium|retained|accumulated deficit|deficit|reserve|treasury|unreali[sz]ed|comprehensive|drawings|contributions)/
+const INCOME_ROW = /^(income|other income|interest|dividend)s?\b.*(dividend|interest)|^(interest|dividend)s? (income|earned|received)|^gains?\b|exchange (rate )?(gain|difference)/
+const OPENS: Record<string, string> = { opex_payroll: 'opex_other', opex_marketing: 'opex_other', opex_rnd: 'opex_other', opex_ga: 'opex_other', opex_other: 'opex_other', cash: 'other_assets', receivables: 'other_assets', investments: 'other_assets', long_term_investments: 'other_assets', payables: 'other_liabilities', debt: 'other_liabilities', other_liabilities: 'other_liabilities', total_liabilities: 'equity' }
+const CLOSES: Record<string, string[]> = { opex_other: ['opex_total', 'ebitda', 'net_income'], other_assets: ['total_assets', 'payables'], other_liabilities: ['total_liabilities', 'equity'], equity: ['equity'] }
 export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'forecast'): MapRow[] {
   const taken = new Set<string>()
+  let sect = ''
   return rows.map((r) => {
     const n = norm(r.label); let to = ''
     for (const [key, words] of Object.entries(SYN)) { const k = target === 'forecast' ? FC_FROM_LINE[key] : key; if (k && !taken.has(k) && words.includes(n)) { to = k; break } }
     if (!to && target === 'forecast') for (const [key, words] of Object.entries(FC_SYN)) if (!taken.has(key) && words.includes(n)) { to = key; break }
-    if (to) taken.add(to)
+    if (target === 'financials') {
+      const label = r.label.trim().replace(/\s+/g, ' ').slice(0, 80), total = /^total\b|\btotal$|ebitda|\bebit\b|gross profit|net (income|profit|loss)|margin|ratio|balance check/.test(n)
+      if (!to && !taken.has('other_income') && INCOME_ROW.test(n)) to = 'other_income'
+      else if (!to && !total && n && (sect || EQ_PART.test(n))) to = 'cat:' + (sect || 'equity') + ':' + label
+      if (sect && CLOSES[sect]!.includes(to)) sect = ''
+      if (OPENS[to] && !(to === 'total_liabilities' && taken.has('equity'))) sect = OPENS[to]!
+    }
+    if (to && !to.startsWith('cat:')) taken.add(to)
     return { label: r.label, to }
   })
 }
@@ -198,11 +218,10 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
         foldCategories(lines, detail)
         if (!Object.keys(lines).length && !Object.keys(kpis).length && !Object.keys(detail).length) continue
         const pe = lastDay(m)
-        const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number> }>(`SELECT id, lines, kpis, detail FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
-        const merged = { ...(ex?.lines ?? {}), ...lines }
+        const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
+        const { lines: merged, detail: md } = mergeStatement(ex, lines, detail)
         if (balanceError(merged)) { skipped.push(m + ': balance sheet does not balance'); continue }
         const mk = { ...(ex?.kpis ?? {}), ...kpis }
-        const md = { ...(ex?.detail ?? {}), ...detail }
         if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), l.currency, JSON.stringify(md)])
         else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, detail, source, created_by) VALUES ($1,'month',$2,$3,$4,$5,$6,'sheet',$7)`, [s.id, pe, l.currency, JSON.stringify(merged), JSON.stringify(mk), JSON.stringify(md), userId])
         months++

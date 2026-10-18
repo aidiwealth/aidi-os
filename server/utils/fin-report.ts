@@ -68,7 +68,7 @@ export function missingOf(p: ReportProfile): { key: string; label: string }[] {
 }
 
 // ---- Figures -------------------------------------------------------------------------------------------------
-const BAL = ['cash', 'receivables', 'investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity']
+const BAL = ['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity']
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
 export interface Fig { end: string; months: number; full: boolean; d: Record<string, number | null>; currency: string }
@@ -156,9 +156,11 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
   // Statement of operations (by function; payroll that was not allocated to a function shown on its own line).
   const gp = V('gross_profit'), opex = V('opex_total'), da = V('depreciation'), intr = V('interest'), tax = V('tax'), ni = V('net_income')
   const opInc = figs.map((_, i) => (gp[i] === null && opex[i] === null ? null : (gp[i] ?? 0) - (opex[i] ?? 0) - (da[i] ?? 0)))
+  const oi = V('other_income')
   const pbtCalc = figs.map((_, i) => (opInc[i] === null ? null : opInc[i]! - (intr[i] ?? 0)))
-  // Anything between operating income and the net income reported is other income (expense).
-  const other = figs.map((_, i) => (ni[i] !== null && pbtCalc[i] !== null ? Math.round(ni[i]! + (tax[i] ?? 0) - pbtCalc[i]!) : null)).map((x) => (x !== null && Math.abs(x) >= 1 ? x : null))
+  // Other income given in the figures (interest and dividends earned, gains), plus anything else between operating
+  // income and the net income reported.
+  const other = figs.map((_, i) => (ni[i] !== null && pbtCalc[i] !== null ? Math.round(ni[i]! + (tax[i] ?? 0) - pbtCalc[i]!) : oi[i] ?? null)).map((x) => (x !== null && Math.abs(x) >= 1 ? x : null))
   const pbt = figs.map((_, i) => (pbtCalc[i] === null ? (ni[i] !== null ? ni[i]! + (tax[i] ?? 0) : null) : pbtCalc[i]! + (other[i] ?? 0)))
   const netInc = figs.map((_, i) => ni[i] ?? (pbt[i] === null ? null : pbt[i]! - (tax[i] ?? 0)))
   const ops: RLine[] = [
@@ -167,14 +169,15 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
     ...L('Sales and marketing', neg(V('opex_marketing')), 'sub'), ...L('Research and development', neg(V('opex_rnd')), 'sub'), ...L('General and administrative', neg(V('opex_ga')), 'sub'),
     ...L('Salaries and wages (not allocated above)', neg(V('opex_payroll')), 'sub'), ...L('Other operating expenses', neg(V('opex_other')), 'sub'),
     ...L('Total operating expenses', neg(opex), 'total'), ...L('Depreciation and amortisation', neg(da)),
-    ...L('Operating income (loss)', opInc, 'total'), ...L('Interest expense, net', neg(intr)), ...L('Other income (expense), net', other),
+    ...L('Operating income (loss)', opInc, 'total'), ...L('Interest expense', neg(intr)), ...L('Other income (expense), net', other),
     ...L('Income (loss) before income taxes', pbt, 'total'), ...L('Income tax expense', neg(tax)), ...L('Net income (loss) for the period', netInc, 'grand'),
     ...L('EBITDA (non-GAAP, for reference)', V('ebitda'), 'memo')]
 
   // Balance sheet (classified). Assets the figures total but do not itemise are shown as such, never invented.
-  const cash = V('cash'), secv = V('investments'), rec = V('receivables'), oth = V('other_assets')
-  const curA = add(cash, sec ? secv : figs.map(() => null), rec)
-  const nonCurItem = add(sec ? figs.map(() => null) : secv, oth)
+  // Short-term investments are current assets; long-term investments and stakes are not.
+  const cash = V('cash'), secv = V('investments'), lti = V('long_term_investments'), rec = V('receivables'), oth = V('other_assets')
+  const curA = add(cash, secv, rec)
+  const nonCurItem = add(lti, oth)
   const ta = V('total_assets'), tl = V('total_liabilities'), eq = V('equity')
   const itemised = add(curA, nonCurItem)
   const unitem = figs.map((_, i) => (ta[i] !== null && itemised[i] !== null && Math.abs(ta[i]! - itemised[i]!) >= 1 ? ta[i]! - itemised[i]! : null))
@@ -185,10 +188,10 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
   const unL = figs.map((_, i) => (tl[i] !== null && liabItems[i] !== null && Math.abs(tl[i]! - liabItems[i]!) >= 1 ? tl[i]! - liabItems[i]! : null))
   const bal: RLine[] = [
     { label: 'ASSETS', v: figs.map(() => null), kind: 'head' }, { label: 'Current assets', v: figs.map(() => null), kind: 'head' },
-    ...L('Cash and cash equivalents', cash, 'sub', 'Note 1'), ...(sec ? L('Marketable securities (treasury bills and similar)', secv, 'sub', 'Note 1') : []), ...L('Accounts receivable', rec, 'sub'),
+    ...L('Cash and cash equivalents', cash, 'sub', 'Note 1'), ...L(sec ? 'Marketable securities (treasury bills and similar)' : 'Short-term investments', secv, 'sub', sec ? 'Note 1' : undefined), ...L('Accounts receivable', rec, 'sub'),
     ...L('Total current assets', curA, 'total'),
     ...(nonCur.some((x) => x !== null) ? [{ label: 'Non-current assets', v: figs.map(() => null), kind: 'head' as const }] : []),
-    ...(sec ? [] : L('Investments', secv, 'sub')), ...L('Other assets', oth, 'sub'), ...L('Other assets (not itemised in the figures)', unitem, 'sub'),
+    ...L('Long-term investments and stakes', lti, 'sub'), ...L('Other assets', oth, 'sub'), ...L('Other assets (not itemised in the figures)', unitem, 'sub'),
     ...L('Total non-current assets', nonCur, 'total'), ...L('TOTAL ASSETS', totA, 'grand'),
     { label: 'LIABILITIES AND SHAREHOLDERS\' EQUITY', v: figs.map(() => null), kind: 'head' }, { label: 'Liabilities', v: figs.map(() => null), kind: 'head' },
     ...L('Accounts payable and accrued liabilities', V('payables'), 'sub'), ...L('Borrowings', V('debt'), 'sub'), ...L('Other liabilities', V('other_liabilities'), 'sub'),

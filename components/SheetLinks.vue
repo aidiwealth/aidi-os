@@ -48,13 +48,15 @@ function applyMap() {
   map.value = Object.fromEntries(t.rows.map((r) => [r.label, src.find((m) => m.label.toLowerCase() === r.label.toLowerCase())?.to ?? '']))
   // A row named like one of the company's own categories goes there.
   for (const r of t.rows) if (!map.value[r.label]) { const a = accts.value.find((x) => x.name.toLowerCase() === r.label.trim().toLowerCase()); if (a) map.value[r.label] = 'cat:' + a.parent + ':' + a.name }
+  // A suggested category that already exists keeps the line it was saved under.
+  for (const [k, v] of Object.entries(map.value)) if (v.startsWith('cat:')) { const nm = v.split(':').slice(2).join(':').toLowerCase(); const a = accts.value.find((x) => x.name.toLowerCase() === nm); if (a) map.value[k] = 'cat:' + a.parent + ':' + a.name }
 }
 // The company's own categories (chart of accounts): rows that are not a standard line go into one instead of failing.
 const accts = ref<{ id: string; name: string; parent: string }[]>([])
 async function loadAccts() { if (props.target !== 'financials') return; try { accts.value = (await $fetch<{ accounts: { id: string; name: string; parent: string }[] }>('/api/financials/accounts')).accounts } catch { /* optional */ } }
 const nc = reactive({ row: '', name: '', parent: 'opex_other', busy: false, msg: '' })
 function pick(label: string, v: string) { if (v === '__new') { map.value[label] = ''; Object.assign(nc, { row: label, name: label.replace(/\s*\(\d+\)$/, ''), parent: guessParent(label), msg: '' }) } }
-function guessParent(l: string) { const s = l.toLowerCase(); return /payable|accrued|prepayment|deferred|liabilit|tax(es)? payable/.test(s) ? 'other_liabilities' : /capital|equity|reserve|retained|treasury|share/.test(s) ? 'equity' : /receivable|prepaid|investment|property|equipment|intangible|asset|loan/.test(s) ? 'other_assets' : /income|gain|dividend|interest earned/.test(s) ? '' : /cost of (sales|revenue)|direct/.test(s) ? 'cogs' : 'opex_other' }
+function guessParent(l: string) { const s = l.toLowerCase(); return /payable|accrued|prepayment|deferred|liabilit|tax(es)? payable/.test(s) ? 'other_liabilities' : /capital|equity|reserve|retained|treasury|share/.test(s) ? 'equity' : /strategic|stake|associate|long[- ]term invest|equity invest/.test(s) ? 'long_term_investments' : /receivable|prepaid|investment|property|equipment|intangible|asset|loan/.test(s) ? 'other_assets' : /income|gain|dividend|interest earned/.test(s) ? 'other_income' : /cost of (sales|revenue)|direct/.test(s) ? 'cogs' : 'opex_other' }
 async function addCat() {
   nc.busy = true; nc.msg = ''
   try { const r = await $fetch<{ id: string; name: string; parent: string; to: string }>('/api/financials/accounts', { method: 'POST', body: { name: nc.name, parent: nc.parent } }); if (!accts.value.some((a) => a.id === r.id)) accts.value.push({ id: r.id, name: r.name, parent: r.parent }); map.value[nc.row] = r.to; nc.row = '' }
@@ -129,7 +131,7 @@ async function saveAi() {
     await load(); emit('synced')
   } catch (e) { msg.value = err(e, 'Could not save the link.') } finally { busy.value = false }
 }
-const LINE_LABEL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of revenue', gross_profit: 'Gross profit', opex_payroll: 'Payroll', opex_marketing: 'Sales & marketing', opex_rnd: 'R&D', opex_ga: 'G&A', opex_other: 'Other operating costs', opex_total: 'Total operating costs', ebitda: 'EBITDA', depreciation: 'D&A', interest: 'Interest', tax: 'Tax', net_income: 'Net income', cash: 'Cash', receivables: 'Receivables', investments: 'Investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
+const LINE_LABEL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of revenue', gross_profit: 'Gross profit', opex_payroll: 'Payroll', opex_marketing: 'Sales & marketing', opex_rnd: 'R&D', opex_ga: 'G&A', opex_other: 'Other operating costs', opex_total: 'Total operating costs', ebitda: 'EBITDA', depreciation: 'D&A', interest: 'Interest expense', other_income: 'Other income', tax: 'Tax', net_income: 'Net income', cash: 'Cash', receivables: 'Receivables', investments: 'Short-term investments', long_term_investments: 'Long-term investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
 const asWhat = (r: AiBlock['rows'][number]) => { if (r.to === 'kpi') return 'Metric: ' + (r.kpi || r.label); if (r.to.startsWith('cat:')) { const [, p = '', ...n] = r.to.split(':'); return 'Your category: ' + n.join(':') + (p ? ' (in ' + (LINE_LABEL[p] ?? p) + ')' : '') } return LINE_LABEL[r.to] ?? r.to }
 const PT: Record<string, string> = { month: 'Month', quarter: 'Quarter', year: 'Year' }
 const span = (b: AiBlock) => { const a = b.periods.filter((p) => !p.projected).map((p) => p.period_end).sort(); const pr = b.periods.filter((p) => p.projected).length; return (a.length ? a.length + ' ' + (b.periods[0]?.period_type ?? 'period') + (a.length === 1 ? '' : 's') + ' to ' + perLabel(b.periods[0]?.period_type ?? 'month', a[a.length - 1]!) : 'no actuals') + (pr ? ' · ' + pr + ' projected' : '') }
@@ -138,6 +140,8 @@ const factGroups = computed(() => { const g: Record<string, AiM['facts']> = {}; 
 const kept = computed(() => ai.value?.map.blocks.filter((b) => b.use !== false).length ?? 0)
 const money0 = (v: number | null) => (v === null ? '—' : Math.round(v).toLocaleString('en-US'))
 watch(() => f.sheet, () => { if (step.value === 2) { keep.value = null; applyMap() } })
+// Categories suggested for rows (from the sheet's sections) that are not in the chart of accounts yet.
+const fresh = computed(() => [...new Set(Object.values(map.value).filter((v) => v.startsWith('cat:')))].filter((v) => !accts.value.some((a) => 'cat:' + a.parent + ':' + a.name === v)).map((to) => { const [, parent = '', ...n] = to.split(':'); return { to, parent, name: n.join(':') } }))
 const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi'))
 const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && used.value.filter((v) => v === k).length > 1
 const summed = computed(() => props.target === 'financials' && used.value.some((v, i, a) => !v.startsWith('cat:') && a.indexOf(v) !== i))
@@ -213,11 +217,13 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
           <tbody><tr v-for="r in tab.rows" :key="r.label" :class="{ off: !map[r.label] }"><td>{{ r.label }}</td><td class="n">{{ fmt(r.last_value) }} <span class="sub">{{ mon(r.last_month) }}</span></td>
             <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'" @change="pick(r.label, ($event.target as HTMLSelectElement).value)"><option value="">Don't use</option><optgroup label="Standard lines"><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></optgroup>
               <optgroup v-if="target === 'financials' && accts.length" label="Your categories"><option v-for="a in accts" :key="a.id" :value="'cat:' + a.parent + ':' + a.name">{{ catLabel(a) }}</option></optgroup>
+              <optgroup v-if="target === 'financials' && fresh.length" label="New categories (added when you save)"><option v-for="c in fresh" :key="c.to" :value="c.to">{{ catLabel(c) }}</option></optgroup>
               <option v-if="target === 'financials'" value="__new">+ New category…</option></select>
               <div v-if="nc.row === r.label" class="nc"><input v-model="nc.name" maxlength="80" placeholder="Category name"><select v-model="nc.parent" aria-label="Belongs to"><option value="">No line (keep as a detail)</option><option v-for="k in prev.keys.filter((x) => x.key !== 'kpi')" :key="k.key" :value="k.key">In {{ k.label }}</option></select><button type="button" class="btn sm" :disabled="nc.busy || !nc.name.trim()" @click="addCat">Add</button><button type="button" class="lnk" @click="nc.row = ''">Cancel</button><span v-if="nc.msg" class="error">{{ nc.msg }}</span></div></td></tr></tbody></table></div>
         <p v-if="target === 'financials'" class="sub">Rows that are not a standard line can go into your own categories (your chart of accounts). A category is added into its line when the sheet does not give that line; rows sent to the same line are added together.{{ summed ? ' Some rows here go to the same line and will be added together.' : '' }}</p>
         <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
       </div>
+      <ClientOnly><CashFlowAsk v-if="target === 'financials' && (step === 2 || step === 3) && subject" :subject="subject" inline /></ClientOnly>
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
         <button class="btn secondary" type="button" @click="step > 1 && !f.id ? (step = 1) : (open = false)">{{ step > 1 && !f.id ? 'Back' : 'Cancel' }}</button>

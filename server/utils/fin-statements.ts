@@ -30,15 +30,16 @@ export function buildStatements(raw: FinRow[], o: { company: string; period_type
     ...(any('opex_total') ? [{ label: 'Total operating expenses', values: neg(v('opex_total')), kind: 'total' as const }] : []),
     ...line('EBITDA', 'ebitda', 'total'),
     ...(any('depreciation') ? [{ label: 'Depreciation and amortisation', values: neg(v('depreciation')) }] : []),
-    ...(any('interest') ? [{ label: 'Interest', values: neg(v('interest')) }] : []),
+    ...(any('interest') ? [{ label: 'Interest expense', values: neg(v('interest')) }] : []),
+    ...line('Other income (interest, dividends, gains)', 'other_income'),
     ...(any('tax') ? [{ label: 'Tax', values: neg(v('tax')) }] : []),
     ...line('Net income', 'net_income', 'total')]
   const cash = v('cash'), sec = v('investments')
   const cms = cash.map((c, i) => (c === null && sec[i] === null ? null : (c ?? 0) + (sec[i] ?? 0)))
   const balance: StRow[] = [{ label: 'Assets', values: rows.map(() => null), kind: 'head' },
-    ...line('Cash and bank', 'cash', 'sub'), ...line(o.withSecurities ? 'Marketable securities (e.g. treasury bills)' : 'Investments', 'investments', 'sub'),
+    ...line('Cash and bank', 'cash', 'sub'), ...line(o.withSecurities ? 'Marketable securities (e.g. treasury bills)' : 'Short-term investments', 'investments', 'sub'),
     ...(o.withSecurities && any('investments') ? [{ label: 'Cash and marketable securities', values: cms, kind: 'total' as const }] : []),
-    ...line('Receivables', 'receivables', 'sub'), ...line('Other assets', 'other_assets', 'sub'), ...line('Total assets', 'total_assets', 'total'),
+    ...line('Receivables', 'receivables', 'sub'), ...line('Long-term investments and stakes', 'long_term_investments', 'sub'), ...line('Other assets', 'other_assets', 'sub'), ...line('Total assets', 'total_assets', 'total'),
     { label: 'Liabilities', values: rows.map(() => null), kind: 'head' }, ...line('Payables', 'payables', 'sub'), ...line('Debt', 'debt', 'sub'), ...line('Other liabilities', 'other_liabilities', 'sub'), ...line('Total liabilities', 'total_liabilities', 'total'),
     ...line("Shareholders' equity", 'equity', 'total'),
     ...(any('total_liabilities') && any('equity') ? [{ label: 'Total liabilities and equity', values: rows.map((r) => (typeof r.derived.total_liabilities === 'number' || typeof r.derived.equity === 'number' ? ((r.derived.total_liabilities as number) ?? 0) + ((r.derived.equity as number) ?? 0) : null)), kind: 'total' as const }] : [])]

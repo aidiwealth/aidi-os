@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Burn and runway, checked three ways (cash flow, fall in cash, net loss) on the last three months, with anything
+// Burn and runway, checked several ways (cash flow, cash flow from the balance sheet, fall in cash, net loss) on the last three months, with anything
 // that does not add up called out.
 import type { BurnReview } from '~/shared/fin-view'
 const props = defineProps<{ review: BurnReview; currency: string; withSecurities?: boolean }>()
@@ -14,9 +14,10 @@ const dt = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateStr
     <div class="row">
       <div class="k"><span>Monthly burn</span><b>{{ review.profitable ? 'None' : m(review.burn) }}</b><em>{{ review.months }}-month average · {{ review.basis.toLowerCase() }}</em></div>
       <div class="k"><span>Runway</span><b>{{ review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '—' }}</b><em>{{ review.cash !== null ? m(review.cash) + (withSecurities ? ' cash & securities' : ' cash') + ' at ' + dt(review.cash_at) : 'No cash balance in the figures' }}</em></div>
-      <div class="st"><span class="pill">{{ review.status === 'ok' ? 'Checked: the methods agree' : review.issues.length + ' thing' + (review.issues.length === 1 ? '' : 's') + ' to check' }}</span><button type="button" class="lk" @click="open = !open">{{ open ? 'Hide' : 'How it is worked out' }}</button></div>
+      <div class="st"><span class="pill">{{ review.status === 'ok' ? 'Checked' : review.issues.length + ' thing' + (review.issues.length === 1 ? '' : 's') + ' to check' }}</span><button type="button" class="lk" @click="open = !open">{{ open ? 'Hide' : 'How it is worked out' }}</button></div>
     </div>
     <ul v-if="review.issues.length" class="is"><li v-for="(x, i) in review.issues" :key="i">{{ x }}</li></ul>
+    <ul v-if="review.notes.length" class="is"><li v-for="(x, i) in review.notes" :key="'n' + i">{{ x }}</li></ul>
     <table v-if="open" class="mt"><tbody><tr v-for="x in review.methods" :key="x.key" :class="{ used: x.label === review.basis }"><td>{{ x.label }}</td><td class="n">{{ x.value === null ? 'Not in the figures' : m(x.value) + ' / month' }}</td><td class="u">{{ x.label === review.basis ? 'Used' : '' }}</td></tr></tbody></table>
   </section>
 </template>
