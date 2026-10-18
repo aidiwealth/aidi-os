@@ -1,3 +1,4 @@
+import { burnReview, deriveLines } from '~/shared/fin-view'
 // More tools for the AI analyst: the newer areas (Secondaries with AI screening, wealth clients' risk levels, pitches,
 // notices, fundraising clients, linked sheets, contact lists, the data room, custom metrics), a calculator so figures
 // are computed rather than guessed, and proposed actions the person confirms with one click (carried out by
@@ -146,6 +147,39 @@ export const finvryExtra: ATool[] = [
       const other = (await db().query("SELECT period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, currency, lines, kpis FROM financials.statements WHERE entity_id = $1 AND period_type IN ('quarter','year') ORDER BY period_end DESC LIMIT 8", [ent])).rows
       return { monthly_metrics: m, quarters_and_years: other }
     } }]
+
+// Newer Finvry features: customer revenue (retention, churn, customer analysis), subsidiaries, the burn check and the
+// annual financial report.
+finvryExtra.push(
+  { name: 'customer_retention', module: 'fin_customers', description: 'Revenue retention and churn from the customer revenue the company uploaded or linked: net and gross revenue retention (12 months), customer churn, new / expansion / contraction / churned revenue in the last 3 months, retention by group (size bands Enterprise / Mid-market / SMB, or segment, sector, plan, country), cohort retention, and how customer revenue compares with revenue in Financials. Also whether a live sheet feeds it and possible duplicate customers to merge.', input_schema: S(),
+    run: async () => {
+      const cs = await loadCustomers(); if (!cs.length) return { note: 'No customer revenue yet. Add it under Financials → Revenue retention (upload any layout, PDF or Word, or link a Google Sheet).' }
+      const cfg = await customerConfig(), l = await customerLink()
+      return { ...(customerFacts('retention', cs, cfg, await financialsRevenue(cfg.currency)) ?? {}), live_sheet: l.url ? { name: l.name, last_read: l.synced_at, error: l.error, possible_duplicates: (l.result?.possible ?? []).slice(0, 8).map((d) => d.names) } : null, page: '/financials/retention' }
+    } },
+  { name: 'customer_analysis', module: 'fin_customers', description: 'Customer analysis: top customers and their share of revenue, concentration (top 1 / 5 / 10, how many customers make 80% of revenue), fastest growing and biggest declines, sectors, average revenue per customer, lifetime value, LTV to CAC and payback when acquisition cost is given.', input_schema: S(),
+    run: async () => {
+      const cs = await loadCustomers(); if (!cs.length) return { note: 'No customer revenue yet. Add it under Financials → Customers.' }
+      const cfg = await customerConfig()
+      return { ...(customerFacts('customers', cs, cfg, await financialsRevenue(cfg.currency)) ?? {}), page: '/financials/customers' }
+    } },
+  { name: 'subsidiaries', module: 'financials', description: 'The company and its subsidiaries, each with its own Financials page (name and currency), and the latest revenue, net income and cash for each; the group view adds them up at the latest daily rate.', input_schema: S(),
+    run: async () => {
+      const es = (await db().query<{ id: string; name: string; currency: string | null; main: boolean }>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed' ORDER BY (parent_id IS NOT NULL), created_at")).rows
+      const out = []
+      for (const e of es) {
+        const r = (await db().query<{ period_end: string; currency: string; lines: Record<string, number> }>("SELECT to_char(period_end, 'YYYY-MM') AS period_end, currency, lines FROM financials.statements WHERE entity_id = $1 AND period_type = 'month' ORDER BY period_end DESC LIMIT 1", [e.id])).rows[0]
+        out.push({ name: e.name, is_subsidiary: !e.main, currency: r?.currency ?? e.currency, latest_month: r?.period_end ?? null, revenue: r?.lines.revenue ?? null, net_income: r?.lines.net_income ?? null, cash: r?.lines.cash ?? null })
+      }
+      return { entities: out, note: es.length > 1 ? 'Pick a subsidiary or "Group" from the name next to Financials.' : 'No subsidiaries yet: add one from the name next to Financials (paid plans).' }
+    } },
+  { name: 'burn_check', module: 'financials', description: 'Burn and runway checked three ways on the last three months (operating and investing cash flow, fall in cash excluding money raised, net loss with depreciation added back): the figure used, the runway, the cash date, and anything that does not add up.', input_schema: S(),
+    run: async () => {
+      const ent = await companyEntityId(); if (!ent) return { note: 'No company entity yet.' }
+      const rows = (await db().query<{ period_end: string; period_type: string; currency: string; lines: Record<string, number> }>("SELECT to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines FROM financials.statements WHERE entity_id = $1 AND period_type = 'month' ORDER BY period_end", [ent])).rows
+      const r = burnReview(rows.map((x) => ({ ...x, kpis: {}, derived: deriveLines(x.lines, 1) })))
+      return { monthly_burn: r.burn, basis: r.basis, runway_months: r.runway, cash: r.cash, cash_as_of: r.cash_at, methods: r.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) })), status: r.status, issues: r.issues }
+    } })
 
 export const sheetsTool: ATool = { name: 'linked_sheets', module: 'financials', description: 'Spreadsheets linked to Financials or forecasts: when each last synced, how many periods it brought in, any error, and (for workbooks read with AI) the figures worth adding to the sheet.', input_schema: S(),
   run: async () => (await db().query<Record<string, any>>("SELECT l.name, l.target, l.mode, l.currency, to_char(l.last_synced_at, 'YYYY-MM-DD HH24:MI') AS last_synced, l.last_error AS error, l.last_result, l.ai_map->'suggestions' AS suggestions FROM financials.sheet_links l ORDER BY l.created_at").catch(() => ({ rows: [] }))).rows

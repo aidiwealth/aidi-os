@@ -25,7 +25,7 @@ async function remove() { busy.value = true; try { await $fetch('/api/company/lo
       </template>
       <template v-else>
         <b>{{ data?.url ? 'Your company logo' : 'No logo yet' }}</b>
-        <span class="mut">{{ note || 'Set once in Settings and used everywhere.' }} <NuxtLink to="/settings?s=company">{{ data?.url ? 'Change in Settings' : 'Add it in Settings' }} →</NuxtLink></span>
+        <span class="mut">{{ note || 'Set once in Settings and used everywhere.' }} <NuxtLink to="/settings?s=sharing">{{ data?.url ? 'Change in Settings' : 'Add it in Settings' }} →</NuxtLink></span>
       </template>
     </div>
   </div>

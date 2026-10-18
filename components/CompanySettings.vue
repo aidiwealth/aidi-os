@@ -6,7 +6,7 @@ interface D { reporting_currency?: string; name: string; website: string; countr
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, logo, legal form, country and currency'], ['sharing', 'Sharing & branding', 'Address, colours, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
@@ -27,7 +27,7 @@ async function choose(code: string) { busy.value = true; msg.value = ''; ok.valu
 const ngn = computed(() => data.value?.currency === 'NGN')
 const currentPlan = computed(() => { const d = data.value; return d ? (d.plans.find((p) => p.code === d.plan)?.name ?? d.plan) : '' })
 const price = (p: P) => { const v = ngn.value ? p.ngn : p.usd; return v == null ? 'Contact us' : v === 0 ? 'Free' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') }
-const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financials', 'Live bank balances', 'Public investor page and data room', 'Finvry AI analyst', 'Compliance calendar', 'Order services', '1 team member'], company_startup: ['Everything in Free', 'AI investor updates with open tracking', 'Fundraising pipeline, investor and grant finder', 'Forecasts from your books, bank or accountant\'s model', 'Cap table, SAFEs and round modelling', 'E-sign SAFEs, grants and share purchases', 'Board consents and electronic certificates', 'Import from Pulley or Carta', 'Up to 5 team members', 'More AI and storage'], company_scale: ['Everything in Startup', 'Up to 20 team members', 'Most AI and storage', 'Priority service'] }
+const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financials', 'Live bank balances', 'Annual financial report (PDF and Excel) with your logo', 'Burn and runway checked three ways', 'Public investor page and data room', 'Finvry AI analyst', 'Compliance calendar', 'Order services', '1 team member'], company_startup: ['Everything in Free', 'AI investor updates with open tracking', 'Revenue retention, churn and cohorts', 'Customer analysis: top customers, sectors, lifetime value', 'Customer revenue from a live Google Sheet', 'Subsidiaries with a group view', 'Fundraising pipeline, investor and grant finder', 'Forecasts from your books, bank or accountant\'s model', 'Cap table, SAFEs and round modelling', 'E-sign SAFEs, grants and share purchases', 'Board consents and electronic certificates', 'Import from Pulley or Carta', 'Up to 5 team members', 'More AI and storage'], company_scale: ['Everything in Startup', 'Up to 20 team members', 'Most AI and storage', 'Priority service'] }
 </script>
 <template>
   <section v-if="data" class="cs">
@@ -36,8 +36,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
       <nav class="side"><button v-for="[k, l, d] in SECTIONS" :key="k" type="button" :class="{ on: sec === k }" @click="go(k)"><b>{{ l }}</b><span>{{ d }}</span></button></nav>
       <div class="main">
         <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
-        <template v-if="sec === 'company'"><div class="card frm lgo"><h2>Company logo</h2><div class="wide"><CompanyLogo edit :company="f.name" /></div></div>
-        <form class="card frm" @submit.prevent="saveProfile">
+        <template v-if="sec === 'company'"><form class="card frm" @submit.prevent="saveProfile">
           <h2>Company</h2>
           <label class="label wide">Company name<input v-model="f.name" required maxlength="200"></label>
           <label class="label wide">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label>

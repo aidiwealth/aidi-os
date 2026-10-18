@@ -11,14 +11,14 @@ const { data: clogo } = await useFetch<{ id: string | null; url: string | null; 
 </script>
 <template>
   <form v-if="data" class="ss" @submit.prevent="save">
-    <div class="card sec"><h2>Your Finvry address</h2><p class="mut">One address for your investor page, with short links for each data room link you share. No setup needed.</p>
-      <label class="addr"><span>{{ data.base }}</span><input v-model="f.handle" required maxlength="41"></label>
-      <p class="mut">Example: <code>{{ data.base }}{{ f.handle }}/bridge-deck</code>{{ data.published ? '' : ' · Publish your investor page to show it at this address.' }}</p></div>
-    <div class="card sec"><h2>Branding</h2>
+    <div class="card sec"><h2>Logo and colours</h2>
       <CompanyLogo edit class="lgc" />
       <div class="cols"><label class="cl"><input v-model="f.bg" type="color"> Viewer background</label><label class="cl"><input v-model="f.fg" type="color"> Viewer text colour</label></div>
       <div class="prev" :style="{ background: f.bg, color: f.fg }"><img v-if="clogo?.url" :src="clogo.url" alt=""><b>Data room</b><span>Preview of your viewer colours</span></div>
       <label class="tg" :class="{ dis: !data.paid }"><input v-model="f.hide_finvry" type="checkbox" :disabled="!data.paid"><span class="sw" /><span><b>Remove Finvry branding</b><em>{{ data.paid ? 'From your investor page, data room and update emails.' : 'Available on Startup and Scale.' }}</em></span></label></div>
+    <div class="card sec"><h2>Your Finvry address</h2><p class="mut">One address for your investor page, with short links for each data room link you share. No setup needed.</p>
+      <label class="addr"><span>{{ data.base }}</span><input v-model="f.handle" required maxlength="41"></label>
+      <p class="mut">Example: <code>{{ data.base }}{{ f.handle }}/bridge-deck</code>{{ data.published ? '' : ' · Publish your investor page to show it at this address.' }}</p></div>
     <div class="card sec"><h2>Protection</h2>
       <label class="tg"><input v-model="f.watermark" type="checkbox"><span class="sw" /><span><b>Watermark documents</b><em>Stamps the viewer's email and the date on every page of PDFs in your data room, including downloads. Images show it on screen. Other file types must be shared as PDF while this is on.</em></span></label>
       <label class="tg"><input v-model="f.nda_enabled" type="checkbox"><span class="sw" /><span><b>Require an NDA before viewing</b><em>Visitors read your NDA and sign by typing their name. You see every signature under Fundraising → NDAs ({{ data.signatures.length }} so far).</em></span></label>
