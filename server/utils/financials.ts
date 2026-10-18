@@ -50,12 +50,12 @@ export function parseSubject(s: string): { kind: 'group' } | { kind: 'entity' | 
   return { kind: m[1] as 'entity' | 'company', id: m[2]! }
 }
 
-export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null }
+export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number> }
 // Statements for one subject, or the group: all entities plus subsidiary companies, summed per period in one currency.
 async function loadStatementsBase(subject: string, periodType: string, currency: string): Promise<FinRow[]> {
   const s = parseSubject(subject)
   if (s.kind !== 'group') {
-    const r = await db().query<FinRow>(`SELECT id, to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines, kpis, notes, show_to_lps, source, document_id
+    const r = await db().query<FinRow>(`SELECT id, to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines, kpis, notes, show_to_lps, source, document_id, detail
       FROM financials.statements WHERE ${s.kind === 'entity' ? 'entity_id' : 'company_id'} = $1 AND period_type = $2 ORDER BY period_end`, [s.id, periodType])
     return r.rows
   }
@@ -84,21 +84,24 @@ export async function subjectName(subject: string): Promise<string> {
 
 // AI reads an uploaded sheet into the standard lines. Never estimates; the user confirms before saving.
 const numN = { type: ['number', 'null'] }
-const SCHEMA = { type: 'object', additionalProperties: false, required: ['period_end', 'period_type', 'currency', 'lines', 'kpis', 'notes'], properties: {
+const SCHEMA = { type: 'object', additionalProperties: false, required: ['period_end', 'period_type', 'currency', 'lines', 'kpis', 'notes', 'categories'], properties: {
   period_end: { type: ['string', 'null'], description: 'Last day of the period, YYYY-MM-DD' }, period_type: { type: 'string', enum: ['month', 'quarter', 'year'] },
   currency: { type: 'string', description: 'ISO currency code, e.g. USD or NGN' },
   lines: { type: 'object', additionalProperties: false, required: LINE_KEYS, properties: Object.fromEntries(LINE_KEYS.map((k) => [k, numN])) },
   kpis: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } }, description: 'Non-financial KPIs in the sheet (customers, headcount, AUM...), at most 10' },
   notes: { type: 'string', description: 'One or two lines: which sheet/columns you used, units, anything unclear' },
+  categories: { type: 'array', description: 'The company\'s own items for the main period that are not a standard line (e.g. Consultants, Software & Apps, Loans receivable, Paid-in capital, Interest income), each with the standard line it belongs to ("" if none). Still fill the standard line itself with its total.', items: { type: 'object', additionalProperties: false, required: ['name', 'line', 'value'], properties: { name: { type: 'string' }, line: { type: 'string' }, value: { type: 'number' } } } },
   more_periods: { type: 'array', description: 'Every OTHER period the file has figures for (not the one above), oldest first, at most 24. Empty if only one.', items: { type: 'object', additionalProperties: false, required: ['period_end', 'period_type', 'lines', 'kpis'], properties: {
     period_end: { type: 'string', description: 'YYYY-MM-DD' }, period_type: { type: 'string', enum: ['month', 'quarter', 'year'] },
     lines: { type: 'object', additionalProperties: false, required: LINE_KEYS, properties: Object.fromEntries(LINE_KEYS.map((k) => [k, numN])) },
-    kpis: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } } } } } } } }
+    kpis: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } } },
+    categories: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'line', 'value'], properties: { name: { type: 'string' }, line: { type: 'string' }, value: { type: 'number' } } } } } } } } }
 export async function extractStatement(text: string, wanted: string, inputRef: string, pdf?: Buffer) {
   const { z } = await import('zod')
   const Lines = z.record(z.string(), z.number().finite().nullable()), Kpis = z.array(z.object({ name: z.string().max(60), value: z.number().finite() })).max(10)
+  const Cats = z.array(z.object({ name: z.string().max(80), line: z.string().max(40), value: z.number().finite() })).max(40).default([]).transform((a) => a.filter((c) => c.name.trim() && (c.line === '' || LINE_KEYS.includes(c.line))))
   const Out = z.object({ period_end: z.string().nullable(), period_type: z.enum(['month', 'quarter', 'year']), currency: z.string().max(3), lines: Lines, kpis: Kpis, notes: z.string().max(600),
-    more_periods: z.array(z.object({ period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), period_type: z.enum(['month', 'quarter', 'year']), lines: Lines, kpis: Kpis })).max(24).default([]) })
+    more_periods: z.array(z.object({ period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), period_type: z.enum(['month', 'quarter', 'year']), lines: Lines, kpis: Kpis, categories: Cats })).max(24).default([]), categories: Cats })
   const ask = 'Period wanted: ' + wanted
   const { output } = await runAiTool({ task: 'financials_extract', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'financials-extract-v2', inputRef,
     system: 'You read a financial document and map it to standard lines. It may be a spreadsheet or a PDF: a profit and loss, balance sheet, cash flow, management accounts, a KPI sheet, or a BANK STATEMENT. ' +

@@ -4,6 +4,7 @@
 // Reading is plain parsing (no AI) so a sync gives the same answer every time; the mapping is kept by row name, so
 // rows can move in the sheet without breaking the link.
 import type ExcelJS from 'exceljs'
+import type { Cat } from './accounts'
 import { FIXED_KEYS } from '~/shared/forecast'
 import { AiMap, readWithMap, writePeriods, previewOf } from './sheet-ai'
 
@@ -168,8 +169,7 @@ export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'for
   })
 }
 
-// Costs are kept as positive figures, however the sheet shows them (minus signs or brackets).
-const COST_LINES_FIN = ['cogs', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other', 'opex_total', 'depreciation', 'interest', 'tax']
+// Costs are kept as positive figures, however the sheet shows them (minus signs or brackets): see addFigure.
 const lastDay = (m: string) => { const d = new Date(m + '-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10) }
 export interface LinkRow { id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; currency: string; sheet: string | null; mapping: MapRow[]; mode?: 'rows' | 'ai'; ai_map?: unknown }
 
@@ -190,17 +190,21 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
       const s = parseSubject(l.subject ?? ''); if (s.kind === 'group') throw apiError('invalid', 'Choose a company or entity.')
       await subjectName(l.subject!)
       const col = s.kind === 'entity' ? 'entity_id' : 'company_id', thisMonth = new Date().toISOString().slice(0, 7)
+      await ensureAccounts(chosen.map((c) => catOf(c.to)).filter((x): x is Cat => !!x))
       for (const m of lay.months.filter((x) => x <= thisMonth)) {
-        const lines: Record<string, number> = {}, kpis: Record<string, number> = {}
-        for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; if (c.to === 'kpi') kpis[c.label.slice(0, 60)] = v; else if (LINE_KEYS.includes(c.to)) lines[c.to] = COST_LINES_FIN.includes(c.to) ? Math.abs(v) : v }
-        if (!Object.keys(lines).length && !Object.keys(kpis).length) continue
+        // Rows to the same line are added together; the company's own categories fill their line when it is not given.
+        const lines: Record<string, number> = {}, kpis: Record<string, number> = {}, detail: Record<string, number> = {}
+        for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; if (c.to === 'kpi') kpis[c.label.slice(0, 60)] = v; else addFigure(lines, detail, c.to, v) }
+        foldCategories(lines, detail)
+        if (!Object.keys(lines).length && !Object.keys(kpis).length && !Object.keys(detail).length) continue
         const pe = lastDay(m)
-        const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number> }>(`SELECT id, lines, kpis FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
+        const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number> }>(`SELECT id, lines, kpis, detail FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
         const merged = { ...(ex?.lines ?? {}), ...lines }
         if (balanceError(merged)) { skipped.push(m + ': balance sheet does not balance'); continue }
         const mk = { ...(ex?.kpis ?? {}), ...kpis }
-        if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), l.currency])
-        else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, source, created_by) VALUES ($1,'month',$2,$3,$4,$5,'sheet',$6)`, [s.id, pe, l.currency, JSON.stringify(merged), JSON.stringify(mk), userId])
+        const md = { ...(ex?.detail ?? {}), ...detail }
+        if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), l.currency, JSON.stringify(md)])
+        else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, detail, source, created_by) VALUES ($1,'month',$2,$3,$4,$5,$6,'sheet',$7)`, [s.id, pe, l.currency, JSON.stringify(merged), JSON.stringify(mk), JSON.stringify(md), userId])
         months++
       }
     } else {

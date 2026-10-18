@@ -5,7 +5,7 @@ const { canPath } = useModuleAccess()
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
 interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
-interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null> }
+interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null> }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
 const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
 // Someone limited to some companies sees those companies, not the group consolidation.
@@ -117,7 +117,7 @@ watch(() => route0.query.tab, (t) => { tab.value = t === 'statements' || t === '
 const { data: modsF } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
 const custLocked = computed(() => !!modsF.value?.find((m) => m.code === 'fin_customers' && m.locked))
 // Bulk delete / clear.
-const picked = ref<string[]>([]); const clearOpen = ref(false)
+const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = ref(false)
 watch([subject, periodType], () => { picked.value = [] })
 const allPicked = computed(() => { const ids = rows.value.filter((r) => r.id).map((r) => r.id as string); return ids.length > 0 && ids.every((i) => picked.value.includes(i)) })
 function pickAll(on: boolean) { picked.value = on ? rows.value.filter((r) => r.id).map((r) => r.id as string) : [] }
@@ -131,7 +131,7 @@ const title = computed(() => co.value?.name ?? data.value?.name ?? 'Financials')
 const showForm = ref(false); const msg = ref(''); const ok = ref(''); const busy = ref(false); const aiNote = ref('')
 const now = new Date(); const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
 const blank = () => ({ subject: co.value?.subject ?? (subject.value === 'group' ? '' : subject.value), period_type: periodType.value, month: lastMonth.toISOString().slice(0, 7), q: Math.floor(lastMonth.getUTCMonth() / 3) + 1, year: lastMonth.getUTCFullYear(),
-  currency: co.value?.currency ?? currency.value, lines: {} as Record<string, string>, kpis: [] as { name: string; value: string }[], notes: '', show_to_lps: false, document_id: '' })
+  currency: co.value?.currency ?? currency.value, lines: {} as Record<string, string>, kpis: [] as { name: string; value: string }[], cats: [] as { name: string; line: string; value: string }[], notes: '', show_to_lps: false, document_id: '' })
 const form = reactive(blank())
 const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
 const periodEnd = computed(() => form.period_type === 'month' ? (form.month ? lastDay(Number(form.month.slice(0, 4)), Number(form.month.slice(5, 7))) : '') : form.period_type === 'quarter' ? lastDay(form.year, form.q * 3) : form.year + '-12-31')
@@ -140,16 +140,16 @@ const years = Array.from({ length: 12 }, (_, i) => now.getUTCFullYear() - i)
 const isFund = computed(() => { const m = form.subject.match(/^entity:(.+)$/); return !co.value && !!m && ['fund', 'spv'].includes(subj.value?.entities.find((e) => e.id === m[1])?.kind ?? '') })
 function openForm(s?: St) {
   Object.assign(form, blank()); aiNote.value = ''; msg.value = ''; showForm.value = true
-  if (s) { setFromEnd(s.period_end, s.period_type); Object.assign(form, { currency: s.currency, notes: s.notes ?? '', show_to_lps: s.show_to_lps, lines: Object.fromEntries(Object.entries(s.lines).map(([k, v]) => [k, String(v)])), kpis: Object.entries(s.kpis).map(([name, v]) => ({ name, value: String(v) })) }) }
+  if (s) { setFromEnd(s.period_end, s.period_type); Object.assign(form, { currency: s.currency, notes: s.notes ?? '', show_to_lps: s.show_to_lps, lines: Object.fromEntries(Object.entries(s.lines).map(([k, v]) => [k, String(v)])), kpis: Object.entries(s.kpis).map(([name, v]) => ({ name, value: String(v) })), cats: Object.entries(s.detail ?? {}).map(([k, v]) => ({ line: k.slice(0, k.indexOf('|')), name: k.slice(k.indexOf('|') + 1), value: String(v) })) }) }
 }
 const num = (s: string) => (s === undefined || String(s).trim() === '' ? null : Number(String(s).replace(/[^0-9.\-]/g, '')))
 const src = reactive({ gs: '', busy: '', qb: null as null | { locked?: boolean; needs_reconnect?: boolean; configured: boolean; connected: boolean; company: string | null; last_pulled_at: string | null } })
 async function loadSources() { if (!form.subject || form.subject === 'group') { src.qb = null; return } try { const s = await $fetch<{ quickbooks: { locked?: boolean; needs_reconnect?: boolean; configured: boolean; connected: boolean; company: string | null; last_pulled_at: string | null }; gsheet: { url: string } }>('/api/integrations/status', { query: { subject: form.subject } }); src.qb = s.quickbooks; if (!src.gs) src.gs = s.gsheet.url } catch { src.qb = null } }
 watch(() => [showForm.value, form.subject], () => { if (showForm.value) loadSources() })
-function applyProposal(r: { period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id?: string; source?: string }) {
+function applyProposal(r: { period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id?: string; source?: string; categories?: { name: string; line: string; value: number }[] }) {
   if (r.period_end) setFromEnd(r.period_end, r.period_type)
   const c = (r.currency || form.currency).toUpperCase()
-  Object.assign(form, { currency: CURS.value.includes(c) ? c : form.currency, document_id: r.document_id ?? form.document_id, lines: Object.fromEntries(Object.entries(r.lines).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)])), kpis: Object.entries(r.kpis).map(([name, v]) => ({ name, value: String(v) })) })
+  Object.assign(form, { currency: CURS.value.includes(c) ? c : form.currency, document_id: r.document_id ?? form.document_id, lines: Object.fromEntries(Object.entries(r.lines).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)])), kpis: Object.entries(r.kpis).map(([name, v]) => ({ name, value: String(v) })), cats: (r.categories ?? []).map((c) => ({ name: c.name, line: c.line, value: String(c.value) })) })
   aiNote.value = (r.source ? 'From ' + r.source + '. ' : '') + r.notes + ' Check every figure before saving.'
 }
 const errOf = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? d
@@ -172,7 +172,7 @@ async function fromSheet(ev: Event) {
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read the file.' } finally { busy.value = false }
 }
 // Other periods found in the same file (a bank statement over several months, a multi-year P&L): saved in one go.
-interface MorePeriod { period_end: string; period_type: string; lines: Record<string, number | null>; kpis: Record<string, number> }
+interface MorePeriod { period_end: string; period_type: string; lines: Record<string, number | null>; kpis: Record<string, number>; categories?: { name: string; line: string; value: number }[] }
 const more = ref<MorePeriod[]>([]); const moreBusy = ref(false)
 async function saveMore() {
   moreBusy.value = true; msg.value = ''
@@ -180,7 +180,7 @@ async function saveMore() {
   try {
     for (const p of more.value) {
       await $fetch('/api/financials/statements', { method: 'POST', body: { subject: form.subject, period_type: p.period_type, period_end: p.period_end, currency: form.currency,
-        lines: Object.fromEntries(Object.entries(p.lines).filter(([, v]) => v !== null)), kpis: p.kpis, notes: 'Read from the same file as ' + (periodEnd.value || 'the main period') + '.', document_id: form.document_id || undefined } })
+        lines: Object.fromEntries(Object.entries(p.lines).filter(([, v]) => v !== null)), kpis: p.kpis, detail: Object.fromEntries((p.categories ?? []).map((c) => [c.line + '|' + c.name, c.value])), notes: 'Read from the same file as ' + (periodEnd.value || 'the main period') + '.', document_id: form.document_id || undefined } })
       n++
     }
     ok.value = n + ' more period' + (n === 1 ? '' : 's') + ' saved from the file.'; more.value = []; await refresh()
@@ -191,6 +191,7 @@ async function save() {
   try {
     const r = await $fetch<{ replaced: boolean }>('/api/financials/statements', { method: 'POST', body: { subject: form.subject, period_type: form.period_type, period_end: periodEnd.value, currency: form.currency,
       lines: Object.fromEntries(Object.entries(form.lines).map(([k, v]) => [k, num(v)]).filter(([, v]) => v !== null)), kpis: Object.fromEntries(form.kpis.filter((k) => k.name.trim() && num(k.value) !== null).map((k) => [k.name.trim(), num(k.value)])),
+      detail: Object.fromEntries(form.cats.filter((c) => c.name.trim() && num(c.value) !== null).map((c) => [c.line + '|' + c.name.trim(), num(c.value)])),
       notes: form.notes || undefined, show_to_lps: isFund.value && form.show_to_lps, document_id: form.document_id || undefined } })
     ok.value = r.replaced ? 'Statement updated.' : 'Statement saved.'; showForm.value = false; subject.value = form.subject; periodType.value = form.period_type; currency.value = form.currency; await refresh()
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
@@ -219,7 +220,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <template v-else><select class="subj" :value="subject" aria-label="Financials for" @change="pickPage(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = subject">
           <option v-for="p in pages" :key="p.id" :value="'entity:' + p.id">{{ p.name }}{{ p.main ? '' : ' (subsidiary)' }}</option>
           <option v-if="pages.length > 1" value="group">Group (all, consolidated)</option>
-          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (Scale plan)' }}</option></select>
+          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (paid plans)' }}</option></select>
           <button v-if="canEdit && curPage" type="button" class="link rn" @click="openRename">Rename{{ curPage.main ? '' : ' · settings' }}</button></template></div>
       <div class="tools">
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
@@ -262,7 +263,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <div class="card"><h3>Latest periods</h3><div v-for="r in [...vrows].reverse().slice(0, 5)" :key="r.period_end" class="lp"><span>{{ lbl(r.period_end) }}</span><span><Money :value="r.derived.revenue" :currency="r.currency" /></span><span :class="{ neg: (r.derived.net_income ?? 0) < 0 }"><Money :value="r.derived.net_income" :currency="r.currency" /></span></div>
             <button class="link" @click="tab = 'statements'">All statements →</button></div></div>
       </template>
-      <div v-else-if="tab === 'statements'" class="card flat"><div v-if="canEdit && !converting && subject !== 'group'" class="bulk"><span>{{ picked.length ? picked.length + ' selected' : 'Select periods to delete them, or clear some figures' }}</span><button v-if="picked.length" class="link" type="button" @click="picked = []">Unselect</button><button class="btn secondary sm" type="button" @click="clearOpen = true">{{ picked.length ? 'Delete or clear selected' : 'Delete or clear figures' }}</button></div><div class="scroll"><table class="table"><thead><tr><th v-if="canEdit && !converting && subject !== 'group'" class="cb"><input type="checkbox" :checked="allPicked" aria-label="Select all" @change="pickAll(($event.target as HTMLInputElement).checked)"></th><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
+      <div v-else-if="tab === 'statements'" class="card flat"><div v-if="canEdit && !converting && subject !== 'group'" class="bulk"><span>{{ picked.length ? picked.length + ' selected' : 'Select periods to delete them, or clear some figures' }}</span><button type="button" class="link" @click="coaOpen = true">Your categories</button><button v-if="picked.length" class="link" type="button" @click="picked = []">Unselect</button><button class="btn secondary sm" type="button" @click="clearOpen = true">{{ picked.length ? 'Delete or clear selected' : 'Delete or clear figures' }}</button></div><div class="scroll"><table class="table"><thead><tr><th v-if="canEdit && !converting && subject !== 'group'" class="cb"><input type="checkbox" :checked="allPicked" aria-label="Select all" @change="pickAll(($event.target as HTMLInputElement).checked)"></th><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th><th /></tr></thead>
         <tbody><tr v-for="r in [...rows].reverse()" :key="r.period_end" :class="{ pk: r.id && picked.includes(r.id) }"><td v-if="canEdit && !converting && subject !== 'group'" class="cb"><input v-if="r.id" v-model="picked" type="checkbox" :value="r.id" :aria-label="'Select ' + lbl(r.period_end)"></td><td><b>{{ lbl(r.period_end) }}</b><span class="sub">{{ r.source === 'upload' ? 'From spreadsheet' : r.source === 'sheet' ? 'Linked sheet' : r.source === 'api' ? 'From the API' : r.source === 'group' ? 'Consolidated' : 'Entered' }}{{ r.show_to_lps ? ' · shown to LPs' : '' }}</span></td>
           <td class="n"><Money :value="r.derived.revenue" :currency="r.currency" /></td><td class="n">{{ pctFmt(r.derived.gross_margin) }}</td><td class="n"><Money :value="r.derived.ebitda" :currency="r.currency" /></td>
           <td class="n"><Money :value="r.derived.net_income" :currency="r.currency" /></td><td class="n"><Money :value="r.derived.cash" :currency="r.currency" /></td>
@@ -307,6 +308,10 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <details class="sec"><summary><b>Other KPIs</b><span>Customers, headcount, AUM or anything else you track</span></summary>
           <div v-for="(k, i) in form.kpis" :key="i" class="kr"><input v-model="k.name" placeholder="e.g. Customers" maxlength="60"><input v-model="k.value" inputmode="decimal" placeholder="Value"><button type="button" class="link" @click="form.kpis.splice(i, 1)">Remove</button></div>
           <button type="button" class="link" @click="form.kpis.push({ name: '', value: '' })">+ Add a KPI</button></details>
+        <details class="sec" :open="form.cats.length > 0"><summary><b>Your categories</b><span>Items that are not a standard line, kept in your chart of accounts{{ form.cats.length ? ' · ' + form.cats.length : '' }}</span></summary>
+          <p class="hint" style="margin: 0 14px 8px">Each is added into the line it belongs to when that line is left blank above.</p>
+          <div v-for="(c, i) in form.cats" :key="i" class="kr"><input v-model="c.name" placeholder="e.g. Consultants" maxlength="80"><select v-model="c.line" aria-label="Belongs to"><option value="">No line (detail only)</option><option v-for="l in (subj?.lines ?? [])" :key="l.key" :value="l.key">In {{ l.label }}</option></select><input v-model="c.value" inputmode="decimal" placeholder="Value"><button type="button" class="link" @click="form.cats.splice(i, 1)">Remove</button></div>
+          <button type="button" class="link" @click="form.cats.push({ name: '', line: 'opex_other', value: '' })">+ Add a category</button></details>
         <label class="label">Notes (optional)<textarea v-model="form.notes" rows="2" maxlength="1000" /></label>
         <label v-if="isFund" class="chk"><input v-model="form.show_to_lps" type="checkbox"> Show these fund financials to LPs in their portal</label>
         <p class="hint">Enter costs as positive numbers; keep the sign on net income, EBITDA and cash flows. Totals left blank are worked out for you. A balance sheet with all three totals must balance.</p>
@@ -348,6 +353,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       <template #foot><button v-if="!curPage?.main" class="link del" type="button" @click="removeSub">Remove subsidiary</button><button class="btn secondary" type="button" @click="ren.open = false">Cancel</button><button class="btn" type="submit" form="renf" :disabled="ren.busy">Save</button></template>
     </AppModal>
     <AppModal :open="subWall" title="Subsidiaries" wide @close="subWall = false"><Paywall code="subsidiaries" label="Subsidiaries" /></AppModal>
+    <ClientOnly><ChartOfAccounts :open="coaOpen" :can-edit="canEdit" @close="coaOpen = false" @changed="refresh()" /></ClientOnly>
     <ClientOnly><ReportDetails :open="rp.open" @close="rp.open = false" @saved="(m) => { rp.missing = m; sf.warned = false }" /></ClientOnly>
     <AppModal :open="qbWall" title="QuickBooks" wide @close="qbWall = false"><Paywall code="quickbooks" label="QuickBooks" /></AppModal>
   </section>

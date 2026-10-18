@@ -46,11 +46,26 @@ function applyMap() {
   const t = tab.value; if (!t) return
   const src = keep.value && (f.sheet === '' || t.sheet === f.sheet) ? keep.value : t.suggestion
   map.value = Object.fromEntries(t.rows.map((r) => [r.label, src.find((m) => m.label.toLowerCase() === r.label.toLowerCase())?.to ?? '']))
+  // A row named like one of the company's own categories goes there.
+  for (const r of t.rows) if (!map.value[r.label]) { const a = accts.value.find((x) => x.name.toLowerCase() === r.label.trim().toLowerCase()); if (a) map.value[r.label] = 'cat:' + a.parent + ':' + a.name }
 }
+// The company's own categories (chart of accounts): rows that are not a standard line go into one instead of failing.
+const accts = ref<{ id: string; name: string; parent: string }[]>([])
+async function loadAccts() { if (props.target !== 'financials') return; try { accts.value = (await $fetch<{ accounts: { id: string; name: string; parent: string }[] }>('/api/financials/accounts')).accounts } catch { /* optional */ } }
+const nc = reactive({ row: '', name: '', parent: 'opex_other', busy: false, msg: '' })
+function pick(label: string, v: string) { if (v === '__new') { map.value[label] = ''; Object.assign(nc, { row: label, name: label.replace(/\s*\(\d+\)$/, ''), parent: guessParent(label), msg: '' }) } }
+function guessParent(l: string) { const s = l.toLowerCase(); return /payable|accrued|prepayment|deferred|liabilit|tax(es)? payable/.test(s) ? 'other_liabilities' : /capital|equity|reserve|retained|treasury|share/.test(s) ? 'equity' : /receivable|prepaid|investment|property|equipment|intangible|asset|loan/.test(s) ? 'other_assets' : /income|gain|dividend|interest earned/.test(s) ? '' : /cost of (sales|revenue)|direct/.test(s) ? 'cogs' : 'opex_other' }
+async function addCat() {
+  nc.busy = true; nc.msg = ''
+  try { const r = await $fetch<{ id: string; name: string; parent: string; to: string }>('/api/financials/accounts', { method: 'POST', body: { name: nc.name, parent: nc.parent } }); if (!accts.value.some((a) => a.id === r.id)) accts.value.push({ id: r.id, name: r.name, parent: r.parent }); map.value[nc.row] = r.to; nc.row = '' }
+  catch (e) { nc.msg = err(e, 'Could not add the category.') } finally { nc.busy = false }
+}
+const catLabel = (a: { name: string; parent: string }) => a.name + (a.parent ? ' (in ' + (LINE_LABEL[a.parent] ?? a.parent) + ')' : ' (detail only)')
 async function read() {
   if (!f.url.trim()) { msg.value = 'Paste the share link.'; return }
   busy.value = true; msg.value = ''
   try {
+    await loadAccts()
     prev.value = await $fetch<Prev>('/api/sheet-links/preview', { method: 'POST', body: { url: f.url, target: props.target } })
     if (!prev.value.sheets.some((s) => s.sheet === f.sheet)) f.sheet = prev.value.sheets[0]!.sheet
     if (!f.name) f.name = f.sheet ? prev.value.provider + ': ' + f.sheet : prev.value.provider
@@ -115,7 +130,7 @@ async function saveAi() {
   } catch (e) { msg.value = err(e, 'Could not save the link.') } finally { busy.value = false }
 }
 const LINE_LABEL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of revenue', gross_profit: 'Gross profit', opex_payroll: 'Payroll', opex_marketing: 'Sales & marketing', opex_rnd: 'R&D', opex_ga: 'G&A', opex_other: 'Other operating costs', opex_total: 'Total operating costs', ebitda: 'EBITDA', depreciation: 'D&A', interest: 'Interest', tax: 'Tax', net_income: 'Net income', cash: 'Cash', receivables: 'Receivables', investments: 'Investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
-const asWhat = (r: AiBlock['rows'][number]) => (r.to === 'kpi' ? 'Metric: ' + (r.kpi || r.label) : LINE_LABEL[r.to] ?? r.to)
+const asWhat = (r: AiBlock['rows'][number]) => { if (r.to === 'kpi') return 'Metric: ' + (r.kpi || r.label); if (r.to.startsWith('cat:')) { const [, p = '', ...n] = r.to.split(':'); return 'Your category: ' + n.join(':') + (p ? ' (in ' + (LINE_LABEL[p] ?? p) + ')' : '') } return LINE_LABEL[r.to] ?? r.to }
 const PT: Record<string, string> = { month: 'Month', quarter: 'Quarter', year: 'Year' }
 const span = (b: AiBlock) => { const a = b.periods.filter((p) => !p.projected).map((p) => p.period_end).sort(); const pr = b.periods.filter((p) => p.projected).length; return (a.length ? a.length + ' ' + (b.periods[0]?.period_type ?? 'period') + (a.length === 1 ? '' : 's') + ' to ' + perLabel(b.periods[0]?.period_type ?? 'month', a[a.length - 1]!) : 'no actuals') + (pr ? ' · ' + pr + ' projected' : '') }
 const perLabel = (t: string, d: string) => { const x = new Date(d + 'T00:00:00Z'); return t === 'year' ? 'FY' + x.getUTCFullYear() : t === 'quarter' ? 'Q' + (Math.floor(x.getUTCMonth() / 3) + 1) + ' ' + x.getUTCFullYear() : x.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) }
@@ -124,7 +139,8 @@ const kept = computed(() => ai.value?.map.blocks.filter((b) => b.use !== false).
 const money0 = (v: number | null) => (v === null ? '—' : Math.round(v).toLocaleString('en-US'))
 watch(() => f.sheet, () => { if (step.value === 2) { keep.value = null; applyMap() } })
 const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi'))
-const dup = (k: string) => k && k !== 'kpi' && used.value.filter((v) => v === k).length > 1
+const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && used.value.filter((v) => v === k).length > 1
+const summed = computed(() => props.target === 'financials' && used.value.some((v, i, a) => !v.startsWith('cat:') && a.indexOf(v) !== i))
 const chosen = computed(() => Object.values(map.value).filter(Boolean).length)
 async function save() {
   if (props.target === 'forecast' && !f.forecast_id) { msg.value = 'Save a forecast first, then link the sheet to it.'; return }
@@ -195,7 +211,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <p class="sub">{{ prev.provider }} · {{ tab.months.length }} months, {{ mon(tab.months[0]!) }} to {{ mon(tab.months[tab.months.length - 1]!) }}{{ target === 'financials' ? ' (months after this one are left out)' : '' }} · into {{ target === 'forecast' ? 'the forecast as given months' : subjectLabel || 'this company' }}</p>
         <div class="tw"><table class="mt" data-nosearch><thead><tr><th>Row in your sheet</th><th class="n">Latest</th><th>Use as</th></tr></thead>
           <tbody><tr v-for="r in tab.rows" :key="r.label" :class="{ off: !map[r.label] }"><td>{{ r.label }}</td><td class="n">{{ fmt(r.last_value) }} <span class="sub">{{ mon(r.last_month) }}</span></td>
-            <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'"><option value="">Don't use</option><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></select></td></tr></tbody></table></div>
+            <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'" @change="pick(r.label, ($event.target as HTMLSelectElement).value)"><option value="">Don't use</option><optgroup label="Standard lines"><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></optgroup>
+              <optgroup v-if="target === 'financials' && accts.length" label="Your categories"><option v-for="a in accts" :key="a.id" :value="'cat:' + a.parent + ':' + a.name">{{ catLabel(a) }}</option></optgroup>
+              <option v-if="target === 'financials'" value="__new">+ New category…</option></select>
+              <div v-if="nc.row === r.label" class="nc"><input v-model="nc.name" maxlength="80" placeholder="Category name"><select v-model="nc.parent" aria-label="Belongs to"><option value="">No line (keep as a detail)</option><option v-for="k in prev.keys.filter((x) => x.key !== 'kpi')" :key="k.key" :value="k.key">In {{ k.label }}</option></select><button type="button" class="btn sm" :disabled="nc.busy || !nc.name.trim()" @click="addCat">Add</button><button type="button" class="lnk" @click="nc.row = ''">Cancel</button><span v-if="nc.msg" class="error">{{ nc.msg }}</span></div></td></tr></tbody></table></div>
+        <p v-if="target === 'financials'" class="sub">Rows that are not a standard line can go into your own categories (your chart of accounts). A category is added into its line when the sheet does not give that line; rows sent to the same line are added together.{{ summed ? ' Some rows here go to the same line and will be added together.' : '' }}</p>
         <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
       </div>
       <p v-if="msg" class="error">{{ msg }}</p>
@@ -243,4 +263,5 @@ td.n, th.n { text-align: right; white-space: nowrap }
 .sg { margin: 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft) } .sg b { font-weight: 500; color: var(--c-ink) } .sgl { color: var(--c-muted) }
 .chk2 { border: 1px solid #efd9b0; background: #fdf8ee; padding: 10px 12px; font-size: 13px; } .chk2 ul { margin: 8px 0 0; padding-left: 18px; } .chk2 li { margin: 3px 0; color: var(--c-ink-soft); } .chk2 li.error b { color: var(--c-danger); }
 .shs { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); white-space: nowrap; }
+.nc { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; margin-top: 6px; align-items: center; } .nc input, .nc select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); min-width: 0; } .nc .lnk { background: none; border: 0; color: var(--c-muted); cursor: pointer; font: inherit; font-size: 12.5px; } .nc .error { grid-column: 1 / -1; }
 </style>

@@ -12,5 +12,5 @@ export default defineEventHandler(async (event) => {
   // A company's own Financials pages: the company first, then its subsidiaries (each with its name and currency).
   const pages = org.kind === 'company' ? (await db().query<{ id: string; name: string; currency: string | null; main: boolean }>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed' ORDER BY (parent_id IS NOT NULL), created_at")).rows : []
   if (company && pages[0]?.main) company.name = pages[0].name
-  return { company, pages, paid: org.kind === 'company' && org.plan_code === 'company_scale', entities: e.rows, companies: c.rows, currencies: cur.rows.map((r) => r.currency), lines: LINES, derived: DERIVED }
+  return { company, pages, paid: org.kind === 'company' && org.plan_code !== 'company_free', entities: e.rows, companies: c.rows, currencies: cur.rows.map((r) => r.currency), lines: LINES, derived: DERIVED }
 })

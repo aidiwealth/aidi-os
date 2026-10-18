@@ -12,7 +12,7 @@ const LETTER = (i: number) => { let s = '', n = i + 1; while (n > 0) { const m =
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%]+/g, ' ').trim()
 
 const Period = z.object({ col: z.string().regex(/^[A-Za-z]{1,3}$/), period_type: z.enum(['month', 'quarter', 'year']), period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), projected: z.boolean() })
-const MapRowAi = z.object({ row: z.number().int().min(1).max(5000), label: z.string().max(120), to: z.string().max(40), kpi: z.string().max(60).default(''), pct: z.boolean().default(false) })
+const MapRowAi = z.object({ row: z.number().int().min(1).max(5000), label: z.string().max(120), to: z.string().max(140), kpi: z.string().max(60).default(''), pct: z.boolean().default(false) })
 const Block = z.object({ sheet: z.string().max(120), title: z.string().max(120), label_col: z.string().regex(/^[A-Za-z]{1,3}$/), scale: z.number().positive().max(1e9).default(1), periods: z.array(Period).max(80), rows: z.array(MapRowAi).max(200), use: z.boolean().default(true) })
 export const AiMap = z.object({
   company: z.object({ name: z.string().max(200), description: z.string().max(600), website: z.string().max(200) }),
@@ -59,11 +59,11 @@ const TAB_JSON = {
     notes: { type: 'string' } } }
 const SYSTEM = (currency: string) => [
   'You map one tab of a company\'s financial workbook so its figures can be read from the cells automatically. You never copy numbers: you say where they are (row number, column letter).',
-  'Standard lines (use these keys in "to"): ' + LINE_HELP() + '. Anything else worth tracking (customers, ARR, MRR, churn, headcount, burn, runway, gross margin %, revenue in another currency, volumes) uses to="kpi" with a short kpi name, e.g. "ARR", "Customers", "Revenue (NGN)".',
+  'Standard lines (use these keys in "to"): ' + LINE_HELP() + '. A row that is the company\'s own item belonging to a standard line (e.g. Consultants, Software & Apps, Technology expenses, Charges & fees under other operating costs; Loans receivable, Prepaid carrier credit, Property & equipment, Strategic investments under other assets; Accrued expenses, Taxes payable, Customer prepayments under other liabilities; Paid-in capital, Treasury stock, Retained earnings under equity; Interest or dividend income, FX gains under no line) uses to="cat:<line key>:<the row label>" (or "cat::<label>" when it belongs to no line). These are kept as the company\'s own categories and added into that line only when the tab does not give the line itself, so map the total rows to the standard line too. Anything else worth tracking (customers, ARR, MRR, churn, headcount, burn, runway, gross margin %, revenue in another currency, volumes) uses to="kpi" with a short kpi name, e.g. "ARR", "Customers", "Revenue (NGN)".',
   'Reporting currency is ' + currency + '. Map standard lines only to rows in that currency; rows in another currency become KPIs named with the currency. Costs can be negative or in brackets; map them anyway.',
   'A block is one table: one label column, the period columns, and the rows. Side-by-side tables are separate blocks (each with its own label column). A balance sheet "as of" a date is a block with one month period ending that date.',
   'Periods: month (period_end = last day of the month), quarter (last day of the quarter), year (fiscal year end; if not stated use 31 Dec). projected=true for E / F / Budget / Forecast / Projected columns, false for A / Actual. LTM or trailing tabs usually hold monthly actuals.',
-  'scale: 1000 if the block says figures are in thousands, 1000000 for millions, else 1. pct=true for percentage rows. Do not map the same standard line twice for the same period.',
+  'scale: 1000 if the block says figures are in thousands, 1000000 for millions, else 1. pct=true for percentage rows. Do not map two different rows to the same standard line for the same period; use a category for the parts instead.',
   'If the tab has no time series (charts, notes, peer lists, investor lists), return no blocks and put what matters in facts.',
   'facts: one-off information (company description, website, share price, shares outstanding, valuation, cap table link, top customers, past or new investors, use of funds), with goes_to: "Company profile", "Cap table", "Fundraising pipeline", "Contacts", "Investor update" or "KPI". At most 12 per tab.',
   'suggestions: up to 3 figures investors expect that this tab lacks or hides, each with why. Keep every text short.'
@@ -73,14 +73,14 @@ const SYSTEM = (currency: string) => [
 const t = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '')
 const arr = (v: unknown): any[] => (Array.isArray(v) ? v : [])
 function cleanTab(sheet: string, o: any, maxRow: number) {
-  const keys = new Set([...LINE_KEYS, 'kpi'])
+  const keys = new Set([...LINE_KEYS, 'kpi']), okTo = (x: string) => keys.has(x) || !!catOf(x)
   const blocks = arr(o?.blocks).slice(0, 12).map((b) => ({
     sheet, title: t(b?.title, 120) || sheet, label_col: /^[A-Za-z]{1,3}$/.test(t(b?.label_col, 3)) ? t(b?.label_col, 3).toUpperCase() : 'A',
     scale: [1, 1000, 1000000, 1000000000].includes(Number(b?.scale)) ? Number(b.scale) : 1, use: true,
     periods: arr(b?.periods).filter((p) => /^[A-Za-z]{1,3}$/.test(t(p?.col, 3)) && ['month', 'quarter', 'year'].includes(p?.period_type) && /^\d{4}-\d{2}-\d{2}$/.test(t(p?.period_end, 10)))
       .slice(0, 80).map((p) => ({ col: t(p.col, 3).toUpperCase(), period_type: p.period_type as 'month' | 'quarter' | 'year', period_end: t(p.period_end, 10), projected: !!p.projected })),
-    rows: arr(b?.rows).filter((r) => Number.isInteger(Number(r?.row)) && Number(r.row) >= 1 && Number(r.row) <= maxRow + 5 && keys.has(t(r?.to, 40)) && (t(r?.to, 40) !== 'kpi' || t(r?.kpi, 60) || t(r?.label, 120)))
-      .slice(0, 200).map((r) => ({ row: Number(r.row), label: t(r.label, 120), to: t(r.to, 40), kpi: t(r.kpi, 60), pct: !!r.pct }))
+    rows: arr(b?.rows).filter((r) => Number.isInteger(Number(r?.row)) && Number(r.row) >= 1 && Number(r.row) <= maxRow + 5 && okTo(t(r?.to, 140)) && (t(r?.to, 140) !== 'kpi' || t(r?.kpi, 60) || t(r?.label, 120)))
+      .slice(0, 200).map((r) => ({ row: Number(r.row), label: t(r.label, 120), to: t(r.to, 140), kpi: t(r.kpi, 60), pct: !!r.pct }))
   })).filter((b) => b.periods.length && b.rows.length)
   return { what: t(o?.what, 200), used: !!o?.used || blocks.length > 0, blocks, notes: t(o?.notes, 300), fiscal_year_end: t(o?.fiscal_year_end, 20),
     company: { name: t(o?.company?.name, 200), description: t(o?.company?.description, 600), website: t(o?.company?.website, 200) },
@@ -161,7 +161,7 @@ function findRow(g: Grid, labelCol: number, row: number, label: string): number 
   return null
 }
 
-export interface PeriodOut { period_type: 'month' | 'quarter' | 'year'; period_end: string; lines: Record<string, number>; kpis: Record<string, number> }
+export interface PeriodOut { period_type: 'month' | 'quarter' | 'year'; period_end: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number> }
 // Reads the figures the map points at. Projected and unfinished periods are left out of the actuals and counted.
 export function readWithMap(grids: Grid[], map: AiMapT, today = new Date().toISOString().slice(0, 10)): { periods: PeriodOut[]; projected: number; missing: string[]; found: number } {
   const out = new Map<string, PeriodOut>(); const missing: string[] = []; let projected = 0, found = 0
@@ -174,7 +174,7 @@ export function readWithMap(grids: Grid[], map: AiMapT, today = new Date().toISO
       const pe = lastDay(p.period_end)
       if (p.projected || pe > lastDay(today)) { projected++; continue }
       const k = p.period_type + ':' + pe
-      const cur = out.get(k) ?? { period_type: p.period_type, period_end: pe, lines: {}, kpis: {} }
+      const cur = out.get(k) ?? { period_type: p.period_type, period_end: pe, lines: {}, kpis: {}, detail: {} }
       for (const r of b.rows) {
         const i = findRow(g, lc, r.row, r.label)
         if (i === null) { if (!missing.includes(b.sheet + ': ' + r.label)) missing.push(b.sheet + ': ' + r.label); continue }
@@ -182,12 +182,15 @@ export function readWithMap(grids: Grid[], map: AiMapT, today = new Date().toISO
         if (r.pct) { if (Math.abs(v) <= 1.5) v *= 100 } else v *= b.scale
         v = Math.round(v * 100) / 100
         if (r.to === 'kpi') cur.kpis[(r.kpi || r.label).slice(0, 60)] = v
+        else if (isCat(r.to)) addFigure({}, cur.detail!, r.to, v)
         else if (!(r.to in cur.lines)) cur.lines[r.to] = v
         found++
       }
-      if (Object.keys(cur.lines).length || Object.keys(cur.kpis).length) out.set(k, cur)
+      if (Object.keys(cur.lines).length || Object.keys(cur.kpis).length || Object.keys(cur.detail!).length) out.set(k, cur)
     }
   }
+  // The company's own categories fill their standard line when the tab does not give it.
+  for (const p of out.values()) if (p.detail && Object.keys(p.detail).length) foldCategories(p.lines, p.detail)
   return { periods: [...out.values()].sort((a, b) => a.period_end.localeCompare(b.period_end) || a.period_type.localeCompare(b.period_type)), projected, missing, found }
 }
 
@@ -197,13 +200,15 @@ export async function writePeriods(subject: string, periods: PeriodOut[], curren
   const s = parseSubject(subject); if (s.kind === 'group') throw apiError('invalid', 'Choose a company or entity.')
   await subjectName(subject)
   const col = s.kind === 'entity' ? 'entity_id' : 'company_id'; let written = 0; const skipped: string[] = []
+  // New categories go into the chart of accounts.
+  await ensureAccounts([...new Set(periods.flatMap((p) => Object.keys(p.detail ?? {})))].map((k) => ({ parent: k.slice(0, k.indexOf('|')), name: k.slice(k.indexOf('|') + 1) })))
   for (const p of periods) {
     const lines = Object.fromEntries(Object.entries(p.lines).map(([k, v]) => [k, COSTS.includes(k) ? Math.abs(v) : v]))
-    const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number> }>(`SELECT id, lines, kpis FROM financials.statements WHERE ${col} = $1 AND period_type = $2 AND period_end = $3`, [s.id, p.period_type, p.period_end])).rows[0]
-    const merged = { ...(ex?.lines ?? {}), ...lines }, mk = { ...(ex?.kpis ?? {}), ...p.kpis }
+    const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number> }>(`SELECT id, lines, kpis, detail FROM financials.statements WHERE ${col} = $1 AND period_type = $2 AND period_end = $3`, [s.id, p.period_type, p.period_end])).rows[0]
+    const merged = { ...(ex?.lines ?? {}), ...lines }, mk = { ...(ex?.kpis ?? {}), ...p.kpis }, md = { ...(ex?.detail ?? {}), ...(p.detail ?? {}) }
     if (balanceError(merged)) { skipped.push(p.period_end + ' (' + p.period_type + '): balance sheet does not balance'); continue }
-    if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), currency])
-    else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, source, created_by) VALUES ($1,$2,$3,$4,$5,$6,'sheet',$7)`, [s.id, p.period_type, p.period_end, currency, JSON.stringify(merged), JSON.stringify(mk), userId])
+    if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), currency, JSON.stringify(md)])
+    else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, detail, source, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,'sheet',$8)`, [s.id, p.period_type, p.period_end, currency, JSON.stringify(merged), JSON.stringify(mk), JSON.stringify(md), userId])
     written++
   }
   return { written, skipped }

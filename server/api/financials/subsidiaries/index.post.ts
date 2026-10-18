@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   const org = (await currentOrg())!
   if (org.kind !== 'company') throw apiError('invalid', 'Subsidiaries are for company workspaces.')
-  if (org.plan_code !== 'company_scale') throw apiError('paid', 'Subsidiaries are part of the Scale plan.', 402)
+  if (org.plan_code === 'company_free') throw apiError('paid', 'Subsidiaries are part of the Startup and Scale plans.', 402)
   const b = z.object({ name: z.string().trim().min(2).max(120), currency: z.string().regex(/^[A-Z]{3}$/), country: z.string().trim().max(60).default('') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Give the subsidiary a name and a currency.')
   const main = await companyEntityId()

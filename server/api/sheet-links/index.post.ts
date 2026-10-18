@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { AiMap } from '~/server/utils/sheet-ai'
 const Body = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(120), url: z.string().trim().min(10).max(600), target: z.enum(['financials', 'forecast']),
   subject: z.string().max(80).optional(), forecast_id: z.string().uuid().optional(), currency: z.string().regex(/^[A-Z]{3}$/).default('USD'), sheet: z.string().max(120).default(''),
-  mapping: z.array(z.object({ label: z.string().max(90), to: z.string().max(40) })).max(150).default([]), auto: z.boolean().default(true),
+  mapping: z.array(z.object({ label: z.string().max(90), to: z.string().max(140) })).max(150).default([]), auto: z.boolean().default(true),
   mode: z.enum(['rows', 'ai']).default('rows'), ai_map: AiMap.optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
@@ -12,11 +12,13 @@ export default defineEventHandler(async (event) => {
   const d = b.data
   await requireModule(event, d.target === 'forecast' ? 'forecast' : 'financials')
   const keys = new Set(TARGET_KEYS[d.target]().map((k) => k.key))
-  const mapping = d.mode === 'ai' ? [] : d.mapping.filter((m) => m.to && keys.has(m.to))
+  // A row can also go to one of the company's own categories (cat:<line>:<name>), added to its chart of accounts.
+  const mapping = d.mode === 'ai' ? [] : d.mapping.filter((m) => m.to && (keys.has(m.to) || (d.target === 'financials' && !!catOf(m.to))))
   if (d.mode === 'ai') { if (d.target !== 'financials' || !d.ai_map || !d.ai_map.blocks.some((x) => x.use !== false)) throw apiError('invalid', 'Read the workbook with AI and keep at least one table.') }
   else if (!mapping.length) throw apiError('invalid', 'Choose at least one row to use.')
-  const dupe = mapping.filter((m) => m.to !== 'kpi').map((m) => m.to).find((k, i, a) => a.indexOf(k) !== i)
-  if (dupe) throw apiError('invalid', 'Two rows go to the same line (' + (TARGET_KEYS[d.target]().find((k) => k.key === dupe)?.label ?? dupe) + '). Choose one.')
+  // Several rows to the same line are added together (no error); forecasts still take one row per item.
+  const dupe = d.target === 'forecast' ? mapping.filter((m) => m.to !== 'kpi').map((m) => m.to).find((k, i, a) => a.indexOf(k) !== i) : undefined
+  if (dupe) throw apiError('invalid', 'Two rows go to the same forecast item (' + (TARGET_KEYS[d.target]().find((k) => k.key === dupe)?.label ?? dupe) + '). Choose one.')
   if (d.target === 'financials') { if (!d.subject || d.subject === 'group') throw apiError('invalid', 'Choose the company or entity.'); await subjectName(d.subject) }
   else if (!d.forecast_id || !(await db().query('SELECT 1 FROM financials.forecasts WHERE id = $1', [d.forecast_id])).rows[0]) throw apiError('invalid', 'Choose a saved forecast.')
   const args = [d.name, d.url, d.target, d.target === 'financials' ? d.subject : null, d.target === 'forecast' ? d.forecast_id : null, d.currency, d.sheet || null, JSON.stringify(mapping), d.auto, d.mode, d.mode === 'ai' ? JSON.stringify(d.ai_map) : null]
