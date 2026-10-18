@@ -51,6 +51,9 @@ const groups = computed(() => {
   return out.filter((g) => g.items.length)
 })
 const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers', exact: false }, { to: '/platform/perks', label: 'Perks', icon: 'perks', exact: false }, { to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
+// Financials sub-menu (company workspaces): the figures, revenue retention and churn, and customer analysis.
+const FIN_SUBS: [string, string][] = [['/financials', 'Statements & overview'], ['/financials/retention', 'Revenue retention'], ['/financials/customers', 'Customers']]
+const custLocked = computed(() => !!(mods.value ?? []).find((x) => x.code === 'fin_customers' && x.locked))
 const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', internal: 'Internal' }
 const collapsed = useState('sb-collapsed', () => false)
 const sbScrolled = ref(false)
@@ -63,6 +66,7 @@ const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
   if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
   if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', me.value?.org?.kind === 'company' ? 'Dashboard' : 'Overview']
+  const sub = FIN_SUBS.slice(1).find(([to]) => isOn(to)); if (sub) return ['Financials', sub[1]]
   for (const g of groups.value) { const m = g.items.find((x) => itemOn(x)); if (m) return [g.label, m.label] }
   return [me.value?.org?.name ?? 'Workspace']
 })
@@ -97,7 +101,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           <NuxtLink v-if="!(me?.roles ?? []).every((r: string) => r === 'wealth_client') || !(me?.roles ?? []).length" to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
           <template v-for="g in groups" :key="g.label">
             <p class="sb-group">{{ g.label }}</p>
-            <NuxtLink v-for="m in g.items" :key="m.code" :to="m.to" class="sb-link" :class="{ on: itemOn(m), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
+            <template v-for="m in g.items" :key="m.code"><NuxtLink :to="m.to" class="sb-link" :class="{ on: itemOn(m), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink></template>
           </template>
           <NuxtLink v-if="me?.org?.kind === 'company'" to="/perks" class="sb-link" :class="{ on: isOn('/perks') }" title="Perks"><AppIcon name="perks" class="sb-icon" /><span class="sb-label">Perks</span></NuxtLink>
           <template v-if="customersLink"><p class="sb-group">Finvry</p><NuxtLink to="/platform/customers" class="sb-link" :class="{ on: isOn('/platform/customers') }" title="Finvry customers"><AppIcon name="customers" class="sb-icon" /><span class="sb-label">Finvry customers</span></NuxtLink></template>
@@ -158,6 +162,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-link { display: flex; align-items: center; gap: 11px; width: 100%; padding: 7px 12px; border-radius: var(--radius-sm); color: var(--c-ink-soft); font: inherit; font-size: 13.5px; font-weight: 500; text-decoration: none; background: none; border: 0; cursor: pointer; text-align: left; transition: background .12s, color .12s; }
 .sb-link:hover { background: rgba(15,17,21,.05); color: var(--c-ink); }
 .sb-link.on { background: var(--c-signal-soft); color: var(--c-signal); }
+.sb-subs { display: flex; flex-direction: column; margin: 1px 0 4px 23px; border-left: 1px solid var(--c-rule); } .sb-sub { padding: 5px 12px; font-size: 12.5px; color: var(--c-muted); text-decoration: none; } .sb-sub:hover { color: var(--c-ink); } .sb-sub.on { color: var(--c-signal); font-weight: 500; } .sb-sub { display: flex; align-items: center; }
 .sb-icon { width: 18px; height: 18px; flex: none; }
 .sb-badge { margin-left: auto; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 0; background: #d93a3a; color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; line-height: 1; } .collapsed .sb-badge { position: absolute; margin: 0; transform: translate(14px, -10px); min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
 .sb-lock { width: 13px; height: 13px; margin-left: auto; color: var(--c-muted); flex: none; } .sb-link.lockd .sb-label { opacity: .75; }

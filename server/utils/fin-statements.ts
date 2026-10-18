@@ -1,6 +1,7 @@
 // Standard financial statements from a company's figures: income statement, balance sheet and cash flow by month,
 // quarter or year, with the company's logo and the founder's comments. As a typeset PDF or an Excel workbook.
-import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
 import { deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
 
 export interface StRow { label: string; key?: string; values: (number | null)[]; kind?: 'head' | 'total' | 'sub' | 'pct' | 'line' }
@@ -82,13 +83,16 @@ export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: '
     ws.addRow([s.company + ': management comments']).font = { bold: true, size: 13 }; ws.addRow([])
     for (const p of s.comments.split(/\n{2,}/)) { const r = ws.addRow([p.trim()]); r.alignment = { wrapText: true, vertical: 'top' }; r.height = Math.min(300, 15 * Math.ceil(p.length / 100)) }
   }
+  // Finvry's typeface throughout (Excel falls back to a similar sans-serif where it is not installed).
+  wb.eachSheet((ws) => ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => { c.font = { size: 10.5, ...(c.font ?? {}), name: 'Instrument Sans' } })))
   return Buffer.from(await wb.xlsx.writeBuffer())
 }
 
 export async function statementsPdf(s: Statements, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
   pdf.setTitle(s.company + ' financial statements'); pdf.setProducer('Finvry'); pdf.setCreator(clean(s.company))
-  const reg = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold), ital = await pdf.embedFont(StandardFonts.HelveticaOblique)
+  pdf.registerFontkit(fontkit)
+  const reg = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.semibold, 'base64'), { subset: true }), ital = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.italic, 'base64'), { subset: true })
   let img: PDFImage | null = null
   if (logo) img = await (logo.ext === 'png' ? pdf.embedPng(logo.data) : pdf.embedJpg(logo.data)).catch(() => null)
   const W = 842, H = 595, M = 40, navy = rgb(12 / 255, 26 / 255, 46 / 255), blue = rgb(28 / 255, 84 / 255, 125 / 255), ink = rgb(0.1, 0.11, 0.14), mut = rgb(0.45, 0.47, 0.5), rule = rgb(0.85, 0.87, 0.9), red = rgb(0.7, 0.15, 0.15)

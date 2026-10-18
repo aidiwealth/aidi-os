@@ -59,12 +59,16 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
       FROM financials.statements WHERE ${s.kind === 'entity' ? 'entity_id' : 'company_id'} = $1 AND period_type = $2 ORDER BY period_end`, [s.id, periodType])
     return r.rows
   }
-  const r = await db().query<{ period_end: string; lines: L }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines FROM financials.statements s
-      LEFT JOIN portfolio.companies c ON c.id = s.company_id WHERE s.period_type = $1 AND s.currency = $2 AND (s.entity_id IS NOT NULL OR c.relationship = 'subsidiary') ORDER BY s.period_end`, [periodType, currency])
+  // A company with subsidiaries adds them all up, converting other currencies at the latest daily rate.
+  const company = (await currentOrg())?.kind === 'company'
+  const r = await db().query<{ period_end: string; lines: L; currency: string }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines, s.currency FROM financials.statements s
+      LEFT JOIN portfolio.companies c ON c.id = s.company_id WHERE s.period_type = $1 AND ($3 OR s.currency = $2) AND (s.entity_id IS NOT NULL OR c.relationship = 'subsidiary') ORDER BY s.period_end`, [periodType, currency, company])
   const by = new Map<string, L>()
   for (const x of r.rows) {
+    const k0 = x.currency === currency ? 1 : await fxRate(x.currency, currency)
+    if (!k0) continue
     const t = by.get(x.period_end) ?? {}
-    for (const k of LINE_KEYS) { const v = n(x.lines[k]); if (v !== null) t[k] = (n(t[k]) ?? 0) + v }
+    for (const k of LINE_KEYS) { const v = n(x.lines[k]); if (v !== null) t[k] = (n(t[k]) ?? 0) + v * k0 }
     by.set(x.period_end, t)
   }
   return [...by.entries()].map(([period_end, lines]) => ({ id: null, period_end, period_type: periodType, currency, lines, kpis: {}, notes: null, show_to_lps: false, source: 'group', document_id: null }))

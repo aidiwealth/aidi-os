@@ -59,7 +59,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
         <label v-if="aidi && ents?.length">Company<select v-model="f.entity_id"><option v-if="!meK?.entity_scoped" value="">Group / not one company</option><option v-for="e in ents" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label>What it's for <em>optional</em><input v-model="f.description" maxlength="500" placeholder="e.g. Short version for demo day investors"></label>
         <div class="src"><button :class="{ on: f.source === 'upload' }" @click="f.source = 'upload'">Upload a PDF</button><button :class="{ on: f.source === 'doc' }" :disabled="!data.pdfs.length" @click="f.source = 'doc'">Use one from Documents</button></div>
-        <label v-if="f.source === 'upload'" class="drop"><input type="file" accept=".pdf" hidden @change="onFile"><b>{{ f.file ? f.file.name : 'Choose a PDF' }}</b><span>{{ f.file ? Math.round(f.file.size / 1024) + ' KB' : 'Click to browse' }}</span></label>
+        <DropZone v-if="f.source === 'upload'" accept=".pdf" :label="f.file ? f.file.name : 'Drag and drop the PDF here'" :hint="f.file ? Math.round(f.file.size / 1024) + ' KB · drop another to replace it' : 'PDF · or click to choose'" @change="onFile" />
         <select v-else v-model="f.doc"><option value="">Choose a PDF</option><option v-for="p in data.pdfs" :key="p.id" :value="p.id">{{ p.title }}</option></select>
         <label class="chk"><input v-model="f.primary" type="checkbox"> Make this my main deck</label>
         <p v-if="msg" class="error">{{ msg }}</p>

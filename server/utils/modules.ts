@@ -15,6 +15,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'contacts', group: 'fin', label: 'Contacts', to: '/contacts', roles: ['gp', 'team'], api: ['/api/crm/contacts', '/api/crm/lists', '/api/crm/fields', '/api/crm/notes'], pages: ['/contacts'], switchable: true },
   { code: 'fundraising', group: 'fin', label: 'Fundraising', to: '/fundraising', roles: ['gp', 'team'], api: ['/api/fundraising', '/api/crm/pipelines', '/api/crm/deals', '/api/crm/stages', '/api/crm/meetings', '/api/crm/calendar', '/api/crm/investors'], pages: ['/fundraising'], switchable: true },
   { code: 'updates', group: 'fin', label: 'Investor updates', to: '/updates', roles: ['gp', 'team'], api: ['/api/updates', '/api/investors'], pages: ['/updates'], switchable: true },
+  { code: 'fin_customers', group: 'fin', label: 'Customers & retention', to: '/financials/retention', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/financials/customers'], pages: ['/financials/retention', '/financials/customers'], switchable: true },
   { code: 'boards', group: 'fin', label: 'Boards', to: '/financials/boards', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/financials/boards'], pages: ['/financials/boards'], switchable: true },
   { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'equity', group: 'fin', label: 'Cap table', to: '/cap-table', roles: ['admin', 'gp', 'team'], api: ['/api/equity'], pages: ['/cap-table'], switchable: true },

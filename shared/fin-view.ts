@@ -95,3 +95,43 @@ export function withSecurities<T extends Record<string, number | null | undefine
   const burn = typeof d.burn === 'number' ? d.burn : null
   return { ...d, bank_cash: d.cash ?? null, cash, runway: burn ? Math.round((cash / burn) * 10) / 10 : d.runway ?? null }
 }
+
+// Burn and runway, checked three ways over the last three months (monthly figures):
+//   operating cash flow (plus investing, when given) · net loss with depreciation added back · fall in cash not funded
+//   by financing. The figure used is the 3-month average from cash flow when there is one, else from the change in
+//   cash, else from the net loss. Where the methods disagree, or cash and profit point different ways, it says so.
+export interface BurnMethod { key: 'cash_flow' | 'net_loss' | 'cash_change'; label: string; value: number | null }
+export interface BurnReview { burn: number | null; basis: string; runway: number | null; cash: number | null; cash_at: string | null; months: number; methods: BurnMethod[]; status: 'ok' | 'check' | 'none'; issues: string[]; profitable: boolean }
+export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, number | null>) => number | null): BurnReview {
+  const rows = raw.filter((r) => r.period_type === 'month').slice().sort((a, b) => (a.period_end < b.period_end ? -1 : 1))
+  const d = rows.map((r) => r.derived ?? deriveLines(r.lines, 1))
+  const cashOf = (x: Record<string, number | null>) => (cashOverride ? cashOverride(x) : x.cash)
+  const last3 = d.slice(-3), n = last3.length
+  const avg = (f: (x: Record<string, number | null>) => number | null) => { const v = last3.map(f).filter((x): x is number => x !== null); return v.length === n && n ? v.reduce((a, b) => a + b, 0) / n : null }
+  const cf = avg((x) => (x.operating_cf === null ? null : -((x.operating_cf ?? 0) + (x.investing_cf ?? 0))))
+  const nl = avg((x) => (x.net_income === null ? null : -(x.net_income + (x.depreciation ?? 0))))
+  // Cash change: from the month before the window to its last month, net of money raised (financing).
+  let cc: number | null = null
+  const startIdx = d.length - n - 1
+  if (n && startIdx >= 0) { const a = cashOf(d[startIdx]!), b = cashOf(d[d.length - 1]!); if (a !== null && b !== null) { const fin = last3.reduce((s, x) => s + (x.financing_cf ?? 0), 0); cc = (a - b + fin) / n } }
+  const methods: BurnMethod[] = [{ key: 'cash_flow', label: 'Operating (and investing) cash flow', value: cf }, { key: 'cash_change', label: 'Fall in cash, excluding money raised', value: cc }, { key: 'net_loss', label: 'Net loss, depreciation added back', value: nl }]
+  const pick = methods.find((m) => m.value !== null) ?? null
+  let cashAt: string | null = null, cash: number | null = null
+  for (let i = d.length - 1; i >= 0; i--) { const v = cashOf(d[i]!); if (v !== null) { cash = v; cashAt = rows[i]!.period_end; break } }
+  const burn = pick ? Math.max(0, pick.value!) : null
+  const issues: string[] = []
+  const vals = methods.filter((m) => m.value !== null) as { key: string; label: string; value: number }[]
+  const fmt = (v: number) => Math.round(v).toLocaleString('en-US')
+  if (vals.length >= 2) {
+    const hi = Math.max(...vals.map((v) => v.value)), lo = Math.min(...vals.map((v) => v.value)), scale = Math.max(Math.abs(hi), Math.abs(lo), 1)
+    if ((hi - lo) / scale > 0.3 && hi - lo > 1000) issues.push('The burn figures disagree: ' + vals.map((v) => v.label.toLowerCase() + ' ' + fmt(v.value)).join(', ') + ' a month. Check non-cash items, unpaid bills, customer prepayments, loan repayments or a raise missing from the figures.')
+  }
+  if (cc !== null && cc < 0 && (nl ?? 0) > 0 && !last3.some((x) => (x.financing_cf ?? 0) !== 0)) issues.push('Cash went up while the figures show a loss. If money was raised or a loan drawn, add it as financing cash flow so burn is not understated.')
+  if ((nl ?? 0) <= 0 && nl !== null && (cc ?? 0) > 0 && (cc ?? 0) > 1000) issues.push('Profitable on paper but cash is falling about ' + fmt(cc!) + ' a month. Check receivables, stock, capital spending or loan repayments.')
+  const single = last3.length ? (() => { const x = last3[last3.length - 1]!; return x.operating_cf !== null ? -((x.operating_cf ?? 0) + (x.investing_cf ?? 0)) : x.net_income !== null ? -x.net_income : null })() : null
+  if (single !== null && burn && burn > 0 && Math.abs(single - burn) / burn > 0.5) issues.push('The latest month (' + fmt(single) + ') is far from the 3-month average (' + fmt(burn) + '); runway uses the average.')
+  if (cashAt && rows.length && cashAt < rows[rows.length - 1]!.period_end) issues.push('Cash was last given at ' + cashAt + '; runway is from that balance.')
+  if (n < 3) issues.push('Fewer than three months of figures: burn is a rough guide.')
+  const runway = cash !== null && burn ? Math.round((cash / burn) * 10) / 10 : null
+  return { burn: burn === null ? null : Math.round(burn), basis: pick?.label ?? '', runway, cash, cash_at: cashAt, months: n, methods, status: !pick ? 'none' : issues.length ? 'check' : 'ok', issues, profitable: burn === 0 }
+}

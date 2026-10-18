@@ -51,7 +51,7 @@ defineExpose({ ready })
       <div class="tabs"><button v-for="[k, l] in ([['typed', 'Type'], ['drawn', 'Draw'], ['uploaded', 'Upload']] as const)" :key="k" type="button" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></div>
       <div v-if="tab === 'typed'" class="pv"><img v-if="model.png" :src="model.png" alt="Your typed signature"><span v-else>Type your name above</span></div>
       <ClientOnly v-else-if="tab === 'drawn'"><SignPad v-model="drawn" /></ClientOnly>
-      <div v-else class="up"><label class="btn secondary sm">Choose an image<input type="file" accept="image/*" hidden @change="onUpload"></label><img v-if="uploaded" :src="uploaded" alt="Your uploaded signature"><span v-else class="hint">A photo or scan of your signature on white paper works best.</span><p v-if="upErr" class="error">{{ upErr }}</p></div>
+      <div v-else class="up"><DropZone compact accept="image/*" label="Drag and drop a picture of your signature" hint="PNG or JPG · or click" @change="onUpload" /><img v-if="uploaded" :src="uploaded" alt="Your uploaded signature"><span v-else class="hint">A photo or scan of your signature on white paper works best.</span><p v-if="upErr" class="error">{{ upErr }}</p></div>
       <label class="agree"><input v-model="model.agree" type="checkbox"> <span>{{ agreeText || 'I have read and agree to the ' + (all.length > 1 ? all.map((d) => d.title).join(' and ') : all[0]?.title) + ', and I sign electronically. My electronic signature is as binding as a handwritten one.' }}</span></label>
     </div>
   </div>

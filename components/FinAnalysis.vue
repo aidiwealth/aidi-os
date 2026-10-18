@@ -11,11 +11,11 @@ const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk:
 </script>
 <template>
   <section class="fa">
-    <div class="fah"><span class="eyebrow">What your numbers say</span><span class="meta">{{ data ? data.period + (data.ai ? '' : ' · worked out from your figures') : '' }}<button v-if="data" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button></span></div>
+    <div class="fah"><span class="eyebrow">What your numbers say · 4 key points</span><span class="meta">{{ data ? data.period + (data.ai ? '' : ' · worked out from your figures') : '' }}<button v-if="data" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button></span></div>
     <p v-if="pending && !data" class="skel">Reading your figures…</p>
     <template v-else-if="data">
       <h2 class="hl">{{ data.headline }}</h2>
-      <div class="ins"><article v-for="(i, n) in data.insights" :key="n" :class="i.tone"><em>{{ TONE[i.tone] }}</em><b>{{ i.title }}</b><p>{{ i.detail }}</p></article></div>
+      <div class="ins" :style="{ '--n': Math.min(4, data.insights.length) }"><article v-for="(i, n) in data.insights.slice(0, 4)" :key="n" :class="i.tone"><em>{{ TONE[i.tone] }}</em><b>{{ i.title }}</b><p>{{ i.detail }}</p></article></div>
       <div v-if="groups.length" class="tk"><h3>Take to your team</h3>
         <div class="tkg"><div v-for="[who, items] in groups" :key="who"><span class="who">{{ who }}</span><ul><li v-for="(f, n) in items" :key="n"><b>{{ f.item }}</b><span>{{ f.why }}</span></li></ul></div></div></div>
       <p v-if="data.checks" class="ft">{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up; the analysis may be off until they are fixed.</p>
@@ -28,11 +28,12 @@ const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk:
 .fah { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--c-muted); } .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
 .hl { font-family: var(--font-heading); font-weight: 500; font-size: 22px; line-height: 1.3; color: var(--c-navy); margin: 10px 0 18px; max-width: 70ch; }
-.ins { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1px; background: var(--c-rule); border: 1px solid var(--c-rule); }
+.ins { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 1px; background: var(--c-rule); border: 1px solid var(--c-rule); }
 .ins article { background: #fff; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; position: relative; } .ins article::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--c-navy); } .ins article.watch::before { background: #c98a1c; } .ins article.risk::before { background: var(--c-danger); }
 .ins em { font-style: normal; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .ins b { font-size: 14.5px; font-weight: 600; color: var(--c-ink); } .ins p { margin: 0; font-size: 13px; color: var(--c-ink-soft); line-height: 1.5; }
 .tk { margin-top: 18px; } .tk h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--c-ink); }
 .tkg { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 22px; } .who { display: inline-block; font-size: 11.5px; padding: 2px 8px; background: var(--c-navy); color: #fff; margin-bottom: 6px; }
 .tkg ul { list-style: none; margin: 0; padding: 0; } .tkg li { padding: 7px 0; border-bottom: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 2px; font-size: 13px; } .tkg li b { font-weight: 600; color: var(--c-ink); } .tkg li span { color: var(--c-ink-soft); }
 .ft { margin: 14px 0 0; font-size: 12.5px; color: #8a5a0a; } .skel { color: var(--c-muted); font-size: 13.5px; margin: 10px 0 0; }
+@media (max-width: 1100px) { .ins { grid-template-columns: repeat(2, minmax(0, 1fr)); } } @media (max-width: 640px) { .ins { grid-template-columns: 1fr; } }
 </style>

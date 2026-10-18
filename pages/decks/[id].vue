@@ -33,7 +33,8 @@ async function saveEdit() { if (!ed.title.trim()) return; await patch({ title: e
         <div class="dtop"><div v-if="!editing" class="ttl"><h1>{{ det.deck.title }} <button class="lk" @click="startEdit">Edit</button></h1><p v-if="det.deck.description" class="dsc">{{ det.deck.description }}</p><span class="mut">Created {{ ago(det.deck.created_at) }}<template v-if="det.deck.primary_deck"> · ★ Main deck — shown on your investor page and in updates</template></span></div>
           <div v-else class="edf"><input v-model="ed.title" maxlength="200" placeholder="Deck name"><input v-model="ed.description" maxlength="500" placeholder="What it's for (optional)"><div><button class="btn" @click="saveEdit">Save</button> <button class="btn secondary" @click="editing = false">Cancel</button></div></div>
           <div class="acts"><button class="star" :class="{ on: det.deck.primary_deck }" :title="det.deck.primary_deck ? 'Main deck' : 'Make this the main deck'" @click="patch({ primary: true })">★</button><a class="btn secondary" :href="webUrl(det.deck.url)" target="_blank" rel="noopener">Open</a><button class="btn secondary" @click="copy">{{ copied ? 'Copied' : 'Copy link' }}</button>
-            <label class="btn">{{ busy ? 'Uploading…' : '+ New version' }}<input type="file" accept=".pdf" hidden @change="upload($event)"></label></div></div>
+            </div></div>
+        <DropZone compact accept=".pdf" :disabled="busy" :label="busy ? 'Uploading…' : 'New version: drag and drop the PDF here'" hint="or click to choose" class="nv" @change="upload($event)" />
         <div class="fx-stats"><StatTile label="Total visits" :value="det.stats.total" icon="chart" tone="b" /><StatTile label="Unique visits" :value="det.stats.unique" icon="users" tone="c" /><StatTile label="Avg total time" :value="mmss(det.stats.avg_seconds)" icon="clock" tone="n" /><StatTile label="Avg time per slide" :value="mmss(det.stats.avg_per_slide)" icon="clock" tone="a" /><StatTile label="Downloads" :value="det.stats.downloads" icon="inbox" tone="g" /></div>
         <div class="cols"><div class="card mainc">
           <nav class="tb"><button :class="{ on: tab === 'visitors' }" @click="tab = 'visitors'">Visitor analytics</button><button :class="{ on: tab === 'slides' }" @click="tab = 'slides'">Per slide analytics</button></nav>
@@ -62,4 +63,5 @@ aside { display: flex; flex-direction: column; gap: 16px; } aside .card { displa
 .set label { display: flex; gap: 8px; align-items: center; } .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 13px; text-align: left; padding: 0; } .lk.red { color: var(--c-danger); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .cols { grid-template-columns: 1fr; } }
 .ent { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--c-muted); } .ent select { font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); background: #fff; }
+.nv { margin: 0 0 14px; }
 </style>

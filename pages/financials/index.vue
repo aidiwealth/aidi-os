@@ -1,20 +1,51 @@
 <script setup lang="ts">
-import { rollUp, combine, type FinRow } from '~/shared/fin-view'
+import { rollUp, combine, type FinRow, burnReview } from '~/shared/fin-view'
 const { canPath } = useModuleAccess()
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
-interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[] }
+interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null> }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
 const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
 // Someone limited to some companies sees those companies, not the group consolidation.
 const scoped = computed(() => !!me.value?.entity_scoped)
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-const co = computed(() => subj.value?.company ?? null)
+const baseCo = computed(() => subj.value?.company ?? null)
 const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
-const subject = ref(co.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(co.value?.currency ?? 'USD')
-watch(co, (c) => { if (c) { subject.value = c.subject; currency.value = c.currency } })
+const subject = ref(baseCo.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(baseCo.value?.currency ?? 'USD')
+watch(baseCo, (c, old) => { if (c && !old) { subject.value = c.subject; currency.value = c.currency } })
+// A company's Financials pages: the company, each subsidiary (own name and currency) and, with subsidiaries, the group.
+const pages = computed(() => subj.value?.pages ?? [])
+const co = computed(() => {
+  const c = baseCo.value; if (!c) return null
+  if (subject.value === 'group') return { ...c, subject: 'group', name: (pages.value[0]?.name ?? c.name) + ' · group', currency: currency.value }
+  const p = pages.value.find((x) => 'entity:' + x.id === subject.value)
+  return p ? { ...c, subject: 'entity:' + p.id, name: p.name, currency: p.currency ?? c.currency } : c
+})
+const isGroup = computed(() => !!baseCo.value && subject.value === 'group')
+useHead({ title: computed(() => (co.value && pages.value.length > 1 ? co.value.name + ' · ' : '') + 'Financials') })
+function pickPage(v: string) { if (v === '+add') { subForm.open = true; return } subject.value = v; if (v === 'group') currency.value = baseCo.value?.reporting ?? baseCo.value?.currency ?? 'USD'; else { const p = pages.value.find((x) => 'entity:' + x.id === v); currency.value = p?.currency ?? baseCo.value?.currency ?? 'USD' } }
+const subForm = reactive({ open: false, name: '', currency: baseCo.value?.currency ?? 'USD', country: '', busy: false, msg: '' })
+const subWall = ref(false)
+async function addSub() {
+  if (!subj.value?.paid) { subForm.open = false; subWall.value = true; return }
+  subForm.busy = true; subForm.msg = ''
+  try { const r = await $fetch<{ subject: string }>('/api/financials/subsidiaries', { method: 'POST', body: { name: subForm.name, currency: subForm.currency, country: subForm.country } }); await refreshNuxtData(); subForm.open = false; subForm.name = ''; pickPage(r.subject) }
+  catch (e) { subForm.msg = errOf(e, 'Could not add the subsidiary.') } finally { subForm.busy = false }
+}
+const ren = reactive({ open: false, name: '', currency: '', busy: false, msg: '' })
+const curPage = computed(() => pages.value.find((x) => 'entity:' + x.id === subject.value) ?? null)
+function openRename() { if (!curPage.value) return; Object.assign(ren, { open: true, name: curPage.value.name, currency: curPage.value.currency ?? baseCo.value?.currency ?? 'USD', msg: '' }) }
+async function saveRename() {
+  ren.busy = true; ren.msg = ''
+  try { await $fetch('/api/financials/subsidiaries/' + curPage.value!.id, { method: 'POST', body: { name: ren.name, currency: curPage.value!.main ? undefined : ren.currency } }); await refreshNuxtData(); ren.open = false; if (!curPage.value?.main) currency.value = ren.currency }
+  catch (e) { ren.msg = errOf(e, 'Could not rename.') } finally { ren.busy = false }
+}
+async function removeSub() {
+  if (!curPage.value || curPage.value.main || !confirm('Remove ' + curPage.value.name + ' and all its figures? This cannot be undone.')) return
+  try { await $fetch('/api/financials/subsidiaries/' + curPage.value.id, { method: 'DELETE' }); ren.open = false; subject.value = baseCo.value!.subject; await refreshNuxtData() } catch (e) { ren.msg = errOf(e, 'Could not remove it.') }
+}
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
 const original = ref(false)
 const rawQ = computed(() => (original.value ? '1' : undefined))
@@ -43,8 +74,11 @@ const hasSec = computed(() => monthly.value.some((r) => typeof r.lines.investmen
 const secOn = computed(() => !!data.value?.cash_with_securities)
 async function setSec(v: boolean) { try { await $fetch('/api/financials/visibility', { method: 'POST', body: { cash_with_securities: v } }); await refresh(); await refreshM() } catch (e) { msg.value = errOf(e, 'Could not save.') } }
 // Standard statements (PDF or Excel) with the logo and comments.
-const sf = reactive({ open: false, period_type: 'month', count: 12, format: 'pdf', comments: '', note_income: '', note_balance: '', note_cash: '', room: false, busy: false, msg: '' })
-function openStatements() { Object.assign(sf, { open: true, period_type: view.value === 'custom' ? 'month' : view.value, count: view.value === 'year' ? 3 : view.value === 'quarter' ? 4 : 12, msg: '', busy: false }) }
+const sf = reactive({ open: false, kind: 'report' as 'report' | 'statements', year: 0, warned: false, period_type: 'month', count: 12, format: 'pdf', comments: '', note_income: '', note_balance: '', note_cash: '', room: false, busy: false, msg: '' })
+// The annual report's details (directors, CFO, offices, bankers…) and the years it can cover.
+const rp = reactive({ years: [] as { year: number; label: string; months: number }[], missing: [] as { key: string; label: string }[], open: false })
+async function loadRp() { try { const r = await $fetch<{ years: typeof rp.years; missing: typeof rp.missing }>('/api/financials/report-profile', { query: { subject: co.value?.subject ?? subject.value } }); rp.years = r.years; rp.missing = r.missing; if (!rp.years.some((y) => y.year === sf.year)) sf.year = rp.years[0]?.year ?? 0 } catch { /* the statements still work */ } }
+function openStatements() { void loadRp(); Object.assign(sf, { warned: false, open: true, period_type: view.value === 'custom' ? 'month' : view.value, count: view.value === 'year' ? 3 : view.value === 'quarter' ? 4 : 12, msg: '', busy: false }) }
 async function draftComments() {
   sf.msg = ''
   try { const a = await $fetch<{ headline: string; insights: { title: string; detail: string }[]; flags: { item: string; why: string }[] } | null>('/api/financials/analysis', { query: { subject: co.value?.subject ?? subject.value } }); if (a) sf.comments = [a.headline, ...a.insights.map((i) => i.title + '. ' + i.detail)].join('\n\n') }
@@ -53,17 +87,20 @@ async function draftComments() {
 async function makeStatements() {
   sf.busy = true; sf.msg = ''
   try {
-    const fd = new FormData(); for (const k of ['period_type', 'count', 'format', 'comments', 'note_income', 'note_balance', 'note_cash'] as const) fd.append(k, String(sf[k])); fd.append('subject', co.value?.subject ?? subject.value); fd.append('room', sf.room ? '1' : '0')
+    if (sf.kind === 'report' && rp.missing.length && !sf.warned) { sf.warned = true; return }
+    const fd = new FormData(); for (const k of ['kind', 'year', 'period_type', 'count', 'format', 'comments', 'note_income', 'note_balance', 'note_cash'] as const) fd.append(k, String(sf[k])); fd.append('subject', co.value?.subject ?? subject.value); fd.append('room', sf.room ? '1' : '0')
     const res = await fetch('/api/financials/statements-file', { method: 'POST', body: fd, credentials: 'same-origin' })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the statements.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'financial-statements.' + sf.format; a.click(); URL.revokeObjectURL(a.href)
-    ok.value = 'Statements downloaded' + (sf.room ? ' and added to the data room (Financials).' : '.'); sf.open = false
+    ok.value = (sf.kind === 'report' ? 'Financial report' : 'Statements') + ' downloaded' + (sf.room ? ' and added to the data room (Financials).' : '.'); sf.open = false
   } catch (e) { sf.msg = (e as Error).message } finally { sf.busy = false }
 }
-const runwayKnown = computed(() => { const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
+// Burn and runway checked three ways on the monthly figures (3-month average); else the latest period's burn.
+const review = computed(() => burnReview(monthly.value as unknown as FinRow[]))
+const runwayKnown = computed(() => { if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
-const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? [] : subj.value?.currencies ?? [])])])
+const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? pages.value.map((p) => p.currency ?? '').filter(Boolean) : subj.value?.currencies ?? [])])])
 const curName = (c: string) => ({ USD: 'US dollar (USD)', NGN: 'Naira (NGN)', GBP: 'Pound (GBP)', EUR: 'Euro (EUR)' } as Record<string, string>)[c] ?? c
 const lbl = (d: string, t: string = view.value === 'custom' ? 'month' : view.value) => t === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + d.slice(2, 4) : new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', t === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const rangeLbl = computed(() => (inRange.value.length ? lbl(inRange.value[0]!.period_end, 'month') + ' – ' + lbl(inRange.value[inRange.value.length - 1]!.period_end, 'month') : ''))
@@ -72,7 +109,11 @@ const change = (k: string) => { const a = latest.value?.derived[k], b = prev.val
 // Operating expenses only (no cost of revenue; R&D is left out as it may be capitalised).
 const mix = computed(() => { const d = latest.value?.derived ?? {}; return [['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_ga', 'General & admin'], ['opex_other', 'Other operating']].map(([k, l]) => ({ label: l!, value: Number(d[k!] ?? 0) })) })
 const pctFmt = (v: number | null | undefined) => (v == null ? '—' : v + '%')
-const tab = ref<'overview' | 'statements' | 'shares'>('overview')
+const route0 = useRoute()
+const tab = ref<'overview' | 'statements' | 'shares'>((['statements', 'shares'] as const).find((t) => t === route0.query.tab) ?? 'overview')
+watch(() => route0.query.tab, (t) => { tab.value = t === 'statements' || t === 'shares' ? t : 'overview' })
+const { data: modsF } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
+const custLocked = computed(() => !!modsF.value?.find((m) => m.code === 'fin_customers' && m.locked))
 // Bulk delete / clear.
 const picked = ref<string[]>([]); const clearOpen = ref(false)
 watch([subject, periodType], () => { picked.value = [] })
@@ -173,27 +214,32 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <select v-if="!co" v-model="subject" class="subj" aria-label="Show figures for"><option v-if="!scoped" value="group">Group (consolidated)</option>
           <optgroup v-if="subj?.entities.length" label="Funds and entities"><option v-for="e in subj.entities" :key="e.id" :value="'entity:' + e.id">{{ e.name }}</option></optgroup>
           <optgroup v-if="subj?.companies.length" label="Portfolio and group companies"><option v-for="c in subj.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}{{ c.relationship === 'subsidiary' ? ' (subsidiary)' : '' }}</option></optgroup></select>
-        <span v-else class="co">{{ co.name }}</span></div>
+        <template v-else><select class="subj" :value="subject" aria-label="Financials for" @change="pickPage(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = subject">
+          <option v-for="p in pages" :key="p.id" :value="'entity:' + p.id">{{ p.name }}{{ p.main ? '' : ' (subsidiary)' }}</option>
+          <option v-if="pages.length > 1" value="group">Group (all, consolidated)</option>
+          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (paid plans)' }}</option></select>
+          <button v-if="canEdit && curPage" type="button" class="link rn" @click="openRename">Rename{{ curPage.main ? '' : ' · settings' }}</button></template></div>
       <div class="tools">
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
-        <select v-if="!co && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
-        <div v-if="co?.reporting" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
+        <select v-if="(!co || isGroup) && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
+        <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
-        <button v-if="rows.length || monthly.length" class="btn secondary" type="button" @click="openStatements">Statements (PDF / Excel)</button>
-        <button v-if="canEdit" class="btn" type="button" @click="openForm()">Add figures</button>
+        <button v-if="(rows.length || monthly.length) && !isGroup" class="btn secondary" type="button" @click="openStatements">Financial report (PDF / Excel)</button>
+        <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
+    <p v-if="isGroup" class="hint">Adds up the company and every subsidiary in {{ currency }}, converting other currencies at the latest daily rate. Intercompany amounts are not eliminated.</p>
     <p v-if="!co && subject === 'group'" class="hint">Adds up every fund and entity, plus companies marked as subsidiaries, in {{ currency }}. Intercompany amounts are not eliminated.</p>
     <p v-if="converting" class="hint">Shown in {{ co?.reporting }} for reporting, converted at the latest daily exchange rate{{ co?.rate_as_of ? ' (' + new Date(co.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}. Your figures are stored in their original currency; switch to Original to edit. Billing is not affected.</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>
 
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
-    <ClientOnly><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
+    <ClientOnly v-if="!isGroup"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
     <p v-if="rolled" class="hint">Added up from your monthly figures (no {{ view === 'year' ? 'yearly' : 'quarterly' }} statements were entered).</p>
     <div v-if="co && canEdit && hasSec && data?.cash_policy == null" class="secq"><span><b>Your figures include investments such as treasury bills.</b> Count them with cash and show "Cash & marketable securities"? Runway then uses both.</span><span class="sb"><button class="btn sm" type="button" @click="setSec(true)">Yes, add them to cash</button><button class="btn secondary sm" type="button" @click="setSec(false)">No, bank balance only</button></span></div>
     <template v-if="vrows.length && latest">
-      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Sharing <em>{{ shares?.length ?? 0 }}</em></button><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
+      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Sharing <em>{{ shares?.length ?? 0 }}</em></button><template v-if="co"><NuxtLink to="/financials/retention" class="tsub">Revenue retention<svg v-if="custLocked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink><NuxtLink to="/financials/customers" class="tsub">Customers<svg v-if="custLocked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink></template><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
@@ -201,12 +247,13 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
+        <BurnCheck v-if="monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
         <div class="charts">
           <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="view === 'custom' ? 'Total, ' + rangeLbl : vrows.length + ' periods'" :foot-value="latest.derived.revenue ?? null" />
           <TrendChart title="Profit and loss" unit="usd" bars :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" :foot="view === 'custom' ? 'Net income, ' + rangeLbl : 'Net income after all costs'" :foot-value="latest.derived.net_income ?? null" />
           <TrendChart :title="secOn ? 'Cash & securities' : 'Cash'" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
-        <FinAnalysis v-if="co" :subject="co.subject" />
+        <FinAnalysis v-if="co && !isGroup" :subject="co.subject" />
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
           <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
         <div class="two"><div class="card"><DonutChart :title="'Operating expenses · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" total-label="Operating expenses" :currency="cur" :segments="mix" /></div>
@@ -232,7 +279,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     </template>
     <EmptyState v-else card icon="financials" :title="co ? 'Add your first month' : 'No figures yet' + (subject === 'group' ? '' : ' for ' + (data?.name ?? ''))"
       :text="co ? 'Drop in the profit and loss or management accounts you already keep and we read it for you to check, or type the figures in. Your dashboard, investor page and updates fill in from here.' : 'Add a profit and loss, balance sheet or KPI sheet for any fund, entity or company, monthly, quarterly or yearly. Upload a spreadsheet or type the figures in.'">
-      <button v-if="canEdit" class="btn" @click="openForm()">Add figures</button></EmptyState>
+      <button v-if="canEdit && !isGroup" class="btn" @click="openForm()">Add figures</button></EmptyState>
 
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
@@ -265,21 +312,41 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       </form>
       <template #foot><button class="btn secondary" type="button" @click="showForm = false">Cancel</button><button class="btn" type="submit" form="finf" :disabled="busy">Save figures</button></template>
     </AppModal>
-    <AppModal :open="sf.open" title="Financial statements" wide @close="sf.open = false">
-      <div class="frm"><p class="hint">Income statement, balance sheet and cash flow in a standard layout, with your logo and comments. Unaudited management figures.</p>
-        <div class="g4"><label class="label">Columns<select v-model="sf.period_type"><option value="month">Months</option><option value="quarter">Quarters</option><option value="year">Years</option></select></label>
+    <AppModal :open="sf.open" title="Financial report" wide @close="sf.open = false">
+      <div class="frm"><div class="seg kinds" role="group" aria-label="What to make"><button :class="{ on: sf.kind === 'report' }" type="button" @click="sf.kind = 'report'">Annual report</button><button :class="{ on: sf.kind === 'statements' }" type="button" @click="sf.kind = 'statements'">Statements by period</button></div>
+        <p class="hint">{{ sf.kind === 'report' ? 'The full set: cover, directors and advisers, report of the directors, accounting policies, balance sheet, statement of operations, changes in equity, cash flows and notes, with the year before for comparison.' : 'Income statement, balance sheet and cash flow side by side for each month, quarter or year.' }}</p>
+        <div v-if="sf.kind === 'report'" class="g2r"><label class="label">Year<select v-model.number="sf.year"><option v-for="y in rp.years" :key="y.year" :value="y.year">{{ y.label.replace(/^./, (c) => c.toUpperCase()) }}</option><option v-if="!rp.years.length" :value="0" disabled>No figures yet</option></select></label>
+          <label class="label">Format<select v-model="sf.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label></div>
+        <div v-if="sf.kind === 'report'" class="rpd" :class="{ warn: rp.missing.length }"><span v-if="rp.missing.length"><b>{{ rp.missing.length }} detail{{ rp.missing.length === 1 ? '' : 's' }} to fill in:</b> {{ rp.missing.map((m) => m.label).join(', ') }}.</span><span v-else><b>Report details complete.</b> Directors, officers, offices, advisers and bankers are set.</span><button type="button" class="btn secondary sm" @click="rp.open = true">{{ rp.missing.length ? 'Fill in details' : 'Edit details' }}</button></div>
+        <div v-else class="g4"><label class="label">Columns<select v-model="sf.period_type"><option value="month">Months</option><option value="quarter">Quarters</option><option value="year">Years</option></select></label>
           <label class="label">How many<select v-model.number="sf.count"><option v-for="n in (sf.period_type === 'year' ? [1, 2, 3, 5] : sf.period_type === 'quarter' ? [4, 6, 8, 12] : [3, 6, 12, 18, 24])" :key="n" :value="n">Last {{ n }}</option></select></label>
           <label class="label">Format<select v-model="sf.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label>
 </div>
         <CompanyLogo :company="co?.name ?? title" note="The logo on the statements is the one set in Settings." />
-        <label class="label">Management comments<textarea v-model="sf.comments" rows="5" maxlength="8000" placeholder="What happened in the period, what drove the numbers, what comes next" /><button type="button" class="link" @click="draftComments">Draft from the analysis</button></label>
+        <label class="label">{{ sf.kind === 'report' ? 'Review of the business (in the report of the directors)' : 'Management comments' }}<textarea v-model="sf.comments" rows="5" maxlength="8000" placeholder="What happened in the period, what drove the numbers, what comes next" /><button type="button" class="link" @click="draftComments">Draft from the analysis</button></label>
         <div class="g3b"><label class="label">Comment on the income statement<textarea v-model="sf.note_income" rows="2" maxlength="1500" /></label><label class="label">On the balance sheet<textarea v-model="sf.note_balance" rows="2" maxlength="1500" /></label><label class="label">On the cash flow<textarea v-model="sf.note_cash" rows="2" maxlength="1500" /></label></div>
         <label v-if="co" class="chk"><input v-model="sf.room" type="checkbox"> Also add it to the data room (Financials folder)</label>
         <p v-if="secOn" class="hint">Treasury bills and similar are shown as marketable securities, with a "Cash and marketable securities" line.</p>
+        <p v-if="sf.warned && rp.missing.length" class="wn">Not filled in yet: {{ rp.missing.map((m) => m.label).join(', ') }}. These are left out of the report. Fill them in first, or download it as it is.</p>
         <p v-if="sf.msg" class="error">{{ sf.msg }}</p></div>
-      <template #foot><button class="btn secondary" @click="sf.open = false">Cancel</button><button class="btn" :disabled="sf.busy" @click="makeStatements">{{ sf.busy ? 'Making…' : 'Download ' + (sf.format === 'pdf' ? 'PDF' : 'Excel') }}</button></template>
+      <template #foot><button class="btn secondary" @click="sf.open = false">Cancel</button><button v-if="sf.warned && rp.missing.length" class="btn secondary" @click="rp.open = true">Fill in details</button><button class="btn" :disabled="sf.busy || (sf.kind === 'report' && !sf.year)" @click="makeStatements">{{ sf.busy ? 'Making…' : sf.warned && rp.missing.length ? 'Download anyway' : 'Download ' + (sf.format === 'pdf' ? 'PDF' : 'Excel') }}</button></template>
     </AppModal>
     <ClientOnly><FinClear :open="clearOpen" :subject="co?.subject ?? subject" :selected="picked" :lines="subj?.lines ?? []" :months="rows.map((r) => r.period_end)" @close="clearOpen = false" @done="cleared" /></ClientOnly>
+    <AppModal :open="subForm.open" title="Add a subsidiary" @close="subForm.open = false">
+      <form id="subf" class="frm" @submit.prevent="addSub"><p class="hint">Each subsidiary gets its own Financials page, named as you like, in its own currency. The group view adds them all up at the latest daily rate.</p>
+        <label class="label">Name<input v-model="subForm.name" required minlength="2" maxlength="120" placeholder="e.g. Kiza Nigeria Ltd"></label>
+        <div class="g3"><label class="label">Country (optional)<input v-model="subForm.country" maxlength="60"></label><label class="label">Currency<select v-model="subForm.currency"><option v-for="c in ['USD', 'NGN', 'GBP', 'EUR', 'CAD', 'KES', 'GHS', 'ZAR', 'EGP', 'RWF', 'AED']" :key="c" :value="c">{{ c }}</option></select></label></div>
+        <p v-if="subForm.msg" class="error">{{ subForm.msg }}</p></form>
+      <template #foot><button class="btn secondary" type="button" @click="subForm.open = false">Cancel</button><button class="btn" type="submit" form="subf" :disabled="subForm.busy">Add subsidiary</button></template>
+    </AppModal>
+    <AppModal :open="ren.open" :title="curPage?.main ? 'Rename this page' : 'Subsidiary'" @close="ren.open = false">
+      <form id="renf" class="frm" @submit.prevent="saveRename"><label class="label">Name shown on this Financials page<input v-model="ren.name" required minlength="2" maxlength="120"></label>
+        <label v-if="!curPage?.main" class="label">Currency<select v-model="ren.currency"><option v-for="c in ['USD', 'NGN', 'GBP', 'EUR', 'CAD', 'KES', 'GHS', 'ZAR', 'EGP', 'RWF', 'AED']" :key="c" :value="c">{{ c }}</option></select></label>
+        <p v-if="ren.msg" class="error">{{ ren.msg }}</p></form>
+      <template #foot><button v-if="!curPage?.main" class="link del" type="button" @click="removeSub">Remove subsidiary</button><button class="btn secondary" type="button" @click="ren.open = false">Cancel</button><button class="btn" type="submit" form="renf" :disabled="ren.busy">Save</button></template>
+    </AppModal>
+    <AppModal :open="subWall" title="Subsidiaries" wide @close="subWall = false"><Paywall code="subsidiaries" label="Subsidiaries" /></AppModal>
+    <ClientOnly><ReportDetails :open="rp.open" @close="rp.open = false" @saved="(m) => { rp.missing = m; sf.warned = false }" /></ClientOnly>
     <AppModal :open="qbWall" title="QuickBooks" wide @close="qbWall = false"><Paywall code="quickbooks" label="QuickBooks" /></AppModal>
   </section>
 </template>
@@ -310,7 +377,7 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .ck2 ul { list-style: none; margin: 0; padding: 0 16px 10px; } .ck2 li { display: grid; grid-template-columns: 220px 1fr auto; gap: 12px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .ck2 li b { font-weight: 500; } .ck2 li.error b { color: var(--c-danger); } .ck2 li span { color: var(--c-ink-soft); } .ck2 li em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 @media (max-width: 800px) { .ck2 li { grid-template-columns: 1fr; } }
 .tabl { margin-left: auto; padding: 10px 0; color: var(--c-blue-deep); text-decoration: none; font-size: 14px; }
-.bdl { text-decoration: none; }
+.bdl { text-decoration: none; } .tsub { display: flex; align-items: center; gap: 5px; padding: 10px 0; color: var(--c-muted); text-decoration: none; font-size: 15px; } .tsub:hover { color: var(--c-ink); } .tlk { width: 12px; height: 12px; } .kinds { align-self: flex-start; } .g2r { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; max-width: 560px; } .g2r select { width: 100%; } .rpd { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 10px 14px; font-size: 13px; } .rpd.warn { background: #fff8eb; border-color: #f0d9a8; color: #6b4a07; } .wn { margin: 0; font-size: 13px; color: #8a5a0a; } .rn { font-size: 13px; } .link.del { color: var(--c-danger); margin-right: auto; }
 .bulk { display: flex; gap: 12px; align-items: center; justify-content: flex-end; padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13px; color: var(--c-muted); } .bulk > span { margin-right: auto; } .cb { width: 34px; padding-right: 0; } .cb input { margin: 0; } tr.pk td { background: #f5f7fb; }
 .srcs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .src { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fff; flex-wrap: wrap; } .sl { display: flex; flex-direction: column; } .sl b { font-size: 13.5px; } .sl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .sr { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; } .sr input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .lnk { background: none; border: 0; color: var(--c-danger); cursor: pointer; font: inherit; font-size: 12.5px; }
 .rc { font-size: 12.5px; color: var(--c-warn); }
