@@ -219,7 +219,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <template v-else><select class="subj" :value="subject" aria-label="Financials for" @change="pickPage(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = subject">
           <option v-for="p in pages" :key="p.id" :value="'entity:' + p.id">{{ p.name }}{{ p.main ? '' : ' (subsidiary)' }}</option>
           <option v-if="pages.length > 1" value="group">Group (all, consolidated)</option>
-          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (paid plans)' }}</option></select>
+          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (Scale plan)' }}</option></select>
           <button v-if="canEdit && curPage" type="button" class="link rn" @click="openRename">Rename{{ curPage.main ? '' : ' · settings' }}</button></template></div>
       <div class="tools">
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>

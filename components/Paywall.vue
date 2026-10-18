@@ -21,12 +21,15 @@ const FEAT: Record<string, { title: string; lede: string; points: string[]; kind
   contacts: { title: 'Contacts', lede: 'Your investor CRM: everyone you talk to, what they opened and where they are in your raise.', kind: 'table',
     points: ['Lists, custom properties and subscribe status', 'Engagement chart for every contact', 'Every update open and data room view logged', 'Notes, pipelines and shared items on one page', 'Import your list in one paste'] } }
 const f = computed(() => FEAT[props.code] ?? { title: props.label, lede: 'This feature is part of our paid plans.', kind: 'table', points: ['Everything in your current plan', 'More team members, AI and storage', 'Priority service'] })
-const startup = computed(() => data.value?.plans.find((p) => p.code === 'company_startup'))
+// Revenue retention, customers, subsidiaries and forecasts are Scale features; the rest unlock on Startup.
+const SCALE = ['fin_customers', 'subsidiaries', 'forecast']
+const tier = computed(() => (SCALE.includes(props.code) ? { code: 'company_scale', name: 'Scale' } : { code: 'company_startup', name: 'Startup' }))
+const startup = computed(() => data.value?.plans.find((p) => p.code === tier.value.code))
 const ngn = computed(() => data.value?.currency === 'NGN')
 const price = computed(() => { const p = startup.value; if (!p) return ''; const v = ngn.value ? p.ngn : p.usd; return v ? (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') : '' })
 const trial = computed(() => !!data.value && !data.value.trial_used && data.value.status !== 'trial')
 const busy = ref(false); const msg = ref('')
-async function upgrade() { busy.value = true; msg.value = ''; try { await $fetch('/api/company/plan', { method: 'POST', body: { plan: 'company_startup' } }); await refreshNuxtData(); window.location.reload() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upgrade.'; busy.value = false } }
+async function upgrade() { busy.value = true; msg.value = ''; try { await $fetch('/api/company/plan', { method: 'POST', body: { plan: tier.value.code } }); await refreshNuxtData(); window.location.reload() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upgrade.'; busy.value = false } }
 </script>
 <template>
   <section class="pw">
@@ -41,11 +44,11 @@ async function upgrade() { busy.value = true; msg.value = ''; try { await $fetch
       <div class="veil" />
       <div class="card">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></div>
-        <h2>{{ f.title }} is a <em>Startup</em> feature</h2>
+        <h2>{{ f.title }} is a <em>{{ tier.name }}</em> feature</h2>
         <p class="lede">{{ f.lede }}</p>
         <ul><li v-for="p in f.points" :key="p"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 10.5l4 4 8-9" /></svg>{{ p }}</li></ul>
-        <div class="price" v-if="price"><b>{{ price }}</b><span>/ month · Startup plan</span></div>
-        <button class="btn go" :disabled="busy" @click="upgrade">{{ busy ? 'Unlocking…' : trial ? 'Start your 14-day free trial' : 'Upgrade to Startup' }}</button>
+        <div class="price" v-if="price"><b>{{ price }}</b><span>/ month · {{ tier.name }} plan</span></div>
+        <button class="btn go" :disabled="busy" @click="upgrade">{{ busy ? 'Unlocking…' : trial ? 'Start your 14-day free trial' : 'Upgrade to ' + tier.name }}</button>
         <span class="sub">{{ trial ? 'No card needed. Cancel any time.' : 'Billed from your wallet or card on file.' }}</span>
         <NuxtLink to="/settings?s=plan" class="cmp">Compare plans →</NuxtLink>
         <p v-if="msg" class="error">{{ msg }}</p>
