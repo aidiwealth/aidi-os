@@ -52,14 +52,15 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>
-        <button v-if="canEdit" class="btn" type="button" @click="up = true">Upload customer revenue</button></div></div>
+        <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
+    <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
     <div v-if="!cs.length" class="start card">
       <div><h2>Measure retention and churn</h2><p>Upload what each customer paid each month. We work out net and gross revenue retention, customer churn, expansion and retention by customer group and cohort, the numbers investors ask for.</p>
         <ul><li><b>Customer, Month, Revenue</b>: one row per customer per month (or months across the top)</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, so this year can be compared with last</li></ul>
         <p class="mut">Keep it simple: one table, headings in the first row, no totals. We check for the same customer written two ways before saving.</p>
-        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Upload customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download a template</a></div></div>
+        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the kit (Excel)</a></div></div>
     </div>
 
     <template v-else>

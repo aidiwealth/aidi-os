@@ -65,7 +65,7 @@ async function go() {
 .pk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 10px; border: 1px solid var(--c-rule); padding: 12px; background: #fff; }
 .pc { display: flex; flex-direction: column; gap: 5px; } .pc b { font-weight: 500; font-size: 13px; margin-bottom: 2px; }
 .sync { align-items: flex-start; color: var(--c-ink-soft); } .sync input { margin-top: 3px; }
-.sum { display: flex; flex-direction: column; gap: 3px; border-left: 3px solid var(--c-danger); background: #fdf6f5; padding: 10px 14px; } .sum b { font-weight: 500; } .sum span { font-size: 12.5px; color: var(--c-muted); }
+.sum { display: flex; flex-direction: column; gap: 3px; border: 1px solid #f3d3cf; background: #fdf6f5; padding: 10px 14px; } .sum b { font-weight: 500; } .sum span { font-size: 12.5px; color: var(--c-muted); }
 .cf { display: flex; flex-direction: column; gap: 6px; font-size: 13px; max-width: 260px; }
 .error { color: var(--c-danger); margin: 0; }
 .btn.danger { background: var(--c-danger); border-color: var(--c-danger); color: #fff; } .btn.danger:disabled { opacity: .45; }

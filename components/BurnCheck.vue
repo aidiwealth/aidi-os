@@ -22,7 +22,7 @@ const dt = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateStr
 </template>
 
 <style scoped>
-.bc { background: #fff; border: 1px solid var(--c-rule); border-left: 3px solid var(--c-navy); padding: 14px 18px; margin: 0 0 12px; } .bc.check { border-left-color: #c98a1c; }
+.bc { background: #fff; border: 1px solid var(--c-rule); padding: 14px 18px; margin: 0 0 12px; }
 .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 18px; align-items: center; }
 .k { display: flex; flex-direction: column; gap: 2px; } .k span { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .k b { font-size: 18px; font-weight: 500; color: var(--c-navy); } .k em { font-style: normal; font-size: 12px; color: var(--c-muted); }
 .st { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } .pill { font-size: 12px; padding: 3px 10px; background: #f0f3f8; color: var(--c-navy); white-space: nowrap; } .check .pill { background: #fff6e6; color: #8a5a0a; }

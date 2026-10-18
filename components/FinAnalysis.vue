@@ -1,39 +1,114 @@
 <script setup lang="ts">
-// What the founder's figures say, in plain words: a headline, what is going well or needs watching, and what to take
-// to the executive team, the CFO and the board. Kept until the figures change; refresh on demand.
-const props = defineProps<{ subject: string }>()
+// What the founder's figures say, as one calm panel: runway and burn (checked three ways), where each dollar of
+// revenue goes, four key points (detail on demand) and what to take to each part of the team.
+import type { BurnReview } from '~/shared/fin-view'
+const props = defineProps<{ subject: string; review?: BurnReview | null; unit?: { revenue: number; cogs: number; opex: number; label: string } | null; currency: string; withSecurities?: boolean }>()
 interface A { headline: string; insights: { title: string; detail: string; tone: 'good' | 'watch' | 'risk' }[]; flags: { for: string; item: string; why: string }[]; checks: number; ai: boolean; as_of: string; period: string }
 const refreshQ = ref<string | undefined>(undefined)
 const { data, pending, refresh } = await useLazyFetch<A | null>('/api/financials/analysis', { query: { subject: computed(() => props.subject), refresh: refreshQ }, server: false })
 async function again() { refreshQ.value = '1'; await refresh(); refreshQ.value = undefined }
 const groups = computed(() => { const m = new Map<string, A['flags']>(); for (const f of data.value?.flags ?? []) m.set(f.for, [...(m.get(f.for) ?? []), f]); return [...m.entries()] })
+const who = ref(''); watch(groups, (g) => { if (!g.some(([w]) => w === who.value)) who.value = g[0]?.[0] ?? '' }, { immediate: true })
+const openI = ref<number | null>(null); const showBurn = ref(false)
 const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk: 'Risk' }
+const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
+const sym = computed(() => SYM[props.currency] ?? props.currency + ' ')
+const short = (v: number) => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return s + sym.value + (a >= 1e6 ? (a / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'm' : a >= 1e4 ? (a / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(a).toLocaleString('en-US')) }
+const mon = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
+// Runway ring: share of a 24-month horizon.
+const R = 42, C = 2 * Math.PI * R
+const rw = computed(() => props.review && props.review.status !== 'none' ? props.review : null)
+const ringPct = computed(() => (rw.value?.profitable ? 1 : rw.value?.runway ? Math.min(1, rw.value.runway / 24) : 0))
+// Where each dollar of revenue goes (last three months).
+const per = computed(() => {
+  const u = props.unit; if (!u || !(u.revenue > 0)) return null
+  const c = u.cogs / u.revenue, o = u.opex / u.revenue, left = 1 - c - o
+  return { c, o, left, segs: [{ k: 'Cost of revenue', v: c, col: '#1d64a8' }, { k: 'Operating expenses', v: o, col: '#46a7dc' }] }
+})
+const arcs = computed(() => { const p = per.value; if (!p) return []; const tot = Math.max(1, p.c + p.o); let at = 0; return p.segs.map((s) => { const len = (s.v / tot) * C; const a = { ...s, dash: Math.max(0, len - 2) + ' ' + (C - Math.max(0, len - 2)), off: -at }; at += len; return a }) })
+const cents = (v: number) => (v < 0 ? '−' : '') + Math.round(Math.abs(v) * 100) + '¢'
 </script>
+
 <template>
-  <section class="fa">
-    <div class="fah"><span class="eyebrow">What your numbers say · 4 key points</span><span class="meta">{{ data ? data.period + (data.ai ? '' : ' · worked out from your figures') : '' }}<button v-if="data" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button></span></div>
-    <p v-if="pending && !data" class="skel">Reading your figures…</p>
-    <template v-else-if="data">
-      <h2 class="hl">{{ data.headline }}</h2>
-      <div class="ins" :style="{ '--n': Math.min(4, data.insights.length) }"><article v-for="(i, n) in data.insights.slice(0, 4)" :key="n" :class="i.tone"><em>{{ TONE[i.tone] }}</em><b>{{ i.title }}</b><p>{{ i.detail }}</p></article></div>
-      <div v-if="groups.length" class="tk"><h3>Take to your team</h3>
-        <div class="tkg"><div v-for="[who, items] in groups" :key="who"><span class="who">{{ who }}</span><ul><li v-for="(f, n) in items" :key="n"><b>{{ f.item }}</b><span>{{ f.why }}</span></li></ul></div></div></div>
-      <p v-if="data.checks" class="ft">{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up; the analysis may be off until they are fixed.</p>
-    </template>
-    <p v-else class="skel">Add three or more months of figures to see the analysis.</p>
+  <section class="fh">
+    <header class="hd"><div><span class="eb">What your numbers say</span><h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2></div>
+      <span class="meta">{{ data ? data.period.replace(' to ', ' – ') + (data.ai ? '' : ' · from your figures') : '' }}<button v-if="data" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button></span></header>
+
+    <div class="grid">
+      <!-- Runway and burn -->
+      <div v-if="rw" class="box rwb">
+        <span class="bl">Runway</span>
+        <div class="rr">
+          <svg viewBox="0 0 100 100" class="ring" role="img" :aria-label="'Runway ' + (rw.profitable ? 'cash-flow positive' : rw.runway + ' months')"><circle cx="50" cy="50" :r="R" class="trk" /><circle cx="50" cy="50" :r="R" class="val" :stroke-dasharray="(ringPct * C) + ' ' + C" transform="rotate(-90 50 50)" /><title>{{ rw.profitable ? 'Cash-flow positive' : rw.runway + ' months of runway (ring shows up to 24)' }}</title></svg>
+          <div class="rc"><b>{{ rw.profitable ? '∞' : rw.runway ?? '—' }}</b><span>{{ rw.profitable ? 'cash-flow positive' : 'months' }}</span></div>
+        </div>
+        <dl><div><dt>Monthly burn</dt><dd>{{ rw.profitable ? 'None' : rw.burn !== null ? short(rw.burn) : '—' }}</dd></div><div><dt>{{ withSecurities ? 'Cash & securities' : 'Cash' }}</dt><dd>{{ rw.cash !== null ? short(rw.cash) : '—' }}<small v-if="rw.cash_at"> · {{ mon(rw.cash_at) }}</small></dd></div></dl>
+        <button type="button" class="chip" :class="rw.status" @click="showBurn = !showBurn"><i>{{ rw.status === 'ok' ? '✓' : '!' }}</i>{{ rw.status === 'ok' ? 'Checked three ways' : rw.issues.length + ' to check' }}<em>{{ showBurn ? 'Hide' : 'How' }}</em></button>
+      </div>
+
+      <!-- Per dollar of revenue -->
+      <div v-if="per" class="box pd">
+        <span class="bl">Each {{ sym.trim() }}1 of revenue <small>{{ unit?.label }}</small></span>
+        <div class="dn">
+          <svg viewBox="0 0 100 100" class="ring" role="img" aria-label="Where each dollar of revenue goes"><circle cx="50" cy="50" :r="R" class="trk" /><circle v-for="a in arcs" :key="a.k" cx="50" cy="50" :r="R" fill="none" :stroke="a.col" stroke-width="11" :stroke-dasharray="a.dash" :stroke-dashoffset="a.off" transform="rotate(-90 50 50)"><title>{{ a.k }}: {{ cents(a.v) }}</title></circle></svg>
+          <div class="rc"><b>{{ cents(per.left) }}</b><span>{{ per.left < 0 ? 'short per ' + sym.trim() + '1' : 'kept per ' + sym.trim() + '1' }}</span></div>
+        </div>
+        <ul class="lg"><li v-for="s in per.segs" :key="s.k"><i :style="{ background: s.col }" />{{ s.k }}<b>{{ cents(s.v) }}</b></li><li class="lft"><i />{{ per.left < 0 ? 'Costs above revenue' : 'Left after costs' }}<b>{{ cents(per.left) }}</b></li></ul>
+      </div>
+
+      <!-- Four key points -->
+      <div class="box kp">
+        <span class="bl">Four key points</span>
+        <p v-if="pending && !data" class="mutd">Reading…</p>
+        <ol v-else-if="data">
+          <li v-for="(i, n) in data.insights.slice(0, 4)" :key="n" :class="{ open: openI === n }">
+            <button type="button" @click="openI = openI === n ? null : n"><span class="tn" :class="i.tone"><i>{{ i.tone === 'good' ? '↑' : i.tone === 'risk' ? '✕' : '!' }}</i>{{ TONE[i.tone] }}</span><b>{{ i.title }}</b><svg class="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg></button>
+            <p v-if="openI === n">{{ i.detail }}</p>
+          </li>
+        </ol>
+        <p v-else class="mutd">Add three or more months of figures to see the analysis.</p>
+      </div>
+    </div>
+
+    <div v-if="rw && showBurn" class="how">
+      <ul v-if="rw.issues.length" class="iss"><li v-for="(x, i) in rw.issues" :key="i">{{ x }}</li></ul>
+      <div class="mth"><div v-for="x in rw.methods" :key="x.key" class="mr" :class="{ used: x.label === rw.basis }"><span>{{ x.label }}</span><span class="n">{{ x.value === null ? 'Not in the figures' : short(x.value) + ' / month' }}</span><span class="u">{{ x.label === rw.basis ? 'Used' : '' }}</span></div></div>
+      <p class="mutd">Burn is the {{ rw.months }}-month average. Runway is cash divided by burn.</p>
+    </div>
+
+    <div v-if="groups.length" class="tm">
+      <div class="tmh"><span class="bl">Take to your team</span><div class="seg"><button v-for="[w, items] in groups" :key="w" type="button" :class="{ on: who === w }" @click="who = w">{{ w }}<em>{{ items.length }}</em></button></div></div>
+      <div class="tml"><div v-for="(f, n) in groups.find(([w]) => w === who)?.[1] ?? []" :key="n" class="it"><span class="no">{{ n + 1 }}</span><div><b>{{ f.item }}</b><p>{{ f.why }}</p></div></div></div>
+    </div>
+    <p v-if="data?.checks" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up, so some of this may be off. See "Figures to check" below.</p>
   </section>
 </template>
+
 <style scoped>
-.fa { background: #fff; border: 1px solid var(--c-rule); padding: 22px 24px 20px; margin: 0 0 12px; }
-.fah { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--c-muted); } .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; }
-.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
-.hl { font-family: var(--font-heading); font-weight: 500; font-size: 22px; line-height: 1.3; color: var(--c-navy); margin: 10px 0 18px; max-width: 70ch; }
-.ins { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 1px; background: var(--c-rule); border: 1px solid var(--c-rule); }
-.ins article { background: #fff; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; position: relative; } .ins article::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--c-navy); } .ins article.watch::before { background: #c98a1c; } .ins article.risk::before { background: var(--c-danger); }
-.ins em { font-style: normal; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .ins b { font-size: 14.5px; font-weight: 600; color: var(--c-ink); } .ins p { margin: 0; font-size: 13px; color: var(--c-ink-soft); line-height: 1.5; }
-.tk { margin-top: 18px; } .tk h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--c-ink); }
-.tkg { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 22px; } .who { display: inline-block; font-size: 11.5px; padding: 2px 8px; background: var(--c-navy); color: #fff; margin-bottom: 6px; }
-.tkg ul { list-style: none; margin: 0; padding: 0; } .tkg li { padding: 7px 0; border-bottom: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 2px; font-size: 13px; } .tkg li b { font-weight: 600; color: var(--c-ink); } .tkg li span { color: var(--c-ink-soft); }
-.ft { margin: 14px 0 0; font-size: 12.5px; color: #8a5a0a; } .skel { color: var(--c-muted); font-size: 13.5px; margin: 10px 0 0; }
-@media (max-width: 1100px) { .ins { grid-template-columns: repeat(2, minmax(0, 1fr)); } } @media (max-width: 640px) { .ins { grid-template-columns: 1fr; } }
+.fh { background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; margin: 0 0 12px; }
+.hd { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+.eb, .bl { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--c-muted); } .bl small { text-transform: none; letter-spacing: 0; margin-left: 4px; }
+.hl { font-family: var(--font-heading); font-weight: 500; font-size: 20px; line-height: 1.35; color: var(--c-navy); margin: 6px 0 0; max-width: 72ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
+.meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; white-space: nowrap; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.7fr); gap: 12px; }
+.box { background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.rr, .dn { position: relative; width: 132px; height: 132px; align-self: center; } .ring { width: 132px; height: 132px; } .trk { fill: none; stroke: #e6eaf0; stroke-width: 11; } .val { fill: none; stroke: #1d64a8; stroke-width: 11; transition: stroke-dasharray .4s; }
+.rc { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; } .rc b { font-size: 26px; font-weight: 600; color: var(--c-navy); line-height: 1; } .rc span { font-size: 11.5px; color: var(--c-muted); margin-top: 4px; text-align: center; max-width: 80px; }
+dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } dl div { display: flex; flex-direction: column; gap: 2px; } dt { font-size: 12px; color: var(--c-muted); } dd { margin: 0; font-size: 16px; font-weight: 500; color: var(--c-ink); } dd small { font-size: 11.5px; color: var(--c-muted); font-weight: 400; }
+.chip { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--c-rule-strong); padding: 6px 10px; font: inherit; font-size: 12.5px; color: var(--c-ink); cursor: pointer; text-align: left; } .chip i { font-style: normal; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--c-signal-soft); color: var(--c-blue-deep); } .chip.check i { background: #fff1d6; color: #8a5a0a; } .chip em { font-style: normal; margin-left: auto; color: var(--c-blue-deep); }
+.lg { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13px; color: var(--c-ink-soft); } .lg li { display: flex; align-items: center; gap: 8px; } .lg i { width: 10px; height: 10px; flex: none; } .lg li.lft i { background: #e6eaf0; } .lg b { margin-left: auto; font-weight: 600; color: var(--c-ink); }
+.kp ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; } .kp li { border-top: 1px solid var(--c-rule); } .kp li:first-child { border-top: 0; }
+.kp li button { width: 100%; display: grid; grid-template-columns: 104px 1fr 16px; gap: 10px; align-items: center; background: none; border: 0; padding: 11px 0; font: inherit; text-align: left; cursor: pointer; color: var(--c-ink); } .kp li button b { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.cv { width: 16px; height: 16px; color: var(--c-muted); transition: transform .15s; } .kp li.open .cv { transform: rotate(180deg); } .kp li p { margin: 0 0 12px 114px; font-size: 13px; color: var(--c-ink-soft); line-height: 1.55; }
+.tn { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 3px 8px 3px 4px; justify-self: start; white-space: nowrap; } .tn i { font-style: normal; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+.tn.risk { background: #fdecea; color: #8f1d14; } .tn.risk i { background: var(--c-danger); } .tn.watch { background: #fff3dc; color: #7a4f06; } .tn.watch i { background: #b8790f; } .tn.good { background: var(--c-signal-soft); color: var(--c-navy); } .tn.good i { background: var(--c-blue-deep); }
+.how { margin-top: 12px; border: 1px solid var(--c-rule); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; } .iss { margin: 0; padding-left: 18px; color: var(--c-ink-soft); display: flex; flex-direction: column; gap: 4px; }
+.mr { display: grid; grid-template-columns: 1fr auto 56px; gap: 12px; padding: 7px 0; border-top: 1px solid var(--c-rule); } .mr .n { text-align: right; } .mr .u { text-align: right; font-size: 12px; color: var(--c-muted); } .mr.used { font-weight: 500; }
+.tm { margin-top: 16px; border-top: 1px solid var(--c-rule); padding-top: 14px; } .tmh { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.seg { display: flex; border: 1px solid var(--c-rule-strong); } .seg button { background: #fff; border: 0; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--c-ink-soft); cursor: pointer; display: flex; gap: 6px; align-items: center; } .seg button + button { border-left: 1px solid var(--c-rule-strong); } .seg button.on { background: var(--c-navy); color: #fff; } .seg em { font-style: normal; font-size: 11px; opacity: .75; }
+.tml { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; } .it { display: flex; gap: 10px; background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 12px 14px; } .it .no { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; background: var(--c-navy); color: #fff; }
+.it b { font-size: 13.5px; font-weight: 500; display: block; } .it p { margin: 3px 0 0; font-size: 12.5px; color: var(--c-ink-soft); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ft { margin: 14px 0 0; font-size: 12.5px; color: #7a4f06; display: flex; gap: 8px; align-items: center; } .ft i { font-style: normal; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; background: #fff1d6; }
+@media (max-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } .kp { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .kp li button { grid-template-columns: 1fr 16px; } .kp li button .tn { grid-column: 1 / -1; } .kp li p { margin-left: 0; } .hd { flex-direction: column; } }
 </style>

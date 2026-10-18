@@ -8,7 +8,7 @@ import { FIXED_KEYS } from '~/shared/forecast'
 import { AiMap, readWithMap, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
-export interface Grid { name: string; rows: Cell[][] }
+export interface Grid { name: string; rows: Cell[][]; formulas?: number } // formulas: share of filled cells that are formulas (derived tabs)
 export interface Layout { sheet: string; months: string[]; rows: { label: string; values: Record<string, number> }[] }
 export interface MapRow { label: string; to: string } // to: a line key, 'kpi' (a custom metric named after the row) or ''
 
@@ -61,15 +61,29 @@ function csvRows(text: string): Cell[][] {
 }
 export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv', lim: { tabs?: number; rows?: number; cols?: number } = {}): Promise<Grid[]> {
   if (ext === 'csv') return [{ name: 'Sheet1', rows: csvRows(buf.toString('utf8')) }]
+  // Streamed: large workbooks (tens of thousands of formula rows) read in seconds rather than minutes.
   const { default: Excel } = await import('exceljs')
-  const wb = new Excel.Workbook()
-  try { await wb.xlsx.load(buf as unknown as ArrayBuffer) } catch (e) { console.error('[sheets] load', (e as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
-  const maxR = lim.rows ?? MAX_ROWS, maxC = lim.cols ?? MAX_COLS
-  return wb.worksheets.filter((ws) => ws.state !== 'veryHidden').slice(0, lim.tabs ?? 12).map((ws) => {
-    const rows: Cell[][] = []
-    for (let r = 1; r <= Math.min(ws.rowCount, maxR); r++) { const row = ws.getRow(r), cells: Cell[] = []; for (let c = 1; c <= Math.min(ws.columnCount, maxC); c++) cells.push(cellVal(row.getCell(c).value)); rows.push(cells) }
-    return { name: ws.name, rows }
-  })
+  const { Readable } = await import('node:stream')
+  const maxR = lim.rows ?? MAX_ROWS, maxC = lim.cols ?? MAX_COLS, maxT = lim.tabs ?? 12
+  const out: Grid[] = []
+  try {
+    const rd = new Excel.stream.xlsx.WorkbookReader(Readable.from(buf), { worksheets: 'emit', sharedStrings: 'cache', hyperlinks: 'ignore', styles: 'cache', entries: 'emit' })
+    for await (const ws of rd as unknown as AsyncIterable<AsyncIterable<{ number: number; values: unknown }> & { name?: string; id?: number }>) {
+      if (out.length >= maxT) break
+      const rows: Cell[][] = []; let filled = 0, fx = 0
+      for await (const row of ws) {
+        if (row.number > maxR) continue
+        while (rows.length < row.number - 1) rows.push([])
+        const vals = Array.isArray(row.values) ? (row.values as ExcelJS.CellValue[]).slice(1, maxC + 1) : []
+        const cells: Cell[] = []
+        for (let c = 0; c < vals.length; c++) { const v = vals[c]; if (row.number <= 300 && v !== null && v !== undefined) { filled++; if (typeof v === 'object' && v !== null && ('formula' in v || 'sharedFormula' in v)) fx++ } cells.push(cellVal(v ?? null)) }
+        rows.push(cells)
+      }
+      const w = Math.max(0, ...rows.map((r) => r.length))
+      out.push({ name: String(ws.name ?? 'Sheet' + (out.length + 1)), rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0 })
+    }
+  } catch (e) { console.error('[sheets] load', (e as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
+  return out
 }
 
 const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']

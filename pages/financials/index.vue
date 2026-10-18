@@ -97,6 +97,8 @@ async function makeStatements() {
 }
 // Burn and runway checked three ways on the monthly figures (3-month average); else the latest period's burn.
 const review = computed(() => burnReview(monthly.value as unknown as FinRow[]))
+// Where each dollar of revenue went over the last three months.
+const unit = computed(() => { const l3 = monthly.value.slice(-3); if (!l3.length) return null; const sum = (k: string) => l3.reduce((a, r) => a + (Number(r.derived[k] ?? 0) || 0), 0); return { revenue: sum('revenue'), cogs: sum('cogs'), opex: sum('opex_total'), label: l3.length === 1 ? lbl(l3[0]!.period_end, 'month') : lbl(l3[0]!.period_end, 'month') + ' – ' + lbl(l3[l3.length - 1]!.period_end, 'month') } })
 const runwayKnown = computed(() => { if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
@@ -247,13 +249,13 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
-        <BurnCheck v-if="monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
+        <BurnCheck v-if="!co && monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
         <div class="charts">
           <TrendChart title="Revenue" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('revenue')" :foot="view === 'custom' ? 'Total, ' + rangeLbl : vrows.length + ' periods'" :foot-value="latest.derived.revenue ?? null" />
           <TrendChart title="Profit and loss" unit="usd" bars :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" :foot="view === 'custom' ? 'Net income, ' + rangeLbl : 'Net income after all costs'" :foot-value="latest.derived.net_income ?? null" />
           <TrendChart :title="secOn ? 'Cash & securities' : 'Cash'" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
-        <FinAnalysis v-if="co && !isGroup" :subject="co.subject" />
+        <FinAnalysis v-if="co && !isGroup" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
           <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
         <div class="two"><div class="card"><DonutChart :title="'Operating expenses · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" total-label="Operating expenses" :currency="cur" :segments="mix" /></div>

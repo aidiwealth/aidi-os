@@ -5,6 +5,10 @@ export default defineEventHandler(async (event) => {
   const b = z.object({ ids: z.array(z.string().uuid()).min(2).max(50), keep: z.string().uuid() }).safeParse(await readBody(event))
   if (!b.success || !b.data.ids.includes(b.data.keep)) throw apiError('invalid', 'Choose the customers to merge and which name to keep.')
   const olds = b.data.ids.filter((x) => x !== b.data.keep)
+  // Remember the names, so a linked sheet keeps them merged on every read.
+  const names = (await db().query<{ id: string; name: string }>('SELECT id, name FROM financials.customers WHERE id = ANY($1::uuid[])', [b.data.ids])).rows
+  const keepName = names.find((x) => x.id === b.data.keep)?.name
+  if (keepName) await rememberMerges([{ names: names.map((x) => x.name), to: keepName }])
   await db().query(`INSERT INTO financials.customer_revenue (customer_id, month, amount) SELECT $1, month, sum(amount) FROM financials.customer_revenue WHERE customer_id = ANY($2::uuid[]) GROUP BY month
     ON CONFLICT (customer_id, month) DO UPDATE SET amount = financials.customer_revenue.amount + EXCLUDED.amount`, [b.data.keep, olds])
   await db().query('DELETE FROM financials.customers WHERE id = ANY($1::uuid[])', [olds])

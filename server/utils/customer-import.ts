@@ -7,14 +7,15 @@ import { custKey } from '~/shared/customer-metrics'
 import type { Cell, Grid } from './sheet-links'
 
 export interface ParsedCust { name: string; segment?: string; sector?: string; country?: string; plan?: string; started_on?: string; acquisition_cost?: number; gross_margin_pct?: number; rev: Record<string, number>; rep?: Record<string, number> }
-export interface Parsed { sheet: string; layout: 'long' | 'wide'; customers: ParsedCust[]; rows: number; repeated: number; skipped: number; months: string[]; ai_mapped: boolean; notes: string[] }
+export interface Parsed { sheet: string; sheets?: { name: string; currency: string }[]; currency?: string; layout: 'long' | 'wide'; customers: ParsedCust[]; rows: number; repeated: number; skipped: number; months: string[]; ai_mapped: boolean; notes: string[] }
 export interface DupGroup { names: string[]; to: string; reason: string; sure: boolean; existing: boolean }
 
 type Attr = 'segment' | 'sector' | 'country' | 'plan' | 'started_on' | 'acquisition_cost' | 'gross_margin_pct'
 const ATTR: [Attr, RegExp][] = [['segment', /^(segment|tier|size|customer type|type|category|class)/i], ['sector', /(sector|industry|vertical)/i], ['country', /^(country|region|market|geo|location)/i],
   ['plan', /^(plan|product|package|pricing|sku|service)/i], ['started_on', /(start|signed|since|onboard|first (invoice|payment)|joined|acquired on|go.?live)/i], ['acquisition_cost', /(cac|acquisition cost|cost to acquire)/i], ['gross_margin_pct', /(gross margin|gm ?%|margin)/i]]
 const NAME = /^(customer|client|account|company|merchant|business|name|customer name|client name|account name|organisation|organization|partner)s?\b/i
-const MONTH = /^(month|date|period|invoice date|billing (month|date|period)|transaction date|posted|paid on|payment date)/i
+const MONTH = /^(month|date|period|invoice date|billing (month|date|period)|transaction date|posted|paid on|payment date|year.?month|month start|billing cycle)/i
+const CUR = /^(currency|ccy|cur\.?|curr)$/i
 const AMOUNT = /(revenue|amount|mrr|arr|total|value|sales|billing|billed|invoice amount|income|net|fees?|paid|usd|ngn)/i
 const TOTAL = /^(grand )?(sub)?total\b|^all customers$|^sum$/i
 
@@ -34,8 +35,8 @@ function setAttr(t: ParsedCust, a: Attr, c: Cell) {
   t[a] = txt(c).slice(0, a === 'sector' || a === 'plan' ? 80 : 60)
 }
 
-interface Map { header: number; layout: 'long' | 'wide'; name: number; month: number; amount: number; monthCols: { col: number; month: string }[]; attrs: [Attr, number][] }
-function guess(g: Grid): Map | null {
+interface TMap { header: number; layout: 'long' | 'wide'; name: number; month: number; amount: number; monthCols: { col: number; month: string }[]; attrs: [Attr, number][]; cur?: number }
+function guess(g: Grid): TMap | null {
   for (let h = 0; h < Math.min(12, g.rows.length); h++) {
     const row = g.rows[h] ?? []
     const heads = row.map(txt)
@@ -49,7 +50,8 @@ function guess(g: Grid): Map | null {
     const name = heads.findIndex((x) => NAME.test(x)), month = heads.findIndex((x) => MONTH.test(x))
     let amount = heads.findIndex((x, i) => i !== name && i !== month && AMOUNT.test(x) && !/(count|qty|quantity|units|id|number|no\.?)$/i.test(x))
     if (amount < 0 && name >= 0 && month >= 0) amount = heads.findIndex((x, i) => i !== name && i !== month && x && g.rows.slice(h + 1, h + 20).some((r) => typeof numOf(r[i] ?? null) === 'number'))
-    if (name >= 0 && month >= 0 && amount >= 0) return { header: h, layout: 'long', name, month, amount, monthCols: [], attrs: attrs.filter(([, i]) => ![name, month, amount].includes(i)) }
+    const cur = heads.findIndex((x) => CUR.test(x))
+    if (name >= 0 && month >= 0 && amount >= 0) return { header: h, layout: 'long', name, month, amount, monthCols: [], attrs: attrs.filter(([, i]) => ![name, month, amount, cur].includes(i)), cur: cur >= 0 ? cur : undefined }
   }
   return null
 }
@@ -57,7 +59,7 @@ function guess(g: Grid): Map | null {
 const AiMapOut = z.object({ sheet: z.string(), header_row: z.number().int(), layout: z.enum(['long', 'wide', 'none']), customer_col: z.string(), month_col: z.string(), amount_col: z.string(), first_month_col: z.string(),
   segment_col: z.string(), sector_col: z.string(), country_col: z.string(), plan_col: z.string(), start_col: z.string(), cac_col: z.string(), margin_col: z.string() })
 const colIdx = (s: string) => { const t = s.trim().toUpperCase(); if (!/^[A-Z]{1,3}$/.test(t)) return -1; let n = 0; for (const ch of t) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1 }
-async function aiMap(grids: Grid[], ref: string): Promise<{ g: Grid; m: Map } | null> {
+async function aiMap(grids: Grid[], ref: string): Promise<{ g: Grid; m: TMap } | null> {
   if (!useRuntimeConfig().anthropicApiKey) return null
   const L = (i: number) => { let s = '', n = i + 1; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26) } return s }
   const sample = grids.slice(0, 4).map((g) => '## ' + g.name + '\n' + g.rows.slice(0, 15).map((r, i) => (i + 1) + ': ' + r.slice(0, 30).map((c, j) => c === null ? '' : L(j) + '=' + String(c).slice(0, 40)).filter(Boolean).join(' | ')).join('\n')).join('\n\n')
@@ -81,41 +83,117 @@ async function aiMap(grids: Grid[], ref: string): Promise<{ g: Grid; m: Map } | 
   } catch (e) { console.error('[customers] map', (e as Error).message); return null }
 }
 
-export async function parseCustomers(grids: Grid[], ref: string): Promise<Parsed> {
-  let pick: { g: Grid; m: Map } | null = null
-  for (const g of grids) { const m = guess(g); if (m && (!pick || (m.layout === 'long' ? g.rows.length : m.monthCols.length * g.rows.length) > (pick.m.layout === 'long' ? pick.g.rows.length : pick.m.monthCols.length * pick.g.rows.length))) pick = { g, m } }
-  let ai = false
-  if (!pick) { pick = await aiMap(grids, ref); ai = !!pick }
-  if (!pick) throw apiError('unreadable', 'We could not find customer revenue in that file. Use one row per customer per month with the columns Customer, Month and Revenue (or months across the top), headings in the first row.', 422)
-  const { g, m } = pick
+// Currencies: a column, the amount heading ("Amount (NGN)", "Revenue $"), or the tab's name ("Nigeria Data").
+const COUNTRY: [RegExp, string][] = [[/nigeria|\bng\b|naira|lagos/i, 'NGN'], [/\b(us|usa|united states|dollar)\b/i, 'USD'], [/ghana/i, 'GHS'], [/kenya/i, 'KES'], [/south africa/i, 'ZAR'], [/\buk\b|united kingdom|britain/i, 'GBP'], [/euro|europe/i, 'EUR'], [/rwanda/i, 'RWF'], [/egypt/i, 'EGP'], [/uae|dubai|emirates/i, 'AED'], [/canada/i, 'CAD']]
+function curOf(t: string): string | null {
+  const s = t.trim(); const code = /\b(USD|NGN|GBP|EUR|KES|GHS|ZAR|RWF|EGP|AED|CAD|XOF|UGX|TZS)\b/i.exec(s); if (code) return code[1]!.toUpperCase()
+  if (s.includes('₦')) return 'NGN'; if (s.includes('£')) return 'GBP'; if (s.includes('€')) return 'EUR'; if (/GH₵|GHC/i.test(s)) return 'GHS'; if (/KSh/i.test(s)) return 'KES'
+  if (s === '$' || /\(\$\)|\$\s*$|^\$/.test(s)) return 'USD'
+  return null
+}
+// Exchange rates in the file: a tab with a month and a rate (e.g. "Rate (₦ per $1)"), or Month | Currency | Rate.
+// Returned as units of each currency per 1 USD, by month.
+export function fileRates(grids: Grid[]): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>()
+  const put = (cur: string, m: string, perUsd: number) => { if (!(perUsd > 0)) return; const x = out.get(cur) ?? new Map<string, number>(); x.set(m, perUsd); out.set(cur, x) }
+  for (const g of grids.filter((x) => /(exchange|fx|rate)/i.test(x.name))) {
+    for (let h = 0; h < Math.min(10, g.rows.length); h++) {
+      const heads = (g.rows[h] ?? []).map(txt)
+      const mc = heads.findIndex((x) => /^(month|period|date)/i.test(x)), rc = heads.findIndex((x) => /rate|per\s*\$|per\s*usd/i.test(x)), cc = heads.findIndex((x) => CUR.test(x))
+      if (mc < 0 || rc < 0) continue
+      const hc = curOf(heads[rc]!.replace(/per\s*\$\s*1|per\s*usd|per\s*1\s*usd/i, '')) // "Rate (₦ per $1)" → NGN per USD
+      for (const r of g.rows.slice(h + 1)) {
+        const m = monthCell(r[mc] ?? null), v = numOf(r[rc] ?? null); if (!m || v === null) continue
+        const c = cc >= 0 ? (curOf(txt(r[cc] ?? null)) ?? txt(r[cc] ?? null).toUpperCase()) : hc
+        if (c && c !== 'USD') put(c, m, v)
+      }
+      break
+    }
+  }
+  return out
+}
+const DERIVED = /(top ?\d*|working|combined|summary|cohort|first seen|matrix|readme|detail|unique|pivot|report|dashboard|chart|analysis|assignment|variant|rate)/i
+interface Pick { g: Grid; m: TMap; cur: string | null }
+const AiPlanOut = z.object({ tables: z.array(z.object({ sheet: z.string(), currency: z.string() })), reason: z.string() })
+// Which tabs hold the source rows (not totals, rankings or copies built from them), and their currencies.
+async function aiPlan(cands: Pick[], ref: string): Promise<Pick[] | null> {
+  if (!useRuntimeConfig().anthropicApiKey || cands.length < 2) return null
+  const list = cands.map((c) => '## ' + c.g.name + ' (' + c.g.rows.length + ' rows, ' + Math.round((c.g.formulas ?? 0) * 100) + '% formulas)\n' + c.g.rows.slice(c.m.header, c.m.header + 6).map((r) => r.slice(0, 10).map((x) => (x === null ? '' : String(x).slice(0, 30))).join(' | ')).join('\n')).join('\n\n')
+  try {
+    const { output } = await runAiTool({ task: 'customer_plan', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-plan-v1', inputRef: ref,
+      system: 'A workbook has several tables of customer revenue. Choose only the SOURCE tables (raw rows: one per customer per month or per transaction), never tables built from them (rankings, top 100, totals, combined or converted copies, working tabs), so nothing is counted twice. Give each chosen table its currency as an ISO code (or "" if not shown).',
+      user: list, toolName: 'choose_tables', toolDescription: 'Choose the source tables and their currencies.', schema: AiPlanOut, maxTokens: 600,
+      jsonSchema: { type: 'object', additionalProperties: false, required: ['tables', 'reason'], properties: { tables: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['sheet', 'currency'], properties: { sheet: { type: 'string' }, currency: { type: 'string' } } } }, reason: { type: 'string' } } } })
+    const out = output.tables.map((t) => { const c = cands.find((x) => x.g.name === t.sheet); return c ? { ...c, cur: c.cur ?? (/^[A-Z]{3}$/.test(t.currency.toUpperCase()) ? t.currency.toUpperCase() : null) } : null }).filter((x): x is Pick => !!x)
+    return out.length ? out : null
+  } catch (e) { console.error('[customers] plan', (e as Error).message); return null }
+}
+
+// Read customer revenue from a workbook: every source table (several tabs, e.g. one per country, are added together),
+// amounts converted to `target` at the file's own monthly rates when given, else the latest daily rate.
+export async function parseCustomers(grids: Grid[], ref: string, target = 'USD'): Promise<Parsed> {
+  const cands: Pick[] = []
+  for (const g of grids) { const m = guess(g); if (m) cands.push({ g, m, cur: m.layout === 'long' ? curOf(txt((g.rows[m.header] ?? [])[m.amount] ?? null)) ?? COUNTRY.find(([re]) => re.test(g.name))?.[1] ?? null : COUNTRY.find(([re]) => re.test(g.name))?.[1] ?? null }) }
+  let ai = false, picks: Pick[] = []
+  if (cands.length) {
+    // Prefer source tabs: not named like a report, and mostly typed values rather than formulas.
+    const src = cands.filter((c) => !DERIVED.test(c.g.name) || /\bdata\b|raw|transactions?|invoices?|billing/i.test(c.g.name))
+    const pool = src.length ? src : cands
+    const low = pool.filter((c) => (c.g.formulas ?? 0) < 0.5)
+    picks = (low.length ? low : pool)
+    const longs = picks.filter((c) => c.m.layout === 'long')
+    picks = longs.length ? longs : [picks.sort((a, b) => b.m.monthCols.length * b.g.rows.length - a.m.monthCols.length * a.g.rows.length)[0]!]
+    if (picks.length > 1) { const p = await aiPlan(picks, ref); if (p) { picks = p; ai = true } }
+  }
+  if (!picks.length) { const p = await aiMap(grids, ref); if (p) { picks = [{ ...p, cur: null }]; ai = true } }
+  if (!picks.length) throw apiError('unreadable', 'We could not find customer revenue in that file. Use one row per customer per month with the columns Customer, Month and Revenue (or months across the top), headings in the first row.', 422)
+  const rates = fileRates(grids)
+  const usdRates = await fxRates().then((r) => r.rates).catch(() => new Map<string, number>())
+  const perUsd = (c: string, mo: string) => (c === 'USD' ? 1 : rates.get(c)?.get(mo) ?? [...(rates.get(c)?.entries() ?? [])].sort((a, b) => Math.abs(Number(a[0].replace('-', '')) - Number(mo.replace('-', ''))) - Math.abs(Number(b[0].replace('-', '')) - Number(mo.replace('-', ''))))[0]?.[1] ?? usdRates.get(c) ?? null)
+  const used = new Set<string>(), missingRate = new Set<string>(), fromFile = new Set<string>()
+  const conv = (amt: number, c: string | null, mo: string): number | null => {
+    if (!c || c === target) return amt
+    const a = perUsd(c, mo), b = perUsd(target, mo)
+    if (!a || !b) { missingRate.add(c); return null }
+    used.add(c); if (rates.get(c)?.has(mo) || rates.get(target)?.has(mo)) fromFile.add(c)
+    return (amt / a) * b
+  }
   const by = new Map<string, ParsedCust>(), seen = new Set<string>(), notes: string[] = []
   let rows = 0, repeated = 0, skipped = 0
   const get = (name: string) => { const k = name.toLowerCase(); let t = by.get(k); if (!t) { t = { name, rev: {} }; by.set(k, t) } return t }
-  for (const r of g.rows.slice(m.header + 1)) {
-    const name = txt(r[m.name] ?? null).replace(/\s+/g, ' ').slice(0, 200)
-    if (!name || TOTAL.test(name)) { if (name) skipped++; continue }
-    if (m.layout === 'long') {
-      const mo = monthCell(r[m.month] ?? null), amt = numOf(r[m.amount] ?? null)
-      if (!mo || amt === null) { skipped++; continue }
-      const t = get(name)
-      const sig = JSON.stringify(r); if (seen.has(sig)) { repeated++; t.rep = t.rep ?? {}; t.rep[mo] = Math.round(((t.rep[mo] ?? 0) + amt) * 100) / 100; continue } seen.add(sig)
-      t.rev[mo] = Math.round(((t.rev[mo] ?? 0) + amt) * 100) / 100; rows++
-      for (const [a, i] of m.attrs) setAttr(t, a, r[i] ?? null)
-    } else {
-      const t = by.get(name.toLowerCase()); if (t) repeated++
-      const c = t ?? get(name); let any = false
-      for (const { col, month } of m.monthCols) { const v = numOf(r[col] ?? null); if (v !== null && v !== 0) { c.rev[month] = Math.round(((t ? c.rev[month] ?? 0 : 0) + v) * 100) / 100; any = true } }
-      for (const [a, i] of m.attrs) setAttr(c, a, r[i] ?? null)
-      if (any) rows++; else if (!t) { by.delete(name.toLowerCase()); skipped++ }
+  for (const { g, m, cur } of picks) {
+    for (const r of g.rows.slice(m.header + 1)) {
+      const name = txt(r[m.name] ?? null).replace(/\s+/g, ' ').slice(0, 200)
+      if (!name || TOTAL.test(name) || /^[-–—.\s]+$/.test(name)) { if (name) skipped++; continue }
+      if (m.layout === 'long') {
+        const mo = monthCell(r[m.month] ?? null), raw = numOf(r[m.amount] ?? null)
+        if (!mo || raw === null) { skipped++; continue }
+        const rc = m.cur !== undefined ? curOf(txt(r[m.cur] ?? null)) ?? cur : cur
+        const amt = conv(raw, rc, mo); if (amt === null) { skipped++; continue }
+        const t = get(name)
+        const sig = g.name + JSON.stringify(r); if (seen.has(sig)) { repeated++; t.rep = t.rep ?? {}; t.rep[mo] = Math.round(((t.rep[mo] ?? 0) + amt) * 100) / 100; continue } seen.add(sig)
+        t.rev[mo] = Math.round(((t.rev[mo] ?? 0) + amt) * 100) / 100; rows++
+        for (const [a, i] of m.attrs) setAttr(t, a, r[i] ?? null)
+      } else {
+        const t = by.get(name.toLowerCase()); if (t) repeated++
+        const c = t ?? get(name); let any = false
+        for (const { col, month } of m.monthCols) { const v0 = numOf(r[col] ?? null); const v = v0 === null ? null : conv(v0, cur, month); if (v !== null && v !== 0) { c.rev[month] = Math.round(((t ? c.rev[month] ?? 0 : 0) + v) * 100) / 100; any = true } }
+        for (const [a, i] of m.attrs) setAttr(c, a, r[i] ?? null)
+        if (any) rows++; else if (!t) { by.delete(name.toLowerCase()); skipped++ }
+      }
     }
   }
   const customers = [...by.values()].filter((c) => Object.keys(c.rev).length)
   if (!customers.length) throw apiError('unreadable', 'No customer revenue was found under the headings. Check the month and amount columns.', 422)
   const months = [...new Set(customers.flatMap((c) => Object.keys(c.rev)))].sort()
-  if (repeated) notes.push(m.layout === 'long' ? repeated + ' row' + (repeated === 1 ? ' was' : 's were') + ' exact repeats of another row (same customer, month, amount and every other column). They are left out unless you keep them.' : repeated + ' customer' + (repeated === 1 ? ' appears' : 's appear') + ' on more than one row; the rows were added together.')
+  const m0 = picks[0]!.m
+  if (picks.length > 1) notes.push('Read ' + picks.length + ' tables and added them together: ' + picks.map((p) => p.g.name + (p.cur ? ' (' + p.cur + ')' : '')).join(', ') + '. Tabs built from them (rankings, totals, combined copies) were left out so nothing is counted twice.')
+  if (used.size) notes.push([...used].join(', ') + ' converted to ' + target + (fromFile.size ? ' at the monthly rates in the file' + (fromFile.size < used.size ? ' (the latest daily rate where the file has none)' : '') : ' at the latest daily rate') + '.')
+  if (missingRate.size) notes.push('No exchange rate for ' + [...missingRate].join(', ') + '; those rows were skipped. Add an "Exchange rates" tab (Month, Currency, Rate per 1 USD).')
+  if (repeated) notes.push(m0.layout === 'long' ? repeated + ' row' + (repeated === 1 ? ' was' : 's were') + ' exact repeats of another row (same customer, month, amount and every other column). They are left out unless you keep them.' : repeated + ' customer' + (repeated === 1 ? ' appears' : 's appear') + ' on more than one row; the rows were added together.')
   if (skipped) notes.push(skipped + ' row' + (skipped === 1 ? '' : 's') + ' without a customer, month or amount (or totals) were skipped.')
   if (customers.some((c) => Object.values(c.rev).some((v) => v < 0))) notes.push('Some months are negative (credits or refunds); they are kept as given.')
-  return { sheet: g.name, layout: m.layout, customers, rows, repeated, skipped, months, ai_mapped: ai, notes }
+  return { sheet: picks.map((p) => p.g.name).join(', '), sheets: picks.map((p) => ({ name: p.g.name, currency: p.cur ?? target })), currency: target, layout: m0.layout, customers, rows, repeated, skipped, months, ai_mapped: ai, notes }
 }
 
 // The same customer written two ways: certain when the names match after removing case, punctuation and company

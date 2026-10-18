@@ -45,14 +45,15 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     <FinTabs />
     <div class="head"><div><h1>Customers</h1><p class="sub">Who pays the most, who is growing or slipping, which sectors matter, and what a customer is worth.</p></div>
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
-        <button v-if="canEdit" class="btn" type="button" @click="up = true">Upload customer revenue</button></div></div>
+        <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
+    <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
     <div v-if="!cs.length" class="start card">
       <div><h2>Understand your customers</h2><p>Upload what each customer paid each month. You get your top and least performing customers, sectors, revenue concentration, lifetime value (LTV), and, if you add what it cost to win each customer, LTV to CAC and payback.</p>
         <ul><li><b>Customer, Month, Revenue</b>: one row per customer per month (or months across the top)</li><li><b>Sector</b> for the sector view (Banking, Retail, Telecoms…)</li><li>Optional: Segment, Country, Plan, Start date, Acquisition cost, Gross margin</li></ul>
         <p class="mut">Keep it simple: one table, headings in the first row, no totals. We check for the same customer written two ways before saving.</p>
-        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Upload customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download a template</a></div></div>
+        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the kit (Excel)</a></div></div>
     </div>
 
     <template v-else>

@@ -4,14 +4,20 @@ const props = defineProps<{ open: boolean; existing: number; extra?: 'retention'
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Dup { names: string[]; to: string; reason: string; sure: boolean; existing: boolean }
 interface Prev { id: string; summary: { sheet: string; layout: string; customers: number; rows: number; repeated: number; skipped: number; first: string; last: string; months: number; known: number; total: number; attrs: string[]; ai_mapped: boolean; notes: string[] }; dupes: Dup[]; existing: number }
-const st = reactive({ busy: false, msg: '', prev: null as Prev | null, pick: [] as boolean[], keepRepeats: false, mode: 'merge' as 'merge' | 'replace' })
-watch(() => props.open, (o) => { if (o) Object.assign(st, { busy: false, msg: '', prev: null, pick: [], keepRepeats: false, mode: 'merge' }) })
+const st = reactive({ busy: false, msg: '', prev: null as Prev | null, pick: [] as boolean[], keepRepeats: false, mode: 'merge' as 'merge' | 'replace', src: 'file' as 'file' | 'link', url: '', linked: '' })
+watch(() => props.open, (o) => { if (o) Object.assign(st, { busy: false, msg: '', prev: null, pick: [], keepRepeats: false, mode: 'merge', url: '', linked: '' }) })
+// A live link: read the sheet now, then every day.
+async function readLink() {
+  st.busy = true; st.msg = ''
+  try { const r = await $fetch<Prev & { provider: string }>('/api/financials/customers/link-preview', { method: 'POST', body: { url: st.url } }); st.prev = r; st.linked = r.provider; st.pick = r.dupes.map((d) => d.sure) }
+  catch (e) { st.msg = err(e) } finally { st.busy = false }
+}
 const ATTR: Record<string, string> = { segment: 'Segment', sector: 'Sector', country: 'Country', plan: 'Plan', started_on: 'Start date', acquisition_cost: 'Acquisition cost', gross_margin_pct: 'Gross margin' }
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read the file.'
 async function read(ev: Event) {
   const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return
   st.busy = true; st.msg = ''
-  try { const fd = new FormData(); fd.append('file', f); st.prev = await $fetch<Prev>('/api/financials/customers/preview', { method: 'POST', body: fd }); st.pick = st.prev.dupes.map((d) => d.sure) }
+  try { const fd = new FormData(); fd.append('file', f); st.prev = await $fetch<Prev>('/api/financials/customers/preview', { method: 'POST', body: fd }); st.linked = ''; st.pick = st.prev.dupes.map((d) => d.sure) }
   catch (e) { st.msg = err(e) } finally { st.busy = false }
 }
 async function save() {
@@ -19,8 +25,8 @@ async function save() {
   st.busy = true; st.msg = ''
   try {
     const merges = st.prev.dupes.filter((_, i) => st.pick[i]).map((d) => ({ names: d.names, to: d.to }))
-    const r = await $fetch<{ customers: number; months: number; merged: number }>('/api/financials/customers/import', { method: 'POST', body: { id: st.prev.id, merges, keep_repeats: st.keepRepeats, mode: st.mode } })
-    emit('done', r.customers + ' customers saved (' + r.months.toLocaleString('en-US') + ' customer-months)' + (r.merged ? ', ' + r.merged + ' duplicate' + (r.merged === 1 ? '' : 's') + ' merged' : '') + '.')
+    const r = await $fetch<{ customers: number; months: number; merged: number }>('/api/financials/customers/import', { method: 'POST', body: { id: st.prev.id, merges, keep_repeats: st.keepRepeats, mode: st.mode, link: st.linked ? { url: st.url, name: st.linked } : undefined } })
+    emit('done', (st.linked ? 'Linked: ' : '') + r.customers + ' customers saved (' + r.months.toLocaleString('en-US') + ' customer-months)' + (r.merged ? ', ' + r.merged + ' duplicate' + (r.merged === 1 ? '' : 's') + ' merged' : '') + '.')
   } catch (e) { st.msg = err(e) } finally { st.busy = false }
 }
 const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
@@ -35,19 +41,24 @@ const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString
             <tr><td><b>Customer</b></td><td>The customer's name, written the same way every month</td></tr>
             <tr><td><b>Month</b></td><td>The month the revenue is for (2025-01, Jan 2025 or a date)</td></tr>
             <tr><td><b>Revenue</b></td><td>What the customer paid or was billed that month</td></tr>
+            <tr class="opt"><td>Currency</td><td>Optional: only if you bill in more than one currency (USD, NGN…)</td></tr>
             <tr class="opt"><td>Segment</td><td>Optional: Enterprise, SMB, or your own groups</td></tr>
             <tr class="opt"><td>Sector</td><td>Optional: Banking, Retail, Telecoms… {{ extra === 'customers' ? '(needed for the sector view)' : '' }}</td></tr>
             <tr class="opt"><td>Country, Plan, Start date</td><td>Optional</td></tr>
             <tr class="opt"><td>Acquisition cost</td><td>Optional: what it cost to win the customer, for LTV to CAC and payback</td></tr>
           </tbody></table></div>
-        <div class="tips"><h4>Keep it simple</h4><ul><li>One table on one sheet, headings in the first row</li><li>One row per customer per month, or one row per customer with months across the top</li><li>No totals rows, merged cells or formulas that show errors</li><li>Give at least 13 months, so a year-on-year comparison is possible</li><li>One currency for all the figures</li></ul>
-          <a href="/api/financials/customers/template" class="lk">Download a template (CSV)</a></div>
+        <div class="tips"><h4>Keep it simple</h4><ul><li>One table on one sheet, headings in the first row</li><li>One row per customer per month, or one row per customer with months across the top</li><li>No totals rows, merged cells or formulas that show errors</li><li>Give at least 13 months, so a year-on-year comparison is possible</li><li>Billing in more than one currency? Add a Currency column and an Exchange rates tab</li></ul>
+          <a href="/api/financials/customers/template" class="lk">Download the Finvry kit (Excel)</a><span class="mut kit">Your own layout works too: several tabs (for example one per country), other currencies with an exchange-rate tab, or a PDF or Word report. AI finds the right tables.</span></div>
       </div>
-      <DropZone accept=".xlsx,.csv" :disabled="st.busy" :label="st.busy ? 'Reading and checking for duplicates…' : 'Drag and drop the file here'" hint="Excel or CSV · or click to choose" no-tip @change="read" />
+      <div class="srcs"><button type="button" :class="{ on: st.src === 'file' }" @click="st.src = 'file'">Upload a file</button><button type="button" :class="{ on: st.src === 'link' }" @click="st.src = 'link'">Link a Google Sheet</button></div>
+      <DropZone v-if="st.src === 'file'" accept=".xlsx,.csv,.docx,.pdf" :disabled="st.busy" :label="st.busy ? 'Reading and checking for duplicates…' : 'Drag and drop the file here'" hint="Excel, CSV, Word or PDF · AI reads other layouts · or click to choose" no-tip @change="read" />
+      <form v-else class="lnk" @submit.prevent="readLink"><input v-model="st.url" type="url" required placeholder="Paste the share link (Google Sheets, Excel online or Dropbox)"><button class="btn" type="submit" :disabled="st.busy || st.url.length < 10">{{ st.busy ? 'Reading…' : 'Read the sheet' }}</button>
+        <span class="mut">Share it so anyone with the link can view. Finvry re-reads it every day, keeps the duplicates you merge merged, and replaces the saved customers with what the sheet holds.</span></form>
       <p v-if="st.msg" class="error">{{ st.msg }}</p>
     </div>
     <div v-else class="cu">
       <div class="sum"><div><b>{{ st.prev.summary.customers.toLocaleString('en-US') }}</b><span>customers</span></div><div><b>{{ st.prev.summary.months }}</b><span>months, {{ mon(st.prev.summary.first) }} – {{ mon(st.prev.summary.last) }}</span></div><div><b>{{ Math.round(st.prev.summary.total).toLocaleString('en-US') }}</b><span>total revenue</span></div><div><b>{{ st.prev.summary.known }}</b><span>already saved</span></div></div>
+      <p v-if="st.linked" class="lk2">Linked to {{ st.linked }}: saving replaces the saved customers and the sheet is read again every day.</p>
       <p class="mut">Read from "{{ st.prev.summary.sheet }}" ({{ st.prev.summary.layout === 'long' ? 'one row per customer per month' : 'months across the columns' }}{{ st.prev.summary.ai_mapped ? ', layout found by AI' : '' }}).{{ st.prev.summary.attrs.length ? ' Also found: ' + st.prev.summary.attrs.map((a) => ATTR[a]).join(', ') + '.' : '' }}</p>
       <ul v-if="st.prev.summary.notes.length" class="notes"><li v-for="(n, i) in st.prev.summary.notes" :key="i">{{ n }}</li></ul>
       <label v-if="st.prev.summary.repeated && st.prev.summary.layout === 'long'" class="ck"><input v-model="st.keepRepeats" type="checkbox"> Keep the {{ st.prev.summary.repeated }} repeated row{{ st.prev.summary.repeated === 1 ? '' : 's' }} (only if they are real, separate charges)</label>
@@ -76,6 +87,8 @@ table { width: 100%; border-collapse: collapse; } td { padding: 6px 8px 6px 0; b
 .dup { border: 1px solid var(--c-rule); padding: 12px 14px; background: #fff; } .dl { max-height: 300px; overflow: auto; display: flex; flex-direction: column; margin-top: 8px; }
 .di { display: grid; grid-template-columns: 80px 1fr 220px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--c-rule); } .dn { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .nm { font-weight: 500; overflow-wrap: anywhere; } .why { font-size: 12px; color: var(--c-muted); }
 .keep { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--c-muted); } .keep select { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); background: #fff; }
+.srcs { display: flex; border: 1px solid var(--c-rule-strong); align-self: flex-start; } .srcs button { background: #fff; border: 0; padding: 8px 14px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-ink-soft); } .srcs button.on { background: var(--c-navy); color: #fff; }
+.lnk { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; border: 1.5px dashed var(--c-rule-strong); padding: 18px; } .lnk input { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--c-rule-strong); } .lnk .mut { grid-column: 1 / -1; } .kit { display: block; margin-top: 8px; } .lk2 { margin: 0; font-size: 13px; background: var(--c-signal-soft); color: var(--c-navy); padding: 8px 12px; }
 .all { display: flex; gap: 14px; margin-top: 8px; } .mode { display: flex; flex-direction: column; gap: 6px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 760px) { .need, .di { grid-template-columns: 1fr; } .sum { grid-template-columns: 1fr 1fr; } }
 </style>
