@@ -116,7 +116,7 @@ const cashStale = computed(() => { const c = cashKnown.value, l = latest.value; 
 // Monthly view: burn is the 3-month average (one month alone swings with bills paid or collected); other views keep
 // the period's own figure.
 const burnShown = computed(() => view.value === 'month' && review.value.status !== 'none' ? (review.value.profitable ? 0 : review.value.burn) : latest.value?.derived.burn ?? null)
-const runwayKnown = computed(() => { if (cashStale.value) return null; if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
+const runwayKnown = computed(() => { if (cashStale.value) return null; if (review.value.status !== 'none' && (review.value.runway !== null || review.value.profitable)) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? pages.value.map((p) => p.currency ?? '').filter(Boolean) : subj.value?.currencies ?? [])])])

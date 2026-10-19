@@ -139,6 +139,16 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('missing months and old cash flagged', cs.some((c) => c.what === 'Missing months' && /Jan 2025 to Dec 2025/.test(c.detail)) && cs.some((c) => c.what === 'Cash missing'), cs.filter((c) => c.severity === 'warn').map((c) => c.what).join(', '))
 }
 
+// 5b. Burn: a loss-making company whose balance sheet says "no burn" while cash falls is not cash-flow positive.
+{
+  const V = await jiti.import(join(root, 'shared/fin-view.ts'))
+  const mk = (m, ni, cash, liab) => ({ period_end: new Date(Date.UTC(2026, m, 0)).toISOString().slice(0, 10), period_type: 'month', currency: 'USD', kpis: {}, lines: { revenue: 10000, cogs: 3000, opex_total: 12000, net_income: ni, cash, receivables: 1000, other_liabilities: liab } })
+  const loss = V.burnReview([mk(1, -5000, 100000, 0), mk(2, -5000, 80000, 100000), mk(3, -5000, 60000, 200000), mk(4, -5000, 40000, 300000)])
+  check('burn: unexplained "no burn" not used when cash falls', !loss.profitable && loss.burn === 20000 && loss.runway === 2 && /Fall in cash/.test(loss.basis), loss.basis + ' ' + loss.burn + ' ' + loss.runway)
+  const prof = V.burnReview([mk(1, 5000, 100000, 0), mk(2, 5000, 105000, 0), mk(3, 5000, 110000, 0), mk(4, 5000, 115000, 0)])
+  check('burn: a profitable company with rising cash stays cash-flow positive', prof.profitable && prof.burn === 0, String(prof.burn))
+}
+
 // 6. The Finvry template, filled in (with the founder's own cost and asset lines added), read with no AI.
 {
   const { default: Excel } = await import('exceljs')

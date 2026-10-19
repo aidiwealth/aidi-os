@@ -161,14 +161,21 @@ export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, numb
     drivers.sort((p, q) => Math.abs(q.effect) - Math.abs(p.effect))
   }
   const methods: BurnMethod[] = [{ key: 'cash_flow', label: 'Operating (and investing) cash flow', value: cf }, { key: 'balance_sheet', label: 'Cash flow worked out from the balance sheet', value: bs }, { key: 'cash_change', label: 'Fall in cash, excluding money raised', value: cc }, { key: 'net_loss', label: 'Net loss, depreciation added back', value: nl }]
-  const pick = methods.find((m) => m.value !== null) ?? null
+  const close = (p: number, q: number) => Math.abs(p - q) <= Math.max(2000, Math.abs(q) * 0.1)
+  // Working capital explains the gap between cash burn and the loss when the balance sheet figure matches the fall in cash.
+  const explained = bs !== null && nl !== null && (cc === null || close(bs, cc)) && !close(bs, nl)
+  let pick = methods.find((m) => m.value !== null) ?? null
+  // "No burn" from the balance sheet is not used when the other figures contradict it: cash fell (net of money raised)
+  // or the company made a loss, and the balance sheet does not explain why. Burn then comes from the fall in cash, else
+  // the loss, so a loss-making company is never shown as cash-flow positive.
+  if (pick?.key === 'balance_sheet' && (pick.value ?? 0) <= 0 && !explained) {
+    const alt = (cc ?? 0) > 1000 ? methods.find((m) => m.key === 'cash_change') : (nl ?? 0) > 1000 ? methods.find((m) => m.key === 'net_loss') : null
+    if (alt) pick = alt
+  }
   let cashAt: string | null = null, cash: number | null = null
   for (let i = d.length - 1; i >= 0; i--) { const v = cashOf(d[i]!); if (v !== null) { cash = v; cashAt = rows[i]!.period_end; break } }
   const burn = pick ? Math.max(0, pick.value!) : null
   const issues: string[] = [], notes: string[] = []
-  const close = (p: number, q: number) => Math.abs(p - q) <= Math.max(2000, Math.abs(q) * 0.1)
-  // Working capital explains the gap between cash burn and the loss when the balance sheet figure matches the fall in cash.
-  const explained = bs !== null && nl !== null && (cc === null || close(bs, cc)) && !close(bs, nl)
   if (explained && drivers.length) {
     const top = drivers.filter((x) => Math.sign(x.effect) === Math.sign(nl! - bs!) && Math.abs(x.effect) >= Math.abs((nl! - bs!) * n) * 0.25).slice(0, 2)
     const lower = bs! < nl!
