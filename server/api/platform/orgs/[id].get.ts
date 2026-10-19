@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
       `SELECT (SELECT count(*)::int FROM core.memberships WHERE organization_id = $1 AND status = 'active') AS seats,
               (SELECT coalesce(sum(size_bytes), 0)::text FROM core.documents WHERE organization_id = $1) AS storage,
               (SELECT count(*)::int FROM core.ai_runs WHERE organization_id = $1 AND created_at >= date_trunc('month', now())) AS ai,
-              (SELECT max(at) FROM core.audit_log WHERE organization_id = $1 AND actor_user_id IS NOT NULL AND action NOT LIKE 'platform.%') AS last_activity,
+              (SELECT max(at) FROM core.audit_log WHERE organization_id = $1 AND actor_user_id IS NOT NULL AND action NOT LIKE 'platform.%' AND action NOT LIKE 'support.%') AS last_activity,
               (SELECT count(*)::int FROM core.modules WHERE organization_id = $1 AND NOT enabled) AS modules_off`, [id.data])
     const admins = await db().query(
       `SELECT p.full_name AS name, u.email, u.last_login_at FROM core.memberships m JOIN core.users u ON u.id = m.user_id JOIN core.people p ON p.id = u.person_id

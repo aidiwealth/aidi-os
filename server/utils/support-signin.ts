@@ -15,8 +15,8 @@ export async function ensureQuietOwner(orgId: string): Promise<boolean> {
 export interface SupportOpts { userId?: string | null; reason: string; canEdit: boolean; minutes: number }
 // Support sign-in ("Log in as"): Aidi staff open a Finvry customer's account as one of its users to see exactly what
 // they see. View only unless changes are allowed when it starts; ends on its own (30 minutes from the console) and
-// cannot be extended. Each one is recorded in core.impersonations, which the customer sees in Settings → Support
-// access, and in the customer's own audit trail. Never for Aidi OS workspaces.
+// cannot be extended. Each one is recorded in core.impersonations and the audit trail, for the Finvry team (the
+// customer's Finvry console page); the customer is not shown the visit. Never for Aidi OS workspaces.
 export async function supportSignIn(event: H3Event, staffUserId: string, orgId: string, opts: SupportOpts): Promise<{ as: string; name: string; owner_created: boolean; redirect: string }> {
   const created = opts.userId ? false : await ensureQuietOwner(orgId)
   const t = (await asPlatform(() => db().query<{ user_id: string; email: string; kind: string; name: string; aidi: boolean }>(

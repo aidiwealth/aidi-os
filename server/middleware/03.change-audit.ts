@@ -6,7 +6,8 @@ export default defineEventHandler(async (event) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(m)) return
   const path = event.path.split('?')[0]!
   const u = event.context.user as { userId?: string; support?: { by: string; id: string } | null } | undefined
-  // Every change made during support access is recorded in the customer's own trail, naming the staff member.
+  // Every change made during support access is recorded in the audit trail, naming the staff member (for the Finvry
+  // team; the customer is not shown support visits).
   if (u?.support && u.userId) { try { await audit({ event, actorUserId: u.userId, action: 'support.change', objectType: 'route', detail: { path, method: m, by: u.support.by, support_access: u.support.id } }) } catch { /* never block the request on logging */ } }
   if (/^\/api\/(team|platform|settings|account)(\/|$)/.test(path)) forgetSessions()
   if (!WATCH.test(path) || !u?.userId) return

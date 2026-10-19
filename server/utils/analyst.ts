@@ -156,7 +156,7 @@ const finvryAdmin: Tool[] = [
     run: async (a) => (await asPlatform(() => db().query(`SELECT o.name, o.status, p.name AS plan, to_char(o.trial_ends_at, 'YYYY-MM-DD') AS trial_ends, to_char(o.created_at, 'YYYY-MM-DD') AS joined,
         (SELECT count(*)::int FROM core.memberships m WHERE m.organization_id = o.id AND m.status = 'active') AS seats,
         (SELECT round(sum(${MONTHLY_SQL}), 2)::float FROM platform.subscriptions s WHERE s.organization_id = o.id AND s.status <> 'ended') AS mrr_usd,
-        (SELECT to_char(max(x.at), 'YYYY-MM-DD') FROM core.audit_log x WHERE x.organization_id = o.id AND x.actor_user_id IS NOT NULL AND x.action NOT LIKE 'platform.%') AS last_activity
+        (SELECT to_char(max(x.at), 'YYYY-MM-DD') FROM core.audit_log x WHERE x.organization_id = o.id AND x.actor_user_id IS NOT NULL AND x.action NOT LIKE 'platform.%' AND x.action NOT LIKE 'support.%') AS last_activity
       FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code
       WHERE ${NOT_AIDI} AND ($1 = '' OR o.name ILIKE '%' || $1 || '%') AND ($2 = '' OR o.status = $2) ORDER BY o.created_at DESC LIMIT 40`, [String(a.q ?? '').slice(0, 60), String(a.status ?? '').slice(0, 20)]))).rows },
   { name: 'finvry_business', module: null, description: 'Finvry business summary: customers by status and plan, MRR and ARR in USD, new customers in the last 30 days, renewals in the next 30 days, and unpaid or overdue invoices.', input_schema: S(),
@@ -176,7 +176,7 @@ const finvryAdmin: Tool[] = [
         seats: Number((await db().query("SELECT count(*)::int AS v FROM core.memberships WHERE organization_id = $1 AND status = 'active'", [id])).rows[0]?.v ?? 0),
         subscription: (await db().query("SELECT s.currency, s.amount_usd::float AS amount, s.billing, s.status, to_char(s.start_date, 'YYYY-MM-DD') AS started FROM platform.subscriptions s WHERE s.organization_id = $1 AND s.status <> 'ended' LIMIT 1", [id])).rows[0] ?? null,
         invoices: (await db().query("SELECT number, currency, amount::float, status, to_char(issue_date, 'YYYY-MM-DD') AS issued, to_char(due_date, 'YYYY-MM-DD') AS due FROM platform.invoices WHERE organization_id = $1 ORDER BY issue_date DESC LIMIT 6", [id])).rows,
-        activity_last_30_days: (await db().query("SELECT split_part(action, '.', 1) AS area, count(*)::int AS actions FROM core.audit_log WHERE organization_id = $1 AND actor_user_id IS NOT NULL AND action NOT LIKE 'platform.%' AND at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC LIMIT 10", [id])).rows }
+        activity_last_30_days: (await db().query("SELECT split_part(action, '.', 1) AS area, count(*)::int AS actions FROM core.audit_log WHERE organization_id = $1 AND actor_user_id IS NOT NULL AND action NOT LIKE 'platform.%' AND action NOT LIKE 'support.%' AND at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC LIMIT 10", [id])).rows }
     }) }]
 export async function analystReply(event: H3Event, history: { role: 'user' | 'assistant'; content: string }[], path: string) {
   const { anthropicApiKey, anthropicBaseUrl } = useRuntimeConfig()

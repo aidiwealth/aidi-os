@@ -6,7 +6,7 @@ interface D { reporting_currency?: string; name: string; website: string; countr
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['access', 'Support access', 'When Finvry support opened your account']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
@@ -51,7 +51,6 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
         <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
         <div v-else-if="sec === 'ai'"><AiUsage /></div>
         <div v-else-if="sec === 'api'"><ApiKeys /></div>
-        <SupportAccessLog v-else-if="sec === 'access'" />
         <div v-else-if="sec === 'notifications'" class="card frm">
           <h2>Notifications</h2>
           <p class="muted wide">Filing reminders, investor page views and service updates go to these addresses. Leave empty to email your admins.</p>

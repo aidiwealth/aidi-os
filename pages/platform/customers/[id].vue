@@ -64,7 +64,7 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
         <label class="label">Person<select v-model="la.user_id" required><option v-for="m in data.members" :key="m.user_id" :value="m.user_id">{{ m.name }} · {{ m.email }}{{ m.roles ? ' (' + m.roles + ')' : '' }}</option></select></label>
         <label class="label">Why you need access<textarea v-model="la.reason" rows="3" required minlength="3" maxlength="500" placeholder="e.g. They asked us why the retention page shows no figures for June" /></label>
         <label class="cb"><input v-model="la.can_edit" type="checkbox" :disabled="!data.can_edit"> Allow changes <span class="hint">{{ data.can_edit ? 'Off: you can look but not change anything.' : 'Support staff can only look.' }}</span></label>
-        <p class="hint">Opens Finvry as this person for 30 minutes, in a new session; your console stays signed in. Money, plan and billing, keys, team and sign-in settings and signing documents are never available. The customer sees this visit, your reason{{ la.can_edit ? ' and every change' : '' }} in their Settings.</p>
+        <p class="hint">Opens Finvry as this person for 30 minutes, in a new session; your console stays signed in. Money, plan and billing, keys, team and sign-in settings and signing documents are never available. The visit, your reason{{ la.can_edit ? ' and every change' : '' }} are recorded here under Support access; the customer is not shown it.</p>
         <p v-if="la.msg" class="error">{{ la.msg }}</p>
       </form>
       <template #foot><button class="btn secondary" type="button" @click="la.open = false">Cancel</button><button class="btn" type="submit" form="laf" :disabled="la.busy || la.reason.trim().length < 3">{{ la.busy ? 'Opening…' : la.can_edit ? 'Log in, changes allowed' : 'Log in, view only' }}</button></template>
@@ -102,7 +102,7 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
         <div v-if="data.support?.length" class="card">
           <h2>Support access</h2>
           <ul class="log"><li v-for="x in data.support" :key="x.id"><b>{{ x.by_name }} as {{ x.as_email }} · {{ x.can_edit ? 'changes allowed' + (x.changes ? ', ' + x.changes + ' made' : ', none made') : 'view only' }}</b><span>{{ when(x.started_at) }} · {{ supState(x) }} · {{ x.reason }}</span></li></ul>
-          <p class="hint">The customer sees these in Settings → Support access.</p>
+          <p class="hint">Kept for the Finvry team only; the customer is not shown these visits.</p>
         </div>
       </div>
       <div class="col">
