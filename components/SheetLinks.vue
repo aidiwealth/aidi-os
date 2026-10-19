@@ -5,7 +5,7 @@
 interface Link { show_source?: boolean; id: string; name: string; url: string; target: 'financials' | 'forecast'; subject: string | null; forecast_id: string | null; forecast: string | null; currency: string; sheet: string | null; mapping: { label: string; to: string }[]; auto: boolean; mode?: 'rows' | 'ai'; ai_map?: AiM | null; last_synced_at: string | null; last_error: string | null; last_result: { months?: number; skipped?: string[]; sheet?: string } | null }
 interface AiBlock { sheet: string; title: string; label_col: string; scale: number; periods: { col: string; period_type: string; period_end: string; projected: boolean }[]; rows: { row: number; label: string; to: string; kpi: string; pct: boolean }[]; use?: boolean }
 interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
-interface AiRes { document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null }[] } }
+interface AiRes { template?: boolean; document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null; total_assets?: number | null; total_liabilities?: number | null; equity?: number | null }[] } }
 interface Prev { provider: string; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
 const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
 const emit = defineEmits<{ synced: [] }>()
@@ -35,11 +35,15 @@ const mon = (ym: string) => new Date(ym + '-01T00:00:00Z').toLocaleDateString('e
 const open = ref(false), step = ref(1), busy = ref(false), msg = ref('')
 const f = reactive({ id: '', name: '', url: '', sheet: '', forecast_id: '', currency: 'USD', auto: true, mode: 'ai' as 'rows' | 'ai' })
 const ai = ref<AiRes | null>(null), openB = ref<number | null>(null)
+// Before the first link, the founder checks the latest months' key figures against the sheet (a row in the wrong
+// line that still adds up is the one mistake no check can catch).
+const confirmed = ref(false)
+const recent = computed(() => (ai.value?.preview.periods ?? []).filter((p) => p.period_type === 'month').slice(-3).reverse())
 const prev = ref<Prev | null>(null), map = ref<Record<string, string>>({}), keep = ref<{ label: string; to: string }[] | null>(null)
 const tab = computed(() => prev.value?.sheets.find((s) => s.sheet === f.sheet) ?? prev.value?.sheets[0] ?? null)
 function start(l?: Link) {
   Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: l ? (l.mode ?? 'rows') : props.target === 'financials' ? 'ai' : 'rows' })
-  keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; fail.value = null; upFile.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
+  keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; confirmed.value = !!l; fail.value = null; upFile.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
   if (l) { if (f.mode === 'ai') aiRead(); else read() }
 }
 function applyMap() {
@@ -173,6 +177,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
     <p v-else-if="target === 'financials' && (!subject || subject === 'group')" class="sub">Choose a company or entity to link a sheet.</p>
     <AppModal :open="open" :title="f.id ? 'Edit linked sheet' : 'Link a sheet'" wide @close="open = false">
       <div v-if="step === 1" class="slf">
+        <div v-if="target === 'financials' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry template</b><span class="sub">Months across, our line names down the side, totals worked out for you. Finvry reads it exactly, with no AI, so nothing can land in the wrong line. Fill it in, open it in Google Sheets, and link it here (or drop the file below).</span></div><a class="btn secondary sm" href="/api/financials/template">Download template</a></div>
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
         <div v-if="target === 'financials'" class="mo"><label class="ck"><input v-model="f.mode" type="radio" value="ai"> <span><b>Read the whole workbook with AI</b><span class="sub"> For full financial models: many tabs, years or quarters, actuals beside projections, side-by-side tables, two currencies. AI finds where each figure is; the figures are then read straight from your cells on every sync.</span></span></label>
           <label class="ck"><input v-model="f.mode" type="radio" value="rows"> <span><b>Choose rows myself</b><span class="sub"> One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column.</span></span></label>
@@ -197,6 +202,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <template v-if="ai.map.facts.length"><h4>Also in the workbook</h4>
           <div class="fg"><div v-for="(xs, g) in factGroups" :key="g"><b>{{ g }}</b><span v-for="x in xs" :key="x.sheet + x.label" class="fx">{{ x.label }}: {{ x.value }}</span></div></div></template>
         <template v-if="ai.map.suggestions.length"><h4>Worth adding to the sheet</h4><ul class="sg"><li v-for="x in ai.map.suggestions" :key="x.metric"><b>{{ x.metric }}</b> {{ x.why }}</li></ul></template>
+        <div v-if="!f.id && recent.length" class="cfm"><h4>Check these against your sheet</h4>
+          <div class="tw sm"><table class="mt" data-nosearch><thead><tr><th>Month</th><th class="n">Revenue</th><th class="n">Net income</th><th class="n">Cash</th><th class="n">Total assets</th><th class="n">Liabilities + equity</th></tr></thead>
+            <tbody><tr v-for="p in recent" :key="p.period_end"><td>{{ perLabel('month', p.period_end) }}</td><td class="n">{{ money0(p.revenue) }}</td><td class="n">{{ money0(p.net_income) }}</td><td class="n">{{ money0(p.cash) }}</td><td class="n">{{ money0(p.total_assets ?? null) }}</td><td class="n">{{ p.total_liabilities == null && p.equity == null ? '—' : money0((p.total_liabilities ?? 0) + (p.equity ?? 0)) }}</td></tr></tbody></table></div>
+          <label class="ck cf"><input v-model="confirmed" type="checkbox"> These match my sheet</label>
+          <span class="sub">If one is wrong, open the table above to see which row went where, read it again, or use "Choose rows myself". A row in the wrong line can still add up, so this check matters.</span></div>
         <div v-if="(ai.preview as any).checks?.length" class="chk2"><b>{{ (ai.preview as any).checks.length }} figure{{ (ai.preview as any).checks.length === 1 ? '' : 's' }} in the sheet do not add up</b><span class="sub">They come in as they are; fix them in the sheet and sync again.</span>
           <ul><li v-for="(c, i) in (ai.preview as any).checks.slice(-8).reverse()" :key="i" :class="c.severity"><b>{{ perLabel(c.period_type, c.period_end) }} · {{ c.what }}</b> {{ c.detail }}</li></ul></div>
         <p v-if="ai.map.notes" class="sub">{{ ai.map.notes }}</p>
@@ -227,8 +237,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
         <button class="btn secondary" type="button" @click="step > 1 && !f.id ? (step = 1) : (open = false)">{{ step > 1 && !f.id ? 'Back' : 'Cancel' }}</button>
-        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading…' : 'Reading…') : f.mode === 'ai' ? 'Read with AI' : 'Read sheet' }}</button>
-        <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept" @click="saveAi">{{ busy ? (ai?.document_id ? 'Bringing in…' : 'Linking…') : (ai?.document_id ? 'Bring in ' : 'Link ') + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
+        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading…' : 'Reading…') : f.mode === 'ai' ? 'Read the workbook' : 'Read sheet' }}</button>
+        <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept || (!f.id && recent.length > 0 && !confirmed)" @click="saveAi">{{ busy ? (ai?.document_id ? 'Bringing in…' : 'Linking…') : (ai?.document_id ? 'Bring in ' : 'Link ') + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
         <button v-else class="btn" type="button" :disabled="busy || !chosen || used.length !== new Set(used).size" @click="save">{{ busy ? 'Linking…' : 'Link ' + chosen + ' row' + (chosen === 1 ? '' : 's') }}</button>
       </template>
     </AppModal>
@@ -270,4 +280,6 @@ td.n, th.n { text-align: right; white-space: nowrap }
 .chk2 { border: 1px solid #efd9b0; background: #fdf8ee; padding: 10px 12px; font-size: 13px; } .chk2 ul { margin: 8px 0 0; padding-left: 18px; } .chk2 li { margin: 3px 0; color: var(--c-ink-soft); } .chk2 li.error b { color: var(--c-danger); }
 .shs { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); white-space: nowrap; }
 .nc { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; margin-top: 6px; align-items: center; } .nc input, .nc select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); min-width: 0; } .nc .lnk { background: none; border: 0; color: var(--c-muted); cursor: pointer; font: inherit; font-size: 12.5px; } .nc .error { grid-column: 1 / -1; }
+.tpl { display: flex; gap: 14px; align-items: center; justify-content: space-between; border: 1px solid #d9e2ef; background: #f5f7fb; padding: 12px 14px; } .tpl b { display: block; font-weight: 500; margin-bottom: 2px; } .tpl .btn { white-space: nowrap; text-decoration: none; }
+.cfm { border: 1px solid var(--c-rule-strong); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; } .cfm h4 { margin: 0; } .cf { font-weight: 500; }
 </style>

@@ -298,6 +298,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
         <DropZone accept=".xlsx,.csv,.pdf,application/pdf" :disabled="busy" :label="busy ? 'Reading your file…' : 'Fill from a file'" hint="Drop accounts or a bank statement (Excel, CSV or PDF) and we map the figures for you to check · or click to choose" @change="fromSheet" />
+        <p class="hint tph">No sheet yet? <a href="/api/financials/template">Download the Finvry template</a>: months across, our line names down the side, read exactly every time. Link it under Linked sheets to keep it in step.</p>
         <div v-if="more.length" class="more"><span><b>{{ more.length }} more period{{ more.length === 1 ? '' : 's' }} in this file</b>: {{ more.map((p) => p.period_end.slice(0, 7)).join(', ') }}. Save the one below first, or save these as they were read.</span><button type="button" class="btn secondary sm" :disabled="moreBusy || !form.subject" @click="saveMore">{{ moreBusy ? 'Saving…' : 'Save these ' + more.length }}</button></div>
         <div v-if="form.subject && form.subject !== 'group'" class="srcs">
           <div class="src"><span class="sl"><b>Google Sheets</b><em>Share the sheet as "Anyone with the link: Viewer", then paste the link.</em></span><span class="sr"><input v-model="src.gs" placeholder="https://docs.google.com/spreadsheets/d/…"><button type="button" class="btn secondary sm" :disabled="!src.gs || !!src.busy" @click="fromGoogle">{{ src.busy === 'gs' ? 'Reading…' : 'Import' }}</button></span></div>
@@ -406,4 +407,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .lock { font-size: 11.5px; font-weight: 600; padding: 3px 8px; background: #fff6e6; color: #a5650b; white-space: nowrap; }
 .more { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); }
 .gapw { margin: 0 0 10px; padding: 10px 14px; border: 1px solid #d9e2ef; background: #f5f7fb; font-size: 13.5px; color: var(--c-ink); } .gapw b { font-weight: 500; }
+.tph { margin: 6px 0 0; } .tph a { color: var(--c-blue-deep); }
 </style>

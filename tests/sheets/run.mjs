@@ -20,6 +20,7 @@ Object.assign(globalThis, { isCat: A.isCat, catOf: A.catOf, addFigure: A.addFigu
 const S = await jiti.import(join(root, 'server/utils/sheet-links.ts'))
 Object.assign(globalThis, { suggestMapping: S.suggestMapping, monthOf: S.monthOf })
 const AI = await jiti.import(join(root, 'server/utils/sheet-ai.ts'))
+const T = await jiti.import(join(root, 'server/utils/fin-template.ts'))
 
 const fx = (n) => readFileSync(join(root, 'tests/sheets/fixtures', n))
 let failed = 0
@@ -136,6 +137,37 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('no runway from a cash balance 26 months old', f.runway_months === null && V.burnReview(rows).runway === null, String(f.runway_months))
   const cs = V.checkRows(rows)
   check('missing months and old cash flagged', cs.some((c) => c.what === 'Missing months' && /Jan 2025 to Dec 2025/.test(c.detail)) && cs.some((c) => c.what === 'Cash missing'), cs.filter((c) => c.severity === 'warn').map((c) => c.what).join(', '))
+}
+
+// 6. The Finvry template, filled in (with the founder's own cost and asset lines added), read with no AI.
+{
+  const { default: Excel } = await import('exceljs')
+  const wb = new Excel.Workbook(); await wb.xlsx.load(await T.templateWorkbook('USD'))
+  const ws = wb.getWorksheet('Financials')
+  const rowOf = (label) => { let n = 0; ws.eachRow((r, i) => { if (r.getCell(1).value === label) n = i }); return n }
+  ws.spliceRows(rowOf('Other operating costs'), 0, ['Consultants'])   // the founder's own cost line
+  ws.spliceRows(rowOf('Long-term investments'), 0, ['Loans receivable']) // and an asset line
+  const set = (label, k, v) => { ws.getRow(rowOf(label)).getCell(2 + k).value = v }
+  const N = 12 + new Date().getUTCMonth() // Jan last year .. last month; the rest left empty
+  for (let k = 0; k < N; k++) {
+    const rev = 400000 + k * 1000, cogs = 320000, pay = 58000, mkt = 9000, cons = 17000, oth = 23000, tot = pay + mkt + cons + oth
+    const vals = { 'Revenue': rev, 'Cost of revenue': cogs, 'Gross profit': rev - cogs, 'Payroll': pay, 'Sales and marketing': mkt, 'Consultants': cons, 'Other operating costs': oth, 'Total operating costs': tot, 'EBITDA': rev - cogs - tot, 'Depreciation and amortisation': 1000, 'Other income': 3000, 'Net income': rev - cogs - tot - 1000 + 3000,
+      'Cash': 1000000 - k * 20000, 'Receivables': 270000, 'Other assets': 120000, 'Loans receivable': 214000, 'Long-term investments': 490000, 'Payables': 170000, 'Other liabilities': 230000, 'KPI: Paying customers': 42000 + k, 'KPI: Headcount': 66 }
+    const ta = vals.Cash + 270000 + 120000 + 214000 + 490000, tl = 400000
+    Object.assign(vals, { 'Total assets': ta, 'Total liabilities': tl, 'Total equity': ta - tl })
+    for (const [l, v] of Object.entries(vals)) set(l, k, v)
+  }
+  const grids = await S.readGrids(Buffer.from(await wb.xlsx.writeBuffer()), 'xlsx')
+  const m = T.templateMap(grids, 'USD')
+  check('template recognised and mapped with no AI', !!m && m.blocks.length === 1, m ? m.blocks[0].rows.length + ' rows' : 'not recognised')
+  const rows = m.blocks[0].rows
+  check('own lines kept as categories', rows.some((r) => r.label === 'Consultants' && r.to === 'cat:opex_other:Consultants') && rows.some((r) => r.label === 'Loans receivable' && r.to === 'cat:other_assets:Loans receivable'), rows.filter((r) => r.to.startsWith('cat:')).map((r) => r.to).join(', '))
+  check('KPI rows read as metrics', rows.some((r) => r.to === 'kpi' && r.kpi === 'Paying customers'))
+  const r = AI.readWithMap(grids, m) // today, since the template is dated from this year
+  const all = AI.previewOf(r).checks
+  check('template: every filled month in, every check passes', r.periods.length === N && !all.length, r.periods.length + ' months; ' + all.map((c) => c.period_end.slice(0, 7) + ' ' + c.what).slice(0, 3).join(', '))
+  const jun = r.periods[r.periods.length - 1]
+  check('template: categories added into their lines', !!jun && jun.lines.opex_other === 40000 && jun.lines.other_assets === 334000, jun ? 'opex_other ' + jun.lines.opex_other + ', other_assets ' + jun.lines.other_assets : 'no months')
 }
 
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')

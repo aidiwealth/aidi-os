@@ -239,7 +239,7 @@ export function previewOf(r: ReturnType<typeof readWithMap>) {
   const today = new Date().toISOString().slice(0, 10)
   const checks = (['month', 'quarter', 'year'] as const).flatMap((t) => checkRows(by(t).filter((p) => p.period_end <= today).map((p) => ({ period_end: p.period_end, period_type: p.period_type, currency: '', lines: p.lines, kpis: p.kpis, derived: {} })))).slice(-40)
   return { checks, months: by('month').length, quarters: by('quarter').length, years: by('year').length, projected: r.projected, missing: r.missing.slice(0, 20), found: r.found,
-    periods: r.periods.slice(-40).map((p) => ({ period_type: p.period_type, period_end: p.period_end, lines: Object.keys(p.lines).length, kpis: Object.keys(p.kpis).length, revenue: p.lines.revenue ?? null, net_income: p.lines.net_income ?? null, cash: p.lines.cash ?? null })) }
+    periods: r.periods.slice(-40).map((p) => ({ period_type: p.period_type, period_end: p.period_end, lines: Object.keys(p.lines).length, kpis: Object.keys(p.kpis).length, revenue: p.lines.revenue ?? null, net_income: p.lines.net_income ?? null, cash: p.lines.cash ?? null, total_assets: p.lines.total_assets ?? null, total_liabilities: p.lines.total_liabilities ?? null, equity: p.lines.equity ?? null })) }
 }
 
 // ---- Guarding a map against subtotals ------------------------------------------------------------------------

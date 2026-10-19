@@ -155,6 +155,7 @@ const SYN: Record<string, string[]> = {
   tax: ['tax', 'taxes', 'income tax'], net_income: ['net income', 'net profit', 'profit after tax', 'net profit loss', 'net loss', 'profit loss'],
   cash: ['cash', 'cash balance', 'closing cash', 'cash at bank', 'cash and cash equivalents', 'cash cash equivalents', 'ending cash', 'cash and marketable securities', 'cash marketable securities', 'cash and short term investments', 'total bank accounts', 'bank accounts', 'total cash', 'total cash and cash equivalents', 'total cash cash equivalents'],
   receivables: ['receivables', 'accounts receivable', 'trade receivables', 'debtors', 'receivables and prepayments', 'receivables prepayments'],
+  other_assets: ['other assets', 'other current assets', 'other non current assets'], other_liabilities: ['other liabilities', 'other current liabilities'],
   investments: ['short term investments', 'treasury bills', 't bills', 'marketable securities', 'money market', 'fixed deposits'],
   long_term_investments: ['investments', 'long term investments', 'strategic investments', 'equity investments', 'investments in associates', 'investment in associates', 'investments in subsidiaries'],
   total_assets: ['total assets'], payables: ['payables', 'accounts payable', 'trade payables', 'creditors'], debt: ['debt', 'loans', 'borrowings', 'debt and finance leases', 'debt finance leases'], total_liabilities: ['total liabilities'],
@@ -177,6 +178,7 @@ export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'for
     const n = norm(r.label); let to = ''
     for (const [key, words] of Object.entries(SYN)) { const k = target === 'forecast' ? FC_FROM_LINE[key] : key; if (k && !taken.has(k) && words.includes(n)) { to = k; break } }
     if (!to && target === 'forecast') for (const [key, words] of Object.entries(FC_SYN)) if (!taken.has(key) && words.includes(n)) { to = key; break }
+    if (target === 'financials' && /^kpi\s*:/i.test(r.label.trim())) return { label: r.label, to: 'kpi' }
     if (target === 'financials') {
       const label = r.label.trim().replace(/\s+/g, ' ').slice(0, 80), total = /^total\b|\btotal$|ebitda|\bebit\b|gross profit|net (income|profit|loss)|margin|ratio|balance check/.test(n)
       if (!to && !taken.has('other_income') && INCOME_ROW.test(n)) to = 'other_income'
@@ -214,7 +216,7 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
       for (const m of lay.months.filter((x) => x <= thisMonth)) {
         // Rows to the same line are added together; the company's own categories fill their line when it is not given.
         const lines: Record<string, number> = {}, kpis: Record<string, number> = {}, detail: Record<string, number> = {}
-        for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; if (c.to === 'kpi') kpis[c.label.slice(0, 60)] = v; else addFigure(lines, detail, c.to, v) }
+        for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; if (c.to === 'kpi') kpis[c.label.replace(/^kpi\s*:\s*/i, '').slice(0, 60)] = v; else addFigure(lines, detail, c.to, v) }
         // A month not filled in yet (template formulas showing 0) is skipped; an all-zero balance sheet is left out.
         if (blankPeriod({ lines, kpis, detail }) === 'all') continue
         foldCategories(lines, detail)
