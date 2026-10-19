@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A thin donut with flat segments: title and total on the left, legend with shares, ring on the right.
-const props = withDefaults(defineProps<{ title: string; segments: { label: string; value: number }[]; currency?: string; totalLabel?: string; max?: number }>(), { currency: '', totalLabel: 'Total', max: 8 })
-const PALETTE = ['#5b7fe6', '#4fb394', '#a99af2', '#a3a3a8', '#79cdb8', '#8b2ff0', '#111111', '#1c547d', '#e6b34a', '#e5e5ea']
+const props = withDefaults(defineProps<{ title: string; segments: { label: string; value: number }[]; currency?: string; totalLabel?: string; max?: number; percent?: boolean; sub?: string }>(), { currency: '', totalLabel: 'Total', max: 8, percent: false, sub: '' })
+// percent: the segments are shares, so the legend shows only each share (no total, no amounts). sub: one short line.
+const PALETTE = ['#5b7fe6', '#1c3d6e', '#9db8e8', '#a3a3a8', '#2f6aa3', '#c9d6ec', '#111111', '#1c547d', '#6b7280', '#e5e5ea']
 const rows = computed(() => {
   const s = props.segments.filter((x) => x.value > 0).sort((a, b) => b.value - a.value)
   if (s.length <= props.max) return s
@@ -29,10 +30,10 @@ const hover = ref(-1)
   <div class="dnw"><div class="dn">
     <div class="side">
       <h3>{{ title }}</h3>
-      <p class="tot">{{ totalLabel }}: <b>{{ fmt(total) }}</b></p>
+      <p v-if="sub" class="tot">{{ sub }}</p><p v-else-if="!percent" class="tot">{{ totalLabel }}: <b>{{ fmt(total) }}</b></p>
       <ul v-if="rows.length" class="lg">
         <li v-for="(r, i) in rows" :key="r.label" :class="{ on: hover === i }" @mouseenter="hover = i" @mouseleave="hover = -1">
-          <i :style="{ background: PALETTE[i % PALETTE.length] }" /><span>{{ r.label }}</span><em>{{ total ? Math.round((r.value / total) * 100) : 0 }}%</em><b>{{ fmt(r.value) }}</b>
+          <i :style="{ background: PALETTE[i % PALETTE.length] }" /><span>{{ r.label }}</span><em>{{ total ? Math.round((r.value / total) * 100) : 0 }}%</em><b v-if="!percent">{{ fmt(r.value) }}</b>
         </li>
       </ul>
       <p v-else class="none">Nothing to show yet.</p>

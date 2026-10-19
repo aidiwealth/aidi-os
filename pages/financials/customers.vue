@@ -70,7 +70,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
   <section>
     <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
-    <div class="head"><div><h1>Customers</h1><p class="sub">Who pays the most, who is growing or slipping, which sectors matter, and what a customer is worth.</p></div>
+    <div class="head"><div><h1>Customers</h1></div>
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <button v-if="rptOk" class="btn secondary" type="button" title="Customers and revenue retention as a PDF or Excel report, for all customers or one group" @click="rpt = true">Customer report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
@@ -87,7 +87,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 
     <template v-else>
       <div class="dir card">
-        <div class="dh"><span class="eyebrow">Where you stand</span><p class="vd">{{ verdict }}</p></div>
+        <div class="dh"><span class="eyebrow">Where you stand</span></div>
         <div class="sc">
           <BenchBar label="Largest customer" :value="P1(S.top1)" :prev="P1(prevS?.top1)" :bands="[10, 20]" :max="60" lower-is-better :hint="ranked[0]?.name ?? ''" />
           <BenchBar label="Top 10 customers" :value="P1(S.top10)" :prev="P1(prevS?.top10)" :bands="[30, 50]" :max="100" lower-is-better hint="Share of revenue" />
@@ -97,11 +97,11 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
         </div>
         <div class="kvr"><span><b>{{ S.active.toLocaleString('en-US') }}</b> paying customers</span><span><b>{{ cMoney(S.arpa, cur) }}</b> average a month</span><span><b>{{ cMoney(S.ltv, cur, true) }}</b> lifetime value{{ S.lifetime_months ? ' over ' + yrs(Math.round(S.lifetime_months)) : '' }}</span><span v-if="S.pareto != null"><b>{{ cPct(S.pareto, 1) }}</b> of customers make 80% of revenue</span></div>
       </div>
+      <div class="gbar"><span class="mut">Group by</span><div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: by === k }" @click="by = k">{{ l }}</button></div><span v-if="by === 'sector' && !hasSector" class="mut">Add a Sector column to your file to see revenue by sector.</span></div>
       <div class="charts two">
         <ParetoChart title="How concentrated revenue is" sub="Last 12 months" :shares="st.rows.map((r) => r.ttm)" />
-        <FocusBars :title="'Where to focus, by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Change the grouping in By sector below" :items="quad" />
+        <FocusBars :title="'Where to focus, by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Growth against share of revenue" :items="quad" />
       </div>
-      <CustAnalysis kind="customers" :stamp="stamp" />
       <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="customer analysis" /></ClientOnly>
 
       <div class="charts">
@@ -111,15 +111,13 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
       </div>
       <div class="charts two">
         <HBars title="Top 10 customers" sub="Share of revenue, last 12 months" :rows="ranked.slice(0, 10).map((r) => ({ label: r.name, value: Math.round(r.share * 1000) / 10 }))" />
-        <HBars :title="'Revenue by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Share of revenue, last 12 months" :rows="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10, note: g.active + ' paying' }))" />
+        <div class="card"><DonutChart :title="'Revenue by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Share of revenue, last 12 months" percent :segments="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10 }))" /></div>
       </div>
       <div class="charts">
         <StackBars class="wide" title="Customers won and lost" sub="Last 12 months" unit="count" :labels="brC.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: brC.map((x) => x.new_logos) }, { name: 'Lost', values: brC.map((x) => x.lost_logos), down: true }]" />
       </div>
 
-      <div class="three">
-        <div class="card flat"><div class="ch"><h3>Top customers</h3><span class="mut">Last 12 months</span></div>
-          <ol class="lst"><li v-for="r in ranked.slice(0, 8)" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.sector || r.segment || '' }}</em></span><span class="v">{{ cMoney(r.ttm, cur, true) }}<em>{{ cPct(r.share, 1) }}</em></span><span class="bar"><i :style="{ width: Math.max(2, Math.round((r.ttm / (ranked[0]?.ttm || 1)) * 100)) + '%' }" /></span></li></ol></div>
+      <div class="three n2">
         <div class="card flat"><div class="ch"><h3>Growing fastest</h3><span class="mut">Last 12 months vs the 12 before</span></div>
           <ol class="lst"><li v-for="r in growing" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.prior_ttm ? '' : 'New this year' }}</em></span><span class="v up">+{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : '+' + cPct(r.growth) }}</em></span></li><li v-if="!growing.length" class="none">No customer grew over the period.</li></ol></div>
         <div class="card flat"><div class="ch"><h3>Slipping and lost</h3><span class="mut">Paying less, or stopped in the last year</span></div>
@@ -127,16 +125,14 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
             <li v-for="r in lost" :key="'l' + r.id"><span class="nm">{{ r.name }}<em>Last paid {{ cMon(r.last!) }}</em></span><span class="v dn">Lost<em>{{ cMoney(r.lifetime, cur, true) }} lifetime</em></span></li><li v-if="!falling.length && !lost.length" class="none">No customer is paying less.</li></ol></div>
       </div>
 
-      <div class="card flat">
-        <div class="ch"><div><h3>By {{ GB.find(([k]) => k === by)?.[1].toLowerCase() }}</h3><p v-if="by === 'sector' && !hasSector" class="mut">Add a Sector column to your file (or set it on each customer below) to see revenue by sector.</p></div>
-          <div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: by === k }" @click="by = k">{{ l }}</button></div></div>
+      <details class="card flat tbl"><summary>Table: by {{ GB.find(([k]) => k === by)?.[1].toLowerCase() }}</summary>
         <div class="scroll"><table class="table"><thead><tr><th>{{ GB.find(([k]) => k === by)?.[1] }}</th><th class="n">Customers</th><th class="n">Revenue (12 months)</th><th class="n">Share</th><th class="n">Growth</th><th class="n">Avg / month</th><th class="n">NRR</th><th class="n">Customer churn</th><th class="n">LTV</th></tr></thead>
           <tbody><tr v-for="g in groups" :key="g.group"><td><b>{{ g.group }}</b></td><td class="n">{{ g.active }}<span class="sub">of {{ g.customers }}</span></td><td class="n">{{ cMoney(g.ttm, cur, true) }}</td><td class="n"><span class="bar"><i :style="{ width: Math.round(g.share * 100) + '%' }" /></span>{{ cPct(g.share) }}</td>
             <td class="n" :class="(g.growth ?? 0) < 0 ? 'r' : ''">{{ g.growth === null ? '—' : (g.growth >= 0 ? '+' : '') + cPct(g.growth) }}</td><td class="n">{{ cMoney(g.arpa, cur) }}</td><td class="n">{{ cPct(g.nrr, 1) }}</td><td class="n">{{ cPct(g.logo_churn, 1) }}</td><td class="n">{{ cMoney(g.ltv, cur, true) }}</td></tr></tbody></table></div>
-      </div>
+      </details>
 
-      <div class="card flat">
-        <div class="ch"><div><h3>All customers</h3><p class="mut">{{ cs.length }} customers · {{ cMon(sp!.first, true) }} to {{ cMon(sp!.last, true) }} · {{ cur }}{{ hasCac ? '' : ' · add acquisition cost for LTV to CAC' }}</p></div>
+      <details class="card flat tbl"><summary>All customers ({{ cs.length.toLocaleString('en-US') }})</summary>
+        <div class="ch"><div><p class="mut">{{ cs.length }} customers · {{ cMon(sp!.first, true) }} to {{ cMon(sp!.last, true) }} · {{ cur }}{{ hasCac ? '' : ' · add acquisition cost for LTV to CAC' }}</p></div>
           <div class="row"><input v-model="q" type="search" placeholder="Search customers, sectors…" class="srch"><button v-if="canEdit && sel.length >= 2" class="btn secondary sm" type="button" @click="mg.open = true; mg.keep = sel[0]!">Merge {{ sel.length }}</button></div></div>
         <div class="scroll"><table class="table"><thead><tr><th v-if="canEdit" class="cb" /><th class="s" @click="sortBy('name')">Customer{{ arrow('name') }}</th><th class="s" @click="sortBy('sector')">Sector{{ arrow('sector') }}</th><th class="s" @click="sortBy('group')">Size{{ arrow('group') }}</th>
           <th class="n s" @click="sortBy('mrr')">Per month{{ arrow('mrr') }}</th><th class="n s" @click="sortBy('ttm')">12 months{{ arrow('ttm') }}</th><th class="n s" @click="sortBy('growth')">Growth{{ arrow('growth') }}</th><th class="n s" @click="sortBy('tenure')">Customer for{{ arrow('tenure') }}</th><th class="n s" @click="sortBy('lifetime')">Lifetime{{ arrow('lifetime') }}</th><th class="n s" @click="sortBy('ltv')">LTV{{ arrow('ltv') }}</th><th class="n s" @click="sortBy('ltv_cac')">LTV:CAC{{ arrow('ltv_cac') }}</th><th /></tr></thead>
@@ -144,7 +140,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
             <td class="n">{{ cMoney(r.mrr, cur) }}</td><td class="n">{{ cMoney(r.ttm, cur) }}</td><td class="n" :class="(r.growth ?? 0) < 0 ? 'r' : ''">{{ r.growth === null ? '—' : (r.growth >= 0 ? '+' : '') + cPct(r.growth) }}</td><td class="n">{{ yrs(r.tenure) }}</td><td class="n">{{ cMoney(r.lifetime, cur, true) }}</td><td class="n">{{ cMoney(r.ltv, cur, true) }}</td><td class="n">{{ r.ltv_cac ? r.ltv_cac.toFixed(1) + '×' : '—' }}</td>
             <td class="n"><button v-if="canEdit" class="lk" type="button" @click="edit(r.id)">Edit</button></td></tr></tbody></table></div>
         <div v-if="list.length > 50 && !showAll" class="more"><button class="lk" type="button" @click="showAll = true">Show all {{ list.length }}</button></div>
-      </div>
+      </details>
       <div class="card dat"><div><b>Your customer data</b><span>Same data as Revenue retention{{ data?.imports[0] ? ' · last upload ' + data.imports[0].created : '' }}</span></div><div class="row"><button v-if="canEdit" class="btn secondary sm" type="button" @click="up = true">Upload more</button><NuxtLink to="/financials/retention" class="lk">Revenue retention →</NuxtLink></div></div>
     </template>
 
@@ -195,4 +191,7 @@ td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
 .kvr { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: var(--c-ink-soft); } .kvr b { color: var(--c-navy); font-weight: 500; }
 @media (max-width: 1000px) { .sc { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc { grid-template-columns: 1fr; } }
+.gbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; } .gbar .mut { font-size: 13px; }
+.three.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } @media (max-width: 800px) { .three.n2 { grid-template-columns: 1fr; } }
+.charts { align-items: stretch; }
 </style>

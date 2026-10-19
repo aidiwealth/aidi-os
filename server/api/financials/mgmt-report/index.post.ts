@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx } from '~/server/utils/mgmt-report'
-import { customerFacts } from '~/server/utils/customer-analysis'
+import { customerFacts, analyseCustomers } from '~/server/utils/customer-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
@@ -49,6 +49,9 @@ export default defineEventHandler(async (event) => {
       const last = String(customers.as_of), ms = Array.from({ length: 12 }, (_, i) => addM(last, i - 11)), sfx = g ? '@' + g.by + '=' + g.value : ''
       const keys = ['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:active'].map((k) => k + sfx), tr = await customerSeries(keys, ms)
       customers.trend = { labels: ms, nrr: tr[keys[0]!] ?? [], grr: tr[keys[1]!] ?? [], churn: tr[keys[2]!] ?? [], arr: tr[keys[3]!] ?? [], active: tr[keys[4]!] ?? [] }
+      // The write-up from the Retention and Customers pages (the headline and four key points) goes into the report,
+      // so those pages can stay as charts. Not for one group only: the write-up is about all customers.
+      if (!g) customers.points = { retention: d.sections.includes('retention') ? await analyseCustomers('retention').catch(() => null) : null, customers: d.sections.includes('customers') ? await analyseCustomers('customers').catch(() => null) : null }
     }
   }
   const { profile } = await reportProfile().catch(() => ({ profile: { fye_month: 12 } as { fye_month: number } }))

@@ -35,7 +35,7 @@ function copyCodes() { navigator.clipboard?.writeText(codes.value.join('\n')) }
 <style scoped>
 .acc { max-width: 760px; } h1 { margin: 0; } .lead { color: var(--c-muted); margin: 6px 0 18px; } .card { display: flex; flex-direction: column; gap: 14px; }
 .hd { display: flex; justify-content: space-between; gap: 14px; } h2 { margin: 0 0 4px; font-size: 17px; } h3 { margin: 0 0 4px; font-size: 15px; } .mut { color: var(--c-muted); margin: 0; font-size: 13.5px; } .sm { font-size: 12.5px; }
-.pill { height: fit-content; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-muted); } .pill.on { background: rgba(31,122,77,.1); color: var(--c-ok); }
+.pill { height: fit-content; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-muted); } .pill.on { background: rgba(29,90,134,.1); color: var(--c-ok); }
 .setup { display: grid; grid-template-columns: 200px 1fr; gap: 22px; align-items: start; } .qr { width: 200px; height: 200px; border: 1px solid var(--c-rule); } .qr :deep(svg) { width: 100%; height: 100%; display: block; }
 .steps p { margin: 0 0 10px; } code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--c-paper-2); padding: 2px 6px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .row input { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); width: 220px; letter-spacing: .08em; }

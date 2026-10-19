@@ -36,11 +36,13 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 .dn { display: flex !important; align-items: center; gap: 10px; } .dn > span:last-child { display: flex; flex-direction: column; }
 /* Finvry desk pattern (matches the client home): stat grid, calendar date block, soft pills, soft monogram. */
 .fx-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+/* Phones: two numbers a row, so the headline figures fit on one screen. */
+@media (max-width: 560px) { .fx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } }
 .fx-cal { width: 44px; flex: none; border: 1px solid var(--c-rule-strong); background: #fff; text-align: center; display: flex; flex-direction: column; }
 .fx-cal > em { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 0; background: var(--c-paper-2); color: var(--c-muted); }
 .fx-cal > b { font-size: 16px; font-weight: 600; padding: 2px 0 3px; color: var(--c-ink); }
 .fx-pill { font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); white-space: nowrap; }
-.fx-pill.red { background: #fdecef; color: #b4234a; } .fx-pill.amber { background: #fff6e6; color: #a5650b; } .fx-pill.blue { background: #eef4ff; color: #2c5cc5; } .fx-pill.g { background: #e9f6ee; color: #23784a; }
+.fx-pill.red { background: #fdecef; color: #b4234a; } .fx-pill.amber { background: #fff6e6; color: #a5650b; } .fx-pill.blue { background: #eef4ff; color: #2c5cc5; } .fx-pill.g { background: #e8f0f8; color: #23784a; }
 .fx-mono { width: 42px; height: 42px; flex: none; background: #eef0f6; color: var(--c-navy); display: grid; place-items: center; font-weight: 700; font-size: 13.5px; }
 .fx-sh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; } .fx-sh h2, .fx-sh h3 { margin: 0; font-size: 17px; } .fx-sh a, .fx-sh button { font: inherit; font-size: 13.5px; color: var(--c-blue-deep); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
 .fx-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--c-rule); } .fx-row > .fx-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .fx-body > b { font-weight: 500; color: var(--c-ink); } .fx-body > span { font-size: 13px; color: var(--c-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fx-body a { color: inherit; text-decoration: none; }
@@ -77,3 +79,14 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 .fwho b { display: block; font-weight: 500; color: var(--c-ink); font-size: 15px; } .fwho em { font-style: normal; font-size: 13px; color: var(--c-muted); } .fwho .fx { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .tone-1 { background: #1f3a5f; } .tone-2 { background: #3b5874; } .tone-3 { background: #5c4636; } .tone-4 { background: #7a6022; } .tone-5 { background: #4f3d5a; } .tone-6 { background: #2f343b; }
 @media (max-width: 760px) { .fcard { grid-template-columns: 1fr; } .ftile { min-height: 150px; } }
+/* Phones: wide tables and tab rows scroll inside themselves, so the page never scrolls sideways. */
+@media (max-width: 700px) {
+  #main table { display: block; max-width: 100%; overflow-x: auto; }
+  #main nav, #main [role="tablist"] { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  #main nav > *, #main [role="tablist"] > * { flex-shrink: 0; }
+  #main .tools, #main .acts, #main .row, #main .qa, #main .quick, #main .dha, #main .hd, #main .head { flex-wrap: wrap; }
+}
+/* A table kept behind its own heading (charts first, the full table one click away). */
+details.tbl { padding: 0; margin: 0 0 12px; } details.tbl > summary { list-style: none; cursor: pointer; padding: 14px 18px; font-size: 14px; font-weight: 500; color: var(--c-navy); display: flex; justify-content: space-between; align-items: center; }
+details.tbl > summary::-webkit-details-marker { display: none; } details.tbl > summary::after { content: 'Show'; font-size: 13px; font-weight: 400; color: var(--c-blue-deep); } details.tbl[open] > summary::after { content: 'Hide'; }
+details.tbl[open] > summary { border-bottom: 1px solid var(--c-rule); } details.tbl > :not(summary) { margin-left: 18px; margin-right: 18px; } details.tbl > .scroll { margin: 0; } details.tbl > p.mut { margin-top: 10px; }

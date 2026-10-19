@@ -21,7 +21,7 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
 <template>
   <div v-if="g && g.common" class="card gs">
     <div class="gh"><div><span class="eyebrow">{{ props.companies ? 'Companies in the group' : 'Group overview' }} · {{ g.currency }}</span><h3>{{ props.companies ? 'Each company, ' + mon(g.common, true) : mon(g.common, true) + ', all ' + g.entities.length + ' companies together' }}</h3>
-      <p class="mut">Each company's figures converted to {{ g.currency }} at its book rate for each month (else the daily rate), for the latest month every company has reported.{{ g.total?.ic_revenue ? ' Sales between the companies (' + money(g.total.ic_revenue, g.currency) + ') are taken out of group revenue.' : '' }}</p></div>
+      <p class="mut">In {{ g.currency }} at book rates{{ g.total?.ic_revenue ? ' · ' + money(g.total.ic_revenue, g.currency) + ' of sales between the companies taken out' : '' }}.</p></div>
       <button v-if="!props.companies" type="button" class="btn secondary sm" @click="emit('open', 'group')">Open group figures</button></div>
     <div v-if="!props.companies" class="gt">
       <div><span>Revenue · {{ mon(g.common) }}</span><b>{{ money(g.total?.revenue, g.currency) }}</b></div>
@@ -40,7 +40,7 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
           <td><span class="bar"><i :style="{ width: Math.round(share(e) * 100) + '%' }" /></span>{{ Math.round(share(e) * 100) }}%</td></tr></tbody></table>
       <TrendChart v-if="full.length && !props.companies" title="Group revenue" unit="usd" :symbol="sym" :points="full.map((x) => ({ label: mon(x.month), value: x.revenue }))" :foot="'Months every company reported, in ' + g.currency" :foot-value="g.total?.revenue ?? null" />
     </div>
-    <p v-if="behind.length" class="note">{{ behind.map((e) => e.name).join(', ') }} {{ behind.length === 1 ? 'has' : 'have' }} figures only to {{ mon(behind[0]!.latest) }}, so the group is shown for {{ mon(g.common) }}. Add their later months to see the group for the latest month.</p>
+    <p v-if="behind.length" class="note">{{ behind.map((e) => e.name).join(', ') }}: figures to {{ mon(behind[0]!.latest) }}, so the group shows {{ mon(g.common) }}.</p>
     <p v-if="g.without_figures.length" class="note">No figures yet for {{ g.without_figures.join(', ') }}: not included.</p>
     <p v-if="g.missing_rate.length" class="note">No exchange rate for {{ g.missing_rate.join(', ') }} yet: those figures are left out of the totals.</p>
   </div>

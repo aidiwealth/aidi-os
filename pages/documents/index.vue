@@ -27,6 +27,9 @@ const levelName = (v: string) => (isCompany.value ? { normal: 'Everyone', family
 const entityFilter = ref(''), kindFilter = ref('')
 const shown = computed(() => (docs.value ?? []).filter((d) => (!entityFilter.value || d.entity_name === entityFilter.value) && (!kindFilter.value || d.kind === kindFilter.value)))
 const kindsHere = computed(() => [...new Set((docs.value ?? []).map((d) => d.kind))].sort())
+// The upload form opens from the Upload button (open from the start when there are no documents yet).
+const upOpen = ref(false)
+watch(docs, (d) => { if (d && !d.length) upOpen.value = true }, { immediate: true })
 const KINDS = ['agreement', 'financing', 'statement', 'tax', 'insurance', 'legal', 'report', 'deck', 'other']
 const form = reactive({ title: '', kind: 'other', sensitivity: 'normal', entity_id: '' })
 const fileEl = ref<HTMLInputElement | null>(null)
@@ -81,12 +84,10 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
 
 <template>
   <section>
-    <p class="label">Records</p>
-    <StorageCard compact class="dstor" />
-    <div class="dh"><h1>Documents</h1><div class="dha"><NuxtLink to="/decks" class="btn secondary">Decks &amp; analytics</NuxtLink><NuxtLink to="/new-document" class="btn">✨ Create a document with AI</NuxtLink></div></div>
+    <div class="dh"><h1>Documents</h1><div class="dha"><NuxtLink to="/new-document" class="btn secondary">Create a document with AI</NuxtLink><button type="button" class="btn" :aria-expanded="upOpen" @click="upOpen = !upOpen">{{ upOpen ? 'Close' : 'Upload files' }}</button></div></div>
     <p class="lead">Stored privately. Links last 60 seconds, and every view is logged.</p>
 
-    <form class="card up" @submit.prevent="upload">
+    <form v-if="upOpen" class="card up" @submit.prevent="upload">
       <div class="drop" :class="{ over }" role="button" tabindex="0" aria-label="Choose files to upload, or drop them here"
         @click="fileEl?.click()" @keydown.enter.prevent="fileEl?.click()" @keydown.space.prevent="fileEl?.click()"
         @dragenter.prevent="over = true" @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="onDrop">
@@ -115,7 +116,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       <tbody>
         <tr v-for="d in shown" :key="d.id">
           <td><span class="dn"><FileBadge :name="d.title" :mime="d.mime_type" size="sm" /><span><button class="link" @click="open(d.id)">{{ d.title }}</button><span class="sub">{{ d.uploaded_by }}</span></span></span></td>
-          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind }}</td><td>{{ levelName(d.sensitivity) }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
+          <td>{{ d.entity_name ?? '—' }}</td><td>{{ d.kind[0]!.toUpperCase() + d.kind.slice(1) }}</td><td>{{ levelName(d.sensitivity) }}</td><td>{{ size(d.size_bytes) }}</td><td class="muted">{{ date(d.created_at) }}<DeleteButton v-if="canDelete" type="document" :id="d.id" :name="d.title" link @deleted="refresh()" /></td>
         </tr>
       </tbody>
     </table>
@@ -127,6 +128,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
           <td><NuxtLink v-if="d.job_id" :to="'/client/jobs/' + d.job_id" class="link">{{ d.job }}</NuxtLink><NuxtLink v-else to="/client/messages" class="link">Messages</NuxtLink></td><td>{{ d.kind === 'document' ? 'Finvry team' : 'You' }}</td><td>{{ d.size_bytes ? size(d.size_bytes) : "—" }}</td><td class="muted">{{ date(d.created_at) }}</td></tr></tbody>
       </table>
     </template>
+    <StorageCard compact class="dstor" />
   </section>
 </template>
 
@@ -157,5 +159,5 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .dh { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .dh h1 { margin: 0; } .dh a { text-decoration: none; }
 .dha { display: flex; gap: 8px; } .dha a { text-decoration: none; }
 .svh { margin: 32px 0 12px; } .svh h2 { margin: 0 0 4px; font-size: 19px; } .svh p { margin: 0; font-size: 13.5px; }
-.dstor { float: right; width: 300px; margin: 0 0 8px 16px; } @media (max-width: 800px) { .dstor { float: none; width: auto; } }
+.dstor { max-width: 360px; margin: 24px 0 0; }
 </style>

@@ -63,7 +63,8 @@ const charts = computed(() => {
   if (d.vc?.pitches && see('chart_pitches')) c.push({ title: 'Pitches received', sub: 'Per month', points: pts(d.vc.pitches.series), unit: 'count', foot: d.vc.pitches.series.reduce((s, x) => s + x.value, 0) + ' in 12 months' })
   if (d.vc?.portfolio && see('chart_portfolio')) c.push({ title: 'Portfolio revenue', sub: 'Combined, per month', points: pts(d.vc.portfolio.series), unit: 'usd', foot: d.vc.portfolio.reportsSent ? d.vc.portfolio.reportsDone + ' of ' + d.vc.portfolio.reportsSent + ' updates in for last month' : 'Each company\'s latest report' })
   if (d.cs?.fees && see('chart_fees')) c.push({ title: 'Fees earned', sub: 'Paid by clients, all time', points: pts(d.cs.fees.series), unit: 'usd', foot: money(d.cs.fees.total) + ' paid by clients, all time' })
-  return c.slice(0, 3)
+  // A chart with nothing in it yet is left out (no empty boxes on the overview).
+  return c.filter((x) => x.points.some((p) => p.value)).slice(0, 3)
 })
 const empty = computed(() => !!data.value && !kpis.value.length)
 </script>
@@ -72,7 +73,8 @@ const empty = computed(() => !!data.value && !kpis.value.length)
   <section v-if="data" class="ov">
     <div class="head">
       <div><p class="date">{{ dateLabel || "\u00a0" }}</p><h1>{{ greeting }}{{ first ? ', ' + first : '' }}</h1></div>
-      <div v-if="data.quick.length || data.admin" class="quick"><NuxtLink v-for="q in data.quick" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink><button v-if="data.admin" type="button" class="btn secondary" title="Choose which charts, lists and analytics tabs each role sees" @click="openVis">Who sees what</button></div>
+      <div v-if="data.quick.length || data.admin" class="quick"><NuxtLink v-for="q in data.quick.slice(0, 2)" :key="q.to" :to="q.to" class="btn secondary">{{ q.label }}</NuxtLink>
+        <MoreMenu v-if="data.quick.length > 2 || data.admin" label="More"><NuxtLink v-for="q in data.quick.slice(2)" :key="q.to" :to="q.to">{{ q.label }}</NuxtLink><template v-if="data.admin"><hr v-if="data.quick.length > 2"><button type="button" title="Choose which charts, lists and analytics tabs each role sees" @click="openVis">Who sees what</button></template></MoreMenu></div>
     </div>
 
     <nav v-if="TABS.length > 1" class="otabs" role="tablist"><button v-for="[k, l] in TABS" :key="k" role="tab" :aria-selected="otab === k" :class="{ on: otab === k }" @click="otab = k">{{ l }}</button></nav>
@@ -87,7 +89,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
     </div>
 
-    <div class="two" :class="'c' + [see('attention'), see('activity'), has('meetings') && see('meetings')].filter(Boolean).length">
+    <div class="two" :class="'c' + [see('attention'), see('activity'), has('meetings') && see('meetings') && (mtg?.meetings ?? []).length].filter(Boolean).length">
       <div v-if="see('attention')" class="card att">
         <h2>Needs attention</h2>
         <ul v-if="data.attention.length"><li v-for="(a, i) in data.attention" :key="i"><NuxtLink :to="a.to"><span class="dot" :class="a.tone" />{{ a.text }}<AppIcon name="right" class="go" /></NuxtLink></li></ul>
@@ -102,7 +104,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
         <ul v-if="data.activity.length" class="tl"><li v-for="(a, i) in data.activity" :key="i"><span class="ic"><AppIcon :name="a.area" /></span><span class="tt"><b>{{ a.text }}</b><em>{{ a.who ?? 'System' }} · {{ ago(a.at) }}</em></span></li></ul>
         <EmptyState v-else compact icon="home" title="No activity yet" />
       </div>
-      <div v-if="has('meetings') && see('meetings')" class="card mtg">
+      <div v-if="has('meetings') && see('meetings') && (mtg?.meetings ?? []).length" class="card mtg">
         <div class="mh"><h2>Team meetings</h2><NuxtLink to="/meetings/new" class="lk">+ Log</NuxtLink></div>
         <p class="ms">{{ mtg?.scoped ? 'For the companies you are assigned to' : 'Across the group' }} · last 120 days</p>
         <NuxtLink v-for="m in mtg?.meetings ?? []" :key="m.id" :to="'/meetings/' + m.id" class="mi"><span class="md">{{ mdate(m.held_at) }}</span><span class="mt"><b>{{ m.title }}</b><em>{{ m.entity ?? 'Group' }}{{ m.status === 'draft' ? ' · draft' : '' }}</em><span v-if="m.summary" class="msum">{{ m.summary }}</span>

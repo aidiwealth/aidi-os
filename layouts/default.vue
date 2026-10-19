@@ -37,23 +37,47 @@ onMounted(() => { supTimer = setInterval(() => { supNow.value = Date.now(); if (
 onBeforeUnmount(() => clearInterval(supTimer))
 const supLeft = computed(() => (support.value ? Math.max(0, Math.ceil((Date.parse(support.value.until) - supNow.value) / 60000)) : 0))
 async function endSupport() { clearInterval(supTimer); const r = await $fetch<{ to: string }>('/api/auth/return', { method: 'POST' }).catch(() => ({ to: '/login' })); window.location.href = r.to }
-const groups = computed(() => {
-  const out: { label: string; items: Mod[] }[] = []
-  for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))) {
-    let g = out.find((x) => x.label === m.groupLabel)
-    if (!g) { g = { label: m.groupLabel, items: [] }; out.push(g) }
-    g.items.push(m)
+// The workspace menu: a short list of items, each opening its first page; the item's other pages are the sub-menu
+// across the top of the page. Items list the modules they hold; a module the person cannot use is left out, one only a
+// higher plan unlocks shows a lock. A module no item lists gets its own item, so nothing is ever lost from the menu.
+interface WsDef { label: string; codes: string[]; extra?: WsTab[] }
+interface WsTab { to: string; label: string; code: string; locked?: boolean; pages?: string[] }
+interface WsItem { label: string; icon: string; to: string; tabs: WsTab[] }
+const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
+  { label: 'Investors', items: [{ label: 'Financials', codes: ['financials'] }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity', 'forecast'] }, { label: 'Boards', codes: ['boards'] }] },
+  { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
+    { label: 'Services', codes: ['company_services', 'client_inbox', 'client_raise', 'wallet'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
+  { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'] }] }]
+// Aidi OS: grouped like Finvry, but the pages the team opens every day keep their own place in the side menu
+// (Pitches, Payments, Tax documents, Meeting minutes, Team, Blog).
+const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [
+  { label: 'Venture capital', items: [{ label: 'Pitches', codes: ['pitches'] }, { label: 'Investments', codes: ['pipeline', 'portfolio', 'credit'] }, { label: 'Funds & LPs', codes: ['funds', 'contacts', 'updates', 'directory'] }] },
+  { label: 'Money', items: [{ label: 'Financials', codes: ['financials', 'boards', 'decks', 'investor_page', 'equity', 'forecast'] }, { label: 'Payments', codes: ['expenses'] }, { label: 'Accounting', codes: ['books', 'deployments', 'banking'] },
+    { label: 'Wealth', codes: ['wealth_mgmt', 'wealth', 'secondaries', 'rentals'] }, { label: 'Tax documents', codes: ['tax_docs'] }] },
+  { label: 'Company', items: [{ label: 'Governance', codes: ['entities', 'governance', 'compliance'] }, { label: 'Meeting minutes', codes: ['meetings'] }, { label: 'Documents', codes: ['documents'] }, { label: 'Notices', codes: ['notices'] }] },
+  { label: 'Administration', items: [{ label: 'Team', codes: ['team'] }, { label: 'Blog', codes: ['blog'] }, { label: 'Settings', codes: ['settings', 'modules'] }] }]
+const isCompany = computed(() => me.value?.org?.kind === 'company')
+const wsMenu = computed(() => {
+  const all = (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))
+  const by = new Map(all.map((m) => [m.code, m])); const used = new Set<string>()
+  const tabOf = (m: Mod): WsTab => { used.add(m.code); return { to: m.to, label: isCompany.value && m.code === 'updates' ? 'Updates' : m.label, code: m.code, locked: !!m.locked && !m.usable, pages: m.pages } }
+  const item = (label: string, tabs: WsTab[]): WsItem | null => { const first = tabs.find((t) => !t.locked) ?? tabs[0]; return first ? { label: tabs.length === 1 ? tabs[0]!.label : label, icon: first.code, to: first.to, tabs } : null }
+  const out = (isCompany.value ? COMPANY_MENU : AIDI_MENU).map((s) => ({ label: s.label, items: s.items.map((d) => {
+    const tabs = d.codes.map((c) => by.get(c)).filter((m): m is Mod => !!m).map(tabOf)
+    if (d.extra && tabs.length && isCompany.value) tabs.push(...d.extra)
+    return item(d.label, tabs) }).filter((x): x is WsItem => !!x) }))
+  for (const m of all.filter((x) => !used.has(x.code))) {
+    let s = out.find((x) => x.label === m.groupLabel); if (!s) { s = { label: m.groupLabel, items: [] }; out.push(s) }
+    const it = item(m.label, [tabOf(m)]); if (it) s.items.push(it)
   }
-  // "Investor updates" + "Investor page" → one item, "Investor relations"; tabs on the pages switch between them
-  for (const g of out) {
-    const up = g.items.find((x) => x.code === 'updates'), ip = g.items.find((x) => x.code === 'investor_page')
-    if (up && ip) { g.items = g.items.filter((x) => x !== ip).map((x) => (x === up ? { ...up, label: 'Investor relations', to: up.usable ? '/updates' : '/investor-page', locked: !up.usable && !ip.usable, alsoOn: [up.usable ? '/investor-page' : '/updates'] } : x)) }
-  }
-  // Forecast and Cap table live under Investor relations too (tabs on its pages), when that item is there.
-  const ir = out.flatMap((g) => g.items).find((x) => x.code === 'updates') as (Mod & { alsoOn?: string[] }) | undefined
-  if (ir) for (const g of out) for (const x of g.items.filter((y) => (y.code === 'forecast' || y.code === 'equity') && (y.usable || y.locked))) { ir.alsoOn = [...(ir.alsoOn ?? []), x.to]; g.items = g.items.filter((y) => y !== x) }
-  return out.filter((g) => g.items.length)
+  return out.filter((s) => s.items.length)
 })
+const tabOn = (t: WsTab) => isOn(t.to) || (t.pages ?? []).some((p) => p !== t.to && isOn(p))
+const wsItemOn = (it: WsItem) => it.tabs.some(tabOn)
+const wsCurrent = computed(() => { for (const s of wsMenu.value) for (const it of s.items) if (wsItemOn(it)) return { s, it }; return null })
+const wsTabs = computed(() => (platformMode.value ? null : (wsCurrent.value && wsCurrent.value.it.tabs.length > 1 ? wsCurrent.value.it.tabs : null)))
+provide('wsTabs', wsTabs)
+const wsBadge = (it: WsItem) => it.tabs.reduce((t, x) => t + (badges.value[x.to] ?? 0), 0)
 // The Finvry console in two parts that never mix: Finvry Platform (the subscription business: customers, plans,
 // subscriptions and renewals, plan invoices, payments, wallets) and Finvry Services (the services desk: jobs, clients,
 // service renewals, service invoices and payments, prices).
@@ -104,13 +128,12 @@ const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
 const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages')) && !(to === '/financials' && nowPath.value.startsWith('/financials/boards'))))
-const itemOn = (m: Mod & { alsoOn?: string[] }) => isOn(m.to) || (m.alsoOn ?? []).some((p) => isOn(p))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const n = SERVICES_NAV.find((x) => navOn(x)); return ['Finvry Services', n?.label ?? 'Jobs'] }
   if (platformMode.value) { const n = PLATFORM_NAV.find((x) => navOn(x)); return ['Finvry Platform', n?.label ?? 'Overview'] }
   if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', me.value?.org?.kind === 'company' ? 'Dashboard' : 'Overview']
   const sub = FIN_SUBS.slice(1).find(([to]) => isOn(to)); if (sub) return ['Financials', sub[1]]
-  for (const g of groups.value) { const m = g.items.find((x) => itemOn(x)); if (m) return [g.label, m.label] }
+  const c = wsCurrent.value; if (c) { const t = c.it.tabs.find(tabOn); return c.it.tabs.length > 1 && t && t.label !== c.it.label ? [c.it.label, t.label] : [c.s.label ?? me.value?.org?.name ?? 'Workspace', c.it.label] }
   return [me.value?.org?.name ?? 'Workspace']
 })
 async function switchOrg(id: string) {
@@ -142,11 +165,10 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
       <nav class="sb-nav">
         <template v-if="!platformMode">
           <NuxtLink v-if="!(me?.roles ?? []).every((r: string) => r === 'wealth_client') || !(me?.roles ?? []).length" to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
-          <template v-for="g in groups" :key="g.label">
-            <p class="sb-group">{{ g.label }}</p>
-            <template v-for="m in g.items" :key="m.code"><NuxtLink :to="m.to" class="sb-link" :class="{ on: itemOn(m), lockd: m.locked }" :title="m.locked ? m.label + ' (upgrade to unlock)' : m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span><svg v-if="m.locked" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink></template>
+          <template v-for="g in wsMenu" :key="g.label ?? ''">
+            <p v-if="g.label" class="sb-group">{{ g.label }}</p>
+            <NuxtLink v-for="it in g.items" :key="it.label" :to="it.to" class="sb-link" :class="{ on: wsItemOn(it), lockd: it.tabs.every((t) => t.locked) }" :title="it.tabs.every((t) => t.locked) ? it.label + ' (upgrade to unlock)' : it.label"><AppIcon :name="it.icon" class="sb-icon" /><span class="sb-label">{{ it.label }}</span><span v-if="wsBadge(it)" class="sb-badge">{{ wsBadge(it) > 99 ? '99+' : wsBadge(it) }}</span><svg v-if="it.tabs.every((t) => t.locked)" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>
-          <NuxtLink v-if="me?.org?.kind === 'company'" to="/perks" class="sb-link" :class="{ on: isOn('/perks') }" title="Perks"><AppIcon name="perks" class="sb-icon" /><span class="sb-label">Perks</span></NuxtLink>
           <template v-if="customersLink"><p class="sb-group">Finvry</p><NuxtLink to="/platform/customers" class="sb-link" :class="{ on: isOn('/platform/customers') }" title="Finvry customers"><AppIcon name="customers" class="sb-icon" /><span class="sb-label">Finvry customers</span></NuxtLink></template>
           <a class="sb-link sb-help" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="help" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
         </template>
@@ -182,7 +204,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
         </div>
       </header>
       <div v-if="support" class="supbar" role="status"><span>Support access: you are seeing this account as <b>{{ me?.email }}</b></span><span class="sm">{{ support.can_edit ? 'Changes allowed, recorded as ' + support.by_name : 'View only' }} · ends in {{ supLeft }} min · the customer can see this visit</span><button type="button" @click="endSupport">End session</button></div>
-      <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><nav v-if="consoleTabs" class="ctabs"><NuxtLink v-for="n in consoleTabs" :key="n.label" :to="linkOf(n)" :class="{ on: navOn(n) }">{{ n.label }}</NuxtLink></nav><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
+      <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><nav v-if="consoleTabs" class="ctabs"><NuxtLink v-for="n in consoleTabs" :key="n.label" :to="linkOf(n)" :class="{ on: navOn(n) }">{{ n.label }}</NuxtLink></nav><nav v-else-if="wsTabs" class="ctabs" :aria-label="wsCurrent?.it.label"><NuxtLink v-for="t in wsTabs" :key="t.to" :to="t.to" :class="{ on: tabOn(t), off: t.locked }">{{ t.label }}<svg v-if="t.locked" class="tl" viewBox="0 0 24 24" aria-label="Upgrade to unlock"><rect x="5" y="11" width="14" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" /></svg></NuxtLink></nav><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
       <AnalystPanel v-if="me && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
     </div>
   </div>
@@ -256,5 +278,5 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; opacity: 0; transition: opacity .2s; } .sidebar.sbs .sb-top::after { opacity: 1; }
 .sb-logo { width: 32px; height: 32px; display: block; margin-left: -4px; }
 a.sb-user { text-decoration: none; } a.sb-user:hover { color: var(--c-ink); }
-.ctabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 0 0 20px; overflow-x: auto; } .ctabs a { padding: 9px 0; font-size: 14px; color: var(--c-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; } .ctabs a.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .ctabs a:hover { color: var(--c-ink); }
+.ctabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 0 0 20px; overflow-x: auto; } .ctabs a { padding: 9px 0; font-size: 14px; color: var(--c-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; } .ctabs a.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .ctabs a:hover { color: var(--c-ink); } .ctabs a { display: inline-flex; align-items: center; gap: 6px; } .ctabs a.off { opacity: .7; } .ctabs .tl { width: 13px; height: 13px; }
 </style>

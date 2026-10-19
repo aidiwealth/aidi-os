@@ -16,7 +16,7 @@ async function manual() { busy.value = true; msg.value = ''; try { await $fetch(
 const ngn = (v: number) => '₦' + Math.round(v).toLocaleString('en-US')
 const ang = computed(() => (latest.value?.score ? ((latest.value.score - 300) / 550) * 180 : 0))
 const arc = (deg: number) => { const r = 80, a = Math.PI * (1 - deg / 180); return (100 + r * Math.cos(a)).toFixed(1) + ' ' + (100 - r * Math.sin(a)).toFixed(1) }
-const col = (b: string | null) => (b === 'Excellent' ? '#1f7a4d' : b === 'Good' ? '#1c4f9c' : b === 'Fair' ? '#b5470b' : '#b42318')
+const col = (b: string | null) => (b === 'Excellent' ? '#1d5a86' : b === 'Good' ? '#1c4f9c' : b === 'Fair' ? '#b5470b' : '#b42318')
 const hist = computed(() => [...(data.value?.checks ?? [])].reverse().filter((c) => c.score).map((c) => ({ label: new Date(c.created_at).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: c.score as number })))
 const mix = computed(() => (sum.value ? [{ label: 'Active', value: sum.value.active }, { label: 'Closed', value: sum.value.closed }, { label: 'Delinquent', value: sum.value.delinquent }].filter((x) => x.value > 0) : []))
 const SRC: Record<string, string> = { CRC: 'CRC', FIRST_CENTRAL: 'First Central', CREDIT_REGISTRY: 'Credit Registry' }

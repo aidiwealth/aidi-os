@@ -104,7 +104,7 @@ const FIELDS: [keyof P, string, boolean][] = [['revenue_total', 'Revenue (period
 .q { display: flex; flex-direction: column; border: 1px solid var(--c-rule); } .qi + .qi { border-top: 1px solid var(--c-rule); }
 .qh { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 10px 14px; background: #fff; border: 0; font: inherit; text-align: left; cursor: pointer; } .qh:disabled { cursor: default; } .qi.on .qh { background: var(--c-paper-2); }
 .qn { display: flex; flex-direction: column; min-width: 0; } .qn b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .qn em { font-style: normal; font-size: 12px; color: var(--c-muted); }
-.qs { font-size: 12px; padding: 3px 8px; background: #eef0f6; color: var(--c-navy); white-space: nowrap; } .qs.review { background: #fff6e6; color: #a5650b; } .qs.saved { background: #e9f6ee; color: var(--c-ok); } .qs.failed { background: #fdecef; color: var(--c-danger); } .qs.reading, .qs.saving { background: var(--c-signal-soft); color: var(--c-blue-deep); }
+.qs { font-size: 12px; padding: 3px 8px; background: #eef0f6; color: var(--c-navy); white-space: nowrap; } .qs.review { background: #fff6e6; color: #a5650b; } .qs.saved { background: #e8f0f8; color: var(--c-ok); } .qs.failed { background: #fdecef; color: var(--c-danger); } .qs.reading, .qs.saving { background: var(--c-signal-soft); color: var(--c-blue-deep); }
 .qi .error { margin: 0 14px 10px; }
 .rv { padding: 4px 14px 16px; display: flex; flex-direction: column; gap: 12px; background: var(--c-paper-2); }
 .warn { margin: 0; background: #fff6e6; color: #7a4a06; padding: 8px 12px; font-size: 13px; }

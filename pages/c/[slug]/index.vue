@@ -30,7 +30,7 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
 </script>
 <template>
   <section class="wrap">
-    <div v-if="error" class="card"><h1>This page does not exist</h1></div>
+    <div v-if="error" class="card nf"><h1>This page does not exist</h1><p>The link may be mistyped, or the page was taken down.</p><NuxtLink to="/" class="btn">Go to your dashboard</NuxtLink></div>
     <NdaGate v-else-if="data && data.gated && data.nda" :company="data.company" :text="data.nda.text" kind="page" :ref-key="slug" :org-key="data.nda.key" @signed="signed" />
     <template v-else-if="data">
       <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
@@ -69,4 +69,5 @@ const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '
 .covr { margin: -8px 0 18px; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; } .clogo { width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--c-rule); padding: 6px; margin-bottom: 12px; display: block; }
 .secs { display: flex; flex-direction: column; gap: 8px; max-width: 640px; } .sr { display: grid; grid-template-columns: 180px 1fr 56px; gap: 10px; align-items: center; font-size: 14px; } .sr i { display: block; height: 10px; background: #eef1f6; } .sr em { display: block; height: 100%; background: var(--c-blue-deep, #1d64a8); } .sr b { text-align: right; font-weight: 500; }
 @media (max-width: 600px) { .sr { grid-template-columns: 110px 1fr 48px; } }
+.nf p { color: var(--c-muted); margin: 8px 0 16px; } .nf .btn { text-decoration: none; }
 </style>

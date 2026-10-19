@@ -196,8 +196,8 @@ th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--c-rule
 .rg.vo { grid-template-columns: 200px 200px 1fr; } .rg.vo textarea, .rg input, .rg select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .ra { display: flex; gap: 16px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); }
 @media (max-width: 640px) { .rg { grid-template-columns: 1fr; } }
 .who { display: flex; gap: 16px; align-items: flex-start; } .who .mono { flex: none; width: 52px; height: 52px; background: #eef0f6; color: var(--c-navy); display: grid; place-items: center; font-weight: 700; font-size: 18px; } .who h1 { margin: 0 0 4px; } .who .muted a { color: var(--c-blue-deep); text-decoration: none; }
-.tagl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .tg { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); border: 0; text-transform: capitalize; } .tg.active, .tg.on { background: #e9f6ee; color: #23784a; } .tg.lead { background: #eef4ff; color: #2c5cc5; }
-.tg.sw { cursor: pointer; background: #e9f6ee; color: #23784a; } .tg.sw.off { background: #fdecef; color: #b4234a; }
+.tagl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .tg { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-ink-soft); border: 0; text-transform: capitalize; } .tg.active, .tg.on { background: #e8f0f8; color: #23784a; } .tg.lead { background: #eef4ff; color: #2c5cc5; }
+.tg.sw { cursor: pointer; background: #e8f0f8; color: #23784a; } .tg.sw.off { background: #fdecef; color: #b4234a; }
 .mhd { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; } .mhd .muted { margin: 0 0 10px; font-size: 13.5px; } .mhd .lk { white-space: nowrap; } .chat { padding: 0 !important; height: 560px; display: flex; flex-direction: column; overflow: hidden; } .none { color: var(--c-muted); text-align: center; margin: auto; }
 
 </style>

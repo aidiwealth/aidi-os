@@ -141,5 +141,5 @@ input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 1
 @media (max-width: 900px) { .su { grid-template-columns: 1fr; } .side { padding: 28px 24px; gap: 22px; } .pitch, .trust, .legal, .rail em { display: none; } .rail { flex-direction: row; gap: 8px; } .rail li { border: 0 !important; padding: 0; } .rail b { display: none; } .pane { align-items: flex-start; padding: 32px 20px; } }
 .gate { opacity: .45; pointer-events: none; transition: opacity .4s; }
 .agb { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 4px; padding-top: 16px; border-top: 1px solid #dfe3e9; } .agb > b { font-size: 15px; }
-.pcb { margin: 14px 0 0; } .pcr { display: flex; gap: 8px; } .pcr input { flex: 1; text-transform: uppercase; } .pcbtn { font: inherit; font-size: 14px; padding: 0 16px; background: #fff; border: 1px solid #c9ced6; cursor: pointer; } .pcok { color: #1f7a4d; font-size: 13.5px; margin: 6px 0 0; }
+.pcb { margin: 14px 0 0; } .pcr { display: flex; gap: 8px; } .pcr input { flex: 1; text-transform: uppercase; } .pcbtn { font: inherit; font-size: 14px; padding: 0 16px; background: #fff; border: 1px solid #c9ced6; cursor: pointer; } .pcok { color: #1d5a86; font-size: 13.5px; margin: 6px 0 0; }
 </style>

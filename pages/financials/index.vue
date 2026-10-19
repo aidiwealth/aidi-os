@@ -247,7 +247,6 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
         <select v-if="(!co || isGroup) && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
-        <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
         <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
@@ -287,8 +286,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
           <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
-          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
-          <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="burnShown" :currency="cur" /> / month{{ view === 'month' && review.status !== 'none' ? ' (3-month average)' : '' }}</template></StatTile>
+          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="b" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
+          <StatTile label="Gross margin" icon="chart" tone="b" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="burnShown" :currency="cur" /> / month{{ view === 'month' && review.status !== 'none' ? ' (3-month average)' : '' }}</template></StatTile>
         </div>
         <BurnCheck v-if="!co && monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
         <div class="charts">
@@ -300,7 +299,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <ClientOnly><FinGroupSummary companies @open="pickPage" /></ClientOnly>
           <p v-if="elimX && elimX.items.length" class="icn">Intercompany taken out for {{ elimMonth }}: <b>{{ briefMoney(elimX.receivables, currency) }}</b> owed and <b>{{ briefMoney(elimX.payables, currency) }}</b> owing within the group{{ Math.abs(elimX.unreconciled) >= 1 ? '; the books differ by ' + briefMoney(Math.abs(elimX.unreconciled), currency) : '' }}. <NuxtLink :to="{ query: { ...$route.query, tab: 'consolidation' } }">See the consolidation →</NuxtLink></p>
         </template>
-        <FinAnalysis v-if="co" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
+        <FinAnalysis v-if="co" brief :next-to="{ path: '/financials/next', query: { s: subject } }" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
         <ClientOnly><ShareTo v-if="co && !isGroup && canEdit && co.subject === baseCo?.subject" :sections="['intro', 'summary', 'scorecard', 'growth', 'cash']" what="these figures" /></ClientOnly>
         <p v-for="(c, i) in (checks?.checks ?? []).filter((x) => x.what === 'Missing months' || x.what === 'Cash missing')" :key="'g' + i" class="gapw"><b>{{ c.what }}.</b> {{ c.detail }}</p>
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>

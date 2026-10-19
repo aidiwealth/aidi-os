@@ -22,5 +22,6 @@ async function run() {
 
 <style scoped>
 .del { color: var(--c-danger); border-color: rgba(180,35,24,.35); } .del:hover { background: rgba(180,35,24,.06); border-color: var(--c-danger); }
-.del-link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-danger); cursor: pointer; margin-left: 12px; }
+/* In lists the link is quiet (grey) and turns red only on hover, so a table is not a column of red. */
+.del-link { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-muted); cursor: pointer; margin-left: 12px; } .del-link:hover, .del-link:focus-visible { color: var(--c-danger); }
 </style>

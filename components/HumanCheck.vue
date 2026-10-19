@@ -37,6 +37,6 @@ defineExpose({ fresh })
 <style scoped>
 .hc { margin-top: 14px; } .w:empty { display: none; }
 .st { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; color: var(--c-muted); }
-.st i { width: 7px; height: 7px; background: #5fa8d3; flex: none; } .st.checking i { animation: p 1.1s ease-in-out infinite; } .st.ok i { background: #1f7a4d; } .st.ok { color: #1f7a4d; } .st.error i { background: var(--c-danger); } .st.error { color: var(--c-danger); }
+.st i { width: 7px; height: 7px; background: #5fa8d3; flex: none; } .st.checking i { animation: p 1.1s ease-in-out infinite; } .st.ok i { background: #1d5a86; } .st.ok { color: #1d5a86; } .st.error i { background: var(--c-danger); } .st.error { color: var(--c-danger); }
 @keyframes p { 50% { opacity: .25 } } .f-leave-active { transition: opacity .6s; } .f-leave-to { opacity: 0; }
 </style>

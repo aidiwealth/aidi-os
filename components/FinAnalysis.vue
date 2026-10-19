@@ -4,7 +4,12 @@ import { shortAmount } from '~/shared/compact'
 // revenue goes, four key points (detail on demand) and what to take to each part of the team.
 import type { BurnReview } from '~/shared/fin-view'
 import { BUSINESS_MODELS } from '~/shared/business-models'
-const props = defineProps<{ subject: string; review?: BurnReview | null; unit?: { revenue: number; cogs: number; opex: number; label: string } | null; currency: string; withSecurities?: boolean }>()
+const props = defineProps<{ subject: string; review?: BurnReview | null; unit?: { revenue: number; cogs: number; opex: number; label: string } | null; currency: string; withSecurities?: boolean; brief?: boolean; nextTo?: string | Record<string, unknown> }>()
+// brief: one line (the headline) with the detail behind a button; What to do next has the full advice.
+const open = ref(false)
+const shown = computed(() => !props.brief || open.value)
+// "2026-01-31 to 2026-09-30" → "Jan 2026 – Sep 2026"
+const periodText = (p: string) => p.replace(/(\d{4})-(\d{2})-\d{2}/g, (_m, y: string, mo: string) => new Date(Date.UTC(Number(y), Number(mo) - 1, 1)).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })).replace(' to ', ' – ')
 interface A { headline: string; insights: { title: string; detail: string; tone: 'good' | 'watch' | 'risk' }[]; flags: { for: string; item: string; why: string }[]; checks: number; ai: boolean; as_of: string; period: string; business_model?: string | null }
 const refreshQ = ref<string | undefined>(undefined)
 const { data, pending, refresh } = await useLazyFetch<A | null>('/api/financials/analysis', { query: { subject: computed(() => props.subject), refresh: refreshQ }, server: false })
@@ -36,11 +41,12 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 </script>
 
 <template>
-  <section class="fh">
+  <section class="fh" :class="{ brief, open }">
     <header class="hd"><div><span class="eb">What your numbers say</span><h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2></div>
-      <span class="meta">{{ data ? data.period.replace(' to ', ' – ') + (data.ai ? '' : ' · from your figures') : '' }}<button v-if="data" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
-        <label v-if="data" class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span></header>
+      <span class="meta">{{ data ? periodText(data.period) + (data.ai ? '' : ' · from your figures') : '' }}<template v-if="brief && data"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}</button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template><button v-if="data && shown" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
+        <label v-if="data && shown" class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span></header>
 
+    <template v-if="shown">
     <div class="grid">
       <!-- Runway and burn -->
       <div v-if="rw" class="box rwb">
@@ -88,13 +94,14 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
       <div class="tmh"><span class="bl">Take to your team</span><div class="seg"><button v-for="[w, items] in groups" :key="w" type="button" :class="{ on: who === w }" @click="who = w">{{ w }}<em>{{ items.length }}</em></button></div></div>
       <div class="tml"><div v-for="(f, n) in groups.find(([w]) => w === who)?.[1] ?? []" :key="n" class="it"><span class="no">{{ n + 1 }}</span><div><b>{{ f.item }}</b><p :class="{ full: fullW.includes(who + n) }">{{ f.why }}</p><button v-if="f.why.length > 140" type="button" class="more" @click="fullW = fullW.includes(who + n) ? fullW.filter((x) => x !== who + n) : [...fullW, who + n]">{{ fullW.includes(who + n) ? 'Show less' : 'Read more' }}</button></div></div></div>
     </div>
-    <p v-if="data?.checks" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up, so some of this may be off. See "Figures to check" below.</p>
+    </template>
+    <p v-if="data?.checks && shown" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up, so some of this may be off. See "Figures to check" below.</p>
   </section>
 </template>
 
 <style scoped>
 .fh { background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; margin: 0 0 12px; }
-.hd { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+.hd { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; } .fh.brief:not(.open) .hd { margin-bottom: 0; } a.lk { text-decoration: none; }
 .eb, .bl { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--c-muted); } .bl small { text-transform: none; letter-spacing: 0; margin-left: 4px; }
 .hl { font-family: var(--font-heading); font-weight: 500; font-size: 16px; line-height: 1.5; color: var(--c-navy); margin: 6px 0 0; max-width: 72ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
 .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; white-space: nowrap; flex-wrap: wrap; justify-content: flex-end; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }

@@ -52,7 +52,7 @@ const chip = computed(() => props.inv.status === 'paid' ? 'Paid' + (props.inv.pa
 .hd h1 { font-family: var(--font-heading); font-weight: 600; font-size: 17px; color: var(--c-navy); margin: 0 0 6px; letter-spacing: -.01em; } .hd p { margin: 0 0 3px; color: var(--c-ink-soft); font-size: 14px; } .pre { white-space: pre-line; }
 .rt { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .lb { display: block; font-size: 13.5px; color: var(--c-muted); } .lb.sm { font-size: 12.5px; margin-bottom: 3px; }
 .no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: .02em; } .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.chip { font-size: 13.5px; background: var(--c-paper-2); padding: 5px 12px; color: var(--c-ink-soft); } .chip.paid { background: rgba(31,122,77,.1); color: var(--c-ok); } .chip.void { color: var(--c-muted); }
+.chip { font-size: 13.5px; background: var(--c-paper-2); padding: 5px 12px; color: var(--c-ink-soft); } .chip.paid { background: rgba(29,90,134,.1); color: var(--c-ok); } .chip.void { color: var(--c-muted); }
 .info { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 24px; padding: 26px 0; border-bottom: 1px solid var(--c-rule); } .info > div { display: flex; flex-direction: column; gap: 4px; font-size: 15px; } .info b { font-weight: 500; } .mut { color: var(--c-muted); }
 .note { font-size: 14px; color: var(--c-ink-soft); margin: 18px 0 0; line-height: 1.55; }
 .ln { width: 100%; border-collapse: collapse; margin-top: 26px; } .ln th { text-align: left; font-weight: 400; font-size: 13.5px; color: var(--c-muted); padding: 10px 0; border-bottom: 1px solid var(--c-rule); }

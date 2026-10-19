@@ -87,7 +87,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
   <section>
     <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
-    <div class="head"><div><h1>Revenue retention</h1><p class="sub">How much of last year's revenue your customers still pay, what they added, and who left.</p></div>
+    <div class="head"><div><h1>Revenue retention</h1></div>
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>
@@ -108,7 +108,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     <template v-else>
       <p v-if="!enough" class="note">You have {{ months.length }} month{{ months.length === 1 ? '' : 's' }} of customer revenue. Year-on-year retention needs 13 or more; add earlier months for NRR and GRR.</p>
       <div class="dir card">
-        <div class="dh"><span class="eyebrow">Where you stand{{ billing !== 'subscription' ? ' · ' + (billing === 'prepaid' ? 'prepaid credits' : 'pay as you go') + ', lost after ' + grace + ' quiet month' + (grace === 1 ? '' : 's') : '' }}</span><p class="vd">{{ verdict || 'Add 13 months or more of customer revenue to see where retention stands.' }}</p></div>
+        <div class="dh"><span class="eyebrow">Where you stand{{ billing !== 'subscription' ? ' · ' + (billing === 'prepaid' ? 'prepaid credits' : 'pay as you go') + ', lost after ' + grace + ' quiet month' + (grace === 1 ? '' : 's') : '' }}</span><p v-if="!verdict" class="vd">Add 13 months or more of customer revenue to see where retention stands.</p></div>
         <div class="sc">
           <BenchBar label="Net revenue retention" :value="P1(r12.nrr)" :prev="P1(r12prev.nrr)" :bands="[90, 100]" :max="150" hint="110%+ is strong" />
           <BenchBar label="Gross revenue retention" :value="P1(r12.grr)" :prev="P1(r12prev.grr)" :bands="[80, 90]" :max="100" hint="Losses only" />
@@ -116,27 +116,33 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
           <BenchBar label="Monthly revenue churn" :value="P1(churn3)" :bands="[1, 3]" :max="8" lower-is-better hint="Lost and downgraded, last 3 months" />
         </div>
       </div>
+      <!-- The three things to act on, as numbers; the write-up is in the Retention report. -->
       <div class="act">
-        <div class="card ac"><span class="eyebrow">Biggest leak</span><template v-if="leaks[0] && leaks[0].lost > 0"><b>{{ leaks[0].group }}</b><p>{{ cMoney(leaks[0].lost, cur, true) }} lost to customers leaving or spending less in 12 months{{ leaks[0].added ? ', against ' + cMoney(leaks[0].added, cur, true) + ' added' : '' }}.</p><em>Find out why they leave: price, product or service. Fix the biggest reason first.</em></template><p v-else>No revenue lost in the last 12 months.</p></div>
-        <div class="card ac"><span class="eyebrow">Strongest group</span><template v-if="best"><b>{{ best.group }} · {{ pp(best.nrr) }}</b><p>Keeps and grows its revenue best, with {{ cPct(best.share) }} of revenue.</p><em>Win more customers like these and learn what they buy.</em></template><p v-else>Needs a year of history by group.</p></div>
-        <div class="card ac"><span class="eyebrow">Call this month</span><template v-if="atRisk.length"><ol><li v-for="x in atRisk" :key="x.c.id"><span>{{ x.c.name }}</span><em>{{ cMoney(x.now / 3, cur, true) }} a month, was {{ cMoney(x.before / 3, cur, true) }}</em></li></ol></template><p v-else>No large customer has dropped by a third in the last three months.</p></div>
+        <div class="card ac"><span class="eyebrow">Biggest leak</span><template v-if="leaks[0] && leaks[0].lost > 0"><b>{{ leaks[0].group }}</b><strong class="neg">−{{ cMoney(leaks[0].lost, cur, true) }}</strong><em>lost in 12 months{{ leaks[0].added ? ' · ' + cMoney(leaks[0].added, cur, true) + ' added' : '' }}</em></template><em v-else>Nothing lost in 12 months</em></div>
+        <div class="card ac"><span class="eyebrow">Strongest group</span><template v-if="best"><b>{{ best.group }}</b><strong>{{ pp(best.nrr) }}</strong><em>net retention · {{ cPct(best.share) }} of revenue</em></template><em v-else>Needs a year of history</em></div>
+        <div class="card ac"><span class="eyebrow">Call this month</span><template v-if="atRisk.length"><ol><li v-for="x in atRisk.slice(0, 4)" :key="x.c.id"><span>{{ x.c.name }}</span><em class="neg">{{ cMoney(x.now / 3, cur, true) }} <s>{{ cMoney(x.before / 3, cur, true) }}</s></em></li></ol></template><em v-else>No large customer is slipping</em></div>
       </div>
+      <div class="gbar"><span class="mut">Group by</span><div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: groupBy === k }" @click="setGroup(k)">{{ l }}</button></div>
+        <button v-if="canEdit && groupBy === 'size'" class="lk" type="button" @click="openBands">Change bands</button><button v-if="canEdit" class="lk" type="button" @click="suggest">✦ Suggest groups</button></div>
       <div class="charts two">
         <Waterfall title="Revenue over the last 12 months" sub="Monthly revenue" :currency="cur" :start="{ label: cMon(br[0]?.month ?? asOf), value: sum12.start }" :steps="[{ label: 'New', value: sum12.new }, { label: 'Expansion', value: sum12.expansion }, { label: 'Returned', value: sum12.reactivated }, { label: 'Downgrades', value: -sum12.contraction }, { label: 'Lost', value: -sum12.churned }]" :end-label="cMon(asOf)" foot="Each step adds up the 12 months: how revenue moved from the month at the start to this month." />
         <HBars :title="'Net revenue retention by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Same customers, a year on" :rows="groups.filter((g) => g.nrr !== null).map((g) => ({ label: g.group, value: Math.round(g.nrr! * 1000) / 10, note: g.customers + ' customers' }))" :ref-line="100" ref-label="100%: customers pay as much as a year ago" />
       </div>
+      <div class="charts two">
+        <div class="card"><DonutChart :title="'Revenue by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" total-label="Last month" :currency="cur" :segments="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10 }))" percent sub="Share of revenue" /></div>
+        <HBars :title="'Customers lost by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Share who stopped paying in 12 months" :rows="groups.filter((g) => g.logo_churn !== null).map((g) => ({ label: g.group, value: Math.round(g.logo_churn! * 1000) / 10, note: g.customers + ' customers' }))" />
+      </div>
       <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers, credits or revenue recorded differently.</p>
-      <CustAnalysis kind="retention" :stamp="stamp" />
       <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'retention']" what="revenue retention" /></ClientOnly>
 
-      <div class="card flat">
-        <div class="ch"><div><h3>Retention by {{ GB.find(([k]) => k === groupBy)?.[1].toLowerCase() }}</h3><p class="mut">{{ groupBy === 'size' ? 'Enterprise from ' + cMoney(t.enterprise, cur, true) + ' a year, Mid-market from ' + cMoney(t.midmarket, cur, true) + ', SMB below. Customers are placed by what they paid a year ago.' : data?.config.scheme?.name ? data.config.scheme.name + ': ' + data.config.scheme.why : 'Set on each customer (from your file, the Customers page, or a suggested grouping).' }}</p></div>
-          <div class="gt"><div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: groupBy === k }" @click="setGroup(k)">{{ l }}</button></div>
-            <button v-if="canEdit && groupBy === 'size'" class="lk" type="button" @click="openBands">Change bands</button><button v-if="canEdit" class="lk" type="button" @click="suggest">✦ Suggest groups</button></div></div>
+      <details class="card flat tbl"><summary>Table: retention by {{ GB.find(([k]) => k === groupBy)?.[1].toLowerCase() }}</summary>
+        <p class="mut">{{ groupBy === 'size' ? 'Enterprise from ' + cMoney(t.enterprise, cur, true) + ' a year, Mid-market from ' + cMoney(t.midmarket, cur, true) + ', SMB below. Customers are placed by what they paid a year ago.' : data?.config.scheme?.name ? data.config.scheme.name + ': ' + data.config.scheme.why : 'Set on each customer (from your file, the Customers page, or a suggested grouping).' }}</p>
+
+
         <div class="scroll"><table class="table"><thead><tr><th>{{ GB.find(([k]) => k === groupBy)?.[1] }}</th><th class="n">Customers</th><th class="n">Share of revenue</th><th class="n">Avg / month</th><th class="n">NRR</th><th class="n">GRR</th><th class="n">Customer churn</th><th class="n">Revenue growth</th></tr></thead>
           <tbody><tr v-for="g in groups" :key="g.group"><td><b>{{ g.group }}</b></td><td class="n">{{ g.active }}<span class="sub">of {{ g.customers }}</span></td><td class="n"><span class="bar"><i :style="{ width: Math.round(g.share * 100) + '%' }" /></span>{{ cPct(g.share) }}</td><td class="n">{{ cMoney(g.arpa, cur) }}</td>
             <td class="n" :class="tone(g.nrr, 1.05, 0.9)">{{ pp(g.nrr) }}</td><td class="n" :class="tone(g.grr, 0.9, 0.8)">{{ pp(g.grr) }}</td><td class="n" :class="g.logo_churn === null ? '' : g.logo_churn <= 0.1 ? 'g' : g.logo_churn <= 0.25 ? 'w' : 'r'">{{ pp(g.logo_churn) }}</td><td class="n">{{ g.growth === null ? '—' : (g.growth >= 0 ? '+' : '') + cPct(g.growth) }}</td></tr></tbody></table></div>
-      </div>
+      </details>
 
       <div class="charts">
         <TrendChart title="Net revenue retention" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.nrr ?? 0) * 1000) / 10 }))" foot="Each month vs a year earlier" :foot-value="r12.nrr === null ? null : Math.round(r12.nrr * 1000) / 10" />
@@ -151,11 +157,11 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
         <StackBars title="Customers won and lost" sub="Last 12 months" unit="count" :labels="br.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: br.map((x) => x.new_logos) }, { name: 'Lost', values: br.map((x) => x.lost_logos), down: true }]" />
       </div>
 
-      <div class="card flat"><div class="ch"><div><h3>Where revenue came from and went</h3><p class="mut">Month by month: new customers, customers paying more or less, and customers lost.</p></div></div>
+      <details class="card flat tbl"><summary>Table: revenue month by month</summary>
         <div class="scroll"><table class="table"><thead><tr><th>Month</th><th class="n">Start</th><th class="n">+ New</th><th class="n">+ Expansion</th><th class="n">+ Returned</th><th class="n">− Downgrades</th><th class="n">− Lost</th><th class="n">End</th><th class="n">Customers (+/−)</th></tr></thead>
-          <tbody><tr v-for="x in [...br].reverse()" :key="x.month"><td><b>{{ cMon(x.month) }}</b></td><td class="n">{{ cMoney(x.start, cur) }}</td><td class="n pos">{{ x.new ? cMoney(x.new, cur) : '—' }}</td><td class="n pos">{{ x.expansion ? cMoney(x.expansion, cur) : '—' }}</td><td class="n pos">{{ x.reactivated ? cMoney(x.reactivated, cur) : '—' }}</td><td class="n neg">{{ x.contraction ? cMoney(-x.contraction, cur) : '—' }}</td><td class="n neg">{{ x.churned ? cMoney(-x.churned, cur) : '—' }}</td><td class="n"><b>{{ cMoney(x.end, cur) }}</b></td><td class="n">{{ x.active }}<span class="sub">+{{ x.new_logos }} / −{{ x.lost_logos }}</span></td></tr></tbody></table></div></div>
+          <tbody><tr v-for="x in [...br].reverse()" :key="x.month"><td><b>{{ cMon(x.month) }}</b></td><td class="n">{{ cMoney(x.start, cur) }}</td><td class="n pos">{{ x.new ? cMoney(x.new, cur) : '—' }}</td><td class="n pos">{{ x.expansion ? cMoney(x.expansion, cur) : '—' }}</td><td class="n pos">{{ x.reactivated ? cMoney(x.reactivated, cur) : '—' }}</td><td class="n neg">{{ x.contraction ? cMoney(-x.contraction, cur) : '—' }}</td><td class="n neg">{{ x.churned ? cMoney(-x.churned, cur) : '—' }}</td><td class="n"><b>{{ cMoney(x.end, cur) }}</b></td><td class="n">{{ x.active }}<span class="sub">+{{ x.new_logos }} / −{{ x.lost_logos }}</span></td></tr></tbody></table></div></details>
 
-      <div v-if="coh.length" class="card flat"><div class="ch"><div><h3>Cohorts</h3><p class="mut">Customers grouped by the quarter they first paid: their revenue later as a share of their first three months. Above 100% means they grew.</p></div></div>
+      <div v-if="coh.length" class="card flat"><div class="ch"><div><h3>Cohorts</h3><p class="mut">Revenue later as a share of each quarter's first three months. Above 100% means they grew.</p></div></div>
         <div class="scroll"><table class="table coh"><thead><tr><th>First paid</th><th class="n">Customers</th><th v-for="k in COHORT_AT" :key="k" class="n">{{ k === 0 ? 'Start' : 'Month ' + k }}</th></tr></thead>
           <tbody><tr v-for="c in [...coh].reverse()" :key="c.cohort"><td><b>{{ c.cohort }}</b></td><td class="n">{{ c.size }}</td><td v-for="(v, i) in c.cells" :key="i" class="n hc" :style="{ background: heat(v), color: v !== null && v > 0.75 ? '#fff' : '' }">{{ v === null ? '' : cPct(v) }}</td></tr></tbody></table></div></div>
 
@@ -220,9 +226,12 @@ td.g { color: var(--c-navy); font-weight: 500; } td.w { color: #8a5a0a; font-wei
 .sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
 .act { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; } .ac { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; } .ac b { font-family: var(--font-heading); font-size: 17px; font-weight: 500; letter-spacing: -.01em; color: var(--c-navy); } .ac p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.55; } .ac em { font-style: normal; font-size: 13px; color: var(--c-blue-deep); line-height: 1.5; }
 .ac ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; } .ac li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--c-rule); padding-bottom: 5px; } .ac li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-ink); } .ac li em { color: #9b3b32; white-space: nowrap; font-size: 12px; }
+.ac strong { font-family: var(--font-heading); font-size: 26px; font-weight: 500; line-height: 1.1; color: var(--c-navy); } .ac strong.neg { color: #9b3b32; } .ac > em { color: var(--c-muted); font-size: 12.5px; } .ac li s { color: var(--c-muted); margin-left: 4px; }
+.gbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; } .gbar .mut { font-size: 13px; }
 .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 1000px) { .sc, .act { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc, .act { grid-template-columns: 1fr; } }
 .bl { display: flex; flex-direction: column; gap: 12px; } .opt { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule-strong); padding: 10px 12px; cursor: pointer; } .opt.on { border-color: var(--c-navy); background: #f5f7fb; } .opt input { margin-top: 3px; } .opt span { display: flex; flex-direction: column; gap: 2px; } .opt b { font-weight: 500; color: var(--c-ink); } .opt em { font-style: normal; font-size: 13px; color: var(--c-muted); }
 .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .pp { border: 1px solid #d9e2ef; background: #f5f7fb; padding: 10px 14px; font-size: 13px; color: var(--c-ink-soft); } .pp b { font-weight: 500; color: var(--c-ink); } .pp p { margin: 4px 0 0; line-height: 1.55; }
 @media (max-width: 700px) { .g2 { grid-template-columns: 1fr; } }
+.charts { align-items: stretch; }
 </style>

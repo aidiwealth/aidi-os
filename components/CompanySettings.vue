@@ -6,7 +6,7 @@ interface D { reporting_currency?: string; name: string; website: string; countr
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['team', 'Team', 'People in your workspace'], ['access', 'Support access', 'When Finvry support opened your account']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices'], ['access', 'Support access', 'When Finvry support opened your account']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
@@ -60,6 +60,7 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
           <div class="wide"><button class="btn" type="button" :disabled="busy" @click="saveEmails">Save</button></div>
         </div>
         <div v-else-if="sec === 'plan'">
+          <StorageCard class="stor" />
           <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><span class="muted">Prices in {{ ngn ? 'naira' : 'US dollars' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span></div>
           <div class="card pcard"><div class="pch"><b>Partner discount</b><span v-if="pd?.discount" class="pon">{{ pd.discount.pct }}% off · {{ pd.discount.name }}{{ pd.discount.until ? ' · until ' + pd.discount.until : '' }}</span></div>
             <p class="muted">Backed by or part of a VC, incubator, accelerator or startup community on our <a href="/partners" target="_blank">partner list</a>? Enter the code they gave you.</p>
@@ -87,6 +88,7 @@ input, select { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px s
 .pr { font-size: 22px; font-weight: 600; } .pr em { font-style: normal; font-size: 13px; color: var(--c-muted); font-weight: 400; } .pl ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft); flex: 1; } .pl li { margin-bottom: 4px; } .curb { font-size: 13px; color: var(--c-ok); font-weight: 500; }
 .muted { color: var(--c-muted); font-size: 13px; margin: 0; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); } .btn { text-decoration: none; }
 @media (max-width: 900px) { .lay { grid-template-columns: 1fr; } .plans, .frm { grid-template-columns: 1fr; } }
-.pcard { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; } .pch { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .pon { font-size: 12.5px; font-weight: 600; padding: 3px 10px; background: #e9f6ee; color: #23784a; } .pcard .muted { margin: 0; font-size: 13.5px; } .pcard a { color: var(--c-blue-deep); } .prow { display: flex; gap: 8px; max-width: 460px; } .prow input { flex: 1; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); text-transform: uppercase; }
+.pcard { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; } .pch { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .pon { font-size: 12.5px; font-weight: 600; padding: 3px 10px; background: #e8f0f8; color: #23784a; } .pcard .muted { margin: 0; font-size: 13.5px; } .pcard a { color: var(--c-blue-deep); } .prow { display: flex; gap: 8px; max-width: 460px; } .prow input { flex: 1; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); text-transform: uppercase; }
 .lgo { margin-bottom: 12px; }
+.stor { margin: 0 0 12px; }
 </style>

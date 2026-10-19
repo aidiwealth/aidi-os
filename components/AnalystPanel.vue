@@ -19,7 +19,8 @@ function newChat() { chatId.value = null; msgs.value = []; err.value = ''; input
 async function showList() { view.value = 'list'; listBusy.value = true; try { chats.value = await $fetch<Chat[]>('/api/ai/chats') } catch { chats.value = [] } finally { listBusy.value = false } }
 async function delChat(c: Chat) { if (!confirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
 const when = (s: string) => { const d = new Date(s), n = Date.now() - d.getTime(); return n < 6e4 ? 'just now' : n < 36e5 ? Math.round(n / 6e4) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
-onMounted(() => { try { if (!localStorage.getItem('analyst_hint')) { setTimeout(() => (hint.value = true), 1800) } } catch { /* storage off */ } })
+// The hint shows once, for a few seconds, then never again: it must not sit over the page.
+onMounted(() => { try { if (!localStorage.getItem('analyst_hint')) { setTimeout(() => { hint.value = true; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } setTimeout(() => (hint.value = false), 7000) }, 1800) } } catch { /* storage off */ } })
 function toggle() { open.value = !open.value; hint.value = false; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } if (open.value) { if (!msgs.value.length) { let id: string | null = null; try { id = localStorage.getItem('analyst_chat') } catch { /* ignore */ } if (id) void resume(id) } nextTick(() => ta.value?.focus()) } }
 async function send(q?: string) {
   const text = (q ?? input.value).trim(); if (!text || busy.value) return

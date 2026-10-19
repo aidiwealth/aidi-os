@@ -11,5 +11,5 @@ async function add() { state.value = 'busy'; err.value = ''; try { const r = awa
   </span>
 </template>
 <style scoped>
-.atr { display: inline-flex; } .done { color: var(--c-ok) !important; border-color: rgba(31,122,77,.45) !important; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; } .bad { border-color: var(--c-danger) !important; color: var(--c-danger) !important; }
+.atr { display: inline-flex; } .done { color: var(--c-ok) !important; border-color: rgba(29,90,134,.45) !important; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; } .bad { border-color: var(--c-danger) !important; color: var(--c-danger) !important; }
 </style>

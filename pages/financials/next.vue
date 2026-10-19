@@ -16,6 +16,10 @@ const SECT: { k: Item['kind']; t: string; s: string }[] = [
   { k: 'urgent', t: 'Fix urgently', s: 'Risks to the business: start this month.' },
   { k: 'next', t: 'Do next', s: 'Over the next one to two quarters.' },
   { k: 'working', t: 'What is working', s: 'Keep doing these, and do more of them.' }]
+// Actions per team, split by kind, for the bar chart (click a team to show only its actions).
+const byTeam = computed(() => teams.value.map((t) => { const xs = (data.value?.advice?.items ?? []).filter((i) => i.team === t); return { t, u: xs.filter((i) => i.kind === 'urgent').length, n: xs.filter((i) => i.kind === 'next').length, w: xs.filter((i) => i.kind === 'working').length, all: xs.length } }).sort((a, b) => b.u - a.u || b.all - a.all))
+const maxT = computed(() => Math.max(1, ...byTeam.value.map((x) => x.all)))
+const pc = (n: number) => (n / maxT.value) * 100 + '%'
 const of = (k: Item['kind']) => items.value.filter((i) => i.kind === k)
 const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '')
 </script>
@@ -23,15 +27,19 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
 <template>
   <section>
     <FinHeader />
-    <div class="head"><div><h1>What to do next</h1><p class="sub">What each team should fix, do next and keep doing, worked out from your figures{{ data?.advice?.as_of ? ' to ' + mon(data.advice.as_of) : '' }}.</p></div>
+    <div class="head"><div><h1>What to do next</h1><p class="sub">{{ data?.advice?.as_of ? 'From your figures to ' + mon(data.advice.as_of) : '' }}</p></div>
       <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again">{{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
 
-    <div class="disc" role="note"><b>Guidance, not professional advice.</b> These suggestions are worked out from the figures you entered ({{ data?.advice?.sources.join(' and ') || 'Financials' }}){{ data?.advice?.ai ? ' and written up with AI' : '' }}. They can be wrong, out of date or miss context only you have. Before acting on anything financial, legal, tax or about people, check with your accountant, lawyer or other advisers. Finvry is not responsible for decisions made on them.</div>
 
+    <p class="disc1" role="note"><b>Guidance, not professional advice.</b> Worked out from your figures; check anything financial, legal, tax or about people with your advisers.</p>
     <p v-if="pending && !data" class="mut">Looking at your figures…</p>
     <EmptyState v-else-if="data && !data.advice" card icon="chart" title="Add your figures first" text="Advice needs at least three months of figures in Financials, or your customer revenue." />
     <template v-else-if="data?.advice">
-      <div class="cnt"><div v-for="s in SECT" :key="s.k" :class="s.k"><b>{{ of(s.k).length }}</b><span>{{ s.t }}</span></div></div>
+      <div class="top">
+        <div class="cnt"><div v-for="s in SECT" :key="s.k" :class="s.k"><b>{{ of(s.k).length }}</b><span>{{ s.t }}</span></div></div>
+        <div class="card bt"><div class="bth"><h3>By team</h3><span class="lg"><i class="u" />Fix urgently<i class="n" />Do next<i class="w" />Working</span></div>
+          <button v-for="x in byTeam" :key="x.t" type="button" class="tr" :class="{ on: team === x.t }" @click="team = team === x.t ? '' : x.t"><span class="tl">{{ x.t }}</span><span class="tb"><i class="u" :style="{ width: pc(x.u) }" /><i class="n" :style="{ width: pc(x.n) }" /><i class="w" :style="{ width: pc(x.w) }" /></span><b>{{ x.all }}</b></button></div>
+      </div>
       <div v-for="s in SECT" :key="s.k" class="sec">
         <div class="sh" :class="s.k"><h2>{{ s.t }}</h2><span>{{ s.s }}</span></div>
         <div v-if="of(s.k).length" class="grid">
@@ -39,7 +47,7 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
             <div class="meta"><span class="team">{{ i.team }}</span><span class="when">{{ i.when }}</span></div>
             <h3>{{ i.title }}</h3>
             <p class="why">{{ i.why }}</p>
-            <div class="how"><em>How to go about it</em><ol><li v-for="(st, k) in i.steps" :key="k">{{ st }}</li></ol></div>
+            <details v-if="i.steps.length" class="how"><summary>How to go about it ({{ i.steps.length }} step{{ i.steps.length === 1 ? '' : 's' }})</summary><ol><li v-for="(st, k) in i.steps" :key="k">{{ st }}</li></ol></details>
             <div class="foot"><span>Watch <b>{{ i.watch }}</b></span><span>Target <b>{{ i.target }}</b></span></div>
           </article>
         </div>
@@ -62,9 +70,16 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
 .it { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; } .it h3 { margin: 0; font-size: 17px; font-weight: 500; line-height: 1.35; letter-spacing: -.01em; color: var(--c-navy); }
 .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; } .team { padding: 2px 8px; background: var(--c-paper-2, #f4f6fa); color: var(--c-ink-soft); font-weight: 500; } .when { color: var(--c-muted); }
 .it.urgent .team { background: #f8e8e6; color: #9b3b32; } .it.working .team { background: #e8eef8; color: var(--c-navy); }
-.why { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.55; }
-.how em { font-style: normal; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .how ol { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; line-height: 1.5; }
+.why { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.how summary { cursor: pointer; font-size: 13px; color: var(--c-blue-deep); list-style: none; } .how summary::-webkit-details-marker { display: none; } .how ol { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; line-height: 1.5; }
 .foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--c-rule); display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--c-muted); } .foot b { color: var(--c-ink); font-weight: 500; }
 .mut { color: var(--c-muted); font-size: 13.5px; } .none { margin: 0 0 6px; } .sm { font-size: 12.5px; }
 @media (max-width: 700px) { .cnt { grid-template-columns: 1fr; } .cnt > div { border-right: 0; border-bottom: 1px solid var(--c-rule); } }
+.top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; margin-bottom: 18px; align-items: stretch; } .top .cnt { margin: 0; grid-template-columns: 1fr; } .top .cnt > div { border-right: 0; border-bottom: 1px solid var(--c-rule); } .top .cnt > div:last-child { border-bottom: 0; }
+.bt { padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; } .bth { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; } .bth h3 { margin: 0; font-size: 15px; font-weight: 500; }
+.lg { display: flex; align-items: center; gap: 5px 12px; flex-wrap: wrap; font-size: 12px; color: var(--c-muted); } .lg i { display: inline-block; width: 9px; height: 9px; margin-right: -6px; }
+.tr { display: grid; grid-template-columns: 130px 1fr 28px; gap: 10px; align-items: center; background: none; border: 0; padding: 4px 0; font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; text-align: left; } .tr.on .tl { color: var(--c-blue-deep); font-weight: 500; } .tr b { font-weight: 500; text-align: right; }
+.tl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tb { display: flex; height: 12px; background: var(--c-paper-2, #f4f6fa); } .tb i, .lg i { display: block; height: 100%; } .u { background: #b2453b; } .n { background: var(--c-navy); } .w { background: #9fb4d6; } .lg i { height: 9px; }
+@media (max-width: 800px) { .top { grid-template-columns: 1fr; } }
+.disc1 { margin: 0 0 14px; font-size: 12.5px; color: var(--c-muted); } .disc1 b { font-weight: 500; color: var(--c-ink-soft); }
 </style>

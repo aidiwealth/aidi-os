@@ -56,7 +56,7 @@ const when = computed(() => (props.at ? new Date(props.at).toLocaleString('en-GB
 <style scoped>
 .isum { display: flex; flex-direction: column; }
 .ish { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .ish h2 { margin: 0; font-size: 17px; }
-.sent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 0; background: #e9f6ee; color: #23784a; } .sent i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 0; background: #e8f0f8; color: #23784a; } .sent i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .ismeta { margin: 6px 0 14px; font-size: 13px; color: var(--c-muted); }
 .ishero { display: flex; gap: 14px; align-items: flex-start; padding: 14px; background: var(--c-paper-2); border-radius: 0; margin-bottom: 14px; }
 .mono { flex: none; width: 44px; height: 44px; border-radius: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }

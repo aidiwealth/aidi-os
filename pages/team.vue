@@ -123,7 +123,7 @@ b { color: var(--c-navy); font-weight: 500; }
 .add select { padding: 4px 6px; font-size: 13px; }
 .btn.sm { padding: 5px 10px; font-size: 13px; }
 .muted { color: var(--c-muted); } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
-@media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } } @media (max-width: 600px) { .grid { grid-template-columns: minmax(0, 1fr); } .grid input, .grid select { min-width: 0; width: 100%; } }
 .danger { color: var(--c-danger); margin-left: 6px; }
 .scopehint { caption-side: top; text-align: left; font-size: 12.5px; color: var(--c-muted); padding: 0 0 10px; }
 .subs { background: none; border: 1px solid var(--c-rule-strong); font: inherit; font-size: 11px; padding: 0 5px; margin-left: 4px; cursor: pointer; color: var(--c-muted); } .subs.on { border-color: var(--c-navy); color: var(--c-navy); }
