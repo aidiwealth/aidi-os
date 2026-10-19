@@ -56,7 +56,8 @@ const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [
     { label: 'Wealth', codes: ['wealth_mgmt', 'wealth', 'secondaries', 'rentals'] }, { label: 'Tax documents', codes: ['tax_docs'] }] },
   { label: 'Company', items: [{ label: 'Governance', codes: ['entities', 'governance', 'compliance'] }, { label: 'Meeting minutes', codes: ['meetings'] }, { label: 'Documents', codes: ['documents'] }, { label: 'Notices', codes: ['notices'] }] },
   { label: 'Administration', items: [{ label: 'Team', codes: ['team'] }, { label: 'Blog', codes: ['blog'] }, { label: 'Settings', codes: ['settings', 'modules'] }] }]
-const isCompany = computed(() => me.value?.org?.kind === 'company')
+// On Finvry every workspace is a company one: never fall back to the Aidi OS menu there.
+const isCompany = computed(() => me.value?.org?.kind === 'company' || brand.key === 'finvry')
 // Services for a company is one sub-menu in the order work happens: see your jobs, order, talk to us, files, then
 // paying (invoices, the wallet you can pay from). Job pages sit under Overview; the job list sits with Invoices.
 const SVC_ORDER = ['/client', '/client/order', '/client/messages', '/client/documents', '/client/invoices', '/wallet', '/client/raise', '/perks']

@@ -10,7 +10,9 @@ const MAX_AGE = 60 * 60 * 12 // 12 hours
 export interface SupportAccess { by: string; byName: string; canEdit: boolean; until: string; id: string }
 export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean; aidiOrg?: boolean; support?: SupportAccess | null }
 // Aidi OS workspaces (the internal plan, or a workspace branded Aidi) open only at app.theaidigroup.com, never on Finvry.
-export const AIDI_ORG_SQL = "(o.settings->>'brand' = 'aidi' OR o.plan_code = 'internal')"
+// Never NULL: a workspace with no brand set is a Finvry one (without coalesce, NOT (NULL OR false) is NULL and the
+// workspace silently drops out of the user's list on Finvry: no company, the wrong menu).
+export const AIDI_ORG_SQL = "(coalesce(o.settings->>'brand', '') = 'aidi' OR coalesce(o.plan_code, '') = 'internal')"
 export const RETURN_COOKIE = 'aidi_os_return'
 
 function secret(): Uint8Array {
