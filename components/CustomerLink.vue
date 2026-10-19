@@ -1,22 +1,23 @@
 <script setup lang="ts">
+const { q: custQ, scope: custScope } = useCustScope()
 // The live sheet behind Revenue retention and Customers: last read, read now, unlink, and names that may be the same
 // customer (merge with one click).
 const props = defineProps<{ canEdit: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 interface Dup { names: string[]; to: string; reason: string }
 interface L { url: string | null; name: string | null; synced_at: string | null; error: string | null; result: { customers?: number; possible?: Dup[] } | null }
-const { data, refresh } = await useFetch<L>('/api/financials/customers/link', { server: false, default: () => ({ url: null, name: null, synced_at: null, error: null, result: null }) })
+const { data, refresh } = await useFetch<L>('/api/financials/customers/link', { query: computed(() => custQ()), watch: [custScope], server: false, default: () => ({ url: null, name: null, synced_at: null, error: null, result: null }) })
 const busy = ref(''); const msg = ref('')
 const ago = (t: string | null) => { if (!t) return 'not yet'; const m = Math.round((Date.now() - new Date(t).getTime()) / 60000); return m < 2 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
-async function sync() { busy.value = 'sync'; msg.value = ''; try { const r = await $fetch<{ customers: number; possible: number }>('/api/financials/customers/sync', { method: 'POST' }); msg.value = r.customers + ' customers read' + (r.possible ? '; ' + r.possible + ' possible duplicate' + (r.possible === 1 ? '' : 's') + ' to check' : '') + '.'; await refresh(); emit('changed') } catch (e) { msg.value = err(e); await refresh() } finally { busy.value = '' } }
-async function unlink() { if (!confirm('Stop reading this sheet? Customers already saved stay.')) return; busy.value = 'un'; try { await $fetch('/api/financials/customers/link', { method: 'DELETE' }); await refresh() } finally { busy.value = '' } }
+async function sync() { busy.value = 'sync'; msg.value = ''; try { const r = await $fetch<{ customers: number; possible: number }>('/api/financials/customers/sync', { query: custQ(), method: 'POST' }); msg.value = r.customers + ' customers read' + (r.possible ? '; ' + r.possible + ' possible duplicate' + (r.possible === 1 ? '' : 's') + ' to check' : '') + '.'; await refresh(); emit('changed') } catch (e) { msg.value = err(e); await refresh() } finally { busy.value = '' } }
+async function unlink() { if (!confirm('Stop reading this sheet? Customers already saved stay.')) return; busy.value = 'un'; try { await $fetch('/api/financials/customers/link', { query: custQ(), method: 'DELETE' }); await refresh() } finally { busy.value = '' } }
 async function merge(d: Dup) {
   busy.value = d.to; msg.value = ''
   try {
-    const cs = await $fetch<{ customers: { id: string; name: string }[] }>('/api/financials/customers')
+    const cs = await $fetch<{ customers: { id: string; name: string }[] }>('/api/financials/customers', { query: custQ() })
     const ids = cs.customers.filter((c) => d.names.includes(c.name)).map((c) => c.id), keep = cs.customers.find((c) => c.name === d.to)?.id ?? ids[0]
-    if (ids.length >= 2 && keep) { await $fetch('/api/financials/customers/merge', { method: 'POST', body: { ids, keep } }); msg.value = 'Merged into ' + d.to + '; kept merged on every read.'; await sync() }
+    if (ids.length >= 2 && keep) { await $fetch('/api/financials/customers/merge', { query: custQ(), method: 'POST', body: { ids, keep } }); msg.value = 'Merged into ' + d.to + '; kept merged on every read.'; await sync() }
   } catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
 const dupes = computed(() => data.value?.result?.possible ?? [])

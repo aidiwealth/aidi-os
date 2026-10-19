@@ -1,9 +1,10 @@
 <script setup lang="ts">
+const { q: custQ, scope: custScope } = useCustScope()
 // Four key points on revenue retention or on the customer base. Kept until the data changes; refresh on demand.
 const props = defineProps<{ kind: 'retention' | 'customers'; stamp?: string }>()
 interface A { headline: string; insights: { title: string; detail: string; tone: 'good' | 'watch' | 'risk' }[]; ai: boolean; as_of: string }
 const refreshQ = ref<string | undefined>(undefined)
-const { data, pending, refresh } = await useLazyFetch<A | null>('/api/financials/customers/analysis', { query: { kind: props.kind, refresh: refreshQ, s: computed(() => props.stamp) }, server: false })
+const { data, pending, refresh } = await useLazyFetch<A | null>('/api/financials/customers/analysis', { watch: [custScope], query: { cust: custScope, kind: props.kind, refresh: refreshQ, s: computed(() => props.stamp) }, server: false })
 async function again() { refreshQ.value = '1'; await refresh(); refreshQ.value = undefined }
 // Long points are cut to four lines; Read more opens one in full.
 const full = ref<number[]>([])

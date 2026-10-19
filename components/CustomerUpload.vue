@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { q: custQ, scope: custScope } = useCustScope()
 // Upload customer revenue: the template first, read the file by fixed rules (no AI), check it for duplicates (AI
 // suggests, the founder confirms), then save.
 const props = defineProps<{ open: boolean; existing: number; extra?: 'retention' | 'customers' }>()
@@ -10,7 +11,7 @@ watch(() => props.open, (o) => { if (o) Object.assign(st, { busy: false, msg: ''
 // A live link: read the sheet now, then every day.
 async function readLink() {
   st.busy = true; st.msg = ''
-  try { const r = await $fetch<Prev & { provider: string }>('/api/financials/customers/link-preview', { method: 'POST', body: { url: st.url } }); st.prev = r; st.linked = r.provider; st.pick = r.dupes.map((d) => d.sure) }
+  try { const r = await $fetch<Prev & { provider: string }>('/api/financials/customers/link-preview', { query: custQ(), method: 'POST', body: { url: st.url } }); st.prev = r; st.linked = r.provider; st.pick = r.dupes.map((d) => d.sure) }
   catch (e) { st.msg = err(e) } finally { st.busy = false }
 }
 const ATTR: Record<string, string> = { segment: 'Segment', sector: 'Sector', country: 'Country', plan: 'Plan', started_on: 'Start date', acquisition_cost: 'Acquisition cost', gross_margin_pct: 'Gross margin' }
@@ -18,7 +19,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function read(ev: Event) {
   const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return
   st.busy = true; st.msg = ''
-  try { const fd = new FormData(); fd.append('file', f); st.prev = await $fetch<Prev>('/api/financials/customers/preview', { method: 'POST', body: fd }); st.linked = ''; st.pick = st.prev.dupes.map((d) => d.sure) }
+  try { const fd = new FormData(); fd.append('file', f); st.prev = await $fetch<Prev>('/api/financials/customers/preview', { query: custQ(), method: 'POST', body: fd }); st.linked = ''; st.pick = st.prev.dupes.map((d) => d.sure) }
   catch (e) { st.msg = err(e) } finally { st.busy = false }
 }
 async function save() {
@@ -26,7 +27,7 @@ async function save() {
   st.busy = true; st.msg = ''
   try {
     const merges = st.prev.dupes.filter((_, i) => st.pick[i]).map((d) => ({ names: d.names, to: d.to }))
-    const r = await $fetch<{ customers: number; months: number; merged: number }>('/api/financials/customers/import', { method: 'POST', body: { id: st.prev.id, merges, keep_repeats: st.keepRepeats, mode: st.mode, link: st.linked ? { url: st.url, name: st.linked } : undefined } })
+    const r = await $fetch<{ customers: number; months: number; merged: number }>('/api/financials/customers/import', { query: custQ(), method: 'POST', body: { id: st.prev.id, merges, keep_repeats: st.keepRepeats, mode: st.mode, link: st.linked ? { url: st.url, name: st.linked } : undefined } })
     emit('done', (st.linked ? 'Linked: ' : '') + r.customers + ' customers saved (' + r.months.toLocaleString('en-US') + ' customer-months)' + (r.merged ? ', ' + r.merged + ' duplicate' + (r.merged === 1 ? '' : 's') + ' merged' : '') + '.')
   } catch (e) { st.msg = err(e) } finally { st.busy = false }
 }

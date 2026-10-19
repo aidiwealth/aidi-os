@@ -3,6 +3,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
+  requireCustEntity()
   const b = z.object({ url: z.string().trim().min(10).max(600) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Paste the share link to the sheet.')
   await rateLimit('customer_preview', user.userId, 40, 60 * 60 * 1000)

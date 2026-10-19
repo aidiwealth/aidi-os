@@ -2,6 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
+  requireCustEntity()
   const b = z.object({ ids: z.array(z.string().uuid()).min(2).max(50), keep: z.string().uuid() }).safeParse(await readBody(event))
   if (!b.success || !b.data.ids.includes(b.data.keep)) throw apiError('invalid', 'Choose the customers to merge and which name to keep.')
   const olds = b.data.ids.filter((x) => x !== b.data.keep)

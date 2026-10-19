@@ -3,7 +3,8 @@
 // priorities, then download it as a PDF or Excel file for the executive team.
 // From Revenue retention or Customers it opens with only the customer sections ticked (only), and does not change the
 // choice remembered for the monthly report.
-const props = defineProps<{ open: boolean; subject: string; company: string; only?: string[]; title?: string }>()
+// cust: on Revenue retention and Customers in a group, which company's customers (empty: the group).
+const props = defineProps<{ open: boolean; subject: string; company: string; only?: string[]; title?: string; cust?: string }>()
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Sec { key: string; title: string; desc: string; on: boolean; available: boolean }
 interface Grp { by: string; value: string; customers: number }
@@ -14,7 +15,7 @@ const f = reactive({ chart: 'area', pies: true, update: false, about: '', month:
 async function load() {
   f.loading = true; f.msg = ''
   try {
-    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined } })
+    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined, cust: props.cust || undefined } })
     opts.value = o; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies
     f.picked = o.sections.filter((s) => (props.only ? props.only.includes(s.key) : s.on) && s.available).map((s) => s.key); grp.value = ''
   } catch (e) { f.msg = err(e, 'Could not load the report options.') } finally { f.loading = false }
@@ -32,7 +33,7 @@ async function draft() {
 async function make() {
   f.busy = true; f.msg = ''
   try {
-    const res = await fetch('/api/financials/mgmt-report', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+    const res = await fetch('/api/financials/mgmt-report' + (props.cust ? '?cust=' + encodeURIComponent(props.cust) : ''), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ subject: props.subject || undefined, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)

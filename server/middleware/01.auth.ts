@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
   event.context.user = s
   event.context.orgId = s.orgId
   event.context.entityScope = ''
+  event.context.custEntity = ''
   // Roles limited to an entity see only that company, or that company and its subsidiaries when the role says so
   // (admins and unscoped roles see everything).
   // Credit is the venture fund's lending book: every team role works the whole book, whatever companies they are
@@ -37,4 +38,6 @@ export default defineEventHandler(async (event) => {
       event.context.entityScope = [...new Set([...all, ...(sc.only ?? [])])].join(',') || '00000000-0000-0000-0000-000000000000'
     }
   }
+  // Customer revenue is kept per company: work out which one (or the whole group) this request is for.
+  if (s.orgId && (/^\/api\/financials(\/|$)/.test(path) || getQuery(event).cust !== undefined || event.context.entityScope)) event.context.custEntity = await resolveCustEntity(event)
 })

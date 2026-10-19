@@ -73,9 +73,11 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
   const fin = await financialsRevenue(cfg.currency)
   // The facts take a while on large customer files; they are kept until the data, settings or Financials change.
   const org = currentOrgId() ?? '', key = createHash('sha256').update(JSON.stringify([kind, await customerStamp(), cfg, fin])).digest('hex')
-  let facts = FACTS.get(org + kind)?.key === key ? FACTS.get(org + kind)!.facts : null
-  if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(org + kind, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
-  const subject = 'customers:' + kind
+  const sk = org + kind + (custEntityId() ?? 'group')
+  let facts = FACTS.get(sk)?.key === key ? FACTS.get(sk)!.facts : null
+  if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(sk, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
+  // Each company's analysis and the group's are kept apart.
+  const subject = 'customers:' + kind + (custEntityId() ? ':' + custEntityId() : '')
   const hash = createHash('sha256').update(JSON.stringify({ facts, v: 2 })).digest('hex').slice(0, 40)
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }
   const ins = rules(kind, facts)

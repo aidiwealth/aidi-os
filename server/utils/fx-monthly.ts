@@ -1,5 +1,5 @@
 // The company's own monthly exchange rates (units of each currency per 1 USD), from the Exchange rates tab of an
-// uploaded or linked file. The group view converts a subsidiary's month at that month's rate (fxRateAt in
+// uploaded or linked file. The group view converts a subsidiary's month at that month's rate (fx-book.ts, via
 // financials.ts); without one it uses the latest daily rate. Best effort: never fails an import.
 import type { Grid } from './sheet-links'
 import { fileRates } from './customer-import'

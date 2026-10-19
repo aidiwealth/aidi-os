@@ -1,6 +1,7 @@
 // Delete all customer data (type DELETE).
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
+  requireCustEntity()
   const b = await readBody<{ confirm?: string }>(event)
   if (b?.confirm !== 'DELETE') throw apiError('confirm', 'Type DELETE to remove all customer data.', 422)
   const n = (await db().query('DELETE FROM financials.customers')).rowCount ?? 0

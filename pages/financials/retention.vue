@@ -3,8 +3,10 @@
 // retention by customer group (size, segment, sector, plan, country) and by cohort.
 import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, groupOf, retention, retentionTrend, win, type Basis, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Revenue retention' })
+const { q: custQ, scope: custScope } = useCustScope()
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
+// In a group, customer revenue is added and changed per company: the group view (every company combined) is read only.
+const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)) && (!!custScope.value || (data.value?.scope?.entities.length ?? 0) <= 1))
 const { data, pending, refresh, cs, sp, asOf, months, groupBy, t, cur, stamp, grace, billing } = await useCustomers()
 const basis = ref<Basis>('month')
 watch(() => data.value?.config.retention_basis, (b) => { if (b) basis.value = b }, { immediate: true })
@@ -51,15 +53,15 @@ const verdict = computed(() => {
     (atRisk.value.length ? ' ' + atRisk.value.length + ' sizeable customer' + (atRisk.value.length === 1 ? ' is' : 's are') + ' paying a third less than three months ago.' : '')
 })
 const GB: [GroupBy, string][] = [['size', 'Size'], ['segment', 'Segment'], ['sector', 'Sector'], ['plan', 'Plan'], ['country', 'Country']]
-async function setGroup(g: GroupBy) { groupBy.value = g; if (canEdit.value) await $fetch('/api/financials/customers/config', { method: 'POST', body: { group_by: g } }).catch(() => {}) }
+async function setGroup(g: GroupBy) { groupBy.value = g; if (canEdit.value) await $fetch('/api/financials/customers/config', { query: custQ(), method: 'POST', body: { group_by: g } }).catch(() => {}) }
 const tone = (v: number | null, good: number, ok: number) => (v === null ? '' : v >= good ? 'g' : v >= ok ? 'w' : 'r')
 const pp = (v: number | null) => cPct(v, 1)
 const heat = (v: number | null) => (v === null ? 'transparent' : 'rgba(15, 42, 92,' + Math.max(0.05, Math.min(0.85, v * 0.6)).toFixed(2) + ')')
 // AI grouping suggestion.
 interface Sug { name: string; why: string; kind: 'size' | 'custom'; enterprise_arr: number | null; midmarket_arr: number | null; segments: { name: string; rule: string }[]; assign: { id: string; name: string; segment: string }[]; alternatives: string[]; ai: boolean }
 const sg = reactive({ open: false, busy: false, msg: '', s: null as Sug | null })
-async function suggest() { Object.assign(sg, { open: true, busy: true, msg: '', s: null }); try { sg.s = await $fetch<Sug>('/api/financials/customers/suggest', { method: 'POST' }) } catch (e) { sg.msg = errOf(e) } finally { sg.busy = false } }
-async function applySug() { if (!sg.s) return; sg.busy = true; try { await $fetch('/api/financials/customers/segments', { method: 'POST', body: sg.s }); sg.open = false; ok.value = 'Grouping applied: ' + sg.s.name + '.'; await refresh(); groupBy.value = sg.s.kind === 'size' ? 'size' : 'segment' } catch (e) { sg.msg = errOf(e) } finally { sg.busy = false } }
+async function suggest() { Object.assign(sg, { open: true, busy: true, msg: '', s: null }); try { sg.s = await $fetch<Sug>('/api/financials/customers/suggest', { query: custQ(), method: 'POST' }) } catch (e) { sg.msg = errOf(e) } finally { sg.busy = false } }
+async function applySug() { if (!sg.s) return; sg.busy = true; try { await $fetch('/api/financials/customers/segments', { query: custQ(), method: 'POST', body: sg.s }); sg.open = false; ok.value = 'Grouping applied: ' + sg.s.name + '.'; await refresh(); groupBy.value = sg.s.kind === 'size' ? 'size' : 'segment' } catch (e) { sg.msg = errOf(e) } finally { sg.busy = false } }
 const sugCounts = computed(() => { const m = new Map<string, number>(); for (const a of sg.s?.assign ?? []) m.set(a.segment, (m.get(a.segment) ?? 0) + 1); return m })
 // Size bands.
 const bands = reactive({ open: false, ent: 0, mid: 0 })
@@ -70,16 +72,17 @@ function openBands() { Object.assign(bands, { open: true, ent: t.value.enterpris
 const bill = reactive({ open: false, billing: 'subscription' as 'subscription' | 'usage' | 'prepaid', dormant: 1, basis: 'month' as Basis, busy: false, msg: '' })
 function openBill() { Object.assign(bill, { open: true, billing: billing.value, dormant: grace.value, basis: data.value?.config.retention_basis ?? 'month', msg: '' }) }
 function pickBilling(b: typeof bill.billing) { bill.billing = b; if (b === 'subscription') { bill.dormant = 1; bill.basis = 'month' } else { bill.dormant = Math.max(bill.dormant, 3); if (bill.basis === 'month') bill.basis = 'quarter' } }
-async function saveBill() { bill.busy = true; bill.msg = ''; try { await $fetch('/api/financials/customers/config', { method: 'POST', body: { billing: bill.billing, dormant_months: Number(bill.dormant) || 1, retention_basis: bill.basis } }); bill.open = false; ok.value = 'Saved. Retention now counts a customer lost after ' + bill.dormant + ' month' + (bill.dormant === 1 ? '' : 's') + ' without revenue.'; await refresh() } catch (e) { bill.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { bill.busy = false } }
-async function saveBands() { try { await $fetch('/api/financials/customers/config', { method: 'POST', body: { enterprise_arr: Number(bands.ent), midmarket_arr: Number(bands.mid), group_by: 'size' } }); bands.open = false; await refresh() } catch (e) { msg.value = errOf(e) } }
+async function saveBill() { bill.busy = true; bill.msg = ''; try { await $fetch('/api/financials/customers/config', { query: custQ(), method: 'POST', body: { billing: bill.billing, dormant_months: Number(bill.dormant) || 1, retention_basis: bill.basis } }); bill.open = false; ok.value = 'Saved. Retention now counts a customer lost after ' + bill.dormant + ' month' + (bill.dormant === 1 ? '' : 's') + ' without revenue.'; await refresh() } catch (e) { bill.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { bill.busy = false } }
+async function saveBands() { try { await $fetch('/api/financials/customers/config', { query: custQ(), method: 'POST', body: { enterprise_arr: Number(bands.ent), midmarket_arr: Number(bands.mid), group_by: 'size' } }); bands.open = false; await refresh() } catch (e) { msg.value = errOf(e) } }
 const clr = reactive({ open: false, confirm: '' })
-async function clearAll() { try { await $fetch('/api/financials/customers/clear', { method: 'POST', body: { confirm: clr.confirm } }); clr.open = false; ok.value = 'Customer data deleted.'; await refresh() } catch (e) { msg.value = errOf(e) } }
+async function clearAll() { try { await $fetch('/api/financials/customers/clear', { query: custQ(), method: 'POST', body: { confirm: clr.confirm } }); clr.open = false; ok.value = 'Customer data deleted.'; await refresh() } catch (e) { msg.value = errOf(e) } }
 const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 </script>
 
 <template>
   <section>
     <FinTabs />
+    <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
     <div class="head"><div><h1>Revenue retention</h1><p class="sub">How much of last year's revenue your customers still pay, what they added, and who left.</p></div>
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
@@ -157,7 +160,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="retention" @close="up = false" @done="uploaded" /></ClientOnly>
-    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :cust="custScope" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="sg.open" title="Suggested customer groups" wide @close="sg.open = false">
       <p v-if="sg.busy && !sg.s" class="mut">Looking at your customers…</p>
       <div v-else-if="sg.s" class="sgb"><h3>{{ sg.s.name }}</h3><p>{{ sg.s.why }}</p>

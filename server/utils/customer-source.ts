@@ -64,7 +64,7 @@ export async function applyCustomers(data: ParsedCust[], merges: { names: string
     const keep = custKey(m.to)
     const others = m.names.map(custKey).filter((k) => k !== keep)
     if (!others.length) continue
-    const target = (await db().query<{ id: string }>('INSERT INTO financials.customers (name, key) VALUES ($1,$2) ON CONFLICT (organization_id, key) DO UPDATE SET updated_at = now() RETURNING id', [m.to, keep])).rows[0]!.id
+    const target = (await db().query<{ id: string }>(`INSERT INTO financials.customers (name, key) VALUES ($1,$2) ON CONFLICT (organization_id, (coalesce(entity_id, '00000000-0000-0000-0000-000000000000'::uuid)), key) DO UPDATE SET updated_at = now() RETURNING id`, [m.to, keep])).rows[0]!.id
     const olds = (await db().query<{ id: string }>('SELECT id FROM financials.customers WHERE key = ANY($1::text[]) AND id <> $2', [others, target])).rows.map((r) => r.id)
     if (olds.length) {
       await db().query(`INSERT INTO financials.customer_revenue (customer_id, month, amount) SELECT $1, month, sum(amount) FROM financials.customer_revenue WHERE customer_id = ANY($2::uuid[]) GROUP BY month
@@ -81,7 +81,7 @@ export async function applyCustomers(data: ParsedCust[], merges: { names: string
     const part = list.slice(i, i + 1000), col = <T,>(f: (c: ParsedCust) => T) => part.map(([, c]) => f(c))
     const ids = (await db().query<{ id: string; key: string }>(`INSERT INTO financials.customers (name, key, segment, sector, country, plan, started_on, acquisition_cost, gross_margin_pct)
       SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::date[], $8::numeric[], $9::numeric[])
-      ON CONFLICT (organization_id, key) DO UPDATE SET segment = coalesce(EXCLUDED.segment, financials.customers.segment), sector = coalesce(EXCLUDED.sector, financials.customers.sector), country = coalesce(EXCLUDED.country, financials.customers.country),
+      ON CONFLICT (organization_id, (coalesce(entity_id, '00000000-0000-0000-0000-000000000000'::uuid)), key) DO UPDATE SET segment = coalesce(EXCLUDED.segment, financials.customers.segment), sector = coalesce(EXCLUDED.sector, financials.customers.sector), country = coalesce(EXCLUDED.country, financials.customers.country),
         plan = coalesce(EXCLUDED.plan, financials.customers.plan), started_on = coalesce(EXCLUDED.started_on, financials.customers.started_on), acquisition_cost = coalesce(EXCLUDED.acquisition_cost, financials.customers.acquisition_cost),
         gross_margin_pct = coalesce(EXCLUDED.gross_margin_pct, financials.customers.gross_margin_pct), updated_at = now() RETURNING id, key`,
       [col((c) => c.name), part.map(([k]) => k), col((c) => c.segment ?? null), col((c) => c.sector ?? null), col((c) => c.country ?? null), col((c) => c.plan ?? null), col((c) => c.started_on ?? null), col((c) => c.acquisition_cost ?? null), col((c) => c.gross_margin_pct ?? null)])).rows
@@ -99,6 +99,8 @@ export async function applyCustomers(data: ParsedCust[], merges: { names: string
 // The live link: the founder's confirmed merges are kept (aliases) and applied on every read.
 export interface CustLink { url: string | null; name: string | null; auto: boolean; synced_at: string | null; error: string | null; result: { customers?: number; months?: number; possible?: DupGroup[]; notes?: string[] } | null; aliases: Record<string, string> }
 export async function customerLink(): Promise<CustLink> {
+  // A linked sheet belongs to one company; the group view has none of its own.
+  if (!custEntityId()) return { url: null, name: null, auto: true, synced_at: null, error: null, result: null, aliases: {} }
   const r = (await db().query<CustLink>("SELECT link_url AS url, link_name AS name, link_auto AS auto, to_char(link_synced_at, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS synced_at, link_error AS error, link_result AS result, coalesce(aliases, '{}'::jsonb) AS aliases FROM financials.customer_config LIMIT 1")).rows[0]
   return r ?? { url: null, name: null, auto: true, synced_at: null, error: null, result: null, aliases: {} }
 }
@@ -106,7 +108,7 @@ export async function rememberMerges(merges: { names: string[]; to: string }[]) 
   if (!merges.length) return
   const a: Record<string, string> = {}
   for (const m of merges) for (const n of m.names) if (n !== m.to) a[n] = m.to
-  await db().query("INSERT INTO financials.customer_config (aliases) VALUES ($1::jsonb) ON CONFLICT (organization_id) DO UPDATE SET aliases = coalesce(financials.customer_config.aliases, '{}'::jsonb) || EXCLUDED.aliases", [JSON.stringify(a)])
+  await db().query("INSERT INTO financials.customer_config (aliases) VALUES ($1::jsonb) ON CONFLICT (organization_id, (coalesce(entity_id, '00000000-0000-0000-0000-000000000000'::uuid))) DO UPDATE SET aliases = coalesce(financials.customer_config.aliases, '{}'::jsonb) || EXCLUDED.aliases", [JSON.stringify(a)])
 }
 export async function syncCustomerLink(): Promise<{ customers: number; months: number; possible: number }> {
   const l = await customerLink()

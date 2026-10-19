@@ -5,7 +5,7 @@ const { canPath } = useModuleAccess()
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
 interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
-interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null>; cf_generated?: boolean; eliminated?: { receivables: number; payables: number; equity: number; unreconciled: number; income: number; costs: number; items: { line: string; name: string; value: number; who: string }[] } }
+interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null>; cf_generated?: boolean; parts?: { who: string; currency: string; rate: number; uses: { quote: string; month: string; per_usd: number; source: 'book' | 'book_near' | 'history' | 'daily'; from_month?: string }[]; lines: Record<string, number> }[]; left_out?: string[]; eliminated?: { receivables: number; payables: number; equity: number; unreconciled: number; income: number; costs: number; items: { line: string; name: string; value: number; who: string }[] } }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
 const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
 // Someone limited to some companies sees those companies, not the group consolidation.
@@ -16,8 +16,12 @@ const baseCo = computed(() => subj.value?.company ?? null)
 const structDone = ref(false)
 async function structAnswered(v: 'single' | 'group') { structDone.value = true; if (v === 'group') { if (subj.value?.paid) subForm.open = true; else subWall.value = true } }
 const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
-const subject = ref(baseCo.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(baseCo.value?.currency ?? 'USD')
-watch(baseCo, (c, old) => { if (c && !old) { subject.value = c.subject; currency.value = c.currency } })
+const startGroup = !!baseCo.value && (subj.value?.pages?.length ?? 0) > 1 && !me.value?.entity_scoped
+const subject = ref(startGroup ? 'group' : baseCo.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref((startGroup ? baseCo.value?.reporting : null) ?? baseCo.value?.currency ?? 'USD')
+// A company with subsidiaries opens on the consolidated group; a person limited to some companies opens on their first.
+const groupFirst = (c: { subject: string; currency: string; reporting?: string | null } | null) => !!c && (subj.value?.pages?.length ?? 0) > 1 && !me.value?.entity_scoped
+function openStart(c: { subject: string; currency: string; reporting?: string | null } | null) { if (!c) return; if (groupFirst(c)) { subject.value = 'group'; currency.value = c.reporting ?? c.currency } else { subject.value = c.subject; currency.value = c.currency } }
+watch(baseCo, (c, old) => { if (c && !old) openStart(c) })
 // A company's Financials pages: the company, each subsidiary (own name and currency) and, with subsidiaries, the group.
 const pages = computed(() => subj.value?.pages ?? [])
 const co = computed(() => {
@@ -69,6 +73,7 @@ const vrows = computed<St[]>(() => {
 })
 // Group figures: the latest month's intercompany eliminations (balances are at a date, so the latest month is the one to check).
 const elim = computed(() => (subject.value === 'group' ? [...monthly.value].reverse().find((r) => r.eliminated) ?? null : null))
+const fxOpen = ref(false)
 const elimMonth = computed(() => (elim.value ? new Date(elim.value.period_end.slice(0, 7) + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''))
 const rolled = computed(() => view.value !== 'month' && view.value !== 'custom' && !rows.value.length && vrows.value.length > 0)
 const rangeTotal = computed(() => (view.value === 'custom' && inRange.value.length ? combine(inRange.value as unknown as FinRow[], inRange.value[inRange.value.length - 1]!.period_end, 'custom') : null))
@@ -246,8 +251,10 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
-    <p v-if="isGroup" class="hint">Adds up the company and every subsidiary in {{ currency }}, converting other currencies at each month's own rate when your figures give one (an Exchange rates tab), else the latest daily rate. Amounts the companies owe or bill each other are taken out.</p>
+    <p v-if="isGroup" class="hint">Adds up the company and every subsidiary in {{ currency }}, converting other currencies at your book rate for each month (Exchange rates), else your nearest book rate, else the daily rate. Amounts the companies owe or bill each other are taken out.</p>
     <p v-if="!co && subject === 'group'" class="hint">Adds up every fund and entity, plus companies marked as subsidiaries, in {{ currency }}. Amounts they owe or bill each other are taken out.</p>
+    <ClientOnly><FinConsolidation v-if="subject === 'group' && monthly.some((r) => r.parts?.length)" :rows="monthly" :currency="currency" :name="(pages[0]?.name ?? co?.name ?? 'Group') + ' group'" :can-edit="canEdit" @rates="fxOpen = true" /></ClientOnly>
+    <ClientOnly><FinFxRates :open="fxOpen" :can-edit="canEdit" @close="fxOpen = false" @changed="refresh(); refreshM()" /></ClientOnly>
     <FinEliminations v-if="subject === 'group' && elim" :el="elim.eliminated" :period="elimMonth" :currency="currency" :total-assets="elim.lines.total_assets ?? null" @categories="coaOpen = true" />
     <p v-if="converting" class="hint">Shown in {{ co?.reporting }} for reporting, converted at the latest daily exchange rate{{ co?.rate_as_of ? ' (' + new Date(co.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}. Your figures are stored in their original currency; switch to Original to edit. Billing is not affected.</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>

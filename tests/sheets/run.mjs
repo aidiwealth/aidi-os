@@ -310,5 +310,13 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('group KPIs: a ratio without its parts is left out, never added', K.consolidateKpis([{ rate: 1, kpis: { 'Revenue per user': 5 } }, { rate: 1, kpis: { 'Revenue per user': 7 } }])['Revenue per user'] === undefined)
 }
 
+// 15. Book rates from an "FX rates" tab: a month column and a rate column under "NGN per 1 USD (book rates used)".
+{
+  const CI = await jiti.import(join(root, 'server/utils/customer-import.ts'))
+  const g = [{ name: 'FX rates', rows: [['NGN per 1 USD (book rates used)', null], ['2026-07-01', 1368], ['2026-08-01', 1355]] }]
+  const r = CI.fileRates(g)
+  check('book rates read from a two-column FX rates tab', r.get('NGN')?.get('2026-07') === 1368 && r.get('NGN')?.get('2026-08') === 1355, JSON.stringify([...(r.get('NGN') ?? new Map())]))
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

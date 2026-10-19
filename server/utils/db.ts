@@ -32,12 +32,14 @@ async function checkout(): Promise<pg.PoolClient> {
   const org = (e?.context.orgId as string | undefined) ?? ''
   const bypass = e?.context.dbBypass === true ? 'on' : 'off'
   const scope = (e?.context.entityScope as string | undefined) ?? ''
+  // Customer revenue: the company it is for (app.cust_entity, see 142_entity_customers.sql); empty reads every company.
+  const cust = (e?.context.custEntity as string | undefined) ?? ''
   const client = await getPool().connect()
   // Pooled connections keep their settings; only send them again when this request needs different ones.
-  const key = org + '|' + bypass + '|' + scope
+  const key = org + '|' + bypass + '|' + scope + '|' + cust
   if (applied.get(client) === key) return client
   try {
-    await client.query("SELECT set_config('app.org_id', $1, false), set_config('app.bypass', $2, false), set_config('app.entity_scope', $3, false)", [org, bypass, scope])
+    await client.query("SELECT set_config('app.org_id', $1, false), set_config('app.bypass', $2, false), set_config('app.entity_scope', $3, false), set_config('app.cust_entity', $4, false)", [org, bypass, scope, cust])
     applied.set(client, key)
   } catch (err) { applied.delete(client); client.release(err as Error); throw err }
   return client

@@ -11,8 +11,9 @@ export default defineEventHandler(async (event) => {
     const links = (await db().query<LinkRow>(`SELECT ${LINK_COLS} FROM financials.sheet_links WHERE auto ORDER BY last_synced_at NULLS FIRST LIMIT 50`).catch(() => ({ rows: [] as LinkRow[] }))).rows
     for (const l of links) { try { await syncLink(l, null); synced++ } catch { failed++ } }
     // Customer revenue from a linked sheet (Revenue retention and Customers).
-    const cl = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM financials.customer_config WHERE link_url IS NOT NULL AND link_auto").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n
-    if (cl) { try { await syncCustomerLink(); synced++ } catch { failed++ } }
+    // Each company in a group keeps its own linked sheet: synced as that company.
+    const cl = (await db().query<{ e: string | null }>("SELECT entity_id AS e FROM financials.customer_config WHERE link_url IS NOT NULL AND link_auto").catch(() => ({ rows: [] as { e: string | null }[] }))).rows
+    for (const c of cl) { if (!c.e) continue; event.context.custEntity = c.e; try { await syncCustomerLink(); synced++ } catch { failed++ } finally { event.context.custEntity = '' } }
   }
   return { ok: true, synced, failed }
 })

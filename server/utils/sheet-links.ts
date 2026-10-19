@@ -9,7 +9,7 @@ import { FIXED_KEYS } from '~/shared/forecast'
 import { AiMap, blankPeriod, holdBadBalanceSheet, readWithMap, repairMap, summariseSkipped, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
-export interface Grid { name: string; rows: Cell[][]; formulas?: number } // formulas: share of filled cells that are formulas (derived tabs)
+export interface Grid { name: string; rows: Cell[][]; formulas?: number; sheetId?: number } // formulas: share of filled cells that are formulas (derived tabs)
 export interface Layout { sheet: string; months: string[]; rows: { label: string; values: Record<string, number> }[] }
 export interface MapRow { label: string; to: string } // to: a line key, 'kpi' (a custom metric named after the row) or ''
 
@@ -81,7 +81,13 @@ export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv', lim: { tabs?: 
         rows.push(cells)
       }
       const w = Math.max(0, ...rows.map((r) => r.length))
-      out.push({ name: String(ws.name ?? 'Sheet' + (out.length + 1)), rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0 })
+      out.push({ name: String(ws.name ?? 'Sheet' + (out.length + 1)), rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0, ...(!ws.name || /^Sheet\d+$/.test(String(ws.name)) ? { sheetId: Number(ws.id ?? String(ws.name ?? '').replace(/\D/g, '')) || out.length + 1 } : {}) })
+    }
+    // When the sheets come before the workbook part in the file, the streamed reader does not know the tab names yet
+    // (they come back as Sheet1, Sheet2… by their number): read them from the workbook part so tabs like "FX rates" are recognised.
+    if (out.some((g) => g.sheetId !== undefined)) {
+      const names = await tabNames(buf).catch((e: Error) => { console.error('[sheets] tab names', e.message); return new Map<number, string>() })
+      for (const g of out) { if (g.sheetId !== undefined && names.get(g.sheetId)) g.name = names.get(g.sheetId)!; delete g.sheetId }
     }
   } catch (e) {
     // The streamed reader fails on some files whose parts are stored in an unusual order (e.g. a workbook written by
@@ -104,6 +110,23 @@ export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv', lim: { tabs?: 
         out.push({ name: ws.name, rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0 })
       }
     } catch (e2) { console.error('[sheets] load whole', (e2 as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
+  }
+  return out
+}
+
+// Tab names by worksheet number (xl/worksheets/sheetN.xml), from xl/workbook.xml and its relationships.
+export async function tabNames(buf: Buffer): Promise<Map<number, string>> {
+  const { default: JSZip } = await import('jszip')
+  const z = await JSZip.loadAsync(buf)
+  const wb = await z.file('xl/workbook.xml')?.async('string'), rels = await z.file('xl/_rels/workbook.xml.rels')?.async('string')
+  const out = new Map<number, string>()
+  if (!wb || !rels) return out
+  const target = new Map([...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [/Id="([^"]+)"/.exec(m[0])?.[1] ?? '', /Target="([^"]+)"/.exec(m[0])?.[1] ?? '']))
+  const dec = (t: string) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+  for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
+    const name = /\bname="([^"]*)"/.exec(m[0])?.[1], rid = /r:id="([^"]+)"/.exec(m[0])?.[1]
+    const n = /sheet(\d+)\.xml$/.exec(target.get(rid ?? '') ?? '')?.[1]
+    if (name && n) out.set(Number(n), dec(name))
   }
   return out
 }

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
+  requireCustEntity()
   const parts = (await readMultipartFormData(event)) ?? []
   const file = parts.find((p) => p.name === 'file' && p.filename)
   if (!file || !file.data.length) throw apiError('invalid', 'Choose a file.')

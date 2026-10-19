@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Group overview for a company with subsidiaries: the group's revenue, profit and cash converted to one currency, for
 // the latest month every entity has reported, and each entity in its own currency beside the converted figure.
-interface Ent { id: string; name: string; main: boolean; currency: string; rate: number | null; latest: string | null; revenue: number | null; net_income: number | null; cash: number | null; cash_at: string | null; ttm_revenue: number | null; revenue_conv: number | null; net_income_conv: number | null; cash_conv: number | null; ttm_conv: number | null; at_common: { revenue: number | null; net_income: number | null; cash: number | null } | null; behind: boolean }
+interface Ent { id: string; name: string; main: boolean; currency: string; rate: number | null; latest: string | null; revenue: number | null; net_income: number | null; cash: number | null; cash_at: string | null; ttm_revenue: number | null; revenue_conv: number | null; net_income_conv: number | null; cash_conv: number | null; ttm_conv: number | null; at_common: { revenue_local?: number | null; revenue: number | null; net_income: number | null; cash: number | null } | null; behind: boolean }
 interface G { currency: string; rate_as_of: string | null; common: string | null; entities: Ent[]; total: { month: string; revenue: number; net_income: number; cash: number; entities: number; ic_revenue?: number } | null; ttm: number; series: { month: string; revenue: number; net_income: number; cash: number; entities: number }[]; missing_rate: string[]; without_figures: string[] }
 const emit = defineEmits<{ open: [subject: string] }>()
 const { data: g } = await useFetch<G | null>('/api/financials/group-summary', { server: false })
@@ -19,7 +19,7 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
 <template>
   <div v-if="g && g.common" class="card gs">
     <div class="gh"><div><span class="eyebrow">Group overview · {{ g.currency }}</span><h3>{{ mon(g.common, true) }}, all {{ g.entities.length }} companies together</h3>
-      <p class="mut">Each company's figures converted to {{ g.currency }} at the latest daily rate{{ g.rate_as_of ? ' (' + new Date(g.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}, for the latest month every company has reported.{{ g.total?.ic_revenue ? ' Sales between the companies (' + money(g.total.ic_revenue, g.currency) + ') are taken out of group revenue.' : '' }}</p></div>
+      <p class="mut">Each company's figures converted to {{ g.currency }} at its book rate for each month (else the daily rate), for the latest month every company has reported.{{ g.total?.ic_revenue ? ' Sales between the companies (' + money(g.total.ic_revenue, g.currency) + ') are taken out of group revenue.' : '' }}</p></div>
       <button type="button" class="btn secondary sm" @click="emit('open', 'group')">Open group figures</button></div>
     <div class="gt">
       <div><span>Revenue · {{ mon(g.common) }}</span><b>{{ money(g.total?.revenue, g.currency) }}</b></div>
@@ -31,7 +31,7 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
       <table class="t" data-nosearch><thead><tr><th>Company</th><th class="r">Revenue ({{ mon(g.common) }})</th><th class="r">In {{ g.currency }}</th><th class="r">Net income</th><th class="r">Cash</th><th>Share of revenue</th></tr></thead>
         <tbody><tr v-for="e in g.entities" :key="e.id">
           <td><button type="button" class="lk" @click="emit('open', 'entity:' + e.id)">{{ e.name }}</button><span class="sub">{{ e.main ? 'Company' : 'Subsidiary' }} · {{ e.currency }}{{ e.latest ? ' · figures to ' + mon(e.latest) : ' · no figures yet' }}</span></td>
-          <td class="r">{{ e.currency === g.currency ? '' : money(e.at_common?.revenue != null && e.rate ? Math.round(e.at_common.revenue / e.rate) : null, e.currency) }}</td>
+          <td class="r">{{ e.currency === g.currency ? '' : money(e.at_common?.revenue_local ?? null, e.currency) }}</td>
           <td class="r"><b>{{ money(e.at_common?.revenue, g.currency) }}</b></td>
           <td class="r" :class="{ neg: (e.at_common?.net_income ?? 0) < 0 }">{{ money(e.at_common?.net_income, g.currency) }}</td>
           <td class="r">{{ money(e.at_common?.cash, g.currency) }}</td>

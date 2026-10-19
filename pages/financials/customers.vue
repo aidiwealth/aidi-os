@@ -3,8 +3,10 @@
 // acquisition cost and payback. Same customer revenue as Retention, plus sector and acquisition cost when given.
 import { addM, bridge, byGroup, customerStats, win, type CustStat, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Customers' })
+const { q: custQ, scope: custScope } = useCustScope()
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
-const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
+// In a group, customer revenue is added and changed per company: the group view (every company combined) is read only.
+const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)) && (!!custScope.value || (data.value?.scope?.entities.length ?? 0) <= 1))
 const { data, pending, refresh, cs, sp, asOf, months, t, cur, stamp, grace } = await useCustomers()
 const by = ref<GroupBy>('sector')
 const up = ref(false); const ok = ref(''); const msg = ref('')
@@ -49,10 +51,10 @@ const arrow = (k: string) => (sortK.value === k ? (desc.value ? ' ↓' : ' ↑')
 const ed = reactive({ open: false, id: '', name: '', segment: '', sector: '', country: '', plan: '', started_on: '', acquisition_cost: '' as string | number, gross_margin_pct: '' as string | number, busy: false, msg: '' })
 function edit(id: string) { const c = cs.value.find((x) => x.id === id); if (!c) return; Object.assign(ed, { open: true, id, name: c.name, segment: c.segment ?? '', sector: c.sector ?? '', country: c.country ?? '', plan: c.plan ?? '', started_on: c.started_on ?? '', acquisition_cost: c.acquisition_cost ?? '', gross_margin_pct: c.gross_margin_pct ?? '', busy: false, msg: '' }) }
 const numOrNull = (v: string | number) => (v === '' || v === null ? null : Number(v))
-async function saveEd() { ed.busy = true; ed.msg = ''; try { await $fetch('/api/financials/customers/' + ed.id, { method: 'POST', body: { name: ed.name, segment: ed.segment || null, sector: ed.sector || null, country: ed.country || null, plan: ed.plan || null, started_on: ed.started_on || null, acquisition_cost: numOrNull(ed.acquisition_cost), gross_margin_pct: numOrNull(ed.gross_margin_pct) } }); ed.open = false; await refresh() } catch (e) { ed.msg = errOf(e) } finally { ed.busy = false } }
-async function delCust() { if (!confirm('Remove ' + ed.name + ' and its monthly revenue?')) return; await $fetch('/api/financials/customers/' + ed.id, { method: 'DELETE' }); ed.open = false; await refresh() }
+async function saveEd() { ed.busy = true; ed.msg = ''; try { await $fetch('/api/financials/customers/' + ed.id, { query: custQ(), method: 'POST', body: { name: ed.name, segment: ed.segment || null, sector: ed.sector || null, country: ed.country || null, plan: ed.plan || null, started_on: ed.started_on || null, acquisition_cost: numOrNull(ed.acquisition_cost), gross_margin_pct: numOrNull(ed.gross_margin_pct) } }); ed.open = false; await refresh() } catch (e) { ed.msg = errOf(e) } finally { ed.busy = false } }
+async function delCust() { if (!confirm('Remove ' + ed.name + ' and its monthly revenue?')) return; await $fetch('/api/financials/customers/' + ed.id, { query: custQ(), method: 'DELETE' }); ed.open = false; await refresh() }
 const mg = reactive({ open: false, keep: '' })
-async function merge() { try { await $fetch('/api/financials/customers/merge', { method: 'POST', body: { ids: sel.value, keep: mg.keep } }); mg.open = false; sel.value = []; ok.value = 'Customers merged.'; await refresh() } catch (e) { msg.value = errOf(e) } }
+async function merge() { try { await $fetch('/api/financials/customers/merge', { query: custQ(), method: 'POST', body: { ids: sel.value, keep: mg.keep } }); mg.open = false; sel.value = []; ok.value = 'Customers merged.'; await refresh() } catch (e) { msg.value = errOf(e) } }
 const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const sectors = computed(() => [...new Set(cs.value.map((c) => c.sector).filter(Boolean))] as string[])
 const segments = computed(() => [...new Set(cs.value.map((c) => c.segment).filter(Boolean))] as string[])
@@ -63,6 +65,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 <template>
   <section>
     <FinTabs />
+    <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
     <div class="head"><div><h1>Customers</h1><p class="sub">Who pays the most, who is growing or slipping, which sectors matter, and what a customer is worth.</p></div>
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <button v-if="rptOk" class="btn secondary" type="button" title="Customers and revenue retention as a PDF or Excel report, for all customers or one group" @click="rpt = true">Customer report</button>
@@ -142,7 +145,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="customers" @close="up = false" @done="uploaded" /></ClientOnly>
-    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :company="''" :only="['customers', 'retention']" title="Customer and retention report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :cust="custScope" :company="''" :only="['customers', 'retention']" title="Customer and retention report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="ed.open" title="Customer" wide @close="ed.open = false">
       <div class="g2"><label class="label wide">Name<input v-model="ed.name" maxlength="200"></label>
         <label class="label">Sector<input v-model="ed.sector" maxlength="80" list="secs"><datalist id="secs"><option v-for="s in sectors" :key="s" :value="s" /></datalist></label>

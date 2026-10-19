@@ -84,6 +84,14 @@ export function fileRates(grids: Grid[]): Map<string, Map<string, number>> {
         for (const r of g.rows.slice(h + 1)) { const c = curOf(txt(r[cc] ?? null)) ?? txt(r[cc] ?? null).toUpperCase(); if (!/^[A-Z]{3}$/.test(c) || c === 'USD') continue; for (const { i, m } of wm) { const v = numOf(r[i] ?? null); if (v !== null) put(c, m, v) } }
         break
       }
+      // Two columns under a heading that names the currency ("NGN per 1 USD (book rates)"): month | rate.
+      const PER = /per\s*(1\s*)?(usd|us\$|\$)/i
+      const hcur = heads.map((x) => (PER.test(x) ? curOf(x.replace(PER, '')) : null)).find((x) => !!x)
+      if (mc < 0 && hcur && hcur !== 'USD') {
+        let k = 0
+        for (const r of g.rows.slice(h + 1)) { const m = monthCell(r[0] ?? null), v = numOf(r[1] ?? null); if (m && v !== null) { put(hcur, m, v); k++ } }
+        if (k) break
+      }
       if (mc < 0 || rc < 0) continue
       const hc = curOf(heads[rc]!.replace(/per\s*\$\s*1|per\s*usd|per\s*1\s*usd/i, '')) // "Rate (₦ per $1)" → NGN per USD
       for (const r of g.rows.slice(h + 1)) {

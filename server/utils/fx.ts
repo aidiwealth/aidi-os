@@ -5,7 +5,9 @@ async function refresh(): Promise<void> {
     const r = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(10000) })
     const j = await r.json() as { result?: string; rates?: Record<string, number> }
     if (j.result !== 'success' || !j.rates) return
-    await asPlatform(async () => { for (const [q, v] of Object.entries(j.rates!)) if (/^[A-Z]{3}$/.test(q) && v > 0) await db().query('INSERT INTO fx.rates (quote, per_usd, fetched_at) VALUES ($1,$2,now()) ON CONFLICT (quote) DO UPDATE SET per_usd = EXCLUDED.per_usd, fetched_at = now()', [q, v]) })
+    await asPlatform(async () => { for (const [q, v] of Object.entries(j.rates!)) if (/^[A-Z]{3}$/.test(q) && v > 0) { await db().query('INSERT INTO fx.rates (quote, per_usd, fetched_at) VALUES ($1,$2,now()) ON CONFLICT (quote) DO UPDATE SET per_usd = EXCLUDED.per_usd, fetched_at = now()', [q, v])
+      // The month's rate as last seen in that month: history for months a company has no book rate for (fx-book.ts).
+      await db().query("INSERT INTO fx.history (quote, month, per_usd) VALUES ($1, date_trunc('month', now())::date, $2) ON CONFLICT (quote, month) DO UPDATE SET per_usd = EXCLUDED.per_usd", [q, v]).catch(() => {}) } })
   } catch (err) { console.error('[fx] refresh failed', err) }
 }
 export async function fxRates(): Promise<{ rates: Map<string, number>; asOf: string | null }> {

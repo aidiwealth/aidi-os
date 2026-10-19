@@ -4,6 +4,7 @@ import { z } from 'zod'
 const s = (n: number) => z.string().trim().max(n).nullable().optional()
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp')
+  requireCustEntity()
   const id = String(getRouterParam(event, 'id'))
   const b = z.object({ name: z.string().trim().min(1).max(200).optional(), segment: s(60), sector: s(80), country: s(60), plan: s(80), started_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('')), acquisition_cost: z.number().min(0).nullable().optional(), gross_margin_pct: z.number().min(-100).max(100).nullable().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the details.')
