@@ -5,9 +5,13 @@ import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, retention, re
 useHead({ title: 'Revenue retention' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-const { data, refresh, cs, sp, asOf, months, groupBy, t, cur, stamp } = await useCustomers()
+const { data, pending, refresh, cs, sp, asOf, months, groupBy, t, cur, stamp } = await useCustomers()
 const basis = ref<Basis>('month')
 const up = ref(false); const ok = ref(''); const msg = ref('')
+// The retention and customer report (the management report's customer sections), when the report module is on.
+const rpt = ref(false)
+const { data: modsR } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')
+const rptOk = computed(() => !!modsR.value?.find((m) => m.code === 'fin_report' && m.usable))
 async function uploaded(m: string) { up.value = false; ok.value = m; await refresh() }
 const r12 = computed(() => retention(cs.value, asOf.value, 12, basis.value))
 const r12prev = computed(() => retention(cs.value, addM(asOf.value, -3), 12, basis.value))
@@ -52,11 +56,13 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>
+        <button v-if="rptOk" class="btn secondary" type="button" title="Revenue retention and customers as a PDF or Excel report, for all customers or one group" @click="rpt = true">Retention report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
     <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
-    <div v-if="!cs.length" class="start card">
+    <p v-if="!data && pending" class="mut ld">Loading your customers…</p>
+    <div v-else-if="!cs.length" class="start card">
       <div><h2>Measure retention and churn</h2><p>Upload what each customer paid each month. We work out net and gross revenue retention, customer churn, expansion and retention by customer group and cohort, the numbers investors ask for.</p>
         <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, so this year can be compared with last</li></ul>
         <p class="mut">Read exactly by its headings, with no AI, so every figure lands where it should. We check for the same customer written two ways before saving.</p>
@@ -73,7 +79,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       </div>
       <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers, credits or revenue recorded differently.</p>
       <CustAnalysis kind="retention" :stamp="stamp" />
-      <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="revenue retention" /></ClientOnly>
+      <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'retention']" what="revenue retention" /></ClientOnly>
 
       <div class="card flat">
         <div class="ch"><div><h3>Retention by {{ GB.find(([k]) => k === groupBy)?.[1].toLowerCase() }}</h3><p class="mut">{{ groupBy === 'size' ? 'Enterprise from ' + cMoney(t.enterprise, cur, true) + ' a year, Mid-market from ' + cMoney(t.midmarket, cur, true) + ', SMB below. Customers are placed by what they paid a year ago.' : data?.config.scheme?.name ? data.config.scheme.name + ': ' + data.config.scheme.why : 'Set on each customer (from your file, the Customers page, or a suggested grouping).' }}</p></div>
@@ -87,7 +93,15 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <div class="charts">
         <TrendChart title="Net revenue retention" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.nrr ?? 0) * 1000) / 10 }))" foot="Each month vs a year earlier" :foot-value="r12.nrr === null ? null : Math.round(r12.nrr * 1000) / 10" />
         <TrendChart title="Gross revenue retention" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.grr ?? 0) * 1000) / 10 }))" foot="Losses only" :foot-value="r12.grr === null ? null : Math.round(r12.grr * 1000) / 10" />
+        <TrendChart title="Customers lost (12 months)" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.logo_churn ?? 0) * 1000) / 10 }))" foot="Share of customers from a year before who stopped paying" :foot-value="r12.logo_churn === null ? null : Math.round(r12.logo_churn * 1000) / 10" />
+      </div>
+      <div class="charts two">
+        <StackBars title="Where revenue came from and went" sub="Last 12 months" :currency="cur" :labels="br.map((x) => cMon(x.month))" :series="[{ name: 'New', values: br.map((x) => x.new) }, { name: 'Expansion', values: br.map((x) => x.expansion) }, { name: 'Returned', values: br.map((x) => x.reactivated) }, { name: 'Downgrades', values: br.map((x) => x.contraction), down: true }, { name: 'Lost', values: br.map((x) => x.churned), down: true }]" foot="Above the line: revenue added. Below: revenue lost. Hover a month for the amounts." />
+        <HBars :title="'Net revenue retention by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Same customers, a year on" :rows="groups.filter((g) => g.nrr !== null).map((g) => ({ label: g.group, value: Math.round(g.nrr! * 1000) / 10, note: g.customers + ' customers' }))" :ref-line="100" ref-label="100%: customers pay as much as a year ago" />
+      </div>
+      <div class="charts two">
         <TrendChart title="Active customers" :points="br.map((x) => ({ label: cMon(x.month), value: x.active }))" foot="Paying in the month" :foot-value="br[br.length - 1]?.active ?? null" />
+        <StackBars title="Customers won and lost" sub="Last 12 months" unit="count" :labels="br.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: br.map((x) => x.new_logos) }, { name: 'Lost', values: br.map((x) => x.lost_logos), down: true }]" />
       </div>
 
       <div class="card flat"><div class="ch"><div><h3>Where revenue came from and went</h3><p class="mut">Month by month: new customers, customers paying more or less, and customers lost.</p></div></div>
@@ -103,6 +117,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="retention" @close="up = false" @done="uploaded" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="sg.open" title="Suggested customer groups" wide @close="sg.open = false">
       <p v-if="sg.busy && !sg.s" class="mut">Looking at your customers…</p>
       <div v-else-if="sg.s" class="sgb"><h3>{{ sg.s.name }}</h3><p>{{ sg.s.why }}</p>
@@ -138,9 +153,9 @@ select, input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px s
 td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .n { text-align: right; white-space: nowrap; } th.n { text-align: right; } .sub { display: block; font-size: 11.5px; color: var(--c-muted); }
 td.g { color: var(--c-navy); font-weight: 600; } td.w { color: #8a5a0a; font-weight: 600; } td.r { color: var(--c-danger); font-weight: 600; } td.pos { color: var(--c-navy); } td.neg { color: var(--c-danger); }
 .bar { display: inline-block; width: 60px; height: 5px; background: #eef1f6; margin-right: 8px; vertical-align: middle; } .bar i { display: block; height: 100%; background: var(--c-navy); }
-.charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .charts.two { grid-template-columns: 1.4fr 1fr; }
 .coh td.hc { font-variant-numeric: tabular-nums; }
 .dat { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; } .dat > div:first-child { display: flex; flex-direction: column; gap: 2px; } .dat span { font-size: 12.5px; color: var(--c-muted); }
 .frm { display: flex; flex-direction: column; gap: 10px; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .sgb h3 { margin: 0 0 6px; } .sgb p { margin: 0 0 10px; }
-@media (max-width: 1000px) { .charts { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .charts, .charts.two { grid-template-columns: 1fr; } }
 </style>

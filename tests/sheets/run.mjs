@@ -216,5 +216,31 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('long customer layout read', lp.customers.length === 1 && lp.customers[0].rev['2026-02'] === 1100)
 }
 
+// 9. The Finvry forecast template, read with no AI (Import from a file), and linked row by row.
+{
+  Object.assign(globalThis, { layouts: S.layouts })
+  const FT = await jiti.import(join(root, 'server/utils/forecast-template.ts'))
+  const buf = await FT.forecastTemplateWorkbook({ start: '2027-01', months: 12, opening_cash: 500000, values: { revenue: { '2027-01': 100000, '2027-02': 110000 }, cogs: { '2027-01': -40000, '2027-02': 44000 }, payroll: { '2027-01': 30000 }, items: { '2027-02': -20000 }, customers: { '2027-01': 120 } } })
+  const grids = await S.readGrids(buf, 'xlsx')
+  const f = FT.forecastFromGrids(grids, 'USD')
+  const line = (k) => f?.lines.find((l) => l.maps_to === k)
+  check('forecast template read with no AI', !!f && f.start === '2027-01' && f.opening_cash === 500000 && line('revenue')?.values.length === 2, f ? f.start + ' ' + f.opening_cash + ' ' + f.lines.map((l) => l.maps_to).join(',') : 'not read')
+  check('forecast template: costs positive, one-offs keep their sign', line('cogs')?.values[0].value === 40000 && line('items')?.values[0].value === -20000 && line('customers')?.values[0].value === 120)
+  const lay = S.layouts(grids)[0], sug = S.suggestMapping(lay.rows, 'forecast')
+  check('forecast template rows link by name', ['revenue', 'cogs', 'payroll', 'items', 'customers'].every((k) => sug.some((m) => m.to === k)) && !sug.some((m) => /Gross profit|Net income/.test(m.label) && m.to), sug.filter((m) => m.to).map((m) => m.label + '→' + m.to).join(', '))
+}
+
+// 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
+{
+  const V = await jiti.import(join(root, 'shared/valuation.ts'))
+  const co = { currency: 'USD', latest: '2026-06-30', revenue_ttm: 5000000, ttm_source: '', run_rate: 4800000, arr: null, gross_profit_ttm: 1000000, gross_margin_pct: 20, ebitda_ttm: -700000, ebitda_margin_pct: -14, growth_pct: 6, growth_source: '', cash: 1000000, debt: 0, business_type: '', note: '' }
+  const P = (name, ev_revenue, gross_margin_pct) => V.cleanPeer({ name, kind: 'public', ev_revenue, gross_margin_pct, growth_pct: 10 })
+  const r = V.valuate(co, [P('A', 1, 40), P('B', 2, 40), P('C', 3, 40), V.cleanPeer({ name: 'D', kind: 'public', ev_revenue: 9, use: false })], { ...V.VAL_DEFAULT, private_discount: 20, market_discount: 0 })
+  const evr = r.methods.find((m) => m.key === 'ev_revenue'), gp = r.methods.find((m) => m.key === 'ev_gp')
+  check('valuation: unticked peers left out, quartiles of the rest', !!evr && evr.low === 1.5 && evr.mid === 2 && evr.high === 2.5 && evr.peers === 3, evr ? evr.low + ' ' + evr.mid + ' ' + evr.high : 'none')
+  check('valuation: gross-profit multiple adjusts for a lower margin', !!gp && gp.mid === 5 && Math.round(gp.ev[1]) === 4000000, gp ? gp.mid + ' ' + Math.round(gp.ev[1]) : 'none')
+  check('valuation: no EBITDA multiple while EBITDA is negative; discount and net cash applied', !r.methods.some((m) => m.key === 'ev_ebitda') && Math.round(evr.ev[1]) === 8000000 && Math.round(r.equity[1]) === Math.round((8000000 + 4000000) / 2 + 1000000))
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

@@ -8,7 +8,7 @@ const can = (c: string) => !!mods.value?.find((m) => m.code === c && m.usable)
 const busy = ref(false); const msg = ref(''); const ok = ref('')
 async function toRoom() {
   busy.value = true; msg.value = ''; ok.value = ''
-  try { const r = await $fetch<{ name: string }>('/api/financials/mgmt-report', { method: 'POST', body: { sections: props.sections, deliver: 'room', format: 'pdf' } }); ok.value = r.name + ' added to the data room (Financials folder).' }
+  try { const r = await $fetch<{ name: string }>('/api/financials/mgmt-report', { method: 'POST', body: { sections: props.sections, deliver: 'room', format: 'pdf', remember: false } }); ok.value = r.name + ' added to the data room (Financials folder).' }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it to the data room.' } finally { busy.value = false }
 }
 </script>

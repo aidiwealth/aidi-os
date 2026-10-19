@@ -66,10 +66,14 @@ function rules(kind: string, f: Record<string, unknown>): CustInsight[] {
 }
 
 const Out = z.object({ headline: z.string(), insights: z.array(z.object({ title: z.string(), detail: z.string(), tone: z.enum(['good', 'watch', 'risk']) })) })
+const FACTS = new Map<string, { key: string; facts: Record<string, unknown> }>()
 export async function analyseCustomers(kind: 'retention' | 'customers', force = false): Promise<CustAnalysis | null> {
-  const cfg = await customerConfig(), cs = await loadCustomers()
+  const cfg = await customerConfig()
   const fin = await financialsRevenue(cfg.currency)
-  const facts = customerFacts(kind, cs, cfg, fin); if (!facts) return null
+  // The facts take a while on large customer files; they are kept until the data, settings or Financials change.
+  const org = currentOrgId() ?? '', key = createHash('sha256').update(JSON.stringify([kind, await customerStamp(), cfg, fin])).digest('hex')
+  let facts = FACTS.get(org + kind)?.key === key ? FACTS.get(org + kind)!.facts : null
+  if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(org + kind, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
   const subject = 'customers:' + kind
   const hash = createHash('sha256').update(JSON.stringify({ facts, v: 1 })).digest('hex').slice(0, 40)
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }

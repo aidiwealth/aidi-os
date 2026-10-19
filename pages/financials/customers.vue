@@ -1,13 +1,21 @@
 <script setup lang="ts">
 // Customer analysis: top and least performing customers, sectors (or any grouping), concentration, lifetime value,
 // acquisition cost and payback. Same customer revenue as Retention, plus sector and acquisition cost when given.
-import { byGroup, customerStats, type CustStat, type GroupBy } from '~/shared/customer-metrics'
+import { addM, bridge, byGroup, customerStats, type CustStat, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Customers' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-const { data, refresh, cs, sp, asOf, months, t, cur, stamp } = await useCustomers()
+const { data, pending, refresh, cs, sp, asOf, months, t, cur, stamp } = await useCustomers()
 const by = ref<GroupBy>('sector')
 const up = ref(false); const ok = ref(''); const msg = ref('')
+const rpt = ref(false)
+const { data: modsR } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')
+const rptOk = computed(() => !!modsR.value?.find((m) => m.code === 'fin_report' && m.usable))
+// The last 12 months to the chosen month: revenue and paying customers, customers won and lost, concentration.
+const m12 = computed(() => Array.from({ length: 12 }, (_, i) => addM(asOf.value, i - 11)).filter((m) => months.value.includes(m)))
+const trendM = computed(() => m12.value.map((m) => { let rev = 0, active = 0; for (const c of cs.value) { const v = c.rev[m] ?? 0; rev += v; if (v > 0) active++ } return { m, rev, active } }))
+const brC = computed(() => bridge(cs.value, m12.value))
+const conc = computed(() => { const s = ranked.value.map((r) => r.share); const at = (n: number) => Math.round(s.slice(0, n).reduce((a, b) => a + b, 0) * 1000) / 10; return [1, 5, 10, 20, 50].filter((n) => n <= s.length).map((n) => ({ label: 'Top ' + n, value: at(n) })) })
 async function uploaded(m: string) { up.value = false; ok.value = m; await refresh() }
 const st = computed(() => customerStats(cs.value, asOf.value, t.value, by.value, data.value?.fin.gm ?? null, cur.value))
 const S = computed(() => st.value.summary)
@@ -45,11 +53,13 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     <FinTabs />
     <div class="head"><div><h1>Customers</h1><p class="sub">Who pays the most, who is growing or slipping, which sectors matter, and what a customer is worth.</p></div>
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
+        <button v-if="rptOk" class="btn secondary" type="button" title="Customers and revenue retention as a PDF or Excel report, for all customers or one group" @click="rpt = true">Customer report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
     <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
-    <div v-if="!cs.length" class="start card">
+    <p v-if="!data && pending" class="mut ld">Loading your customers…</p>
+    <div v-else-if="!cs.length" class="start card">
       <div><h2>Understand your customers</h2><p>Upload what each customer paid each month. You get your top and least performing customers, sectors, revenue concentration, lifetime value (LTV), and, if you add what it cost to win each customer, LTV to CAC and payback.</p>
         <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li><b>Sector</b> for the sector view (Banking, Retail, Telecoms…)</li><li>Optional: Segment, Country, Plan, Start date, Acquisition cost</li></ul>
         <p class="mut">Read exactly by its headings, with no AI, so every figure lands where it should. We check for the same customer written two ways before saving.</p>
@@ -65,6 +75,20 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
       </div>
       <CustAnalysis kind="customers" :stamp="stamp" />
       <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="customer analysis" /></ClientOnly>
+
+      <div class="charts">
+        <TrendChart title="Recurring revenue" unit="usd" :symbol="C_SYMS[cur] ?? cur + ' '" :points="trendM.map((x) => ({ label: cMon(x.m), value: Math.round(x.rev) }))" foot="Customer revenue each month" :foot-value="trendM[trendM.length - 1]?.rev ?? null" />
+        <TrendChart title="Paying customers" :points="trendM.map((x) => ({ label: cMon(x.m), value: x.active }))" foot="Paying in the month" :foot-value="trendM[trendM.length - 1]?.active ?? null" />
+        <TrendChart title="Average customer" unit="usd" :symbol="C_SYMS[cur] ?? cur + ' '" :points="trendM.map((x) => ({ label: cMon(x.m), value: Math.round(x.active ? x.rev / x.active : 0) }))" foot="Revenue per paying customer a month" :foot-value="trendM.length && trendM[trendM.length - 1]!.active ? Math.round(trendM[trendM.length - 1]!.rev / trendM[trendM.length - 1]!.active) : null" />
+      </div>
+      <div class="charts two">
+        <HBars title="Top 10 customers" sub="Share of revenue, last 12 months" :rows="ranked.slice(0, 10).map((r) => ({ label: r.name, value: Math.round(r.share * 1000) / 10 }))" />
+        <HBars :title="'Revenue by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Share of revenue, last 12 months" :rows="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10, note: g.active + ' paying' }))" />
+      </div>
+      <div class="charts two">
+        <HBars title="How concentrated revenue is" sub="Share of revenue from the largest customers" :rows="conc" />
+        <StackBars title="Customers won and lost" sub="Last 12 months" unit="count" :labels="brC.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: brC.map((x) => x.new_logos) }, { name: 'Lost', values: brC.map((x) => x.lost_logos), down: true }]" />
+      </div>
 
       <div class="three">
         <div class="card flat"><div class="ch"><h3>Top customers</h3><span class="mut">Last 12 months</span></div>
@@ -98,6 +122,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="customers" @close="up = false" @done="uploaded" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :company="''" :only="['customers', 'retention']" title="Customer and retention report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="ed.open" title="Customer" wide @close="ed.open = false">
       <div class="g2"><label class="label wide">Name<input v-model="ed.name" maxlength="200"></label>
         <label class="label">Sector<input v-model="ed.sector" maxlength="80" list="secs"><datalist id="secs"><option v-for="s in sectors" :key="s" :value="s" /></datalist></label>
@@ -117,6 +142,8 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 </template>
 
 <style scoped>
+.charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .charts.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1000px) { .charts, .charts.two { grid-template-columns: 1fr; } }
 .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; } .head h1 { margin: 0; } .sub { margin: 4px 0 0; color: var(--c-muted); font-size: 14px; }
 .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sel { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--c-muted); }
 select, input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); }

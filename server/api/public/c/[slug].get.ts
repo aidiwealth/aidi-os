@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const rows = ent ? (await loadStatements('entity:' + ent, p.period_type, (org.settings.currency as string) || 'USD')).slice(-12) : []
   // Financial figures from the statements; customer metrics (retention, recurring revenue…) and the company's own KPIs
   // at the end of each period.
-  const cust = await customerSeries(p.metrics.filter((m) => m in CUST_METRICS), rows.map((x) => x.period_end.slice(0, 7)))
+  const cust = await customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7)))
   const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : derive(x.lines, x.period_type)[m] ?? null })) }))
   const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors ? await sectorShares().catch(() => null) : null
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')

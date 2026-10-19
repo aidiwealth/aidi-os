@@ -9,7 +9,15 @@ export type GroupBy = 'size' | 'segment' | 'sector' | 'plan' | 'country'
 export type Basis = 'month' | 'quarter' | 'year'
 export interface Thresholds { enterprise: number; midmarket: number }
 
-export const addM = (m: string, k: number): string => { const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)) - 1 + k; const d = new Date(Date.UTC(y, mo, 1)); return d.toISOString().slice(0, 7) }
+// Month arithmetic is the inner loop of every figure here (thousands of customers × months, millions of calls), so
+// each month keeps a row of its neighbours (60 back to 60 ahead) and no key string is built per call.
+const ADD = new Map<string, (string | undefined)[]>()
+const addCalc = (m: string, k: number) => { const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)) - 1 + k + y * 12; return Math.floor(mo / 12) + '-' + String((mo % 12 + 12) % 12 + 1).padStart(2, '0') }
+export const addM = (m: string, k: number): string => {
+  if (k < -60 || k > 60) return addCalc(m, k)
+  let row = ADD.get(m); if (!row) { if (ADD.size > 5000) ADD.clear(); row = new Array(121); ADD.set(m, row) }
+  return row[k + 60] ??= addCalc(m, k)
+}
 export const monthsBetween = (a: string, b: string): string[] => { const out: string[] = []; for (let m = a; m <= b && out.length < 600; m = addM(m, 1)) out.push(m); return out }
 export function span(cs: Cust[]): { first: string; last: string } | null {
   let first = '', last = ''
@@ -19,8 +27,11 @@ export function span(cs: Cust[]): { first: string; last: string } | null {
 const W: Record<Basis, number> = { month: 1, quarter: 3, year: 12 }
 // A customer's revenue over the window of `w` months ending at `m`.
 export const win = (c: Cust, m: string, w: number): number => { let s = 0; for (let i = 0; i < w; i++) s += c.rev[addM(m, -i)] ?? 0; return s }
-const firstMonth = (c: Cust) => Object.keys(c.rev).filter((m) => (c.rev[m] ?? 0) > 0).sort()[0] ?? null
-const lastMonth = (c: Cust) => Object.keys(c.rev).filter((m) => (c.rev[m] ?? 0) > 0).sort().pop() ?? null
+// First and last month with revenue, worked out once per customer's revenue object.
+const ENDS = new WeakMap<Record<string, number>, [string | null, string | null]>()
+const ends = (c: Cust): [string | null, string | null] => { let e = ENDS.get(c.rev); if (!e) { const ms = Object.keys(c.rev).filter((m) => (c.rev[m] ?? 0) > 0).sort(); e = [ms[0] ?? null, ms[ms.length - 1] ?? null]; ENDS.set(c.rev, e) } return e }
+const firstMonth = (c: Cust) => ends(c)[0]
+const lastMonth = (c: Cust) => ends(c)[1]
 // Annual run-rate: the last three months averaged, times twelve (smooths lumpy billing).
 export const arrOf = (c: Cust, asOf: string): number => (win(c, asOf, 3) / 3) * 12
 export function sizeOf(arr: number, t: Thresholds): string { return arr >= t.enterprise ? 'Enterprise' : arr >= t.midmarket ? 'Mid-market' : 'SMB' }
@@ -75,7 +86,7 @@ export function bridge(cs: Cust[], months: string[]): BridgeRow[] {
 export const COHORT_AT = [0, 3, 6, 12, 18, 24]
 export function cohorts(cs: Cust[], last: string): { cohort: string; size: number; base: number; cells: (number | null)[] }[] {
   const by = new Map<string, Cust[]>()
-  for (const c of cs) { const f = firstMonth(c); if (!f) continue; const q = f.slice(0, 4) + ' Q' + Math.ceil(Number(f.slice(5, 7)) / 3); by.set(q, [...(by.get(q) ?? []), c]) }
+  for (const c of cs) { const f = firstMonth(c); if (!f) continue; const q = f.slice(0, 4) + ' Q' + Math.ceil(Number(f.slice(5, 7)) / 3); const l = by.get(q); if (l) l.push(c); else by.set(q, [c]) }
   return [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cohort, list]) => {
     const start = (c: Cust) => firstMonth(c)!
     const at = (k: number) => list.reduce((s, c) => s + [0, 1, 2].reduce((x, i) => x + (c.rev[addM(start(c), k + i)] ?? 0), 0), 0)
@@ -100,7 +111,7 @@ export function customerStats(cs: Cust[], asOf: string, t: Thresholds, by: Group
     const ttm = win(c, asOf, 12), prior = win(c, addM(asOf, -12), 12), mrr = win(c, asOf, 3) / 3
     ttmAll += Math.max(0, ttm)
     const f = firstMonth(c), l = lastMonth(c)
-    const tenure = f ? monthsBetween(f, l && l < asOf ? l : asOf).length : 0
+    const ix = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)), tenure = f ? Math.max(0, ix(l && l < asOf ? l : asOf) - ix(f) + 1) : 0
     const gm = c.gross_margin_pct != null ? c.gross_margin_pct / 100 : gmDefault
     const ltv = mrr > 0 && life ? mrr * (gm ?? 1) * life : null
     const cac = c.acquisition_cost
@@ -116,7 +127,7 @@ export function customerStats(cs: Cust[], asOf: string, t: Thresholds, by: Group
   for (let i = 0; i < sorted.length && ttmAll; i++) { acc += Math.max(0, sorted[i]!.ttm); if (acc >= 0.8 * ttmAll) { pareto = (i + 1) / Math.max(1, sorted.filter((r) => r.ttm > 0).length); break } }
   const mrr = active.reduce((s, r) => s + r.mrr, 0)
   const arpa = active.length ? mrr / active.length : null
-  const gmW = (() => { const w = active.filter((r) => r.mrr > 0); const withGm = cs.filter((c) => c.gross_margin_pct != null).length; return withGm ? w.reduce((s, r) => s + r.mrr * ((cs.find((c) => c.id === r.id)!.gross_margin_pct ?? (gmDefault ?? 1) * 100) / 100), 0) / Math.max(1, mrr) : gmDefault })()
+  const gmW = (() => { const w = active.filter((r) => r.mrr > 0); const byId = new Map(cs.map((c) => [c.id, c])); const withGm = cs.filter((c) => c.gross_margin_pct != null).length; return withGm ? w.reduce((s, r) => s + r.mrr * ((byId.get(r.id)!.gross_margin_pct ?? (gmDefault ?? 1) * 100) / 100), 0) / Math.max(1, mrr) : gmDefault })()
   const withCac = active.filter((r) => r.cac)
   const cac = withCac.length ? withCac.reduce((s, r) => s + r.cac!, 0) / withCac.length : null
   const ltv = arpa && life ? arpa * (gmW ?? 1) * life : null
@@ -130,11 +141,11 @@ export function byGroup(cs: Cust[], stats: CustStat[], asOf: string, by: GroupBy
   const at = addM(asOf, -12)
   const groups = new Map<string, Cust[]>()
   // For retention, the group is judged at the start of the window (what the customer was a year ago).
-  for (const c of cs) { const g = groupOf(c, by, by === 'size' ? at : asOf, t); groups.set(g, [...(groups.get(g) ?? []), c]) }
-  const total = stats.reduce((s, r) => s + Math.max(0, r.ttm), 0)
+  for (const c of cs) { const g = groupOf(c, by, by === 'size' ? at : asOf, t); const l = groups.get(g); if (l) l.push(c); else groups.set(g, [c]) }
+  const total = stats.reduce((s, r) => s + Math.max(0, r.ttm), 0), statById = new Map(stats.map((r) => [r.id, r]))
   const order = by === 'size' ? ['Enterprise', 'Mid-market', 'SMB'] : []
   return [...groups.entries()].map(([group, list]) => {
-    const ids = new Set(list.map((c) => c.id)), st = stats.filter((r) => ids.has(r.id))
+    const st = list.map((c) => statById.get(c.id)).filter((x): x is CustStat => !!x)
     const r = retention(list, asOf, 12, basis)
     const ttm = st.reduce((s, x) => s + x.ttm, 0), prior = st.reduce((s, x) => s + x.prior_ttm, 0)
     const act = st.filter((x) => x.active), mrr = act.reduce((s, x) => s + x.mrr, 0)

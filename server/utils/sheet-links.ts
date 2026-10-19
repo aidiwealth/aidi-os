@@ -197,6 +197,8 @@ export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'for
   let sect = ''
   return rows.map((r) => {
     const n = norm(r.label); let to = ''
+    // A forecast row named exactly like a forecast line (the Finvry forecast template) goes there.
+    if (target === 'forecast') { const k = FIXED_KEYS.find((x) => norm(x.label) === n)?.key; if (k && !taken.has(k)) { taken.add(k); return { label: r.label, to: k } } }
     for (const [key, words] of Object.entries(SYN)) { const k = target === 'forecast' ? FC_FROM_LINE[key] : key; if (k && !taken.has(k) && words.includes(n)) { to = k; break } }
     if (!to && target === 'forecast') for (const [key, words] of Object.entries(FC_SYN)) if (!taken.has(key) && words.includes(n)) { to = key; break }
     if (target === 'financials' && /^kpi\s*:/i.test(r.label.trim())) return { label: r.label, to: 'kpi' }

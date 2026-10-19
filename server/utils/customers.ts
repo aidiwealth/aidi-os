@@ -11,7 +11,23 @@ export async function customerConfig(): Promise<CustConfig> {
   const cur = String((org?.settings.reporting_currency as string | undefined) || (org?.settings.currency as string | undefined) || 'USD')
   return { currency: /^[A-Z]{3}$/.test(cur) ? cur : 'USD', group_by: 'size', enterprise_arr: 100000, midmarket_arr: 25000, scheme: null }
 }
+// Customer revenue can be tens of thousands of rows, read by several pages, boards, reports and the analysis, so each
+// workspace's copy is kept in memory until the data changes (the stamp: counts, totals and the last edit).
+const CACHE = new Map<string, { stamp: string; data: Cust[] }>()
+export async function customerStamp(): Promise<string> {
+  const r = (await db().query<Record<string, string>>(`SELECT (SELECT count(*) FROM financials.customers) AS c, (SELECT max(updated_at) FROM financials.customers)::text AS u,
+    count(*) AS n, coalesce(sum(amount), 0)::text AS s, max(month)::text AS m FROM financials.customer_revenue`)).rows[0]
+  return JSON.stringify(r ?? {})
+}
 export async function loadCustomers(): Promise<Cust[]> {
+  const org = currentOrgId(), stamp = await customerStamp()
+  const hit = org ? CACHE.get(org) : undefined
+  if (hit && hit.stamp === stamp) return hit.data
+  const data = await loadCustomersFresh()
+  if (org) { CACHE.delete(org); CACHE.set(org, { stamp, data }); if (CACHE.size > 30) CACHE.delete(CACHE.keys().next().value!) }
+  return data
+}
+async function loadCustomersFresh(): Promise<Cust[]> {
   const cs = await db().query<Omit<Cust, 'rev'>>(`SELECT id, name, segment, sector, country, plan, to_char(started_on, 'YYYY-MM-DD') AS started_on, acquisition_cost::float8 AS acquisition_cost, gross_margin_pct::float8 AS gross_margin_pct FROM financials.customers ORDER BY name`)
   const rv = await db().query<{ customer_id: string; m: string; amount: number }>(`SELECT customer_id, to_char(month, 'YYYY-MM') AS m, amount::float8 AS amount FROM financials.customer_revenue`)
   const by = new Map<string, Record<string, number>>()

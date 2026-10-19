@@ -18,7 +18,8 @@ export const MR_SECTIONS: { key: string; title: string; desc: string; on: boolea
   { key: 'balance', title: 'Balance sheet', desc: 'What the company owns and owes, against last month and the start of the year', on: false },
   { key: 'cashflow', title: 'Cash flow', desc: 'Operating, investing and financing cash flow for the month and year to date', on: false },
   { key: 'kpis', title: 'Business metrics', desc: 'Your KPIs (customers, volumes, headcount…) against earlier months', on: true },
-  { key: 'customers', title: 'Customers and retention', desc: 'Net and gross revenue retention, churn, new and lost revenue, top customers', on: false },
+  { key: 'retention', title: 'Revenue retention', desc: 'Net and gross revenue retention, customers lost, where revenue came and went, retention by group', on: false },
+  { key: 'customers', title: 'Customers', desc: 'Paying customers, recurring revenue, average customer, concentration, sectors and top customers', on: false },
   { key: 'checks', title: 'Data checks', desc: 'Totals in the figures that do not add up', on: false },
   { key: 'actions', title: 'For the executive team', desc: 'What to raise with the executive team, the CFO and the board', on: true },
   { key: 'comments', title: 'Management comments', desc: 'Your own commentary and priorities for next month', on: true }]
@@ -217,16 +218,27 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
       text: names.length ? undefined : [{ head: '', body: 'No KPIs for this month. Add them (customers, volumes, headcount…) with your figures or from your linked sheet.' }] })
   }
 
-  if (want('customers') && o.customers) {
-    const f = o.customers, l3 = f.last_3_months ?? {}
-    sections.push({ key: 'customers', title: 'Customers and retention', intro: 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '. Revenue retention compares the same customers a year apart.',
-      tiles: [{ label: 'Net revenue retention (12 months)', value: f.nrr_12m_pct == null ? '–' : f.nrr_12m_pct + '%', tone: f.nrr_12m_pct == null ? undefined : f.nrr_12m_pct >= 100 ? 'good' : f.nrr_12m_pct >= 90 ? 'watch' : 'risk' }, { label: 'Gross revenue retention', value: f.grr_12m_pct == null ? '–' : f.grr_12m_pct + '%' }, { label: 'Customers lost (12 months)', value: f.logo_churn_12m_pct == null ? '–' : f.logo_churn_12m_pct + '%' },
-        { label: 'Active customers', value: f.active == null ? '–' : Number(f.active).toLocaleString('en-US') }, { label: 'Annual recurring revenue', value: short(f.arr ?? null) }, { label: 'Top 10 customers', value: f.top10_share_pct == null ? '–' : f.top10_share_pct + '%', sub: 'of revenue' }],
-      charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: (f.trend.labels as string[]).map((m) => ML(m + '-01', true)), values: f.trend.nrr, pct: true }, { title: 'Annual recurring revenue', labels: (f.trend.labels as string[]).map((m) => ML(m + '-01', true)), values: f.trend.arr }] : undefined,
+  if ((want('retention') || want('customers')) && o.customers) {
+    const f = o.customers, l3 = f.last_3_months ?? {}, who = f.only ? String(f.only) + ' customers only. ' : ''
+    const lbls = f.trend ? (f.trend.labels as string[]).map((m) => ML(m + '-01', true)) : []
+    const P0 = (v: unknown) => (v == null ? '–' : v + '%')
+    if (want('retention')) sections.push({ key: 'retention', title: 'Revenue retention' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '. Revenue retention compares the same customers a year apart: net includes customers who spend more, gross does not.',
+      tiles: [{ label: 'Net revenue retention (12 months)', value: P0(f.nrr_12m_pct), tone: f.nrr_12m_pct == null ? undefined : f.nrr_12m_pct >= 100 ? 'good' : f.nrr_12m_pct >= 90 ? 'watch' : 'risk', sub: f.nrr_12m_pct_3_months_ago == null ? undefined : P0(f.nrr_12m_pct_3_months_ago) + ' three months ago' },
+        { label: 'Gross revenue retention', value: P0(f.grr_12m_pct), tone: f.grr_12m_pct == null ? undefined : f.grr_12m_pct >= 90 ? 'good' : f.grr_12m_pct >= 80 ? 'watch' : 'risk' },
+        { label: 'Customers lost (12 months)', value: P0(f.logo_churn_12m_pct), sub: f.customers_a_year_ago ? 'of ' + Number(f.customers_a_year_ago).toLocaleString('en-US') + ' a year ago' : undefined },
+        { label: 'Year-1 cohort retention', value: P0(f.cohort_m12_retention_pct), sub: 'average across cohorts' }],
+      charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: lbls, values: f.trend.nrr, pct: true }, { title: 'Gross revenue retention, 12 months', labels: lbls, values: f.trend.grr ?? [], pct: true }, { title: 'Customers lost, 12 months', labels: lbls, values: f.trend.churn ?? [], pct: true }] : undefined,
+      pies: (() => { const sl = [['New customers', l3.new], ['Spending more', l3.expansion], ['Spending less', l3.contraction], ['Lost', l3.churned]].map(([l, v]) => ({ label: String(l), value: Math.abs(num(v) ?? 0) })); return sl.some((x) => x.value > 0) ? [pieOf('Where revenue came and went, last 3 months', sl, 'Size of each movement')] : [] })(),
+      tables: [{ title: 'Revenue movement, last 3 months', head: ['', 'Amount'], rows: [['New customers', l3.new], ['Existing customers spending more', l3.expansion], ['Existing customers spending less', l3.contraction], ['Customers lost', l3.churned]].map(([l, v]) => ({ label: String(l), cells: [money(num(v))] })) },
+        ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Customers', 'Share', 'Net', 'Gross', 'Lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [String(g.customers), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
+    if (want('customers')) sections.push({ key: 'customers', title: 'Customers' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '.',
+      tiles: [{ label: 'Paying customers', value: f.active == null ? '–' : Number(f.active).toLocaleString('en-US') }, { label: 'Annual recurring revenue', value: short(f.arr ?? null) }, { label: 'Average customer', value: short(f.arpa_month ?? null), sub: 'a month' },
+        { label: 'Top 10 customers', value: P0(f.top10_share_pct), sub: 'of revenue' }, ...(f.ltv_to_cac != null ? [{ label: 'Lifetime value to acquisition cost', value: f.ltv_to_cac + '×', tone: (f.ltv_to_cac >= 3 ? 'good' : f.ltv_to_cac >= 1.5 ? 'watch' : 'risk') as Tone }] : [])],
+      charts: f.trend ? [{ title: 'Annual recurring revenue', labels: lbls, values: f.trend.arr }, { title: 'Paying customers', labels: lbls, values: f.trend.active ?? [] }] : undefined,
       pies: [
         ...(Array.isArray(f.sectors) && f.sectors.length >= 2 ? [pieOf('Revenue by customer sector', (f.sectors as { sector: string; share_pct: number }[]).map((x) => ({ label: x.sector, value: x.share_pct })), 'Share of revenue, last 12 months')] : []),
         ...(Array.isArray(f.top) && f.top.length ? [pieOf('How concentrated revenue is', [...(f.top as { name: string; share_pct: number }[]).map((x) => ({ label: x.name, value: x.share_pct })), { label: 'All other customers', value: Math.max(0, 100 - (f.top as { share_pct: number }[]).reduce((a2: number, x) => a2 + x.share_pct, 0)) }], 'Top 5 customers against the rest, last 12 months')] : [])],
-      tables: [{ title: 'Revenue movement, last 3 months', head: ['', 'Amount'], rows: [['New customers', l3.new], ['Existing customers spending more', l3.expansion], ['Existing customers spending less', l3.contraction], ['Customers lost', l3.churned]].map(([l, v]) => ({ label: String(l), cells: [money(num(v))] })) },
+      tables: [
         ...(Array.isArray(f.sectors) && f.sectors.length ? [{ title: 'Revenue by customer sector', head: ['', 'Share', 'Customers', 'Growth', 'Revenue retention'], rows: (f.sectors as { sector: string; share_pct: number; customers: number; growth_pct: number | null; nrr_pct: number | null }[]).map((x) => ({ label: x.sector, cells: [x.share_pct + '%', String(x.customers), pct(x.growth_pct), x.nrr_pct == null ? '–' : x.nrr_pct + '%'] })) }] : []),
         ...(Array.isArray(f.top) && f.top.length ? [{ title: 'Top customers (last 12 months)', head: ['', 'Revenue', 'Share', 'Growth'], rows: (f.top as { name: string; ttm: number; share_pct: number; growth_pct: number | null }[]).map((x) => ({ label: x.name, cells: [money(x.ttm), x.share_pct + '%', pct(x.growth_pct)] })) }] : [])] })
   }

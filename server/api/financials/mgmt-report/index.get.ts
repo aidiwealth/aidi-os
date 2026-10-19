@@ -3,7 +3,9 @@
 import { MR_SECTIONS, companyAbout } from '~/server/utils/mgmt-report'
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team', 'admin')
-  const subject = String(getQuery(event).subject ?? '')
+  // Without a subject (Retention, Customers): the company itself.
+  const ent0 = await companyEntityId().catch(() => null)
+  const subject = String(getQuery(event).subject || '') || (ent0 ? 'entity:' + ent0 : '')
   if (!/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
   const org = (await currentOrg())!
   const rows = await loadStatements(subject, 'month', (org.settings.currency as string) || 'USD')
@@ -13,5 +15,7 @@ export default defineEventHandler(async (event) => {
   const saved = mine?.sections ?? null
   const main = org.kind === 'company' && subject === 'entity:' + (await companyEntityId())
   const customers = main && (await enabledModules()).has('fin_customers') && (await loadCustomers().catch(() => [])).length > 0
-  return { months, sections: MR_SECTIONS.map((s) => ({ ...s, on: saved ? saved.includes(s.key) : s.on, available: s.key !== 'customers' || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, about: (await companyAbout(subject, mine?.about)).text }
+  // The report used to have one customer section: a saved choice with it keeps retention too.
+  const on = (k: string) => (saved ? saved.includes(k) || (k === 'retention' && saved.includes('customers')) : MR_SECTIONS.find((x) => x.key === k)!.on)
+  return { subject, groups: customers ? await customerGroups() : [], months, sections: MR_SECTIONS.map((s) => ({ ...s, on: on(s.key), available: (s.key !== 'customers' && s.key !== 'retention') || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, about: (await companyAbout(subject, mine?.about)).text }
 })

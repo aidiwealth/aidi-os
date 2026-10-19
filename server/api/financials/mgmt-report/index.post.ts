@@ -4,9 +4,10 @@ import { z } from 'zod'
 import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx } from '~/server/utils/mgmt-report'
 import { customerFacts } from '~/server/utils/customer-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
-import { addM } from '~/shared/customer-metrics'
+import { addM, groupOf, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(entity|company):[0-9a-f-]{36}$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
-  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false) })
+  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
+  cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'admin')
   const b = Body.safeParse(await readBody(event))
@@ -33,10 +34,19 @@ export default defineEventHandler(async (event) => {
     else if (upTo.length >= 3) { const f = factsOf(upTo as unknown as FinRow[], model); analysis = { headline: '', insights: f.rules, flags: f.flags } }
   }
   let customers: Record<string, unknown> | null = null
-  if (d.sections.includes('customers') && org.kind === 'company' && d.subject === 'entity:' + (await companyEntityId()) && (await enabledModules()).has('fin_customers')) {
-    const cfg = await customerConfig(), cs = await loadCustomers()
-    customers = cs.length ? customerFacts('customers', cs, cfg, await financialsRevenue(cfg.currency)) : null
-    if (customers) { const last = String(customers.as_of), ms = Array.from({ length: 12 }, (_, i) => addM(last, i - 11)); const t = await customerSeries(['cust:nrr', 'cust:arr'], ms); customers.trend = { labels: ms, nrr: t['cust:nrr'] ?? [], arr: t['cust:arr'] ?? [] } }
+  if ((d.sections.includes('customers') || d.sections.includes('retention')) && org.kind === 'company' && d.subject === 'entity:' + (await companyEntityId()) && (await enabledModules()).has('fin_customers')) {
+    const cfg = await customerConfig(), all = await loadCustomers(), g = d.cust_group ?? null
+    // One group only (Enterprise, SMB, a segment…): the customers in it at the latest month; retention trends judge
+    // size at the start of each window. Financials revenue is not compared for a group.
+    const sp = span(all), t = { enterprise: cfg.enterprise_arr, midmarket: cfg.midmarket_arr }
+    const cs = g && sp ? all.filter((c) => groupOf(c, g.by, addM(sp.last, -12), t) === g.value || groupOf(c, g.by, sp.last, t) === g.value) : all
+    customers = cs.length ? customerFacts('customers', cs, cfg, g ? { revenue: {}, gm: (await financialsRevenue(cfg.currency)).gm } : await financialsRevenue(cfg.currency)) : null
+    if (customers) {
+      if (g) customers.only = g.value + (g.by === 'size' ? ' (by revenue size)' : '')
+      const last = String(customers.as_of), ms = Array.from({ length: 12 }, (_, i) => addM(last, i - 11)), sfx = g ? '@' + g.by + '=' + g.value : ''
+      const keys = ['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:active'].map((k) => k + sfx), tr = await customerSeries(keys, ms)
+      customers.trend = { labels: ms, nrr: tr[keys[0]!] ?? [], grr: tr[keys[1]!] ?? [], churn: tr[keys[2]!] ?? [], arr: tr[keys[3]!] ?? [], active: tr[keys[4]!] ?? [] }
+    }
   }
   const { profile } = await reportProfile().catch(() => ({ profile: { fye_month: 12 } as { fye_month: number } }))
   const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean }> | undefined) ?? {})[d.subject]
@@ -46,7 +56,8 @@ export default defineEventHandler(async (event) => {
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Remember the sections for next month.
   const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies } }
-  await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
+  // Not when made from Retention or Customers (a customers-only report should not change next month's choice).
+  if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()
   const bytes = d.format === 'xlsx' ? await mgmtXlsx(r, logo) : Buffer.from(await mgmtPdf(r, logo))
   const fname = (name + ' monthly management report ' + r.label).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
@@ -61,7 +72,7 @@ export default defineEventHandler(async (event) => {
   // with customer data, retention and revenue by sector. The founder edits and sends it from Investor updates.
   let updateId: string | null = null
   if (d.update && (await enabledModules()).has('updates')) {
-    const hasCust = !!customers
+    const hasCust = !!customers && !d.cust_group
     const blocks = [
       { type: 'text', md: '## ' + r.label + '\n\n' + (analysis?.headline || '') + (analysis?.insights.length ? '\n\n' + analysis.insights.slice(0, 4).map((x) => '- **' + x.title + '.** ' + x.detail).join('\n') : '') + (d.comments.trim() ? '\n\n' + d.comments.trim() : '') },
       { type: 'metrics_table', title: 'Key metrics', metrics: ['revenue', 'gross_margin', 'net_income', 'cash', 'burn', 'runway'], period: 'month', count: 6 },

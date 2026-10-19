@@ -9,7 +9,7 @@ const route = useRoute(), router = useRouter()
 const ct = ref(String(route.query.ct ?? ''))
 const { data, refresh } = await useFetch<D>('/api/equity', { query: { ct } })
 watch(() => data.value?.captable, (id) => { if (id && id !== ct.value) ct.value = id })
-const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['rights', 'Rights & positions'], ['signing', 'Signing'], ['round', 'Model a round'], ['exit', 'Exit']] as const
+const TABS = [['overview', 'Overview'], ['shares', 'Shareholders'], ['options', 'Options'], ['convertibles', 'SAFEs & notes'], ['rights', 'Rights & positions'], ['signing', 'Signing'], ['round', 'Model a round'], ['valuation', 'Valuation'], ['exit', 'Exit']] as const
 const tab = ref<string>(String(route.query.t ?? 'overview')); watch([tab, ct], ([t, c]) => router.replace({ query: { ...route.query, t, ct: c || undefined, share: undefined } }))
 // Several cap tables (today's, a pro forma, a what-if), each shareable.
 const shareOpen = ref(route.query.share === '1')
@@ -194,6 +194,10 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
         <p class="fine">An estimate for planning, using standard terms: post-money SAFEs convert at cap ÷ capitalisation including the SAFEs and the new pool; the pool top-up and conversions come out of the pre-money. Your term sheet and SAFEs decide the final numbers.</p>
       </template>
       <EmptyState v-else card icon="equity" title="Add your shares first" text="Issue the founders' shares to model a round." />
+    </template>
+
+    <template v-else-if="tab === 'valuation'">
+      <ClientOnly><PeerValuation :ct="data.captable" @to-exit="tab = 'exit'" /></ClientOnly>
     </template>
 
     <template v-else>

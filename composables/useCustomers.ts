@@ -2,7 +2,9 @@
 import { addM, monthsBetween, span, type Cust, type GroupBy } from '~/shared/customer-metrics'
 export interface CustData { config: { currency: string; group_by: GroupBy; enterprise_arr: number; midmarket_arr: number; scheme: { name: string; why: string; segments: { name: string; rule: string }[] } | null }; customers: Cust[]; fin: { revenue: Record<string, number>; gm: number | null }; imports: { id: string; filename: string; created: string; summary: Record<string, unknown> }[] }
 export async function useCustomers() {
-  const r = await useFetch<CustData>('/api/financials/customers', { key: 'cust-data' })
+  // Read in the browser, not while the page is drawn on the server: a large customer file would otherwise be sent twice
+  // (inside the page and again) and worked out twice. Not deeply reactive: the figures are read, never edited here.
+  const r = await useFetch<CustData>('/api/financials/customers', { key: 'cust-data', server: false, deep: false })
   const cs = computed(() => r.data.value?.customers ?? [])
   const sp = computed(() => span(cs.value))
   const asOf = ref('')

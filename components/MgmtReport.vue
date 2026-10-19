@@ -1,18 +1,22 @@
 <script setup lang="ts">
 // The monthly management report: choose the month and what goes in (remembered for next month), add comments and
 // priorities, then download it as a PDF or Excel file for the executive team.
-const props = defineProps<{ open: boolean; subject: string; company: string }>()
+// From Revenue retention or Customers it opens with only the customer sections ticked (only), and does not change the
+// choice remembered for the monthly report.
+const props = defineProps<{ open: boolean; subject: string; company: string; only?: string[]; title?: string }>()
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Sec { key: string; title: string; desc: string; on: boolean; available: boolean }
-const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean } | null>(null)
+interface Grp { by: string; value: string; customers: number }
+const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] } | null>(null)
+const grp = ref('')
 const about0 = ref('')
 const f = reactive({ chart: 'area', pies: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
 async function load() {
   f.loading = true; f.msg = ''
   try {
-    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean }>('/api/financials/mgmt-report', { query: { subject: props.subject } })
+    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined } })
     opts.value = o; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies
-    f.picked = o.sections.filter((s) => s.on && s.available).map((s) => s.key)
+    f.picked = o.sections.filter((s) => (props.only ? props.only.includes(s.key) : s.on) && s.available).map((s) => s.key); grp.value = ''
   } catch (e) { f.msg = err(e, 'Could not load the report options.') } finally { f.loading = false }
 }
 watch(() => props.open, (o) => { if (o) void load() }, { immediate: true })
@@ -29,11 +33,11 @@ async function make() {
   f.busy = true; f.msg = ''
   try {
     const res = await fetch('/api/financials/mgmt-report', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subject: props.subject, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value, chart: f.chart, pies: f.pies }) })
+      body: JSON.stringify({ subject: props.subject || undefined, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)
     const upd = res.headers.get('x-update-id')
-    emit('done', 'Monthly management report for ' + mon(f.month) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
+    emit('done', (props.title ?? 'Monthly management report') + ' for ' + mon(f.month) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
   } catch (e) { f.msg = (e as Error).message } finally { f.busy = false }
 }
 const { data: mods } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')
@@ -42,9 +46,9 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
 </script>
 
 <template>
-  <AppModal :open="open" title="Monthly management report" wide @close="emit('close')">
+  <AppModal :open="open" :title="title ?? 'Monthly management report'" wide @close="emit('close')">
     <div class="mr">
-      <p class="hint">A clear report for your executive team on how the month went. Pick what goes in; we remember your choice for next month.</p>
+      <p class="hint">{{ only ? 'Revenue retention and customers for the month, ready to share. Add other sections if you like.' : 'A clear report for your executive team on how the month went. Pick what goes in; we remember your choice for next month.' }}</p>
       <p v-if="f.loading" class="hint">Loading…</p>
       <template v-else-if="opts">
         <div class="g2"><label class="label">Month<select v-model="f.month"><option v-for="m in opts.months" :key="m" :value="m">{{ mon(m) }}</option><option v-if="!opts.months.length" value="" disabled>No monthly figures yet</option></select></label>
@@ -55,6 +59,7 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
         <div class="secs">
           <label v-for="s in opts.sections" :key="s.key" class="sec" :class="{ on: f.picked.includes(s.key), off: !s.available }"><input v-model="f.picked" type="checkbox" :value="s.key" :disabled="!s.available"><span><b>{{ s.title }}</b><em>{{ s.available ? s.desc : 'Add your customer data on the Customers page to include this.' }}</em></span></label>
         </div>
+        <label v-if="opts.groups?.length && (f.picked.includes('retention') || f.picked.includes('customers'))" class="label">Customers in the retention and customer sections<select v-model="grp"><option value="">All customers</option><option v-for="g in opts.groups" :key="g.by + g.value" :value="g.by + '|' + g.value">{{ g.value }} only{{ g.by === 'size' ? ', by revenue size' : '' }} ({{ g.customers }} customers)</option></select><span class="sm">Retention for one group is the customers in it a year ago and now; Financials revenue is not compared for a group.</span></label>
         <label v-if="f.picked.includes('intro')" class="label">Company introduction<textarea v-model="f.about" rows="4" maxlength="4000" placeholder="What the company does, for whom, where it operates and what makes it different" /><span class="sm">Taken from your investor page and report details; your edits here are kept for next month. Founded, head office, website and leadership are added from your report details.</span></label>
         <template v-if="f.picked.includes('comments')">
           <label class="label">Your comments<textarea v-model="f.comments" rows="4" maxlength="8000" placeholder="What happened this month, what drove the numbers" /><button type="button" class="lk dr" @click="draft">Draft from the analysis</button></label>

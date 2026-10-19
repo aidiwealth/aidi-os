@@ -5,5 +5,6 @@ export default defineEventHandler(async (event) => {
   const config = await customerConfig()
   const [customers, fin, imports] = await Promise.all([loadCustomers(), financialsRevenue(config.currency),
     db().query(`SELECT id, filename, status, summary, to_char(created_at, 'YYYY-MM-DD') AS created FROM financials.customer_imports WHERE status = 'applied' ORDER BY created_at DESC LIMIT 5`)])
-  return { config, customers, fin, imports: imports.rows }
+  // Thousands of customers by month make a large reply: sent compressed when the browser accepts it.
+  return sendJsonGz(event, { config, customers, fin, imports: imports.rows })
 })

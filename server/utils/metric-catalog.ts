@@ -1,7 +1,7 @@
 // Every metric a founder can put in front of investors, in one list: the figures from Financials, customer revenue
 // retention and customer numbers (from Customers), and the company's own KPIs (customers, volumes, headcount…). Used
 // by investor updates (charts and tables), boards and the investor page, so anything on the analysis can be shared.
-import { addM, arrOf, retention, type Cust } from '~/shared/customer-metrics'
+import { addM, arrOf, groupOf, retention, span, type Cust } from '~/shared/customer-metrics'
 
 export type Unit = 'money' | 'pct' | 'months' | 'number'
 export interface MetricDef { key: string; label: string; unit: Unit; group: 'Financials' | 'Customers and retention' | 'Your KPIs' }
@@ -11,16 +11,28 @@ export const CUST_METRICS: Record<string, { label: string; unit: Unit }> = {
   'cust:logo_churn': { label: 'Customers lost (12 months)', unit: 'pct' }, 'cust:arr': { label: 'Annual recurring revenue', unit: 'money' },
   'cust:mrr': { label: 'Monthly recurring revenue', unit: 'money' }, 'cust:active': { label: 'Paying customers', unit: 'number' },
   'cust:top10': { label: 'Revenue from the top 10 customers', unit: 'pct' } }
+// A customer metric for one group of customers: cust:nrr@size=Enterprise, cust:arr@segment=SMB. Size is judged at
+// the start of the retention window (what the customer was), the other groups by what is recorded on the customer.
+export const CUST_GROUPS = ['size', 'segment', 'sector', 'plan', 'country'] as const
+export type CustGroupBy = (typeof CUST_GROUPS)[number]
+const GROUPED = new Set(['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:mrr', 'cust:active'])
+export function custKeyOf(key: string): { base: string; by: CustGroupBy | null; value: string | null } | null {
+  const m = /^(cust:[a-z0-9_]+)(?:@(size|segment|sector|plan|country)=(.{1,60}))?$/.exec(key)
+  if (!m || !(m[1]! in CUST_METRICS) || (m[2] && !GROUPED.has(m[1]!))) return null
+  return { base: m[1]!, by: (m[2] as CustGroupBy | undefined) ?? null, value: m[3] ?? null }
+}
+export const isCustKey = (k: string) => !!custKeyOf(k)
 export function metricUnit(key: string): Unit {
   if (key.startsWith('kpi:')) return 'number'
-  if (key in CUST_METRICS) return CUST_METRICS[key]!.unit
+  const ck = custKeyOf(key); if (ck) return CUST_METRICS[ck.base]!.unit
   return FIN_UNIT[key] ?? 'money'
 }
 export function metricLabel(key: string): string {
   if (key.startsWith('kpi:')) return key.slice(4)
-  return CUST_METRICS[key]?.label ?? METRIC_LABEL[key] ?? key
+  const ck = custKeyOf(key); if (ck) return CUST_METRICS[ck.base]!.label + (ck.value ? ' · ' + ck.value + (ck.by === 'size' ? ' (by revenue size)' : ck.by === 'segment' ? '' : ' (' + ck.by + ')') : '')
+  return METRIC_LABEL[key] ?? key
 }
-export const isMetricKey = (k: string) => k in METRIC_LABEL || k in CUST_METRICS || /^kpi:.{1,60}$/.test(k)
+export const isMetricKey = (k: string) => k in METRIC_LABEL || isCustKey(k) || /^kpi:.{1,60}$/.test(k)
 
 // Customer data is the company's (not per entity), so it is offered for the company itself.
 async function customersOn(subject?: string | null): Promise<boolean> {
@@ -31,7 +43,11 @@ async function customersOn(subject?: string | null): Promise<boolean> {
 }
 export async function metricCatalog(subject?: string | null): Promise<MetricDef[]> {
   const out: MetricDef[] = Object.entries(METRIC_LABEL).map(([key, label]) => ({ key, label, unit: metricUnit(key), group: 'Financials' as const }))
-  if (await customersOn(subject)) for (const [key, m] of Object.entries(CUST_METRICS)) out.push({ key, label: m.label, unit: m.unit, group: 'Customers and retention' })
+  if (await customersOn(subject)) {
+    for (const [key, m] of Object.entries(CUST_METRICS)) out.push({ key, label: m.label, unit: m.unit, group: 'Customers and retention' })
+    // The same retention and revenue metrics for one group of customers (Enterprise only, SMB only, a segment…).
+    for (const g of await customerGroups()) for (const key of ['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:active']) { const k = key + '@' + g.by + '=' + g.value; out.push({ key: k, label: metricLabel(k), unit: metricUnit(k), group: 'Customers and retention' }) }
+  }
   const subj = subject ?? (await companyEntityId().then((e) => (e ? 'entity:' + e : null)).catch(() => null))
   if (subj && /^(entity|company):/.test(subj)) {
     const rows = await loadStatements(subj, 'month', ((await currentOrg())?.settings.currency as string) || 'USD').catch(() => [])
@@ -42,13 +58,30 @@ export async function metricCatalog(subject?: string | null): Promise<MetricDef[
 }
 
 // Values of the customer metrics at the end of each given month (YYYY-MM).
+// The groups offered as their own metrics: the size bands, and segments with at least three customers (up to eight).
+export async function customerGroups(): Promise<{ by: CustGroupBy; value: string; customers: number }[]> {
+  const cs = await loadCustomers(), cfg = await customerConfig(), sp = span(cs); if (!sp) return []
+  const t = { enterprise: cfg.enterprise_arr, midmarket: cfg.midmarket_arr }
+  const count = (by: CustGroupBy) => { const n = new Map<string, number>(); for (const c of cs) { if (!Object.keys(c.rev).length) continue; const g = groupOf(c, by, sp.last, t); if (g !== 'Not set') n.set(g, (n.get(g) ?? 0) + 1) } return n }
+  const size = count('size'), seg = count('segment')
+  // The company's own segments first (as written on each customer), then the size bands worked out from revenue.
+  return [...[...seg.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([g, n]) => ({ by: 'segment' as const, value: g, customers: n })),
+    ...['Enterprise', 'Mid-market', 'SMB'].filter((g) => size.get(g)).map((g) => ({ by: 'size' as const, value: g, customers: size.get(g)! }))]
+}
+// Customers in one group as at a month (size judged at the start of the 12-month window for retention metrics).
+export function inGroup(cs: Cust[], by: CustGroupBy, value: string, at: string, t: { enterprise: number; midmarket: number }): Cust[] {
+  return cs.filter((c) => groupOf(c, by, at, t) === value)
+}
 export async function customerSeries(keys: string[], months: string[]): Promise<Record<string, (number | null)[]>> {
-  const want = keys.filter((k) => k in CUST_METRICS)
+  const want = keys.filter(isCustKey)
   if (!want.length || !(await customersOn())) return Object.fromEntries(want.map((k) => [k, months.map(() => null)]))
-  const cs: Cust[] = await loadCustomers()
+  const all: Cust[] = await loadCustomers(), cfg = await customerConfig(), t = { enterprise: cfg.enterprise_arr, midmarket: cfg.midmarket_arr }
   const out: Record<string, (number | null)[]> = {}
-  for (const k of want) out[k] = months.map((m) => {
-    if (!cs.some((c) => Object.keys(c.rev).some((x) => x <= m))) return null
+  for (const key of want) out[key] = months.map((m) => {
+    const ck = custKeyOf(key)!, k = ck.base
+    const ret = k === 'cust:nrr' || k === 'cust:grr' || k === 'cust:logo_churn'
+    const cs = ck.by ? inGroup(all, ck.by, ck.value!, ret ? addM(m, -12) : m, t) : all
+    if (!all.some((c) => Object.keys(c.rev).some((x) => x <= m))) return null
     if (k === 'cust:nrr' || k === 'cust:grr' || k === 'cust:logo_churn') { const r = retention(cs, m, 12); const v = k === 'cust:nrr' ? r.nrr : k === 'cust:grr' ? r.grr : r.logo_churn; return v == null ? null : Math.round(v * 1000) / 10 }
     const arrs = cs.map((c) => arrOf(c, m))
     if (k === 'cust:arr') return Math.round(arrs.reduce((a, b) => a + b, 0))

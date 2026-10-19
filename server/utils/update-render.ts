@@ -31,8 +31,8 @@ export async function metricSeries(metrics: string[], period: string, count: num
   const keys = [...groups.keys()].sort().slice(-Math.max(1, Math.min(count || 12, 36)))
   // Customer metrics (retention, recurring revenue…) at the end of each period, and the company's own KPIs.
   const ends = keys.map((gk) => { const g = groups.get(gk)!; return g.rows[g.rows.length - 1]!.period_end.slice(0, 7) })
-  const cust = await customerSeries(metrics.filter((k) => k in CUST_METRICS), ends)
-  const series = metrics.filter(isMetricKey).map((k) => ({ key: k, label: metricLabel(k), values: k in CUST_METRICS ? cust[k] ?? keys.map(() => null) : keys.map((gk) => {
+  const cust = await customerSeries(metrics.filter(isCustKey), ends)
+  const series = metrics.filter(isMetricKey).map((k) => ({ key: k, label: metricLabel(k), values: isCustKey(k) ? cust[k] ?? keys.map(() => null) : keys.map((gk) => {
     const g = groups.get(gk)!
     if (k.startsWith('kpi:')) { for (let i = g.rows.length - 1; i >= 0; i--) { const v = g.rows[i]!.kpis?.[k.slice(4)]; if (typeof v === 'number') return v } return null }
     const ds = g.rows.map((r) => derive(r.lines, 'month'))

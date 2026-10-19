@@ -16,8 +16,9 @@ export default defineEventHandler(async (event) => {
   if (d.link) await db().query(`INSERT INTO financials.customer_config (link_url, link_name, link_auto, link_synced_at, link_result) VALUES ($1, $2, $3, now(), $4::jsonb)
     ON CONFLICT (organization_id) DO UPDATE SET link_url = EXCLUDED.link_url, link_name = EXCLUDED.link_name, link_auto = EXCLUDED.link_auto, link_synced_at = now(), link_error = NULL, link_result = EXCLUDED.link_result`,
     [d.link.url, d.link.name || null, d.auto, JSON.stringify({ customers: r.customers, months: r.months, possible: [] })])
-  await db().query("UPDATE financials.customer_imports SET status = 'applied', applied_at = now(), summary = summary || $2::jsonb WHERE id = $1", [d.id, JSON.stringify({ merged: d.merges.length, mode: d.link ? 'replace' : d.mode, saved: r.customers, link: !!d.link })])
-  await db().query("DELETE FROM financials.customer_imports WHERE status = 'preview' AND created_at < now() - interval '2 days'")
+  // Once saved, the upload's copy of the rows is not needed (the customers hold them): only the summary is kept.
+  await db().query("UPDATE financials.customer_imports SET status = 'applied', applied_at = now(), data = '[]'::jsonb, summary = summary || $2::jsonb WHERE id = $1", [d.id, JSON.stringify({ merged: d.merges.length, mode: d.link ? 'replace' : d.mode, saved: r.customers, link: !!d.link })])
+  await db().query("DELETE FROM financials.customer_imports WHERE status = 'preview' AND created_at < now() - interval '1 day'")
   await audit({ event, actorUserId: user.userId, action: 'customers.import', objectType: 'customer_import', objectId: d.id, detail: { customers: r.customers, months: r.months, merges: d.merges.length, mode: d.mode, link: !!d.link } })
   return { ok: true, customers: r.customers, months: r.months, merged: d.merges.length }
 })

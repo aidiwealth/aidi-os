@@ -37,6 +37,8 @@ export async function previewCustomers(grids: Grid[], filename: string, userId: 
   const summary = { sheet: parsed.sheet, sheets: parsed.sheets ?? [], currency: parsed.currency ?? cfg.currency, layout: parsed.layout, customers: parsed.customers.length, rows: parsed.rows, repeated: parsed.repeated, skipped: parsed.skipped, first: parsed.months[0], last: parsed.months[parsed.months.length - 1], months: parsed.months.length,
     known: parsed.customers.filter((c) => existingKeys.has(custKey(c.name))).length, total: parsed.customers.reduce((s, c) => s + Object.values(c.rev).reduce((a, b) => a + b, 0), 0),
     attrs: ['segment', 'sector', 'country', 'plan', 'started_on', 'acquisition_cost', 'gross_margin_pct'].filter((a) => parsed.customers.some((c) => (c as unknown as Record<string, unknown>)[a] !== undefined)), ai_mapped: parsed.ai_mapped, notes: parsed.notes }
+  // Uploads not saved within a day are dropped (each holds the whole file).
+  await db().query("DELETE FROM financials.customer_imports WHERE status = 'preview' AND created_at < now() - interval '1 day'").catch(() => {})
   const id = (await one<{ id: string }>('INSERT INTO financials.customer_imports (filename, data, summary, created_by) VALUES ($1,$2,$3,$4) RETURNING id', [filename.slice(0, 200), JSON.stringify(parsed.customers), JSON.stringify({ ...summary, dupes }), userId])).id
   return { id, summary, dupes, sample: parsed.customers.slice(0, 6).map((c) => ({ name: c.name, months: Object.keys(c.rev).length, total: Object.values(c.rev).reduce((a, b) => a + b, 0), segment: c.segment ?? null, sector: c.sector ?? null })), existing: existing.length }
 }
@@ -55,7 +57,8 @@ export async function applyCustomers(data: ParsedCust[], merges: { names: string
     for (const a of ['segment', 'sector', 'country', 'plan', 'started_on', 'acquisition_cost', 'gross_margin_pct'] as const) if (c[a] !== undefined && t[a] === undefined) (t as unknown as Record<string, unknown>)[a] = c[a]
     merged.set(k, t)
   }
-  if (mode === 'replace') await db().query('DELETE FROM financials.customers')
+  // Replace: every month is written again; customers keep their records (and ids) and those no longer in the data go.
+  if (mode === 'replace') await db().query('DELETE FROM financials.customer_revenue')
   for (const m of merges) {
     const keep = custKey(m.to)
     const others = m.names.map(custKey).filter((k) => k !== keep)
@@ -70,18 +73,24 @@ export async function applyCustomers(data: ParsedCust[], merges: { names: string
       await db().query('DELETE FROM financials.customers WHERE id = ANY($1::uuid[])', [olds])
     }
   }
+  // In batches (a file can have tens of thousands of customers and months): customers first, then their months.
   let customers = 0, months = 0
-  for (const [k, c] of merged) {
-    const id = (await db().query<{ id: string }>(`INSERT INTO financials.customers (name, key, segment, sector, country, plan, started_on, acquisition_cost, gross_margin_pct) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+  const list = [...merged.entries()]
+  for (let i = 0; i < list.length; i += 1000) {
+    const part = list.slice(i, i + 1000), col = <T,>(f: (c: ParsedCust) => T) => part.map(([, c]) => f(c))
+    const ids = (await db().query<{ id: string; key: string }>(`INSERT INTO financials.customers (name, key, segment, sector, country, plan, started_on, acquisition_cost, gross_margin_pct)
+      SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::date[], $8::numeric[], $9::numeric[])
       ON CONFLICT (organization_id, key) DO UPDATE SET segment = coalesce(EXCLUDED.segment, financials.customers.segment), sector = coalesce(EXCLUDED.sector, financials.customers.sector), country = coalesce(EXCLUDED.country, financials.customers.country),
         plan = coalesce(EXCLUDED.plan, financials.customers.plan), started_on = coalesce(EXCLUDED.started_on, financials.customers.started_on), acquisition_cost = coalesce(EXCLUDED.acquisition_cost, financials.customers.acquisition_cost),
-        gross_margin_pct = coalesce(EXCLUDED.gross_margin_pct, financials.customers.gross_margin_pct), updated_at = now() RETURNING id`,
-      [c.name, k, c.segment ?? null, c.sector ?? null, c.country ?? null, c.plan ?? null, c.started_on ?? null, c.acquisition_cost ?? null, c.gross_margin_pct ?? null])).rows[0]!.id
-    const ms = Object.keys(c.rev)
-    if (ms.length) await db().query(`INSERT INTO financials.customer_revenue (customer_id, month, amount) SELECT $1, (m || '-01')::date, a FROM unnest($2::text[], $3::numeric[]) AS x(m, a)
-      ON CONFLICT (customer_id, month) DO UPDATE SET amount = EXCLUDED.amount`, [id, ms, ms.map((m) => c.rev[m])])
-    customers++; months += ms.length
+        gross_margin_pct = coalesce(EXCLUDED.gross_margin_pct, financials.customers.gross_margin_pct), updated_at = now() RETURNING id, key`,
+      [col((c) => c.name), part.map(([k]) => k), col((c) => c.segment ?? null), col((c) => c.sector ?? null), col((c) => c.country ?? null), col((c) => c.plan ?? null), col((c) => c.started_on ?? null), col((c) => c.acquisition_cost ?? null), col((c) => c.gross_margin_pct ?? null)])).rows
+    const idOf = new Map(ids.map((r) => [r.key, r.id]))
+    const cid: string[] = [], mon: string[] = [], amt: number[] = []
+    for (const [k, c] of part) { const id = idOf.get(k); if (!id) continue; customers++; for (const [m, v] of Object.entries(c.rev)) { cid.push(id); mon.push(m + '-01'); amt.push(v); months++ } }
+    for (let j = 0; j < cid.length; j += 20000) await db().query(`INSERT INTO financials.customer_revenue (customer_id, month, amount) SELECT * FROM unnest($1::uuid[], $2::date[], $3::numeric[])
+      ON CONFLICT (customer_id, month) DO UPDATE SET amount = EXCLUDED.amount`, [cid.slice(j, j + 20000), mon.slice(j, j + 20000), amt.slice(j, j + 20000)])
   }
+  if (mode === 'replace') await db().query('DELETE FROM financials.customers WHERE key <> ALL($1::text[])', [list.map(([k]) => k)])
   await db().query("DELETE FROM financials.analyses WHERE subject LIKE 'customers:%'").catch(() => {})
   return { customers, months }
 }

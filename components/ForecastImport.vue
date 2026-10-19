@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// Upload the accountant's forecast; AI maps each line to the right place; the founder checks the mapping and the
-// totals (and the closing cash against the accountant's own cash line) before it becomes a forecast.
+// Upload a forecast: the Finvry forecast template (or any sheet with months across and line names down a column) is
+// read by fixed rules with no AI; a PDF is read with AI. The founder checks the mapping and the totals (and the closing
+// cash against the file's own cash line) before it becomes a forecast.
 import { run, defaults, addMonths, COST_LINES, type Assumptions, type FixedMonth } from '~/shared/forecast'
 const props = defineProps<{ open: boolean; seed: Assumptions }>()
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }] }>()
@@ -8,14 +9,14 @@ type MapTo = 'revenue' | 'cogs' | 'payroll' | 'marketing' | 'rnd' | 'ga' | 'othe
 interface Line { label: string; maps_to: MapTo; values: { month: string; value: number }[] }
 interface Sheet { currency: string; start: string; opening_cash: number | null; lines: Line[]; notes: string[] }
 const MAP: [MapTo, string][] = [['revenue', 'Revenue'], ['cogs', 'Cost of revenue'], ['payroll', 'Payroll'], ...COST_LINES.map((c) => [c.key as MapTo, c.label] as [MapTo, string]), ['tax', 'Tax'], ['items', 'One-off item (+ in / − out)'], ['funding', 'Funding raised'], ['customers', 'Customers'], ['headcount', 'Headcount'], ['cash_balance', 'Closing cash (check only)'], ['ignore', 'Leave out (subtotal / non-cash)']]
-const files = ref<File[]>([]), busy = ref(false), msg = ref(''), sheet = ref<Sheet | null>(null), fnames = ref<string[]>([]), name = ref('')
+const how = ref<'rules' | 'ai'>('rules'), files = ref<File[]>([]), busy = ref(false), msg = ref(''), sheet = ref<Sheet | null>(null), fnames = ref<string[]>([]), name = ref('')
 watch(() => props.open, (o) => { if (o) { files.value = []; sheet.value = null; msg.value = '' } })
 function add(ev: Event) { for (const f of Array.from(((ev.target as HTMLInputElement).files ?? []) as ArrayLike<File>)) if (files.value.length < 3 && !files.value.some((x) => x.name === f.name)) files.value.push(f) }
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
 async function read() {
   busy.value = true; msg.value = ''
   const fd = new FormData(); for (const f of files.value) fd.append('files', f, f.name)
-  try { const r = await $fetch<{ sheet: Sheet; files: string[] }>('/api/forecast/read-sheet', { method: 'POST', body: fd }); sheet.value = r.sheet; fnames.value = r.files; name.value = r.files[0]!.replace(/\.[a-z0-9]+$/i, '').slice(0, 100) }
+  try { const r = await $fetch<{ sheet: Sheet; files: string[]; how?: 'rules' | 'ai' }>('/api/forecast/read-sheet', { method: 'POST', body: fd }); sheet.value = r.sheet; how.value = r.how ?? 'rules'; fnames.value = r.files; name.value = r.files[0]!.replace(/\.[a-z0-9]+$/i, '').slice(0, 100) }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const COSTS = new Set(COST_LINES.map((c) => c.key))
@@ -61,10 +62,11 @@ const cashCheck = computed(() => {
 function done() { if (built.value) emit('done', { name: name.value.trim() || 'Accountant forecast', assumptions: built.value }) }
 </script>
 <template>
-  <AppModal :open="open" :title="sheet ? 'Check the imported forecast' : 'Import a forecast from your accountant'" wide @close="emit('close')">
+  <AppModal :open="open" :title="sheet ? 'Check the imported forecast' : 'Import a forecast'" wide @close="emit('close')">
     <div v-if="!sheet" class="fi">
-      <p class="lead">Upload the forecast or budget your accountant or adviser made (Excel, CSV or PDF). AI reads every line and month and puts each one in the right place: revenue, cost of revenue, payroll, operating costs, tax, funding and one-offs. You check it before it is saved.</p>
-      <DropZone multiple accept=".xlsx,.xlsm,.csv,.pdf" :disabled="busy" hint="Excel, CSV or PDF · up to 3 files" @change="add" />
+      <div class="tpl"><div><b>Use the Finvry forecast template</b><span class="mut">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Finvry reads it exactly, with no AI, so every figure lands where it should.</span></div><a class="btn secondary sm" href="/api/forecast/template">Download template</a></div>
+      <p class="lead">Upload the filled template (or a sheet laid out the same way: months across one heading row, the line names down the first column). You check every line and the totals before it is saved. A PDF from your accountant can still be read, with AI; check it carefully.</p>
+      <DropZone multiple accept=".xlsx,.xlsm,.csv,.pdf" :disabled="busy" hint="The template (Excel or CSV), or a PDF · up to 3 files" @change="add" />
       <ul v-if="files.length" class="fl"><li v-for="(f, i) in files" :key="f.name"><b>{{ f.name }}</b><button class="lk red" @click="files.splice(i, 1)">Remove</button></li></ul>
       <p v-if="busy" class="mut">Reading… larger models can take a minute.</p><p v-if="msg" class="error">{{ msg }}</p>
     </div>
@@ -75,13 +77,14 @@ function done() { if (built.value) emit('done', { name: name.value.trim() || 'Ac
       <div v-if="sheet.notes.length" class="nt"><p class="bh">Notes</p><ul><li v-for="(x, i) in sheet.notes" :key="i">{{ x }}</li></ul></div>
       <div class="tw"><table class="t" data-nosearch><thead><tr><th>Line in the file</th><th>Goes to</th><th class="r">Total</th><th class="r">Months</th></tr></thead>
         <tbody><tr v-for="(l, i) in sheet.lines" :key="i" :class="{ off: l.maps_to === 'ignore' }"><td>{{ l.label }}</td><td><select v-model="l.maps_to"><option v-for="[k, lab] in MAP" :key="k" :value="k">{{ lab }}</option></select></td><td class="r">{{ ['customers', 'headcount'].includes(l.maps_to) ? Math.round(l.values[l.values.length - 1]?.value ?? 0).toLocaleString('en-US') + ' at end' : money(total(l)) }}</td><td class="r">{{ l.values.length }}</td></tr></tbody></table></div>
-      <p class="mut sm2">After {{ months.length ? mon(months[months.length - 1]!) : 'the file' }} the forecast continues with assumptions you can change ({{ built?.revenue.growth_pct }}% monthly revenue growth, from the file's trend). AI can misread files: check the totals against the original.</p>
+      <p class="mut sm2">After {{ months.length ? mon(months[months.length - 1]!) : 'the file' }} the forecast continues with assumptions you can change ({{ built?.revenue.growth_pct }}% monthly revenue growth, from the file's trend).{{ how === 'ai' ? ' Read with AI from a PDF: check the totals against the original.' : ' Read from your cells by line name, with no AI.' }}</p>
     </div>
     <template #foot><span class="sp" /><template v-if="!sheet"><button class="btn secondary" @click="emit('close')">Cancel</button><button class="btn" :disabled="busy || !files.length" @click="read">{{ busy ? 'Reading…' : 'Read forecast' }}</button></template>
       <template v-else><button class="btn secondary" @click="sheet = null">Back</button><button class="btn" :disabled="!built" @click="done">Save as a new forecast</button></template></template>
   </AppModal>
 </template>
 <style scoped>
+.tpl { display: flex; gap: 14px; align-items: center; justify-content: space-between; border: 1px solid #d9e2ef; background: #f5f7fb; padding: 12px 14px; } .tpl b { display: block; font-weight: 500; margin-bottom: 2px; } .tpl .btn { white-space: nowrap; text-decoration: none; }
 .fi { display: flex; flex-direction: column; gap: 14px; } .lead { margin: 0; color: var(--c-ink-soft); font-size: 14px; line-height: 1.55; } .mut { margin: 0; color: var(--c-muted); font-size: 13px; } .sm2 { font-size: 12px; }
 .fi .fx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } @media (max-width: 760px) { .fi .fx-stats { grid-template-columns: 1fr 1fr; } }
 .fl { list-style: none; margin: 0; padding: 0; border: 1px solid var(--c-rule); } .fl li { display: flex; justify-content: space-between; padding: 9px 12px; font-size: 13.5px; border-bottom: 1px solid var(--c-rule); } .fl li:last-child { border: 0; } .fl b { font-weight: 500; }
