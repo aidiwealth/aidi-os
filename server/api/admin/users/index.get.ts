@@ -4,7 +4,7 @@ export interface TeamUser {
 }
 // Members of the current workspace (row-level security limits memberships and roles to it).
 export default defineEventHandler(async (event): Promise<TeamUser[]> => {
-  await requireRole(event, 'admin')
+  await requireTeamManager(event)
   const r = await db().query<TeamUser>(
     `SELECT u.id, u.email, p.full_name, m.status, u.last_login_at, m.created_at,
             coalesce(json_agg(json_build_object('role', ur.role_code, 'entity_id', ur.scope_entity_id, 'entity_name', e.name, 'subsidiaries', ur.include_subsidiaries)

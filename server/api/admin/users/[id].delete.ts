@@ -2,9 +2,10 @@
 // sign-in is removed too.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const admin = await requireRole(event, 'admin')
+  const admin = await requireTeamManager(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('invalid', 'Invalid request.')
+  await assertCanManage(admin, id.data)
   if (id.data === admin.userId) throw apiError('self', 'You cannot remove yourself.', 400)
   const org = (await currentOrg())!
   const isAdmin = await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'admin'", [id.data])

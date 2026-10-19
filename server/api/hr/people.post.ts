@@ -2,7 +2,7 @@
 import { z } from 'zod'
 const d8 = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null))
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'admin')
+  const user = await requireTeamManager(event)
   const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), email: z.string().trim().max(254).optional().default(''), phone: z.string().trim().max(40).optional().default(''),
     user_id: z.string().uuid().nullable().optional().or(z.literal('').transform(() => null)), kind: z.enum(['employee', 'consultant', 'contractor', 'intern', 'advisor']).default('employee'), title: z.string().trim().max(120).default(''),
     entity_id: z.string().uuid().nullable().optional().or(z.literal('').transform(() => null)), location: z.string().trim().max(120).default(''), start_date: d8, end_date: d8, contract_end: d8,

@@ -1,6 +1,6 @@
 // People (staff and consultants), their agreements and payments, what is due and what needs attention (admins).
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin')
+  await requireTeamManager(event)
   const people = (await db().query<HrPerson & { phone: string | null; location: string | null; notes: string | null; user_id: string | null }>(`SELECT p.id, p.user_id, p.name, p.email, p.phone, p.kind, p.title, p.entity_id, e.name AS entity, p.location, to_char(p.start_date, 'YYYY-MM-DD') AS start_date, to_char(p.end_date, 'YYYY-MM-DD') AS end_date,
       to_char(p.contract_end, 'YYYY-MM-DD') AS contract_end, p.pay_amount::float, p.currency, p.pay_frequency, p.pay_day, p.status, p.notes FROM hr.people p LEFT JOIN core.entities e ON e.id = p.entity_id ORDER BY (p.status = 'ended'), p.name`)).rows
   const agreements = (await db().query<HrAgreement & { id: string; document_id: string | null; starts_on: string | null; signed_on: string | null }>("SELECT id, person_id, kind, title, document_id, status, to_char(starts_on, 'YYYY-MM-DD') AS starts_on, to_char(ends_on, 'YYYY-MM-DD') AS ends_on, to_char(signed_on, 'YYYY-MM-DD') AS signed_on, to_char(created_at, 'YYYY-MM-DD') AS created_at FROM hr.agreements ORDER BY created_at DESC")).rows

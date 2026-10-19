@@ -51,8 +51,8 @@ const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
 // Aidi OS: grouped like Finvry, but the pages the team opens every day keep their own place in the side menu
 // (Pitches, Payments, Tax documents, Meeting minutes, Team, Blog).
 const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [
-  { label: 'Venture capital', items: [{ label: 'Pitches', codes: ['pitches'] }, { label: 'Investments', codes: ['pipeline', 'portfolio', 'credit'] }, { label: 'Funds & LPs', codes: ['funds', 'contacts', 'updates', 'directory'] }] },
-  { label: 'Money', items: [{ label: 'Financials', codes: ['financials', 'boards', 'decks', 'investor_page', 'equity', 'forecast'] }, { label: 'Payments', codes: ['expenses'] }, { label: 'Accounting', codes: ['books', 'deployments', 'banking'] },
+  { label: 'Venture capital', items: [{ label: 'Pitches', codes: ['pitches'] }, { label: 'Investments', codes: ['pipeline', 'portfolio', 'credit'] }, { label: 'Funds & LPs', codes: ['funds', 'contacts', 'updates', 'decks', 'investor_page', 'directory'] }] },
+  { label: 'Money', items: [{ label: 'Financials', codes: ['financials', 'boards', 'equity', 'forecast'] }, { label: 'Payments', codes: ['expenses'] }, { label: 'Accounting', codes: ['banking', 'books', 'deployments'] },
     { label: 'Wealth', codes: ['wealth_mgmt', 'wealth', 'secondaries', 'rentals'] }, { label: 'Tax documents', codes: ['tax_docs'] }] },
   { label: 'Company', items: [{ label: 'Governance', codes: ['entities', 'governance', 'compliance'] }, { label: 'Meeting minutes', codes: ['meetings'] }, { label: 'Documents', codes: ['documents'] }, { label: 'Notices', codes: ['notices'] }] },
   { label: 'Administration', items: [{ label: 'Team', codes: ['team'] }, { label: 'Blog', codes: ['blog'] }, { label: 'Settings', codes: ['settings', 'modules'] }] }]

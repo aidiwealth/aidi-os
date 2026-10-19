@@ -2,7 +2,7 @@
 // copy, or change its status (sent, signed, ended) and dates.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'admin')
+  const user = await requireTeamManager(event)
   const ct = getRequestHeader(event, 'content-type') ?? ''
   if (ct.includes('multipart')) {
     const parts = (await readMultipartFormData(event)) ?? [], field = (k: string) => parts.find((p) => p.name === k && !p.filename)?.data.toString('utf8') ?? ''

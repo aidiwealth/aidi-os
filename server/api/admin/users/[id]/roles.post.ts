@@ -8,10 +8,11 @@ const Body = z.object({
   include_subsidiaries: z.boolean().optional()
 })
 export default defineEventHandler(async (event) => {
-  const admin = await requireRole(event, 'admin')
+  const admin = await requireTeamManager(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Choose a role.')
+  await assertCanManage(admin, id.data, b.data.role)
   const scope = b.data.entity_id ?? null
   // Admin is group-wide by definition; a role for one company is GP (or a narrower role) for that company.
   if (b.data.role === 'admin' && scope && b.data.action === 'add') throw apiError('invalid', 'Admin covers the whole group. For one company, give GP or Team limited to it.')

@@ -3,7 +3,9 @@ import type { TeamUser } from '~/server/api/admin/users/index.get'
 useHead({ title: 'Team' })
 const { data: users, error, refresh } = await useFetch<TeamUser[]>('/api/admin/users')
 const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: me } = await useFetch<{ email: string; org: { kind: string } | null }>('/api/auth/me')
+const { data: me } = await useFetch<{ email: string; roles: string[]; org: { kind: string } | null }>('/api/auth/me')
+// GPs run this page too on Aidi OS; only an admin gives or changes the Admin role.
+const isAdmin = computed(() => (me.value?.roles ?? []).includes('admin'))
 const isCo = computed(() => me.value?.org?.kind === 'company')
 const AIDI_ROLES = [
   { v: 'admin', label: 'Admin' }, { v: 'gp', label: 'GP' }, { v: 'team', label: 'Team' }, { v: 'family', label: 'Family' },
@@ -11,12 +13,13 @@ const AIDI_ROLES = [
 ]
 const CO_ROLES = [{ v: 'admin', label: 'Admin · billing, plan and team' }, { v: 'gp', label: 'Founder · every company feature' }, { v: 'team', label: 'Team member · day-to-day work' }]
 const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 'Team member' }
-const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES))
+const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES).filter((r) => isAdmin.value || r.v !== 'admin'))
 async function removeUser(u: { id: string; email: string }) { if (!confirm('Remove ' + u.email + ' from this workspace? They lose access immediately.')) return; try { await $fetch('/api/admin/users/' + u.id, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove.') } }
 const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
 const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', include_subsidiaries: false, send_email: true })
 const busy = ref(false)
-const ttab = ref<'access' | 'people'>(useRoute().query.t === 'people' ? 'people' : 'access'); watch(ttab, (t) => useRouter().replace({ query: { t } }))
+// Aidi OS opens on People, contracts & pay; Access (who can sign in) is the second tab.
+const ttab = ref<'access' | 'people'>(useRoute().query.t === 'access' ? 'access' : 'people'); watch(ttab, (t) => useRouter().replace({ query: { t } }))
 const msg = ref('')
 const ok = ref('')
 const adding = reactive<Record<string, { role: string; entity_id: string; subs: boolean }>>({})
@@ -48,9 +51,9 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
   <section>
     <p class="label">Administration</p>
     <h1>Team</h1>
-    <p class="lead">Who can sign in to this workspace, and what they can see. Changes take effect immediately and are logged.</p>
+    <p class="lead">{{ isCo ? 'Who can sign in to this workspace, and what they can see. Changes take effect immediately and are logged.' : 'Your people, their contracts and pay, and who can sign in. Changes are logged.' }}</p>
 
-    <nav v-if="!isCo" class="ttabs"><button :class="{ on: ttab === 'access' }" @click="ttab = 'access'">Access</button><button :class="{ on: ttab === 'people' }" @click="ttab = 'people'">People, contracts &amp; pay</button></nav>
+    <nav v-if="!isCo" class="ttabs"><button :class="{ on: ttab === 'people' }" @click="ttab = 'people'">People, contracts &amp; pay</button><button :class="{ on: ttab === 'access' }" @click="ttab = 'access'">Access</button></nav>
     <TeamPeople v-if="!isCo && ttab === 'people'" />
     <template v-else>
     <form class="card invite" @submit.prevent="invite">

@@ -1,7 +1,7 @@
 // Log (or remove) a pay run for a person (admins). Optionally also record it under Payments, with a payment voucher.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'admin')
+  const user = await requireTeamManager(event)
   const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), bank_txn_id: z.string().uuid().nullable().optional(), person_id: z.string().uuid().optional(), period: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), amount: z.coerce.number().positive().max(1e10).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(), paid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), method: z.string().trim().max(60).default(''), reference: z.string().trim().max(120).default(''), notes: z.string().trim().max(1000).default(''),
     record_payment: z.boolean().default(true), category: z.string().max(60).default('Salaries & contractors') }).safeParse(await readBody(event))

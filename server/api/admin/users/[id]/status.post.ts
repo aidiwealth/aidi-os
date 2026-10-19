@@ -2,10 +2,11 @@
 import { z } from 'zod'
 const Body = z.object({ status: z.enum(['active', 'disabled']) })
 export default defineEventHandler(async (event) => {
-  const admin = await requireRole(event, 'admin')
+  const admin = await requireTeamManager(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = Body.safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')
+  await assertCanManage(admin, id.data)
   if (b.data.status === 'disabled') {
     if (id.data === admin.userId) throw apiError('self', 'You cannot disable your own access.', 400)
     const isAdmin = await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'admin' AND scope_entity_id IS NULL", [id.data])

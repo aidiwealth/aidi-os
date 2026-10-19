@@ -9,8 +9,9 @@ const Body = z.object({
   send_email: z.boolean().default(true)
 })
 export default defineEventHandler(async (event) => {
-  const admin = await requireRole(event, 'admin')
+  const admin = await requireTeamManager(event)
   const b = Body.safeParse(await readBody(event))
+  if (b.success) await assertCanManage(admin, null, b.data.role)
   if (b.success && b.data.role === 'admin' && b.data.entity_id) throw apiError('invalid', 'Admin covers the whole group. For one company, give GP or Team limited to it.')
   if (!b.success) throw apiError('invalid', 'Add a name, a valid email and a role.')
   const email = b.data.email.toLowerCase()

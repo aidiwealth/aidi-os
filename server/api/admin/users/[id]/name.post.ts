@@ -1,7 +1,7 @@
 // Change a team member's name (admins). The name is the person's own, so it shows the same everywhere they appear.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  const admin = await requireRole(event, 'admin')
+  const admin = await requireTeamManager(event)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const b = z.object({ full_name: z.string().trim().min(1).max(200) }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Enter a name.')

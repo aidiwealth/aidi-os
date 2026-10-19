@@ -1,6 +1,6 @@
 // Download team pay for a period (optionally one person or company) as CSV or Excel, with bank status (admins).
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin')
+  await requireTeamManager(event)
   const q = getQuery(event), from = String(q.from ?? ''), to = String(q.to ?? ''), format = q.format === 'xlsx' ? 'xlsx' : 'csv'
   const { rows } = await teamPayHistory(from, to)
   const sel = rows.filter((r) => (!q.person_id || r.person_id === q.person_id) && (!q.entity_id || r.entity_id === q.entity_id) && (!q.bank || r.bank === q.bank))
