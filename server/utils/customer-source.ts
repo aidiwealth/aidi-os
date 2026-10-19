@@ -29,6 +29,7 @@ export async function gridsFromFile(buf: Buffer, filename: string, ref: string):
 export async function previewCustomers(grids: Grid[], filename: string, userId: string | null, extraNote?: string) {
   const ref = randomUUID()
   const cfg = await customerConfig()
+  await saveFileRates(grids, 'customers')
   const parsed = await parseCustomers(grids, ref, cfg.currency)
   if (extraNote) parsed.notes.unshift(extraNote)
   const existing = (await db().query<{ name: string }>('SELECT name FROM financials.customers')).rows.map((r) => r.name)
@@ -113,7 +114,9 @@ export async function syncCustomerLink(): Promise<{ customers: number; months: n
   try {
     const f = await fetchLinkedSheet(l.url)
     const ref = randomUUID(), cfg = await customerConfig()
-    const parsed = await parseCustomers(await readGrids(f.buf, f.ext, { tabs: 40, rows: 60000, cols: 240 }), ref, cfg.currency)
+    const grids = await readGrids(f.buf, f.ext, { tabs: 40, rows: 60000, cols: 240 })
+    await saveFileRates(grids, 'customers link')
+    const parsed = await parseCustomers(grids, ref, cfg.currency)
     const existing = (await db().query<{ name: string }>('SELECT name FROM financials.customers')).rows.map((r) => r.name)
     const dupes = await findDuplicates(parsed.customers.map((c) => c.name), existing, ref)
     // Merges confirmed before, plus exact-name matches; anything else is listed for the founder to decide.

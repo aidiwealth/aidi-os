@@ -59,8 +59,10 @@ export async function ensureAccounts(cats: Cat[]) {
     await db().query('INSERT INTO financials.accounts (name, parent) VALUES ($1, $2) ON CONFLICT (organization_id, lower(name)) DO NOTHING', [c.name, c.parent])
   }
 }
-export async function listAccounts(): Promise<{ id: string; name: string; parent: string }[]> {
-  return (await db().query<{ id: string; name: string; parent: string }>('SELECT id, name, parent FROM financials.accounts ORDER BY parent, lower(name)').catch(() => ({ rows: [] }))).rows
+export async function listAccounts(): Promise<{ id: string; name: string; parent: string; intercompany: boolean }[]> {
+  return (await db().query<{ id: string; name: string; parent: string; intercompany: boolean }>('SELECT id, name, parent, intercompany FROM financials.accounts ORDER BY parent, lower(name)')
+    .catch(() => db().query<{ id: string; name: string; parent: string; intercompany: boolean }>('SELECT id, name, parent, false AS intercompany FROM financials.accounts ORDER BY parent, lower(name)'))
+    .catch(() => ({ rows: [] }))).rows
 }
 // A sheet sync replaces the parts of a statement it gives: when it has any balance sheet line, the old balance sheet
 // lines (and their categories) it no longer gives are dropped, and the same for the income statement and cash flow. So a

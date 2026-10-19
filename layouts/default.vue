@@ -31,8 +31,12 @@ onBeforeUnmount(() => clearInterval(badgeTimer))
 const badgeTotal = computed(() => Object.values(badges.value).reduce((a, b) => a + b, 0))
 useHead({ titleTemplate: (t?: string) => (badgeTotal.value ? '(' + badgeTotal.value + ') ' : '') + (t ?? '') })
 const desk = computed(() => (mods.value ?? []).filter((m) => !m.navHidden && m.usable && m.group === 'cs'))
-const supportBy = computed(() => (me.value as { support_by?: string | null } | null)?.support_by ?? null)
-async function endSupport() { const r = await $fetch<{ to: string }>('/api/auth/return', { method: 'POST' }); window.location.href = r.to }
+const support = computed(() => (me.value as { support?: { by: string; by_name: string; can_edit: boolean; until: string } | null } | null)?.support ?? null)
+const supNow = ref(Date.now()); let supTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { supTimer = setInterval(() => { supNow.value = Date.now(); if (support.value && Date.parse(support.value.until) <= supNow.value) endSupport() }, 15000) })
+onBeforeUnmount(() => clearInterval(supTimer))
+const supLeft = computed(() => (support.value ? Math.max(0, Math.ceil((Date.parse(support.value.until) - supNow.value) / 60000)) : 0))
+async function endSupport() { clearInterval(supTimer); const r = await $fetch<{ to: string }>('/api/auth/return', { method: 'POST' }).catch(() => ({ to: '/login' })); window.location.href = r.to }
 const groups = computed(() => {
   const out: { label: string; items: Mod[] }[] = []
   for (const m of (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))) {
@@ -138,7 +142,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           </ul>
         </div>
       </header>
-      <div v-if="supportBy" class="supbar">You are signed in as <b>{{ me?.email }}</b> with Finvry support access ({{ supportBy }}). Changes are made as this person. <button type="button" @click="endSupport">Return to console</button></div>
+      <div v-if="support" class="supbar" role="status"><span>Support access: you are seeing this account as <b>{{ me?.email }}</b></span><span class="sm">{{ support.can_edit ? 'Changes allowed, recorded as ' + support.by_name : 'View only' }} · ends in {{ supLeft }} min · the customer can see this visit</span><button type="button" @click="endSupport">End session</button></div>
       <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
       <AnalystPanel v-if="me && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
     </div>
@@ -206,7 +210,8 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
   .tb-menu { display: grid; } .ws-t { display: none; } .inner { padding: 20px 16px 56px; }
   .sb-collapse { display: none; }
 }
-.supbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; } .supbar button { background: #fff; color: #b5470b; border: 0; padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer; }
+.supbar .sm { opacity: .85; } .supbar b { font-weight: 600; }
+.supbar { background: #b5470b; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 6px 14px; align-items: center; justify-content: center; flex-wrap: wrap; } .supbar button { background: #fff; color: #b5470b; border: 0; padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer; }
 .sidebar { background: var(--c-paper-2); }
 .sb-top { position: sticky; top: -18px; z-index: 3; margin: -18px -12px 0; padding: 18px 12px 2px; background: var(--c-paper-2); }
 .sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; opacity: 0; transition: opacity .2s; } .sidebar.sbs .sb-top::after { opacity: 1; }

@@ -29,6 +29,16 @@ export default defineEventHandler(async (event) => {
     const own = new Set((o.rows[0] as { plan_modules: string[] }).plan_modules ?? [])
     const grantable = MODULES.filter((m) => m.switchable && !own.has(m.code) && paidPlans.some((p) => p.modules.includes(m.code))).map((m) => ({ code: m.code, label: m.label, plans: paidPlans.filter((p) => p.modules.includes(m.code)).map((p) => p.name) }))
     const agreements = (await db().query("SELECT s.id, s.title, s.version, s.status, s.signed_at, s.signer_name, s.signer_email FROM legal.signatures s LEFT JOIN services.clients c ON c.id = s.client_id WHERE (s.organization_id = $1 OR c.workspace_id = $1) AND s.status <> 'void' ORDER BY coalesce(s.signed_at, s.created_at) DESC", [id.data])).rows
-    return { can_edit: staff.staffRole !== 'viewer' && staff.staffRole !== 'support', agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
+    // Log in as: everyone active in the workspace, and every past support visit.
+    const members = (await db().query(
+      `SELECT u.id AS user_id, coalesce(p.full_name, u.email) AS name, u.email, coalesce((SELECT string_agg(DISTINCT r.role_code, ', ') FROM core.user_roles r WHERE r.user_id = u.id AND r.organization_id = m.organization_id), '') AS roles
+         FROM core.memberships m JOIN core.users u ON u.id = m.user_id AND u.status = 'active' LEFT JOIN core.people p ON p.id = u.person_id
+        WHERE m.organization_id = $1 AND m.status = 'active' ORDER BY (EXISTS (SELECT 1 FROM core.user_roles r WHERE r.user_id = u.id AND r.organization_id = m.organization_id AND r.role_code = 'admin')) DESC, m.created_at`, [id.data])).rows
+    const support = (await db().query(
+      `SELECT i.id, i.reason, i.can_edit, i.started_at, i.expires_at, i.ended_at, coalesce(sp.full_name, su.email) AS by_name, tu.email AS as_email,
+              (SELECT count(*)::int FROM core.audit_log a WHERE a.organization_id = i.organization_id AND a.action = 'support.change' AND a.detail->>'support_access' = i.id::text) AS changes
+         FROM core.impersonations i JOIN core.users su ON su.id = i.staff_user_id LEFT JOIN core.people sp ON sp.id = su.person_id JOIN core.users tu ON tu.id = i.target_user_id
+        WHERE i.organization_id = $1 ORDER BY i.started_at DESC LIMIT 20`, [id.data])).rows
+    return { members, support, can_support: staff.staffRole !== 'viewer', can_edit: staff.staffRole !== 'viewer' && staff.staffRole !== 'support', agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
   })
 })

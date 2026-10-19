@@ -7,5 +7,5 @@ export default defineEventHandler(async (event) => {
   const cid = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!cid.success) throw apiError('invalid', 'Invalid request.')
   const ws = await workspaceForClient(event, cid.data)
-  return { ok: true, workspace_created: ws.created, ...(await supportSignIn(event, staff.userId, ws.orgId)) }
+  return { ok: true, workspace_created: ws.created, ...(await supportSignIn(event, staff.userId, ws.orgId, { reason: 'Setting up the client\'s account for client services', canEdit: true, minutes: 240 })) }
 })

@@ -12,6 +12,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
     "test:sheets": "node tests/sheets/run.mjs",
+    "test:isolation": "node tests/isolation/run.mjs",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

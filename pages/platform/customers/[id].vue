@@ -1,7 +1,9 @@
 <script setup lang="ts">
 const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
-interface D { can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
+interface Mem { user_id: string; name: string; email: string; roles: string }
+interface Sup { id: string; reason: string; can_edit: boolean; started_at: string; expires_at: string; ended_at: string | null; by_name: string; as_email: string; changes: number }
+interface D { members?: Mem[]; support?: Sup[]; can_support?: boolean; can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
@@ -18,7 +20,7 @@ async function save() {
 const gb = (b: number) => (b / 1024 ** 3).toFixed(2)
 const pct = (v: number, max: number | null) => (max ? Math.min(100, (v / max) * 100) : 0)
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'never')
-const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace created', 'platform.workspace_update': 'Workspace updated', 'platform.plan_save': 'Plan saved' }
+const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace created', 'platform.workspace_update': 'Workspace updated', 'platform.plan_save': 'Plan saved', 'platform.support_signin': 'Logged in as a user (support access)' }
 async function delOrg() { const n = data.value?.org.name ?? ''; const typed = prompt('This permanently deletes ' + n + ' and all its data. Type the workspace name to confirm:'); if (typed === null) return; try { await $fetch('/api/platform/orgs/' + id, { method: 'DELETE', body: { confirm: typed } }); await navigateTo('/platform/customers') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 const inv = reactive({ open: false, full_name: '', email: '', subject: '', message: '', send: true, busy: false, msg: '', ok: false })
 function openInvite() {
@@ -27,7 +29,14 @@ function openInvite() {
     message: 'Hi,\n\nWe have moved ' + n + "'s company services from Aidi Ventures to Finvry. Your filings, renewals, compliance calendar and invoices are now in one place, and you can message our team from there.\n\nSign in at https://app.finvry.com/login with this email address. We will send you a one-time code; there is no password.\n\nThe Aidi team" })
 }
 async function sendInvite() { inv.busy = true; inv.msg = ''; try { const r = await $fetch<{ emailed: boolean }>('/api/platform/orgs/' + id + '/invite', { method: 'POST', body: { full_name: inv.full_name, email: inv.email, subject: inv.subject, message: inv.message, send: inv.send } }); inv.ok = true; inv.msg = inv.send ? (r.emailed ? 'Access given and invitation sent.' : 'Access given, but the email could not be sent. Try again later.') : 'Access given. Send the invitation whenever you are ready.' } catch (e) { inv.ok = false; inv.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not invite.' } finally { inv.busy = false } }
-async function supportSignIn() { if (!confirm('Sign in to ' + (data.value?.org.name ?? 'this workspace') + ' as its owner? You will act as them until you return to the console. This is recorded.')) return; try { const r = await $fetch<{ redirect?: string }>('/api/platform/orgs/' + id + '/impersonate', { method: 'POST' }); window.location.href = r.redirect || '/' } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not sign in.') } }
+const la = reactive({ open: false, user_id: '', reason: '', can_edit: false, busy: false, msg: '' })
+function openLoginAs() { Object.assign(la, { open: true, user_id: data.value?.members?.[0]?.user_id ?? '', reason: '', can_edit: false, msg: '' }) }
+async function loginAs() {
+  la.busy = true; la.msg = ''
+  try { const r = await $fetch<{ redirect?: string }>('/api/platform/orgs/' + id + '/impersonate', { method: 'POST', body: { user_id: la.user_id || null, reason: la.reason, can_edit: la.can_edit } }); window.location.href = r.redirect || '/' }
+  catch (e) { la.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not open the account.' } finally { la.busy = false }
+}
+const supState = (x: Sup) => (x.ended_at ? 'ended ' + when(x.ended_at) : Date.parse(x.expires_at) > Date.now() ? 'open until ' + when(x.expires_at) : 'timed out ' + when(x.expires_at))
 const raiseFee = ref(4)
 watchEffect(() => { if (data.value?.org.raise_fee_pct != null) raiseFee.value = data.value.org.raise_fee_pct })
 const featBusy = ref(false)
@@ -43,13 +52,23 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
   <section v-if="data">
     <NuxtLink to="/platform/customers" class="back">← Customers</NuxtLink>
     <p class="label">{{ data.org.slug }} · {{ data.org.brand === 'aidi' ? 'Aidi' : 'Finvry' }}</p>
-    <div class="cuh"><h1>{{ data.org.name }}</h1><div v-if="data.can_edit" class="cua"><button v-if="data.org.kind === 'company'" type="button" class="btn secondary" @click="supportSignIn">Sign in as owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></div></div>
+    <div class="cuh"><h1>{{ data.org.name }}</h1><div class="cua"><button v-if="data.can_support && data.org.kind === 'company' && data.org.brand !== 'aidi' && data.members?.length" type="button" class="btn secondary" @click="openLoginAs">Log in as…</button><template v-if="data.can_edit"><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn" @click="openInvite">Invite owner</button><button v-if="data.org.plan_code !== 'internal'" type="button" class="btn secondary danger" @click="delOrg">Delete workspace</button></template></div></div>
     <div v-if="data.org.kind === 'company' && data.can_edit" class="card raisec"><div><b>Managed fundraising</b><p>We run the raise for this company: investor list, outreach, meetings and closing. The founder sees progress in Finvry. Success fee on money closed.</p></div>
       <div class="rr"><label class="sw"><input type="checkbox" :checked="data.org.raise_enabled" @change="setRaise(($event.target as HTMLInputElement).checked)"> {{ data.org.raise_enabled ? 'On' : 'Off' }}</label><label class="fee">Fee %<input v-model.number="raiseFee" type="number" min="0" max="30" step="0.5" @change="data.org.raise_enabled && setRaise(true)"></label><NuxtLink v-if="data.org.raise_enabled" to="/services/raise" class="lk">Open in the desk →</NuxtLink></div></div>
     <div v-if="data.org.kind === 'company' && data.grantable?.length && data.can_edit" class="card feats"><div class="fh"><b>Extra features</b><p>Switch on features from the Startup or Scale plan for this workspace without changing its plan or billing. They stay on if the plan changes.</p></div>
       <div class="fl"><label v-for="g in data.grantable" :key="g.code" class="fi" :class="{ on: data.org.extra_modules?.includes(g.code) }"><input type="checkbox" :disabled="featBusy" :checked="data.org.extra_modules?.includes(g.code)" @change="toggleFeature(g.code, ($event.target as HTMLInputElement).checked)"><span><b>{{ g.label }}</b><em>In {{ g.plans.join(' and ') }}</em></span></label></div></div>
     <div v-if="data.agreements?.length" class="card agr"><b>Signed agreements</b>
       <div v-for="a in data.agreements" :key="a.id" class="agl"><FileBadge name="x.pdf" size="sm" /><span><button type="button" class="lk" :disabled="a.status !== 'signed'" @click="openAgreement(a.id)">{{ a.title }}</button><em>{{ a.status === 'signed' ? 'Signed by ' + a.signer_name + (a.signer_email ? ' (' + a.signer_email + ')' : '') + ' · ' + new Date(a.signed_at!).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Waiting for signature' }} · v{{ a.version }}</em></span></div></div>
+    <AppModal :open="la.open" :title="'Log in as someone at ' + data.org.name" @close="la.open = false">
+      <form id="laf" class="laf" @submit.prevent="loginAs">
+        <label class="label">Person<select v-model="la.user_id" required><option v-for="m in data.members" :key="m.user_id" :value="m.user_id">{{ m.name }} · {{ m.email }}{{ m.roles ? ' (' + m.roles + ')' : '' }}</option></select></label>
+        <label class="label">Why you need access<textarea v-model="la.reason" rows="3" required minlength="3" maxlength="500" placeholder="e.g. They asked us why the retention page shows no figures for June" /></label>
+        <label class="cb"><input v-model="la.can_edit" type="checkbox" :disabled="!data.can_edit"> Allow changes <span class="hint">{{ data.can_edit ? 'Off: you can look but not change anything.' : 'Support staff can only look.' }}</span></label>
+        <p class="hint">Opens Finvry as this person for 30 minutes, in a new session; your console stays signed in. Money, plan and billing, keys, team and sign-in settings and signing documents are never available. The customer sees this visit, your reason{{ la.can_edit ? ' and every change' : '' }} in their Settings.</p>
+        <p v-if="la.msg" class="error">{{ la.msg }}</p>
+      </form>
+      <template #foot><button class="btn secondary" type="button" @click="la.open = false">Cancel</button><button class="btn" type="submit" form="laf" :disabled="la.busy || la.reason.trim().length < 3">{{ la.busy ? 'Opening…' : la.can_edit ? 'Log in, changes allowed' : 'Log in, view only' }}</button></template>
+    </AppModal>
     <AppModal :open="inv.open" title="Invite the owner" wide @close="inv.open = false">
       <form id="invf" class="invf" @submit.prevent="sendInvite">
         <label class="label">Name<input v-model="inv.full_name" required maxlength="200"></label>
@@ -79,6 +98,11 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
           <h2>Platform actions</h2>
           <ul class="log"><li v-for="(l, i) in data.log" :key="i"><b>{{ ACT[l.action] ?? l.action }}</b><span>{{ l.by_name ?? 'Platform' }} · {{ when(l.at) }}</span></li></ul>
           <p class="hint">These also appear in the customer's own audit trail.</p>
+        </div>
+        <div v-if="data.support?.length" class="card">
+          <h2>Support access</h2>
+          <ul class="log"><li v-for="x in data.support" :key="x.id"><b>{{ x.by_name }} as {{ x.as_email }} · {{ x.can_edit ? 'changes allowed' + (x.changes ? ', ' + x.changes + ' made' : ', none made') : 'view only' }}</b><span>{{ when(x.started_at) }} · {{ supState(x) }} · {{ x.reason }}</span></li></ul>
+          <p class="hint">The customer sees these in Settings → Support access.</p>
         </div>
       </div>
       <div class="col">
@@ -115,7 +139,7 @@ input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-tra
 .hint { font-size: 12px; color: var(--c-muted); margin: 8px 0 0; } .mt2 { margin-top: 18px; } .ok { color: var(--c-ok); } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .cuh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .danger { color: var(--c-danger); }
-.cua { display: flex; gap: 8px; } .invf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .invf .w { grid-column: 1 / -1; } .invf label.label { display: flex; flex-direction: column; gap: 6px; } .invf input, .invf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .invf .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .invf .cb input { width: auto; } .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
+.cua { display: flex; gap: 8px; } .laf { display: flex; flex-direction: column; gap: 12px; } .laf label.label { display: flex; flex-direction: column; gap: 6px; } .laf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .laf .cb { display: flex; gap: 8px; align-items: baseline; font-size: 14px; flex-wrap: wrap; } .laf .cb input { width: auto; } .invf { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .invf .w { grid-column: 1 / -1; } .invf label.label { display: flex; flex-direction: column; gap: 6px; } .invf input, .invf textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .invf .cb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; } .invf .cb input { width: auto; } .hint { font-size: 12.5px; color: var(--c-muted); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
 .raisec { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; } .raisec p { margin: 4px 0 0; font-size: 13px; color: var(--c-muted); max-width: 560px; } .rr { display: flex; gap: 14px; align-items: center; } .sw { display: flex; gap: 6px; align-items: center; font-weight: 600; } .sw input { width: 18px; height: 18px; } .fee { display: flex; gap: 6px; align-items: center; font-size: 13px; } .fee input { width: 64px; font: inherit; padding: 5px 7px; border: 1px solid var(--c-rule-strong); } .lk { color: var(--c-blue-deep); text-decoration: none; font-size: 13px; }
 .xg { width: 64px; font: inherit; font-size: 12.5px; padding: 2px 6px; border: 1px solid var(--c-rule-strong); } .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 12.5px; }
 .feats { margin: 12px 0; display: flex; flex-direction: column; gap: 12px; } .fh p { margin: 4px 0 0; font-size: 13px; color: var(--c-muted); max-width: 720px; } .fl { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; } .fi { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; } .fi.on { border-color: var(--c-ok); background: #f1faf4; } .fi input { margin-top: 3px; } .fi span { display: flex; flex-direction: column; } .fi b { font-size: 14px; font-weight: 500; } .fi em { font-style: normal; font-size: 12px; color: var(--c-muted); }

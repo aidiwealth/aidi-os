@@ -2,12 +2,14 @@
 // Group overview for a company with subsidiaries: the group's revenue, profit and cash converted to one currency, for
 // the latest month every entity has reported, and each entity in its own currency beside the converted figure.
 interface Ent { id: string; name: string; main: boolean; currency: string; rate: number | null; latest: string | null; revenue: number | null; net_income: number | null; cash: number | null; cash_at: string | null; ttm_revenue: number | null; revenue_conv: number | null; net_income_conv: number | null; cash_conv: number | null; ttm_conv: number | null; at_common: { revenue: number | null; net_income: number | null; cash: number | null } | null; behind: boolean }
-interface G { currency: string; rate_as_of: string | null; common: string | null; entities: Ent[]; total: { month: string; revenue: number; net_income: number; cash: number; entities: number } | null; ttm: number; series: { month: string; revenue: number; net_income: number; cash: number; entities: number }[]; missing_rate: string[]; without_figures: string[] }
+interface G { currency: string; rate_as_of: string | null; common: string | null; entities: Ent[]; total: { month: string; revenue: number; net_income: number; cash: number; entities: number; ic_revenue?: number } | null; ttm: number; series: { month: string; revenue: number; net_income: number; cash: number; entities: number }[]; missing_rate: string[]; without_figures: string[] }
 const emit = defineEmits<{ open: [subject: string] }>()
 const { data: g } = await useFetch<G | null>('/api/financials/group-summary', { server: false })
 const mon = (m: string | null, long = false) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: long ? 'long' : 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const money = (v: number | null | undefined, c: string) => (v == null ? '—' : briefMoney(v, c))
-const share = (e: Ent) => (g.value?.total?.revenue && e.at_common?.revenue != null ? Math.max(0, e.at_common.revenue / g.value.total.revenue) : 0)
+// Each company's share of the companies' revenue added up (before sales between them are taken out), so shares add to 100%.
+const gross = computed(() => (g.value?.entities ?? []).reduce((t, e) => t + Math.max(0, e.at_common?.revenue ?? 0), 0))
+const share = (e: Ent) => (gross.value && e.at_common?.revenue != null ? Math.max(0, e.at_common.revenue / gross.value) : 0)
 // The chart shows only months every company has reported, so a missing subsidiary month is not a drop.
 const full = computed(() => { const n = (g.value?.entities ?? []).filter((e) => e.latest).length; const s = (g.value?.series ?? []).filter((x) => x.entities === n); return s.length >= 2 ? s : [] })
 const behind = computed(() => (g.value?.entities ?? []).filter((e) => e.behind))
@@ -17,7 +19,7 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
 <template>
   <div v-if="g && g.common" class="card gs">
     <div class="gh"><div><span class="eyebrow">Group overview · {{ g.currency }}</span><h3>{{ mon(g.common, true) }}, all {{ g.entities.length }} companies together</h3>
-      <p class="mut">Each company's figures converted to {{ g.currency }} at the latest daily rate{{ g.rate_as_of ? ' (' + new Date(g.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}, for the latest month every company has reported. Intercompany amounts are not taken out.</p></div>
+      <p class="mut">Each company's figures converted to {{ g.currency }} at the latest daily rate{{ g.rate_as_of ? ' (' + new Date(g.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}, for the latest month every company has reported.{{ g.total?.ic_revenue ? ' Sales between the companies (' + money(g.total.ic_revenue, g.currency) + ') are taken out of group revenue.' : '' }}</p></div>
       <button type="button" class="btn secondary sm" @click="emit('open', 'group')">Open group figures</button></div>
     <div class="gt">
       <div><span>Revenue · {{ mon(g.common) }}</span><b>{{ money(g.total?.revenue, g.currency) }}</b></div>

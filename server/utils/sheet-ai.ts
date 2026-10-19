@@ -407,6 +407,7 @@ export function blankPeriod(p: { lines: Record<string, number>; kpis?: Record<st
 // month first, ready for the founder to check and save. null when nothing could be read this way.
 export async function spreadsheetProposal(buf: Buffer, ext: 'xlsx' | 'csv', currency: string, ref: string, wanted: string) {
   const grids = await readGrids(buf, ext, AI_GRID)
+  await saveFileRates(grids, 'upload')
   const tmpl = templateMap(grids, currency)
   // No AI for figures: the template, or any tab with months across and line names down a column, read by fixed rules.
   const map = tmpl ?? namesMap(grids, currency)

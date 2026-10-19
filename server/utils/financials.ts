@@ -1,4 +1,6 @@
 import { fillCashFlow } from '~/shared/fin-view'
+import { consolidate, type Member } from './intercompany'
+import { consolidateKpis, type KpiRule } from './kpi-consolidate'
 // Standard financial lines, derived figures, and the consolidated (group) view.
 export const LINES: { key: string; label: string; section: 'pl' | 'bs' | 'cf' }[] = [
   { key: 'revenue', label: 'Revenue', section: 'pl' }, { key: 'cogs', label: 'Cost of revenue', section: 'pl' }, { key: 'gross_profit', label: 'Gross profit', section: 'pl' },
@@ -51,7 +53,7 @@ export function parseSubject(s: string): { kind: 'group' } | { kind: 'entity' | 
   return { kind: m[1] as 'entity' | 'company', id: m[2]! }
 }
 
-export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number> }
+export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number>; eliminated?: import('./intercompany').Eliminated }
 // Statements for one subject, or the group: all entities plus subsidiary companies, summed per period in one currency.
 async function loadStatementsBase(subject: string, periodType: string, currency: string): Promise<FinRow[]> {
   const s = parseSubject(subject)
@@ -60,19 +62,45 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
       FROM financials.statements WHERE ${s.kind === 'entity' ? 'entity_id' : 'company_id'} = $1 AND period_type = $2 ORDER BY period_end`, [s.id, periodType])
     return r.rows
   }
-  // A company with subsidiaries adds them all up, converting other currencies at the latest daily rate.
+  // A company with subsidiaries adds them all up and takes out intercompany balances and trading (see intercompany.ts).
+  // Other currencies convert at the company's own monthly rate for that period when it has one (fx.monthly), else the latest daily rate.
   const company = (await currentOrg())?.kind === 'company'
-  const r = await db().query<{ period_end: string; lines: L; currency: string }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines, s.currency FROM financials.statements s
-      LEFT JOIN portfolio.companies c ON c.id = s.company_id WHERE s.period_type = $1 AND ($3 OR s.currency = $2) AND (s.entity_id IS NOT NULL OR c.relationship = 'subsidiary') ORDER BY s.period_end`, [periodType, currency, company])
-  const by = new Map<string, L>()
+  const r = await db().query<{ period_end: string; lines: L; detail: Record<string, number> | null; currency: string; who: string | null; kpis: Record<string, number> | null }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines, s.detail, s.kpis, s.currency, coalesce(e.name, c.name) AS who FROM financials.statements s
+      LEFT JOIN portfolio.companies c ON c.id = s.company_id LEFT JOIN core.entities e ON e.id = s.entity_id WHERE s.period_type = $1 AND ($3 OR s.currency = $2) AND (s.entity_id IS NOT NULL OR c.relationship = 'subsidiary') ORDER BY s.period_end`, [periodType, currency, company])
+  const tagged = new Set((await db().query<{ name: string }>('SELECT lower(name) AS name FROM financials.accounts WHERE intercompany').catch(() => ({ rows: [] as { name: string }[] }))).rows.map((x) => x.name))
+  const kpiRules = ((await currentOrg())?.settings.kpi_rules ?? {}) as Record<string, KpiRule>
+  const by = new Map<string, (Member & { kpis: Record<string, number> | null })[]>(), rates = new Map<string, number | null>()
   for (const x of r.rows) {
-    const k0 = x.currency === currency ? 1 : await fxRate(x.currency, currency)
-    if (!k0) continue
-    const t = by.get(x.period_end) ?? {}
-    for (const k of LINE_KEYS) { const v = n(x.lines[k]); if (v !== null) t[k] = (n(t[k]) ?? 0) + v * k0 }
-    by.set(x.period_end, t)
+    const rk = x.currency + '>' + x.period_end.slice(0, 7)
+    if (!rates.has(rk)) rates.set(rk, x.currency === currency ? 1 : await fxRateAt(x.currency, currency, x.period_end))
+    const rate = rates.get(rk)
+    if (!rate) continue
+    const list = by.get(x.period_end) ?? []
+    list.push({ lines: x.lines, detail: x.detail, kpis: x.kpis, rate, who: x.who ?? '' })
+    by.set(x.period_end, list)
   }
-  return [...by.entries()].map(([period_end, lines]) => ({ id: null, period_end, period_type: periodType, currency, lines, kpis: {}, notes: null, show_to_lps: false, source: 'group', document_id: null }))
+  return [...by.entries()].map(([period_end, members]) => {
+    const { lines, eliminated } = consolidate(members, LINE_KEYS, tagged)
+    // KPIs: counts added, money KPIs converted then added, ratios (e.g. CAC per new customer) worked out again from the
+    // group totals (kpi-consolidate.ts). The eliminations ride on the row (shown under the group figures), not as KPIs.
+    const kpis: Record<string, number> = consolidateKpis(members, kpiRules)
+    const notes = Math.abs(eliminated.unreconciled) > Math.max(1, Math.abs(n(lines.total_assets) ?? 0) * 0.0005)
+      ? 'Intercompany balances do not agree between the companies by ' + eliminated.unreconciled.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + currency + '; the difference is taken through group equity.' : null
+    return { id: null, period_end, period_type: periodType, currency, lines, kpis, notes, show_to_lps: false, source: 'group', document_id: null, eliminated }
+  })
+}
+
+// How many units of `to` one unit of `from` is worth for a period: the company's own monthly rate (e.g. the book rates on
+// a template's Exchange rates tab) when there is one within three months, else the latest daily rate.
+async function fxRateAt(from: string, to: string, periodEnd: string): Promise<number | null> {
+  if (from === to) return 1
+  const month = periodEnd.slice(0, 7) + '-01'
+  const q = await db().query<{ quote: string; per_usd: string }>(`SELECT DISTINCT ON (quote) quote, per_usd::text FROM fx.monthly
+      WHERE quote = ANY($1) AND month <= $2::date AND month > $2::date - interval '3 months' ORDER BY quote, month DESC`, [[from, to].filter((c) => c !== 'USD'), month])
+  const m = new Map(q.rows.map((x) => [x.quote, Number(x.per_usd)]))
+  const a = from === 'USD' ? 1 : m.get(from), b = to === 'USD' ? 1 : m.get(to)
+  if (a && b) return b / a
+  return fxRate(from, to)
 }
 
 export async function subjectName(subject: string): Promise<string> {

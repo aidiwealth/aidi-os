@@ -1,6 +1,8 @@
 // Every /api route needs a signed-in user unless it is on this allow-list (public endpoints sit above the gate).
 // The signed-in person's workspace becomes the database context for the whole request.
 const PUBLIC = ['/api/ping', '/api/health', '/api/auth/request', '/api/auth/verify-otp', '/api/auth/magic', '/api/auth/logout', '/api/auth/return', '/api/auth/handoff']
+const SUPPORT_OK = /^\/api\/(auth\/(logout|return)|notifications\/seen)$/
+const SUPPORT_NEVER = /^\/api\/(wallet|billing|company\/plan|company\/partner|api-keys|account|admin|integrations|plaid|auth|team|modules|settings\/(security|mfa))(\/|$)|\/(e?sign|signature)(\/|$)/
 export default defineEventHandler(async (event) => {
   event.context.orgId = null
   event.context.dbBypass = false
@@ -13,6 +15,12 @@ export default defineEventHandler(async (event) => {
   // The services desk role works the services area as team; elsewhere (records of other modules, the group library) it
   // keeps its own role. Documents: only downloading services and support files.
   if (s.roles.includes('services') && /^\/api\/(services|cs-analytics)(\/|$)/.test(path)) s.roles = [...s.roles, 'team']
+  // Support access ("Log in as"): view only unless changes were allowed when it started. Money, plan and billing,
+  // keys, team and sign-in settings, switching workspace and signing documents are never done on someone's behalf.
+  if (s.support && !['GET', 'HEAD', 'OPTIONS'].includes(event.method) && !SUPPORT_OK.test(path)) {
+    if (SUPPORT_NEVER.test(path)) throw apiError('support_blocked', 'Support access cannot do this on the customer\'s behalf. Ask them to do it.', 403)
+    if (!s.support.canEdit) throw apiError('support_view_only', 'View only: this support access cannot make changes. End it and start again with changes allowed.', 403)
+  }
   event.context.user = s
   event.context.orgId = s.orgId
   event.context.entityScope = ''

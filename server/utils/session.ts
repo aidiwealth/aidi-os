@@ -6,7 +6,9 @@ import type { H3Event } from 'h3'
 const COOKIE = 'aidi_os_session'
 const MAX_AGE = 60 * 60 * 12 // 12 hours
 
-export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean; aidiOrg?: boolean }
+// support: set when Aidi staff opened this account with "Log in as" (who, whether changes are allowed, when it ends).
+export interface SupportAccess { by: string; byName: string; canEdit: boolean; until: string; id: string }
+export interface SessionUser { sessionId: string; userId: string; email: string; roles: string[]; orgId: string | null; platform: boolean; aidiOrg?: boolean; support?: SupportAccess | null }
 // Aidi OS workspaces (the internal plan, or a workspace branded Aidi) open only at app.theaidigroup.com, never on Finvry.
 export const AIDI_ORG_SQL = "(o.settings->>'brand' = 'aidi' OR o.plan_code = 'internal')"
 export const RETURN_COOKIE = 'aidi_os_return'
@@ -69,19 +71,27 @@ export async function readSession(event: H3Event): Promise<SessionUser | null> {
   const hit = sessionCache.get(sid)
   if (hit && Date.now() - hit.at < 10_000) return hit.v && onFinvry && hit.v.aidiOrg ? null : hit.v
   if (sessionCache.size > 5000) sessionCache.clear()
-  const r = await asPlatform(() => db().query<{ user_id: string; email: string; org_id: string | null; org_ok: boolean; roles: string[]; platform: boolean; aidi_org: boolean }>(
+  const r = await asPlatform(() => db().query<{ user_id: string; email: string; org_id: string | null; org_ok: boolean; roles: string[]; platform: boolean; aidi_org: boolean; imp_id: string | null; imp_by: string | null; imp_name: string | null; imp_edit: boolean | null; imp_until: string | null; imp_live: boolean | null; legacy_imp: boolean }>(
     `SELECT s.user_id, u.email, s.organization_id AS org_id, coalesce(${AIDI_ORG_SQL}, false) AS aidi_org,
             coalesce(o.status = ANY($2::text[]) AND m.status = 'active', false) AS org_ok,
             coalesce((SELECT array_agg(DISTINCT CASE WHEN ur.role_code = 'admin' AND ur.scope_entity_id IS NOT NULL THEN 'gp' ELSE ur.role_code END) FROM core.user_roles ur WHERE ur.user_id = u.id AND ur.organization_id = s.organization_id), '{}') AS roles,
-            EXISTS (SELECT 1 FROM core.platform_staff ps WHERE ps.user_id = u.id) AS platform
+            EXISTS (SELECT 1 FROM core.platform_staff ps WHERE ps.user_id = u.id) AS platform,
+            i.id AS imp_id, su.email AS imp_by, sp.full_name AS imp_name, i.can_edit AS imp_edit, i.expires_at AS imp_until,
+            (i.ended_at IS NULL AND i.expires_at > now()) AS imp_live, (s.impersonated_by IS NOT NULL AND s.impersonation_id IS NULL) AS legacy_imp
        FROM core.sessions s JOIN core.users u ON u.id = s.user_id
+       LEFT JOIN core.impersonations i ON i.id = s.impersonation_id
+       LEFT JOIN core.users su ON su.id = i.staff_user_id LEFT JOIN core.people sp ON sp.id = su.person_id
        LEFT JOIN core.organizations o ON o.id = s.organization_id
        LEFT JOIN core.memberships m ON m.organization_id = s.organization_id AND m.user_id = u.id
       WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'active'`, [sid, LIVE_ORG_STATUSES]))
   const row = r.rows[0]
-  if (!row) { sessionCache.set(sid, { at: Date.now(), v: null }); return null }
+  // A support session ends when its record ends (ended from the console or the banner, or time is up). Older support
+  // sessions without a record are not honoured any more.
+  if (!row || (row.imp_id && !row.imp_live) || row.legacy_imp) { sessionCache.set(sid, { at: Date.now(), v: null }); return null }
   const orgId = row.org_ok ? row.org_id : null
-  const v = { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform, aidiOrg: row.aidi_org }
+  const support: SupportAccess | null = row.imp_id ? { id: row.imp_id, by: row.imp_by ?? '', byName: row.imp_name ?? row.imp_by ?? 'Finvry support', canEdit: !!row.imp_edit, until: new Date(row.imp_until!).toISOString() } : null
+  // Acting as someone never carries console rights, whoever that person is.
+  const v = { sessionId: sid, userId: row.user_id, email: row.email, roles: orgId ? row.roles : [], orgId, platform: row.platform && !support, aidiOrg: row.aidi_org, support }
   sessionCache.set(sid, { at: Date.now(), v })
   return onFinvry && v.aidiOrg ? null : v
 }

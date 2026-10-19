@@ -276,5 +276,39 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('prepaid (3 quiet months allowed): never lost, always active', b3.every((x) => x.lost_logos === 0 && x.active === 1), JSON.stringify(b3.map((x) => [x.month, x.lost_logos, x.active])))
 }
 
+// 13. Intercompany eliminations in the group view (Termii, Aug 2026: Termii Inc in USD, Webtech in NGN at 1,355).
+{
+  const IC = await jiti.import(join(root, 'server/utils/intercompany.ts'))
+  const KEYS = ['revenue', 'cogs', 'gross_profit', 'opex_other', 'opex_total', 'ebitda', 'net_income', 'cash', 'other_assets', 'total_assets', 'other_liabilities', 'total_liabilities', 'equity']
+  const us = { rate: 1, lines: { cash: 34992, other_assets: 1838366, total_assets: 1973358, other_liabilities: 5184592, total_liabilities: 5184592, equity: -3211234 },
+    detail: { 'other_assets|Intercompany receivable – Termii Webtech': 764857, 'other_liabilities|SAFE notes (convertible)': 5013700 } }
+  const ng = { rate: 1 / 1355, lines: { cash: 1068273740, other_assets: 789394261, total_assets: 1857668001, other_liabilities: 1199470669, total_liabilities: 1539615669, equity: 318052332 },
+    detail: { 'other_liabilities|Intercompany payable – Termii Inc': 857236592, 'other_assets|Intercompany receivable – Termii Inc': 76350401 } }
+  const { lines, eliminated: e } = IC.consolidate([us, ng], KEYS)
+  check('intercompany: group balance sheet still balances', Math.abs(lines.total_assets - lines.total_liabilities - lines.equity) < 1, String(lines.total_assets - lines.total_liabilities - lines.equity))
+  check('intercompany: receivables and payables taken out', e.receivables === Math.round((764857 + 76350401 / 1355) * 100) / 100 && e.payables === Math.round((857236592 / 1355) * 100) / 100, e.receivables + ' / ' + e.payables)
+  check('intercompany: the two sides disagree by about $189k and it is reported', Math.abs(e.unreconciled - 188557) < 1, String(e.unreconciled))
+  const p = { rate: 1, lines: { revenue: 1000, gross_profit: 1000, ebitda: 1000, net_income: 1000 }, detail: { 'revenue|Intercompany management fee': 200 } }
+  const sb = { rate: 1, lines: { revenue: 500, gross_profit: 500, opex_other: 300, opex_total: 300, ebitda: 200, net_income: 200 }, detail: { 'opex_other|Intercompany management fee': 200 } }
+  const g = IC.consolidate([p, sb], KEYS).lines
+  check('intercompany: a management fee leaves revenue and costs, profit unchanged', g.revenue === 1300 && g.opex_total === 100 && g.net_income === 1200, JSON.stringify(g))
+  check('intercompany: other categories stay in', IC.consolidate([{ rate: 1, lines: { other_assets: 10, total_assets: 10, equity: 10 }, detail: { 'other_assets|Loans receivable': 10 } }], KEYS).eliminated.items.length === 0)
+  check('intercompany: a category ticked by the company counts', IC.isIntercompany('Loan to Webtech', new Set(['loan to webtech'])) && !IC.isIntercompany('Loan to Webtech'))
+}
+
+// 14. KPIs in the group view (Termii, Jun 2026: Webtech in NGN at 1,380, Termii Inc in USD).
+{
+  const K = await jiti.import(join(root, 'server/utils/kpi-consolidate.ts'))
+  const webtech = { rate: 1 / 1380, kpis: { 'Paying customers': 2768, 'New paying customers': 372, 'CAC related costs': 2850528.5, 'CAC per new paying customer': 7662.7, Headcount: 65, 'Transactions (messages and calls)': 94965967, 'End users reached': 14996671, 'Registered business accounts': 42964 } }
+  const inc = { rate: 1, kpis: { 'Paying customers': 179, 'New paying customers': 101, 'CAC related costs': 2528.1, 'CAC per new paying customer': 25.0, Headcount: 1 } }
+  const g = K.consolidateKpis([webtech, inc])
+  check('group KPIs: counts added', g.Headcount === 66 && g['New paying customers'] === 473 && g['Paying customers'] === 2947, JSON.stringify([g.Headcount, g['New paying customers'], g['Paying customers']]))
+  check('group KPIs: a KPI only one company reports is kept as it is', g['Transactions (messages and calls)'] === 94965967)
+  check('group KPIs: money converted, then added', g['CAC related costs'] === Math.round((2850528.5 / 1380 + 2528.1) * 100) / 100, String(g['CAC related costs']))
+  check('group KPIs: a ratio is worked out again from the totals, not added', g['CAC per new paying customer'] === Math.round((g['CAC related costs'] / 473) * 100) / 100, String(g['CAC per new paying customer']))
+  check('group KPIs: kinds by name, and the company\'s own rule wins', K.kpiRule('Gross margin %') === 'ratio' && K.kpiRule('MRR') === 'money' && K.kpiRule('Active users') === 'sum' && K.kpiRule('NPS', { NPS: 'average' }) === 'average')
+  check('group KPIs: a ratio without its parts is left out, never added', K.consolidateKpis([{ rate: 1, kpis: { 'Revenue per user': 5 } }, { rate: 1, kpis: { 'Revenue per user': 7 } }])['Revenue per user'] === undefined)
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

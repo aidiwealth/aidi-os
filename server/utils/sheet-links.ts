@@ -225,7 +225,9 @@ export async function syncLink(l: LinkRow, userId: string | null, src?: { buf: B
   try {
     if (l.mode === 'ai' && !src) return await syncAiLink(l, userId)
     const { buf, ext } = src ?? await fetchLinkedSheet(l.url)
-    const all = layouts(await readGrids(buf, ext))
+    const grids0 = await readGrids(buf, ext)
+    if (l.target === 'financials') await saveFileRates(grids0, 'sheet')
+    const all = layouts(grids0)
     const lay = all.find((x) => x.sheet === l.sheet) ?? all[0]
     if (!lay) throw apiError('empty', 'No months found across the columns of that sheet.', 422)
     const byLabel = new Map(lay.rows.map((r) => [norm(r.label), r]))
@@ -287,6 +289,7 @@ async function syncAiLink(l: LinkRow, userId: string | null): Promise<{ months: 
   if (!map.success) throw apiError('invalid', 'Read the workbook again with AI to refresh this link.', 422)
   const { buf, ext } = await fetchLinkedSheet(l.url)
   const grids = await readGrids(buf, ext, AI_GRID)
+  await saveFileRates(grids, 'sheet')
   // A map saved before the subtotal checks is corrected here (guarded, and its balance sheet rows chosen by label if it
   // still does not add up; no AI call) and kept, so existing links mend on their next sync.
   const rep = await repairMap(grids, map.data)

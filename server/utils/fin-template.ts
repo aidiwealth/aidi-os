@@ -62,6 +62,17 @@ export async function templateWorkbook(currency: string): Promise<Buffer> {
     }
     n++
   }
+  // Exchange rates: for a subsidiary in another currency, the rates its books use, so the group view converts each
+  // month at that month's rate (saved as the company's monthly rates) instead of today's.
+  const fx = wb.addWorksheet('Exchange rates', { views: [{ state: 'frozen', xSplit: 1, ySplit: 4 }] })
+  fx.getColumn(1).width = 14; months.forEach((_, k) => { fx.getColumn(k + 2).width = 13 })
+  fx.getCell('A1').value = 'Exchange rates · units of each currency per 1 USD'; fx.getCell('A1').font = { ...F, bold: true, color: { argb: NAVY } }
+  fx.getCell('A2').value = 'Optional. One row per currency, by month (e.g. NGN 1,386). Used to convert subsidiaries for the group view; months left empty use the latest daily rate.'; fx.getCell('A2').font = { ...F, color: { argb: MUT } }
+  const fh = fx.getRow(4); fh.getCell(1).value = 'Currency'
+  months.forEach((d, k) => { const c = fh.getCell(k + 2); c.value = d; c.numFmt = 'mmm yyyy' })
+  fh.font = { ...F, bold: true, color: { argb: 'FFFFFFFF' } }; fh.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } } })
+  const fr = fx.getRow(5); fr.getCell(1).value = currency === 'USD' ? 'NGN' : currency; fr.font = F
+  months.forEach((_, k) => { fr.getCell(k + 2).numFmt = '#,##0.00' })
   const g = wb.addWorksheet('How to use', { views: [{ showGridLines: false }] }); g.getColumn(1).width = 4; g.getColumn(2).width = 100
   const line = (t: string, o: { bold?: boolean; size?: number; color?: string } = {}) => { const r = g.addRow(['', t]); r.getCell(2).font = { ...F, bold: o.bold, size: o.size ?? 10.5, color: o.color ? { argb: o.color } : undefined }; r.getCell(2).alignment = { wrapText: true, vertical: 'top' } }
   g.addRow([]); line('Finvry financials template', { bold: true, size: 16, color: NAVY })
@@ -71,7 +82,8 @@ export async function templateWorkbook(currency: string): Promise<Buffer> {
     ['2. Keep the line names', 'Finvry knows each line by its name. To add your own cost lines (Consultants, Software…), insert rows above "Other operating costs"; to add asset or liability lines, insert them inside those sections. They are kept as your categories and added up for you.'],
     ['3. The balance sheet must balance', 'The "Check" row should be 0 every month. If it is not, a figure is missing or in the wrong line.'],
     ['4. Key metrics', 'One per row, starting with "KPI:" (KPI: Paying customers, KPI: Headcount, KPI: Messages sent…).'],
-    ['5. Link it', 'Upload the file to Google Drive and open it with Google Sheets (or keep it in Excel online), share it so anyone with the link can view it, and link it in Financials. It is read every day. You can also drop the file in once instead.']]) { line(h, { bold: true }); line(t); g.addRow([]) }
+    ['5. Group companies', 'If you have subsidiaries, name what the companies owe each other "Intercompany receivable – <company>" (in Other assets) and "Intercompany payable – <company>" (in Other liabilities), and fees between them "Intercompany …". The group view takes them out. For a subsidiary in another currency, fill the Exchange rates tab.'],
+    ['6. Link it', 'Upload the file to Google Drive and open it with Google Sheets (or keep it in Excel online), share it so anyone with the link can view it, and link it in Financials. It is read every day. You can also drop the file in once instead.']]) { line(h, { bold: true }); line(t); g.addRow([]) }
   return Buffer.from(await wb.xlsx.writeBuffer())
 }
 

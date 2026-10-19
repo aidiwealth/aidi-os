@@ -3,7 +3,7 @@
 // into, and how many periods have figures. Rename, move to another line, add or remove.
 const props = defineProps<{ open: boolean; canEdit: boolean }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
-interface Acc { id: string; name: string; parent: string; periods: number }
+interface Acc { id: string; name: string; parent: string; periods: number; intercompany: boolean; ic_auto: boolean }
 const data = ref<{ accounts: Acc[]; lines: { key: string; label: string; section: string }[] } | null>(null)
 const msg = ref(''); const busy = ref(''); const add = reactive({ name: '', parent: 'opex_other' })
 const edit = reactive<Record<string, { name: string; parent: string }>>({})
@@ -16,6 +16,7 @@ const groups = computed(() => { const g: Record<string, Acc[]> = {}; for (const 
 async function save(a: Acc) { busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: edit[a.id] }); await load(); emit('changed') } catch (e) { msg.value = err(e, 'Could not save.') } finally { busy.value = '' } }
 async function del(a: Acc) { if (!confirm('Remove "' + a.name + '"? Figures already saved stay as a detail.')) return; busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'DELETE' }); await load() } catch (e) { msg.value = err(e, 'Could not remove it.') } finally { busy.value = '' } }
 async function create() { busy.value = 'new'; msg.value = ''; try { await $fetch('/api/financials/accounts', { method: 'POST', body: add }); add.name = ''; await load() } catch (e) { msg.value = err(e, 'Could not add it.') } finally { busy.value = '' } }
+async function setIc(a: Acc, on: boolean) { busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: { intercompany: on } }); await load(); emit('changed') } catch (e) { msg.value = err(e, 'Could not save.') } finally { busy.value = '' } }
 const dirty = (a: Acc) => edit[a.id] && (edit[a.id]!.name !== a.name || edit[a.id]!.parent !== a.parent)
 </script>
 <template>
@@ -28,6 +29,7 @@ const dirty = (a: Acc) => edit[a.id] && (edit[a.id]!.name !== a.name || edit[a.i
         <div v-for="a in list" :key="a.id" class="row">
           <template v-if="canEdit && edit[a.id]"><input v-model="edit[a.id]!.name" maxlength="80"><select v-model="edit[a.id]!.parent" aria-label="Belongs to"><option value="">No line (detail only)</option><option v-for="l in data.lines" :key="l.key" :value="l.key">In {{ l.label }}</option></select></template>
           <template v-else><b>{{ a.name }}</b><span>{{ label(a.parent) }}</span></template>
+          <label class="ic" :title="a.ic_auto ? 'The name says it is intercompany, so the group view already takes it out' : 'Owed or billed between your group companies: taken out of the group view'"><input type="checkbox" :checked="a.ic_auto || a.intercompany" :disabled="!canEdit || a.ic_auto || busy === a.id" @change="setIc(a, ($event.target as HTMLInputElement).checked)"> Intercompany</label>
           <em>{{ a.periods ? a.periods + ' period' + (a.periods === 1 ? '' : 's') : 'No figures yet' }}</em>
           <span v-if="canEdit" class="acts"><button v-if="dirty(a)" type="button" class="lk" :disabled="busy === a.id" @click="save(a)">Save</button><button type="button" class="lk mu" :disabled="busy === a.id" @click="del(a)">Remove</button></span>
         </div></div>
@@ -39,7 +41,7 @@ const dirty = (a: Acc) => edit[a.id] && (edit[a.id]!.name !== a.name || edit[a.i
 </template>
 <style scoped>
 .coa { display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; } .hint { color: var(--c-muted); font-size: 12.5px; margin: 0; } .empty { color: var(--c-muted); margin: 0; }
-.add, .row { display: grid; grid-template-columns: 1.3fr 1.2fr 110px auto; gap: 8px; align-items: center; } .add { grid-template-columns: 1.3fr 1.2fr auto; }
+.add, .row { display: grid; grid-template-columns: 1.3fr 1.2fr 108px 100px auto; gap: 8px; align-items: center; } .add { grid-template-columns: 1.3fr 1.2fr auto; } .ic { display: flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); white-space: nowrap; } .ic input { width: auto; padding: 0; }
 input, select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; }
 .grp h4 { margin: 4px 0 6px; font-size: 11.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .row { padding: 6px 0; border-top: 1px solid var(--c-rule); }
 .row b { font-weight: 500; } .row span { color: var(--c-ink-soft); } .row em { font-style: normal; font-size: 12px; color: var(--c-muted); text-align: right; }
