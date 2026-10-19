@@ -226,6 +226,12 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   const line = (k) => f?.lines.find((l) => l.maps_to === k)
   check('forecast template read with no AI', !!f && f.start === '2027-01' && f.opening_cash === 500000 && line('revenue')?.values.length === 2, f ? f.start + ' ' + f.opening_cash + ' ' + f.lines.map((l) => l.maps_to).join(',') : 'not read')
   check('forecast template: costs positive, one-offs keep their sign', line('cogs')?.values[0].value === 40000 && line('items')?.values[0].value === -20000 && line('customers')?.values[0].value === 120)
+  // The founder's own cost line inside the operating costs becomes its own line.
+  const { default: Excel2 } = await import('exceljs'); const wb2 = new Excel2.Workbook(); await wb2.xlsx.load(buf)
+  const ws2 = wb2.getWorksheet('Forecast'); let at = 0; ws2.eachRow((r, i) => { if (r.getCell(1).value === 'Other operating costs') at = i })
+  ws2.spliceRows(at, 0, ['Consultants', 9000, 9000])
+  const f2 = FT.forecastFromGrids(await S.readGrids(Buffer.from(await wb2.xlsx.writeBuffer()), 'xlsx'), 'USD')
+  check('forecast: own cost line kept as a new line', f2?.lines.some((l) => l.label === 'Consultants' && l.maps_to === 'new' && l.values[0].value === 9000), f2?.lines.map((l) => l.label + '→' + l.maps_to).join(', '))
   const lay = S.layouts(grids)[0], sug = S.suggestMapping(lay.rows, 'forecast')
   check('forecast template rows link by name', ['revenue', 'cogs', 'payroll', 'items', 'customers'].every((k) => sug.some((m) => m.to === k)) && !sug.some((m) => /Gross profit|Net income/.test(m.label) && m.to), sug.filter((m) => m.to).map((m) => m.label + '→' + m.to).join(', '))
 }
@@ -240,6 +246,24 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('valuation: unticked peers left out, quartiles of the rest', !!evr && evr.low === 1.5 && evr.mid === 2 && evr.high === 2.5 && evr.peers === 3, evr ? evr.low + ' ' + evr.mid + ' ' + evr.high : 'none')
   check('valuation: gross-profit multiple adjusts for a lower margin', !!gp && gp.mid === 5 && Math.round(gp.ev[1]) === 4000000, gp ? gp.mid + ' ' + Math.round(gp.ev[1]) : 'none')
   check('valuation: no EBITDA multiple while EBITDA is negative; discount and net cash applied', !r.methods.some((m) => m.key === 'ev_ebitda') && Math.round(evr.ev[1]) === 8000000 && Math.round(r.equity[1]) === Math.round((8000000 + 4000000) / 2 + 1000000))
+}
+
+// 11. The Aidi portfolio report template, filled in by a founder, read with no AI.
+{
+  const BL = await jiti.import(join(root, 'server/utils/brand-logos.ts')); Object.assign(globalThis, { LOGO_PNG: BL.LOGO_PNG })
+  const PT = await jiti.import(join(root, 'server/utils/portfolio-template.ts'))
+  const { default: Excel } = await import('exceljs')
+  const wb = new Excel.Workbook(); await wb.xlsx.load(await PT.portfolioTemplateWorkbook({ company: 'Acme', months: 3 }))
+  const ws = wb.getWorksheet('Figures'); ws.getCell('B3').value = 'NGN'
+  const rowOf = (l) => { let n = 0; ws.eachRow((r, i) => { if (r.getCell(1).value === l) n = i }); return n }
+  const set = (l, vals) => vals.forEach((v, k) => { ws.getRow(rowOf(l)).getCell(2 + k).value = v })
+  set('Revenue', [1000000, 1100000, 1200000]); set('Net burn per month', [-500000, 450000, 400000]); set('Cash at the end', [9e6, 8.5e6, 8e6]); set('Paying customers', [10, 11, 12])
+  ws.getRow(rowOf('KPI: Runway (months)')).getCell(4).value = 20
+  const nt = wb.getWorksheet('Notes'); nt.getCell('B4').value = 'Signed two banks.'
+  const r = PT.readPortfolioTemplate(await S.readGrids(Buffer.from(await wb.xlsx.writeBuffer()), 'xlsx'), 'Acme')
+  const last = r?.periods[r.periods.length - 1]
+  check('portfolio template read with no AI', !!r && r.currency === 'NGN' && r.periods.length === 3 && last.revenue_total === 1200000 && r.periods[0].net_burn_monthly === 500000 && last.customers === 12, r ? r.periods.map((p) => p.month + ':' + p.revenue_total).join(' ') : 'not read')
+  check('portfolio template: KPIs and notes', r?.other_kpis.some((k) => k.name === 'Runway (months)' && k.value === 20) && r?.highlights === 'Signed two banks.', JSON.stringify(r?.other_kpis) + ' ' + r?.highlights)
 }
 
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')

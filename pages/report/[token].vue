@@ -90,6 +90,7 @@ async function upload(f: File | undefined) {
         <p><b>{{ state.busy ? 'Reading your file…' : 'Drop your report here' }}</b> (Excel, CSV or PDF, such as your investor update), or click to choose</p>
         <p class="hint">We read the {{ data.periodLabel }} figures from it. You check them before anything is sent.</p>
       </div>
+      <p class="tpl">Easiest: report in the <a :href="'/api/public/report/' + token + '/template'">Aidi report template (Excel)</a>. It is read exactly as you fill it in.</p>
       <p v-if="state.aiNote" class="ai" role="status">{{ state.aiNote }}</p>
 
       <div v-if="data.prefill && !prefilled && !state.submitted" class="pre"><span>Your figures for {{ data.periodLabel }} are already in <b>{{ data.prefill.from }}</b>.</span><button type="button" class="btn secondary sm" @click="usePrefill">Fill them in</button></div>
@@ -158,4 +159,5 @@ textarea { resize: vertical; }
 select { font: inherit; font-size: 15px; color: var(--c-ink); padding: 10px 12px; border: 1px solid var(--c-rule-strong); background: #fff; } .fd { max-width: 360px; }
 .error { color: var(--c-danger); margin: 0; } .ok { color: var(--c-ok); margin: 0; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+.tpl { margin: 8px 0 0; font-size: 13px; color: var(--c-ink-soft); } .tpl a { color: var(--c-blue-deep); }
 </style>

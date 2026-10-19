@@ -14,5 +14,7 @@ export default defineEventHandler(async (event): Promise<Record<string, unknown>
   const to = (org.settings.reporting_currency as string) || (org.settings.currency as string) || 'USD'
   let total = 0
   for (const a of accts) if (a.current !== null && !['credit', 'loan'].includes(a.subtype ?? '')) { const k = await fxRate(a.currency, to); if (k) total += Number(a.current) * k }
-  return { available: true, manage, enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to }
+  // How much of the company's cash these accounts are (they are US accounts only).
+  const coverage = accts.length ? await bankCoverage(total, to).catch(() => null) : null
+  return { available: true, manage, enabled: plaidOn(), env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, currency: to, coverage }
 })

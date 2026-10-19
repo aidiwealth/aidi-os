@@ -25,6 +25,14 @@ const TABS = [['overview', 'Overview'], ['figures', 'Figures'], ['notes', 'Notes
 const tab = computed(() => (TABS.some((t) => t[0] === route.query.t) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t } })
 
+// ---- deleting data, so it can be added again ----
+const dMsg = ref('')
+const errD = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.'
+async function delPeriod(period: string, label: string) { if (!confirm('Delete every figure for ' + label + '? Team corrections for it go too.')) return; try { await $fetch('/api/portfolio/' + id + '/figures/delete', { method: 'POST', body: { period } }); await refresh() } catch (e) { dMsg.value = errD(e) } }
+async function delNotes(period: string) { if (!confirm('Delete the notes for ' + nameOf(period) + '?')) return; try { await $fetch('/api/portfolio/' + id + '/notes/' + period.slice(0, 10), { method: 'DELETE' }); await refresh() } catch (e) { dMsg.value = errD(e) } }
+const clr = reactive({ open: false, confirm: '', notes: false, busy: false, msg: '' })
+async function clearAll() { clr.busy = true; clr.msg = ''; try { await $fetch('/api/portfolio/' + id + '/figures/delete', { method: 'POST', body: { all: true, notes: clr.notes, confirm: clr.confirm } }); clr.open = false; await refresh() } catch (e) { clr.msg = errD(e) } finally { clr.busy = false } }
+
 // ---- periods ----
 const rows = computed<Row[]>(() => data.value?.months ?? [])
 const g = computed<Granularity>(() => granularity(rows.value))
@@ -119,6 +127,7 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
       </div>
       <div class="acts">
         <button v-if="canUpload" type="button" class="btn secondary" @click="go('reports')">Upload reports</button>
+        <a class="btn secondary" :href="'/api/portfolio/export?format=pdf&company=' + id">Export PDF</a><a class="btn secondary" :href="'/api/portfolio/export?format=xlsx&company=' + id">Excel</a>
         <button type="button" class="btn" @click="go('requests')">Ask for an update</button>
         <DeleteButton type="company" :id="id" :name="data.company.name" to="/portfolio" />
       </div>
@@ -134,6 +143,7 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
 
     <nav class="tabs" aria-label="Company"><button v-for="t in TABS" :key="t[0]" type="button" :class="{ on: tab === t[0] }" @click="go(t[0])">{{ t[1] }}<span v-if="t[0] === 'notes' && data.updates.length" class="ct">{{ data.updates.length }}</span><span v-if="t[0] === 'requests' && data.requests.length" class="ct">{{ data.requests.length }}</span></button></nav>
 
+    <p v-if="dMsg" class="error">{{ dMsg }}</p>
     <!-- Overview -->
     <div v-if="tab === 'overview'" class="ov">
       <PortfolioPosition :company-id="id" :can-edit="canUpload" />
@@ -165,14 +175,15 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
     <div v-else-if="tab === 'figures'" class="card fg">
       <div class="fh">
         <div><h3>Reported figures</h3><p class="mut">US dollars. Click a figure to correct it: the founder's number is kept and corrections show in blue, with who made them and why.</p></div>
-        <div class="seg"><button type="button" :class="{ on: view === 'period' }" @click="view = 'period'">{{ g === 'quarter' ? 'By quarter' : 'By month' }}</button><button type="button" :class="{ on: view === 'reported' }" @click="view = 'reported'">As reported</button></div>
+        <div class="fr"><div class="seg"><button type="button" :class="{ on: view === 'period' }" @click="view = 'period'">{{ g === 'quarter' ? 'By quarter' : 'By month' }}</button><button type="button" :class="{ on: view === 'reported' }" @click="view = 'reported'">As reported</button></div>
+          <button v-if="canUpload && rows.length" type="button" class="lk red" @click="clr.open = true; clr.confirm = ''; clr.notes = false">Delete all figures</button></div>
       </div>
       <div v-if="tableRows.length" class="scroll">
         <table class="ft" data-nosearch>
           <thead><tr><th>Period</th><th v-for="m in cols" :key="m.key" class="r">{{ colHead(m.key) }}</th></tr></thead>
           <tbody>
             <tr v-for="r in tableRows" :key="r.period + r.span">
-              <td class="pl"><b>{{ r.label }}</b><span v-if="view === 'period' && g === 'quarter' && r.monthsIn < 3" class="sub">{{ r.monthsIn }} of 3 months</span><span v-else-if="view === 'reported' && r.span > 1" class="sub">Reported as a quarter</span></td>
+              <td class="pl"><button v-if="canUpload && view === 'reported' && stored(r.period)" type="button" class="del" :title="'Delete every figure for ' + r.label" @click="delPeriod(r.period, r.label)">×</button><b>{{ r.label }}</b><span v-if="view === 'period' && g === 'quarter' && r.monthsIn < 3" class="sub">{{ r.monthsIn }} of 3 months</span><span v-else-if="view === 'reported' && r.span > 1" class="sub">Reported as a quarter</span></td>
               <td v-for="m in cols" :key="m.key" class="r">
                 <button v-if="editable(r)" type="button" class="cell" :class="{ over: stored(r.period)?.raw[m.key]?.override != null }"
                   :title="stored(r.period)?.raw[m.key]?.override != null ? 'Corrected by ' + stored(r.period)?.raw[m.key]?.by + ': ' + stored(r.period)?.raw[m.key]?.note + ' (founder reported ' + fmt(stored(r.period)?.raw[m.key]?.founder, m.unit) + ')' : 'Click to correct'"
@@ -199,7 +210,7 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
     <!-- Notes -->
     <div v-else-if="tab === 'notes'" class="nl">
       <div v-for="u in data.updates" :key="u.period" class="card nt">
-        <h3>{{ nameOf(u.period) }}</h3>
+        <div class="nh"><h3>{{ nameOf(u.period) }}</h3><button v-if="canUpload" type="button" class="lk red" @click="delNotes(u.period)">Delete</button></div>
         <div class="n3">
           <div><em>Highlights</em><p>{{ u.highlights || '—' }}</p></div>
           <div><em>Challenges</em><p>{{ u.challenges || '—' }}</p></div>
@@ -254,6 +265,12 @@ const REL: Record<string, string> = { investment: 'Investment', subsidiary: 'Sub
     </div>
   </section>
   <p v-else-if="error" class="error" role="alert">{{ error.statusCode === 404 ? 'Company not found.' : 'Could not load this company.' }}</p>
+  <AppModal :open="clr.open" title="Delete all figures" @close="clr.open = false">
+    <div class="frm"><p>This removes every figure for {{ data?.company.name }} (reported and corrected) and the record of imported reports, so you can add the data again. The report files stay in Documents.</p>
+      <label class="chk"><input v-model="clr.notes" type="checkbox"> Also delete the notes (highlights, challenges, asks)</label>
+      <label class="label">Type the company name to confirm<input v-model="clr.confirm" autocomplete="off"></label><p v-if="clr.msg" class="error">{{ clr.msg }}</p></div>
+    <template #foot><button class="btn secondary" @click="clr.open = false">Cancel</button><button class="btn danger" :disabled="clr.busy || clr.confirm.trim().toLowerCase() !== (data?.company.name ?? '').trim().toLowerCase()" @click="clearAll">{{ clr.busy ? 'Deleting…' : 'Delete all figures' }}</button></template>
+  </AppModal>
 </template>
 
 <style scoped>
@@ -295,4 +312,8 @@ h3 { margin: 0; font-size: 15px; }
 .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .sm { font-size: 12.5px; margin: 0; } .error { color: var(--c-danger); }
 @media (max-width: 1100px) { .five { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
 @media (max-width: 800px) { .two, .rq, .n3 { grid-template-columns: 1fr; } .five { grid-template-columns: 1fr 1fr !important; } }
+.fr { display: flex; gap: 12px; align-items: center; } .lk.red { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-danger); cursor: pointer; }
+.del { background: none; border: 0; color: var(--c-muted); cursor: pointer; font-size: 15px; padding: 0 6px 0 0; } .del:hover { color: var(--c-danger); } .nh { display: flex; justify-content: space-between; align-items: baseline; }
+.frm { display: flex; flex-direction: column; gap: 12px; font-size: 14px; } .frm p { margin: 0; } .frm .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .frm input:not([type=checkbox]) { font: inherit; padding: 8px 10px; border: 1px solid var(--c-rule-strong); } .chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+.acts a.btn { text-decoration: none; }
 </style>

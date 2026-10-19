@@ -7,7 +7,7 @@ const props = defineProps<{ open: boolean; seed: Assumptions; fin: Fin | null; b
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }]; refresh: [] }>()
 const o = reactive({ bankCash: true, match: false, growth: 0, months: 24, name: '' })
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
-watch(() => props.open, (v) => { if (v) Object.assign(o, { bankCash: !!props.bank?.connected, match: !props.fin && !!props.bank?.full_months, growth: props.seed.revenue.growth_pct, months: 24, name: 'From ' + (props.fin ? 'Financials' : '') + (props.fin && props.bank?.connected ? ' + ' : '') + (props.bank?.connected ? 'bank' : '') + ' · ' + mon(new Date().toISOString().slice(0, 7)) }) })
+watch(() => props.open, (v) => { if (v) Object.assign(o, { bankCash: !!props.bank?.connected && !props.bank?.partial, match: !props.fin && !!props.bank?.full_months, growth: props.seed.revenue.growth_pct, months: 24, name: 'From ' + (props.fin ? 'Financials' : '') + (props.fin && props.bank?.connected ? ' + ' : '') + (props.bank?.connected ? 'bank' : '') + ' · ' + mon(new Date().toISOString().slice(0, 7)) }) })
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, props.currency))
 const out1 = (a: Assumptions) => { const x = run({ ...a, months: 1 }).months[0]; return x ? x.cogs + x.opex : 0 }
 const built = computed<Assumptions>(() => {
@@ -41,7 +41,7 @@ const bankLink = computed(() => props.bank?.enabled && !props.bank.connected)
           <template v-else><p class="mut">Connect your business bank for today's cash and what actually goes in and out each month. Read-only; we never move money.</p><BankFeeds v-if="bankLink" compact @changed="emit('refresh')" /></template></div>
       </div>
       <div class="opts">
-        <label class="chk"><input v-model="o.bankCash" type="checkbox" :disabled="!bank?.connected"> Start from today's bank balance <em>{{ bank?.connected ? m(bank.cash) : 'connect a bank first' }}</em></label>
+        <label class="chk"><input v-model="o.bankCash" type="checkbox" :disabled="!bank?.connected"> Start from today's bank balance <em>{{ bank?.connected ? m(bank.cash) + (bank.partial ? ': connected US accounts only' + (bank.reported ? ', against ' + m(bank.reported) + ' cash in Financials' : '') + ', so the forecast starts from Financials unless you tick this' : '') : 'connect a bank first' }}</em></label>
         <label class="chk"><input v-model="o.match" type="checkbox" :disabled="!bank?.full_months"> Match monthly spending to the bank <em>{{ bank?.full_months ? 'money out averages ' + m(bank.avg_out) + '; the statements give ' + m(fin ? fin.costs : null) : 'needs a full month of bank activity' }}</em></label>
         <div class="g3"><label class="label">Revenue growth (% a month)<input v-model.number="o.growth" type="number" step="0.5"></label><label class="label">Length<select v-model.number="o.months"><option v-for="n in [12, 18, 24, 36]" :key="n" :value="n">{{ n }} months</option></select></label><label class="label">Name<input v-model="o.name" maxlength="120"></label></div>
       </div>

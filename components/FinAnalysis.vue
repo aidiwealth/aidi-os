@@ -13,7 +13,7 @@ const bmBusy = ref(false)
 async function setModel(v: string) { bmBusy.value = true; try { await $fetch('/api/financials/business-model', { method: 'POST', body: { subject: props.subject, model: v } }); await again() } catch { /* only owners can change it */ } finally { bmBusy.value = false } }
 const groups = computed(() => { const m = new Map<string, A['flags']>(); for (const f of data.value?.flags ?? []) m.set(f.for, [...(m.get(f.for) ?? []), f]); return [...m.entries()] })
 const who = ref(''); watch(groups, (g) => { if (!g.some(([w]) => w === who.value)) who.value = g[0]?.[0] ?? '' }, { immediate: true })
-const openI = ref<number | null>(null); const showBurn = ref(false)
+const fullW = ref<string[]>([]); const openI = ref<number | null>(null); const showBurn = ref(false)
 const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk: 'Risk' }
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const sym = computed(() => SYM[props.currency] ?? props.currency + ' ')
@@ -85,7 +85,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 
     <div v-if="groups.length" class="tm">
       <div class="tmh"><span class="bl">Take to your team</span><div class="seg"><button v-for="[w, items] in groups" :key="w" type="button" :class="{ on: who === w }" @click="who = w">{{ w }}<em>{{ items.length }}</em></button></div></div>
-      <div class="tml"><div v-for="(f, n) in groups.find(([w]) => w === who)?.[1] ?? []" :key="n" class="it"><span class="no">{{ n + 1 }}</span><div><b>{{ f.item }}</b><p>{{ f.why }}</p></div></div></div>
+      <div class="tml"><div v-for="(f, n) in groups.find(([w]) => w === who)?.[1] ?? []" :key="n" class="it"><span class="no">{{ n + 1 }}</span><div><b>{{ f.item }}</b><p :class="{ full: fullW.includes(who + n) }">{{ f.why }}</p><button v-if="f.why.length > 140" type="button" class="more" @click="fullW = fullW.includes(who + n) ? fullW.filter((x) => x !== who + n) : [...fullW, who + n]">{{ fullW.includes(who + n) ? 'Show less' : 'Read more' }}</button></div></div></div>
     </div>
     <p v-if="data?.checks" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up, so some of this may be off. See "Figures to check" below.</p>
   </section>
@@ -124,4 +124,5 @@ dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } dl d
 .bm select { font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--c-rule-strong); background: #fff; color: var(--c-ink); max-width: 260px; }
 .bm.unset select { border-color: var(--c-navy); }
 .nts { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: var(--c-ink-soft); display: flex; flex-direction: column; gap: 4px; }
+.it p.full { display: block; -webkit-line-clamp: unset; overflow: visible; } .more { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; margin-top: 2px; }
 </style>

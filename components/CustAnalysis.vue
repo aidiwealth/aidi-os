@@ -5,6 +5,9 @@ interface A { headline: string; insights: { title: string; detail: string; tone:
 const refreshQ = ref<string | undefined>(undefined)
 const { data, pending, refresh } = await useLazyFetch<A | null>('/api/financials/customers/analysis', { query: { kind: props.kind, refresh: refreshQ, s: computed(() => props.stamp) }, server: false })
 async function again() { refreshQ.value = '1'; await refresh(); refreshQ.value = undefined }
+// Long points are cut to four lines; Read more opens one in full.
+const full = ref<number[]>([])
+const toggle = (n: number) => { full.value = full.value.includes(n) ? full.value.filter((x) => x !== n) : [...full.value, n] }
 const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk: 'Risk' }
 const mon = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 </script>
@@ -14,7 +17,7 @@ const mon = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-
     <p v-if="pending && !data" class="skel">Reading your customers…</p>
     <template v-else-if="data">
       <h2 class="hl">{{ data.headline }}</h2>
-      <div class="ins"><article v-for="(i, n) in data.insights.slice(0, 4)" :key="n"><span class="tn" :class="i.tone"><i>{{ i.tone === 'good' ? '↑' : i.tone === 'risk' ? '✕' : '!' }}</i>{{ TONE[i.tone] }}</span><b>{{ i.title }}</b><p>{{ i.detail }}</p></article></div>
+      <div class="ins"><article v-for="(i, n) in data.insights.slice(0, 4)" :key="n"><span class="tn" :class="i.tone"><i>{{ i.tone === 'good' ? '↑' : i.tone === 'risk' ? '✕' : '!' }}</i>{{ TONE[i.tone] }}</span><b>{{ i.title }}</b><p :class="{ full: full.includes(n) }">{{ i.detail }}</p><button v-if="i.detail.length > 150" type="button" class="more" @click="toggle(n)">{{ full.includes(n) ? 'Show less' : 'Read more' }}</button></article></div>
     </template>
   </section>
 </template>
@@ -30,4 +33,5 @@ const mon = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-
 .tn.risk { background: #fdecea; color: #8f1d14; } .tn.risk i { background: var(--c-danger); } .tn.watch { background: #fff3dc; color: #7a4f06; } .tn.watch i { background: #b8790f; } .tn.good { background: var(--c-signal-soft); color: var(--c-navy); } .tn.good i { background: var(--c-blue-deep); }
 .skel { color: var(--c-muted); font-size: 13.5px; margin: 10px 0 0; }
 @media (max-width: 1100px) { .ins { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .ins { grid-template-columns: 1fr; } }
+.ins p.full { display: block; -webkit-line-clamp: unset; overflow: visible; } .more { align-self: flex-start; background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; margin-top: 2px; }
 </style>

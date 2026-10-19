@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// Live bank balances through Plaid (US banks), with a total in the reporting currency.
+// Live bank balances through Plaid (US banks), with a total in the reporting currency. For a company with accounts
+// outside the US (or a group), it says these are part of the cash, not all of it.
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 const emit = defineEmits<{ changed: [] }>()
 interface A { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
-const { data, refresh } = await useFetch<{ available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string }>('/api/plaid/accounts', { key: 'plaid-accounts' })
+const { data, refresh } = await useFetch<{ available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string; coverage?: { reported: number | null; as_of: string | null; share: number | null; partial: boolean; group: boolean } | null }>('/api/plaid/accounts', { key: 'plaid-accounts' })
 const busy = ref(false); const msg = ref('')
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const fmt = (v: string | number | null, c: string) => (v === null ? '—' : (SYM[c] ?? c + ' ') + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
@@ -24,6 +25,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
   <div v-if="data && data.available !== false && (data.manage || data.accounts.length)" class="card bf">
     <div class="bh"><div><h3>Live bank balances</h3><p class="mut">{{ data.accounts.length ? 'Total ' + fmt(data.total, data.currency) + ' across ' + data.accounts.length + ' account' + (data.accounts.length === 1 ? '' : 's') + (data.env === 'sandbox' ? ' · sandbox' : '') : data.enabled ? 'Connect a US bank account to see balances update automatically.' : 'Bank connections are not set up yet.' }}</p></div>
       <div class="row"><button v-if="data.accounts.length" class="btn secondary sm" @click="refresh()">Refresh</button><button v-if="data.enabled && data.manage" class="btn sm" :disabled="busy" @click="connect">{{ busy ? 'Opening…' : 'Connect a bank' }}</button></div></div>
+    <p v-if="data.coverage?.partial" class="cov">US accounts only{{ data.coverage.reported ? ': ' + fmt(data.total, data.currency) + ' of the ' + fmt(data.coverage.reported, data.currency) + ' cash in your Financials' + (data.coverage.as_of ? ' (' + new Date(data.coverage.as_of + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) + ')' : '') : '' }}. Accounts outside the US{{ data.coverage.group ? ' and in your subsidiaries' : '' }} cannot be connected, so cash, runway and forecasts use the cash in Financials; these balances are for the US accounts.</p>
     <div v-for="it in data.items" :key="it.id" class="it">
       <div class="ih"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button v-if="data.manage" class="lk" @click="disconnect(it.id, it.institution)">Disconnect</button></div>
       <div v-for="a in data.accounts.filter((x) => x.item_id === it.id).slice(0, compact ? 3 : 50)" :key="a.id" class="ac"><span>{{ a.name }}<em>{{ a.subtype ?? '' }}{{ a.mask ? ' ••' + a.mask : '' }} · updated {{ ago(a.updated_at) }}</em></span><b>{{ fmt(a.current, a.currency) }}<em v-if="a.available !== null && a.available !== a.current">available {{ fmt(a.available, a.currency) }}</em></b></div>
@@ -32,6 +34,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
   </div>
 </template>
 <style scoped>
+.cov { margin: 0; font-size: 12.5px; color: var(--c-ink-soft); background: #f5f7fb; border: 1px solid #d9e2ef; padding: 8px 12px; }
 .bf { display: flex; flex-direction: column; gap: 10px; } .bh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; } .bh h3 { margin: 0 0 3px; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; }
 .row { display: flex; gap: 8px; } .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; } .it { border-top: 1px solid var(--c-rule); padding-top: 8px; } .ih { display: flex; gap: 10px; align-items: center; } .ih b { font-size: 14px; } .err { font-size: 12px; color: var(--c-danger); } .lk { margin-left: auto; background: none; border: 0; font: inherit; font-size: 12.5px; color: var(--c-muted); cursor: pointer; }
 .ac { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .ac:last-child { border-bottom: 0; } .ac span, .ac b { display: flex; flex-direction: column; } .ac b { text-align: right; font-weight: 600; } .ac em { font-style: normal; font-size: 12px; color: var(--c-muted); font-weight: 400; } .error { color: var(--c-danger); margin: 0; }

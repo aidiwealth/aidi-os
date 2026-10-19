@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Revenue retention and churn from customer revenue by month: NRR, GRR, logo churn, where revenue came from and went,
 // retention by customer group (size, segment, sector, plan, country) and by cohort.
-import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, retention, retentionTrend, type Basis, type GroupBy } from '~/shared/customer-metrics'
+import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, groupOf, retention, retentionTrend, win, type Basis, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Revenue retention' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
@@ -28,6 +28,26 @@ const recon = computed(() => {
   if (!ms.every((m) => typeof f[m] === 'number')) return null
   const fin = ms.reduce((s, m) => s + f[m]!, 0), cust = ms.reduce((s, m) => s + cs.value.reduce((a, c) => a + (c.rev[m] ?? 0), 0), 0)
   return fin ? { fin, cust, gap: cust / fin - 1 } : null
+})
+// ---- Direction: where retention stands against what is usual, where revenue leaks, and who to call. ----
+const P1 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 1000) / 10)
+const sum12 = computed(() => { const z = { start: br.value[0]?.start ?? 0, new: 0, expansion: 0, reactivated: 0, contraction: 0, churned: 0, end: br.value[br.value.length - 1]?.end ?? 0 }; for (const x of br.value) { z.new += x.new; z.expansion += x.expansion; z.reactivated += x.reactivated; z.contraction += x.contraction; z.churned += x.churned } return z })
+// Revenue lost (customers leaving and spending less) by group over the last 12 months.
+const leaks = computed(() => {
+  const ms = months.value.filter((m) => m <= asOf.value).slice(-12), by = new Map<string, typeof cs.value>()
+  for (const c of cs.value) { const g = groupOf(c, groupBy.value, ms[0] ?? asOf.value, t.value); const l = by.get(g) ?? []; l.push(c); by.set(g, l) }
+  return [...by.entries()].map(([g, l]) => { const b = bridge(l, ms); return { group: g, lost: b.reduce((s, x) => s + x.churned + x.contraction, 0), added: b.reduce((s, x) => s + x.new + x.expansion + x.reactivated, 0) } }).sort((a, b) => b.lost - a.lost)
+})
+// Large customers whose last three months fell by a third or more against the three before: call them first.
+const atRisk = computed(() => cs.value.map((c) => ({ c, now: win(c, asOf.value, 3), before: win(c, addM(asOf.value, -3), 3) })).filter((x) => x.before > 0 && x.now < x.before * 0.67).sort((a, b) => (b.before - b.now) - (a.before - a.now)).slice(0, 5))
+const best = computed(() => [...groups.value].filter((g) => g.nrr !== null && g.share >= 0.05).sort((a, b) => b.nrr! - a.nrr!)[0] ?? null)
+const verdict = computed(() => {
+  const n = P1(r12.value.nrr), p = P1(r12prev.value.nrr), lk = leaks.value[0]
+  if (n == null) return ''
+  const dir = p == null ? '' : n - p >= 2 ? ', up ' + Math.round(n - p) + ' points in three months' : p - n >= 2 ? ', down ' + Math.round(p - n) + ' points in three months' : ', steady over three months'
+  return (n >= 100 ? 'Customers from a year ago pay ' + Math.round(n - 100) + '% more today' : 'Customers from a year ago pay ' + Math.round(100 - n) + '% less today') + dir + '.' +
+    (lk && lk.lost > 0 ? ' Most revenue lost came from ' + lk.group + ' (' + cMoney(lk.lost, cur.value, true) + ' over 12 months).' : '') +
+    (atRisk.value.length ? ' ' + atRisk.value.length + ' sizeable customer' + (atRisk.value.length === 1 ? ' is' : 's are') + ' paying a third less than three months ago.' : '')
 })
 const GB: [GroupBy, string][] = [['size', 'Size'], ['segment', 'Segment'], ['sector', 'Sector'], ['plan', 'Plan'], ['country', 'Country']]
 async function setGroup(g: GroupBy) { groupBy.value = g; if (canEdit.value) await $fetch('/api/financials/customers/config', { method: 'POST', body: { group_by: g } }).catch(() => {}) }
@@ -71,11 +91,23 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
 
     <template v-else>
       <p v-if="!enough" class="note">You have {{ months.length }} month{{ months.length === 1 ? '' : 's' }} of customer revenue. Year-on-year retention needs 13 or more; add earlier months for NRR and GRR.</p>
-      <div class="fx-stats">
-        <StatTile label="Net revenue retention" icon="chart" tone="b" :value="pp(r12.nrr)" :note="r12prev.nrr !== null && r12.nrr !== null ? (r12.nrr >= r12prev.nrr ? '▲ ' : '▼ ') + Math.abs(Math.round((r12.nrr - r12prev.nrr) * 1000) / 10) + ' pts vs 3 months before' : 'Same customers, a year on'" :note-tone="r12prev.nrr !== null && r12.nrr !== null ? (r12.nrr >= r12prev.nrr ? 'up' : 'dn') : ''" />
-        <StatTile label="Gross revenue retention" icon="check" tone="n" :value="pp(r12.grr)" note="Before expansion: losses only" />
-        <StatTile label="Customer churn (12 months)" icon="users" tone="r" :value="pp(r12.logo_churn)" :note="r12.customers ? (r12.customers - r12.kept) + ' of ' + r12.customers + ' customers left' : 'No customers a year earlier'" />
-        <StatTile label="Monthly revenue churn" icon="alert" tone="a" :value="cPct(churn3, 1)" note="Lost and downgraded, last 3 months" />
+      <div class="dir card">
+        <div class="dh"><span class="eyebrow">Where you stand</span><p class="vd">{{ verdict || 'Add 13 months or more of customer revenue to see where retention stands.' }}</p></div>
+        <div class="sc">
+          <BenchBar label="Net revenue retention" :value="P1(r12.nrr)" :prev="P1(r12prev.nrr)" :bands="[90, 100]" :max="150" hint="110%+ is strong" />
+          <BenchBar label="Gross revenue retention" :value="P1(r12.grr)" :prev="P1(r12prev.grr)" :bands="[80, 90]" :max="100" hint="Losses only" />
+          <BenchBar label="Customers lost in 12 months" :value="P1(r12.logo_churn)" :prev="P1(r12prev.logo_churn)" :bands="[10, 25]" :max="60" lower-is-better :hint="r12.customers ? (r12.customers - r12.kept) + ' of ' + r12.customers : ''" />
+          <BenchBar label="Monthly revenue churn" :value="P1(churn3)" :bands="[1, 3]" :max="8" lower-is-better hint="Lost and downgraded, last 3 months" />
+        </div>
+      </div>
+      <div class="act">
+        <div class="card ac"><span class="eyebrow">Biggest leak</span><template v-if="leaks[0] && leaks[0].lost > 0"><b>{{ leaks[0].group }}</b><p>{{ cMoney(leaks[0].lost, cur, true) }} lost to customers leaving or spending less in 12 months{{ leaks[0].added ? ', against ' + cMoney(leaks[0].added, cur, true) + ' added' : '' }}.</p><em>Find out why they leave: price, product or service. Fix the biggest reason first.</em></template><p v-else>No revenue lost in the last 12 months.</p></div>
+        <div class="card ac"><span class="eyebrow">Strongest group</span><template v-if="best"><b>{{ best.group }} · {{ pp(best.nrr) }}</b><p>Keeps and grows its revenue best, with {{ cPct(best.share) }} of revenue.</p><em>Win more customers like these and learn what they buy.</em></template><p v-else>Needs a year of history by group.</p></div>
+        <div class="card ac"><span class="eyebrow">Call this month</span><template v-if="atRisk.length"><ol><li v-for="x in atRisk" :key="x.c.id"><span>{{ x.c.name }}</span><em>{{ cMoney(x.now / 3, cur, true) }} a month, was {{ cMoney(x.before / 3, cur, true) }}</em></li></ol></template><p v-else>No large customer has dropped by a third in the last three months.</p></div>
+      </div>
+      <div class="charts two">
+        <Waterfall title="Revenue over the last 12 months" sub="Monthly revenue" :currency="cur" :start="{ label: cMon(br[0]?.month ?? asOf), value: sum12.start }" :steps="[{ label: 'New', value: sum12.new }, { label: 'Expansion', value: sum12.expansion }, { label: 'Returned', value: sum12.reactivated }, { label: 'Downgrades', value: -sum12.contraction }, { label: 'Lost', value: -sum12.churned }]" :end-label="cMon(asOf)" foot="Each step adds up the 12 months: how revenue moved from the month at the start to this month." />
+        <HBars :title="'Net revenue retention by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Same customers, a year on" :rows="groups.filter((g) => g.nrr !== null).map((g) => ({ label: g.group, value: Math.round(g.nrr! * 1000) / 10, note: g.customers + ' customers' }))" :ref-line="100" ref-label="100%: customers pay as much as a year ago" />
       </div>
       <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers, credits or revenue recorded differently.</p>
       <CustAnalysis kind="retention" :stamp="stamp" />
@@ -95,9 +127,8 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
         <TrendChart title="Gross revenue retention" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.grr ?? 0) * 1000) / 10 }))" foot="Losses only" :foot-value="r12.grr === null ? null : Math.round(r12.grr * 1000) / 10" />
         <TrendChart title="Customers lost (12 months)" unit="pct" :points="trend.map((x) => ({ label: cMon(x.month), value: Math.round((x.logo_churn ?? 0) * 1000) / 10 }))" foot="Share of customers from a year before who stopped paying" :foot-value="r12.logo_churn === null ? null : Math.round(r12.logo_churn * 1000) / 10" />
       </div>
-      <div class="charts two">
-        <StackBars title="Where revenue came from and went" sub="Last 12 months" :currency="cur" :labels="br.map((x) => cMon(x.month))" :series="[{ name: 'New', values: br.map((x) => x.new) }, { name: 'Expansion', values: br.map((x) => x.expansion) }, { name: 'Returned', values: br.map((x) => x.reactivated) }, { name: 'Downgrades', values: br.map((x) => x.contraction), down: true }, { name: 'Lost', values: br.map((x) => x.churned), down: true }]" foot="Above the line: revenue added. Below: revenue lost. Hover a month for the amounts." />
-        <HBars :title="'Net revenue retention by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Same customers, a year on" :rows="groups.filter((g) => g.nrr !== null).map((g) => ({ label: g.group, value: Math.round(g.nrr! * 1000) / 10, note: g.customers + ' customers' }))" :ref-line="100" ref-label="100%: customers pay as much as a year ago" />
+      <div class="charts">
+        <StackBars class="wide" title="Where revenue came from and went" sub="Last 12 months" :currency="cur" :labels="br.map((x) => cMon(x.month))" :series="[{ name: 'New', values: br.map((x) => x.new) }, { name: 'Expansion', values: br.map((x) => x.expansion) }, { name: 'Returned', values: br.map((x) => x.reactivated) }, { name: 'Downgrades', values: br.map((x) => x.contraction), down: true }, { name: 'Lost', values: br.map((x) => x.churned), down: true }]" foot="Above the line: revenue added. Below: revenue lost. Hover a month for the amounts." />
       </div>
       <div class="charts two">
         <TrendChart title="Active customers" :points="br.map((x) => ({ label: cMon(x.month), value: x.active }))" foot="Paying in the month" :foot-value="br[br.length - 1]?.active ?? null" />
@@ -158,4 +189,10 @@ td.g { color: var(--c-navy); font-weight: 600; } td.w { color: #8a5a0a; font-wei
 .dat { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; } .dat > div:first-child { display: flex; flex-direction: column; gap: 2px; } .dat span { font-size: 12.5px; color: var(--c-muted); }
 .frm { display: flex; flex-direction: column; gap: 10px; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .sgb h3 { margin: 0 0 6px; } .sgb p { margin: 0 0 10px; }
 @media (max-width: 1000px) { .charts, .charts.two { grid-template-columns: 1fr; } }
+.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 19px; line-height: 1.4; color: var(--c-navy); max-width: 980px; }
+.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
+.act { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; } .ac { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; } .ac b { font-size: 16px; font-weight: 600; color: var(--c-navy); } .ac p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.5; } .ac em { font-style: normal; font-size: 12.5px; color: var(--c-blue-deep); }
+.ac ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; } .ac li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--c-rule); padding-bottom: 5px; } .ac li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; } .ac li em { color: #9b3b32; white-space: nowrap; font-size: 12px; }
+.charts .wide { grid-column: 1 / -1; }
+@media (max-width: 1000px) { .sc, .act { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc, .act { grid-template-columns: 1fr; } }
 </style>

@@ -103,18 +103,25 @@ export function forecastFromGrids(grids: Grid[], currency = 'USD'): ReadSheet | 
   const pick = scored.find((x) => x.t) ?? scored.sort((a, b) => b.hit - a.hit)[0]!
   if (!pick.t && pick.hit < 2) return null
   const taken = new Set<string>(), lines: ReadSheet['lines'] = [], notes: string[] = []
-  let opening: number | null = null
+  let opening: number | null = null, inCosts = false
+  const COSTKEYS = new Set(['payroll', 'marketing', 'rnd', 'ga', 'other'])
   for (const r of pick.l.rows) {
-    const k = keyOf(r.label, taken)
+    let k = keyOf(r.label, taken)
+    // A row of the company's own among the operating costs (Consultants, Rent…) becomes its own cost line.
+    if (k && COSTKEYS.has(k)) inCosts = true
+    else if (k === 'ignore' || (k && !COSTKEYS.has(k))) inCosts = false
+    else if (!k && inCosts && Object.values(r.values).some((v) => v !== 0)) k = 'new'
     const vals = Object.entries(r.values).sort(([a], [b]) => (a < b ? -1 : 1))
     if (k === 'opening') { opening = vals[0]?.[1] ?? null; continue }
     const to = (k ?? 'ignore') as ReadSheet['lines'][number]['maps_to']
     if (to !== 'ignore' && to !== 'cash_balance' && to !== 'items' && to !== 'funding' && to !== 'customers' && to !== 'headcount') taken.add(to)
-    lines.push({ label: r.label, maps_to: to, values: vals.map(([month, v]) => ({ month, value: COSTS.has(to) ? Math.abs(v) : v })) })
+    lines.push({ label: r.label, maps_to: to, values: vals.map(([month, v]) => ({ month, value: COSTS.has(to) || to === 'new' ? Math.abs(v) : v })) })
   }
   const used = lines.filter((l) => l.maps_to !== 'ignore' && l.maps_to !== 'cash_balance' && l.values.length)
   if (!used.length) return null
   const start = used.flatMap((l) => l.values.map((v) => v.month)).sort()[0]!
+  const own = lines.filter((l) => l.maps_to === 'new').map((l) => l.label)
+  if (own.length) notes.push('Your own cost lines, kept as their own lines in the forecast: ' + own.join(', ') + '. Change any of them to an existing line if you prefer.')
   notes.push((pick.t ? 'Read from the Finvry forecast template' : 'Read from "' + pick.l.sheet + '" by line names') + ', with no AI.' + (pick.t ? '' : ' Lines with other names are left out: check each line below.'))
   if (opening === null) notes.push('No opening cash in the file: the cash at the start is taken from your figures; change it on the forecast if needed.')
   return { currency, start, opening_cash: opening, lines, notes }

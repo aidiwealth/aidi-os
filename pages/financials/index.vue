@@ -4,7 +4,7 @@ const { canPath } = useModuleAccess()
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
-interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
+interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null>; cf_generated?: boolean }
 const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
 const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
@@ -12,6 +12,9 @@ const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }
 const scoped = computed(() => !!me.value?.entity_scoped)
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const baseCo = computed(() => subj.value?.company ?? null)
+// One company or a group: asked once; a group is offered to add its first subsidiary.
+const structDone = ref(false)
+async function structAnswered(v: 'single' | 'group') { structDone.value = true; if (v === 'group') { if (subj.value?.paid) subForm.open = true; else subWall.value = true } }
 const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
 const subject = ref(baseCo.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(baseCo.value?.currency ?? 'USD')
 watch(baseCo, (c, old) => { if (c && !old) { subject.value = c.subject; currency.value = c.currency } })
@@ -245,6 +248,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <p v-if="converting" class="hint">Shown in {{ co?.reporting }} for reporting, converted at the latest daily exchange rate{{ co?.rate_as_of ? ' (' + new Date(co.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}. Your figures are stored in their original currency; switch to Original to edit. Billing is not affected.</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>
 
+    <ClientOnly><StructureAsk v-if="canEdit && baseCo && !baseCo.structure && !structDone && pages.length <= 1" :name="baseCo.name" @answered="structAnswered" /></ClientOnly>
+    <ClientOnly><FinGroupSummary v-if="baseCo && pages.length > 1 && subject === baseCo.subject" @open="pickPage" /></ClientOnly>
     <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
     <ClientOnly v-if="!isGroup"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>

@@ -5,10 +5,10 @@
 import { run, defaults, addMonths, COST_LINES, type Assumptions, type FixedMonth } from '~/shared/forecast'
 const props = defineProps<{ open: boolean; seed: Assumptions }>()
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }] }>()
-type MapTo = 'revenue' | 'cogs' | 'payroll' | 'marketing' | 'rnd' | 'ga' | 'other' | 'tax' | 'items' | 'funding' | 'customers' | 'headcount' | 'cash_balance' | 'ignore'
+type MapTo = 'revenue' | 'cogs' | 'payroll' | 'marketing' | 'rnd' | 'ga' | 'other' | 'tax' | 'items' | 'funding' | 'customers' | 'headcount' | 'cash_balance' | 'new' | 'ignore'
 interface Line { label: string; maps_to: MapTo; values: { month: string; value: number }[] }
 interface Sheet { currency: string; start: string; opening_cash: number | null; lines: Line[]; notes: string[] }
-const MAP: [MapTo, string][] = [['revenue', 'Revenue'], ['cogs', 'Cost of revenue'], ['payroll', 'Payroll'], ...COST_LINES.map((c) => [c.key as MapTo, c.label] as [MapTo, string]), ['tax', 'Tax'], ['items', 'One-off item (+ in / − out)'], ['funding', 'Funding raised'], ['customers', 'Customers'], ['headcount', 'Headcount'], ['cash_balance', 'Closing cash (check only)'], ['ignore', 'Leave out (subtotal / non-cash)']]
+const MAP: [MapTo, string][] = [['revenue', 'Revenue'], ['cogs', 'Cost of revenue'], ['payroll', 'Payroll'], ...COST_LINES.map((c) => [c.key as MapTo, c.label] as [MapTo, string]), ['tax', 'Tax'], ['items', 'One-off item (+ in / − out)'], ['funding', 'Funding raised'], ['customers', 'Customers'], ['headcount', 'Headcount'], ['cash_balance', 'Closing cash (check only)'], ['new', 'Its own cost line (new)'], ['ignore', 'Leave out (subtotal / non-cash)']]
 const how = ref<'rules' | 'ai'>('rules'), files = ref<File[]>([]), busy = ref(false), msg = ref(''), sheet = ref<Sheet | null>(null), fnames = ref<string[]>([]), name = ref('')
 watch(() => props.open, (o) => { if (o) { files.value = []; sheet.value = null; msg.value = '' } })
 function add(ev: Event) { for (const f of Array.from(((ev.target as HTMLInputElement).files ?? []) as ArrayLike<File>)) if (files.value.length < 3 && !files.value.some((x) => x.name === f.name)) files.value.push(f) }
@@ -23,12 +23,16 @@ const COSTS = new Set(COST_LINES.map((c) => c.key))
 const built = computed<Assumptions | null>(() => {
   const s = sheet.value; if (!s) return null
   const fixed: Record<string, FixedMonth> = {}
+  // Lines kept as their own cost lines get a key of their own (letters only, unique), up to 8 of them.
+  const own = new Map<Line, { key: string; label: string }>(), used = new Set<string>(COST_LINES.map((c) => c.key))
+  for (const l of s.lines.filter((x) => x.maps_to === 'new').slice(0, 8)) { let k = 'x_' + (l.label.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'cost'); while (used.has(k)) k = k.slice(0, 27) + '_a'; used.add(k); own.set(l, { key: k, label: l.label.slice(0, 80) }) }
   for (const l of s.lines) {
-    if (l.maps_to === 'ignore' || l.maps_to === 'cash_balance') continue
+    if (l.maps_to === 'ignore' || l.maps_to === 'cash_balance' || (l.maps_to === 'new' && !own.has(l))) continue
     for (const v of l.values) {
       if (v.month < s.start) continue
       const F = (fixed[v.month] ??= {})
-      if (COSTS.has(l.maps_to)) { F.costs ??= {}; F.costs[l.maps_to] = (F.costs[l.maps_to] ?? 0) + v.value }
+      if (l.maps_to === 'new') { const k = own.get(l)!.key; F.costs ??= {}; F.costs[k] = (F.costs[k] ?? 0) + Math.abs(v.value) }
+      else if (COSTS.has(l.maps_to)) { F.costs ??= {}; F.costs[l.maps_to] = (F.costs[l.maps_to] ?? 0) + v.value }
       else { const k = l.maps_to as Exclude<keyof FixedMonth, 'costs'>; F[k] = (F[k] ?? 0) + v.value }
     }
   }
@@ -40,7 +44,7 @@ const built = computed<Assumptions | null>(() => {
   const a = defaults(s.start, { cash: s.opening_cash ?? props.seed.opening.cash, revenue: first.revenue ?? 0, payroll: first.payroll ?? 0, headcount: first.headcount ?? props.seed.opening.headcount, customers: first.customers ?? 0 }, Object.fromEntries(COST_LINES.map((c) => [c.key, first.costs?.[c.key] ?? 0])), s.currency)
   a.months = Math.min(60, Math.max(span, 24)); a.revenue.growth_pct = Math.max(-20, Math.min(50, growth))
   a.cogs_pct = last.revenue && last.cogs !== undefined ? Math.round(last.cogs / last.revenue * 1000) / 10 : props.seed.cogs_pct
-  a.costs = a.costs.map((c) => ({ ...c, growth_pct: 1 })); a.payroll_raise_pct = 0
+  a.costs = [...a.costs.map((c) => ({ ...c, growth_pct: 1 })), ...[...own.values()].map((o) => ({ key: o.key, label: o.label, amount: first.costs?.[o.key] ?? 0, growth_pct: 1 }))]; a.payroll_raise_pct = 0
   a.fixed = fixed; a.source = { file: fnames.value.join(', ').slice(0, 200), imported_at: new Date().toISOString(), lines: s.lines.map((l) => ({ label: l.label.slice(0, 200), maps_to: l.maps_to })) }
   return a
 })
@@ -72,7 +76,7 @@ function done() { if (built.value) emit('done', { name: name.value.trim() || 'Ac
     </div>
     <div v-else class="fi">
       <div class="nr"><label class="label">Name<input v-model="name" maxlength="120"></label><p class="mut">{{ fnames.join(', ') }} · {{ months.length }} months from {{ months[0] ? mon(months[0]) : '—' }} to {{ months.length ? mon(months[months.length - 1]!) : '—' }} · {{ sheet.currency }}</p></div>
-      <div class="fx-stats"><StatTile label="Revenue" :value="money(sum('revenue'))" :note="'Over ' + months.length + ' months'" /><StatTile label="Costs" :value="money(sum('cogs') + sum('payroll') + sum('marketing') + sum('rnd') + sum('ga') + sum('other'))" note="Cost of revenue, payroll and operating" /><StatTile label="Funding" :value="money(sum('funding'))" /><StatTile label="Opening cash" :value="money(built?.opening.cash ?? 0)" :note="sheet.opening_cash === null ? 'Not in the file: from your figures' : 'From the file'" /></div>
+      <div class="fx-stats"><StatTile label="Revenue" :value="money(sum('revenue'))" :note="'Over ' + months.length + ' months'" /><StatTile label="Costs" :value="money(sum('cogs') + sum('payroll') + sum('marketing') + sum('rnd') + sum('ga') + sum('other') + sum('new'))" note="Cost of revenue, payroll and operating" /><StatTile label="Funding" :value="money(sum('funding'))" /><StatTile label="Opening cash" :value="money(built?.opening.cash ?? 0)" :note="sheet.opening_cash === null ? 'Not in the file: from your figures' : 'From the file'" /></div>
       <div v-if="cashCheck" class="ck"><span class="dot" :class="cashCheck.ok ? 'ok' : 'red'" /><span v-if="cashCheck.ok">Closing cash matches the file (<b>{{ money(cashCheck.last.theirs) }}</b> in {{ mon(cashCheck.last.m) }}).</span><span v-else>Closing cash differs from the file: <b>{{ money(cashCheck.worst.ours) }}</b> here against <b>{{ money(cashCheck.worst.theirs) }}</b> in {{ mon(cashCheck.worst.m) }}. Check that no line is counted twice or left out, and the opening cash.</span></div>
       <div v-if="sheet.notes.length" class="nt"><p class="bh">Notes</p><ul><li v-for="(x, i) in sheet.notes" :key="i">{{ x }}</li></ul></div>
       <div class="tw"><table class="t" data-nosearch><thead><tr><th>Line in the file</th><th>Goes to</th><th class="r">Total</th><th class="r">Months</th></tr></thead>

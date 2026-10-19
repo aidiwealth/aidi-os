@@ -30,7 +30,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 <template>
   <section>
     <p class="label">Venture Capital</p>
-    <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select><button class="btn" type="button" @click="adding = true">Add company</button></div></div>
+    <div class="head"><h1>Portfolio</h1><div class="tools"><select v-model="holder" aria-label="Filter by fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select><a class="btn secondary" href="/api/portfolio/report-template" title="The Excel format portfolio companies report in: read exactly, with no AI">Report template</a><a class="btn secondary" href="/api/portfolio/export?format=xlsx">Export Excel</a><a class="btn secondary" href="/api/portfolio/export?format=pdf">Export PDF</a><button class="btn" type="button" @click="adding = true">Add company</button></div></div>
     <AppModal :open="adding" title="Add a portfolio company" @close="adding = false"><form class="mfrm" @submit.prevent="add">
       <label v-if="candidates?.length" class="label">From an Invested deal<select v-model="form.deal_id"><option value="">— Add by hand —</option><option v-for="c in candidates" :key="c.id" :value="c.id">{{ c.company }}</option></select></label>
       <div class="label">Finvry workspace (optional)<span v-if="fv" class="fvp"><b>{{ fv.name }}</b><button type="button" class="lkb" @click="fv = null; form.finvry_org_id = ''">Remove</button></span><button v-else-if="!fvPick" type="button" class="lkb" @click="fvPick = true">If the company uses Finvry, link it to import its investor updates</button><FinvryPicker v-if="fvPick && !fv" @pick="pickFinvry" /></div>
@@ -75,4 +75,5 @@ td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); }
 @media (max-width: 1000px) { .add { grid-template-columns: 1fr 1fr; } }
 .mfrm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .mfrm label.label { display: flex; flex-direction: column; gap: 6px; } .mfrm .btn, .mfrm .hint, .mfrm .error { grid-column: 1 / -1; } .mfrm .btn { justify-self: start; }
 .dk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; } .k { background: #fff; border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; } .k em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .k b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .tw { background: #fff; border: 1px solid var(--c-rule); overflow-x: auto; } @media (max-width: 900px) { .dk { grid-template-columns: 1fr 1fr; } }
+.tools a.btn { text-decoration: none; }
 </style>

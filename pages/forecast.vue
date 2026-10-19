@@ -49,20 +49,23 @@ function reseed() { if (!confirm('Reset the starting point to your latest actual
 const addHire = () => a.value.hires.push({ role: '', start: addMonths(a.value.start, 1), monthly_cost: 0 })
 const addFund = () => a.value.funding.push({ label: 'Seed round', month: addMonths(a.value.start, 3), amount: 0 })
 const addItem = () => a.value.items.push({ label: '', month: addMonths(a.value.start, 1), amount: 0 })
+// The company's own cost lines (beyond the four standard ones), up to 12 lines in all.
+const newCost = ref('')
+function addCost() { const label = newCost.value.trim().slice(0, 80); if (!label) return; let k = 'x_' + (label.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'cost'); while (a.value.costs.some((c) => c.key === k)) k = k.slice(0, 27) + '_a'; a.value.costs.push({ key: k, label, amount: 0, growth_pct: 1 }); newCost.value = '' }
 const open = reactive<Record<string, boolean>>({ start: true, revenue: true, costs: true, people: false, money: false, scen: false })
 // Chart: last 12 actual months then the forecast.
 const chart = computed(() => ({ actual: (data.value?.actuals ?? []).filter((x) => x.month < a.value.start).map((x) => ({ month: x.month, revenue: x.revenue ?? 0, costs: (x.cogs ?? 0) + (x.opex ?? 0), cash: x.cash })), forecast: res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })) }))
 // Actuals against this forecast, for months that have both.
 const vs = computed(() => (data.value?.actuals ?? []).map((x) => ({ x, f: res.value.months.find((y) => y.month === x.month) })).filter((p) => p.f && p.x.revenue !== null))
-const ROWS: [string, (x: (typeof res.value.months)[number]) => number | null, string?][] = [
+const ROWS = computed<[string, (x: (typeof res.value.months)[number]) => number | null, string?][]>(() => [
   ['Revenue', (x) => x.revenue, 'b'], ['Cost of revenue', (x) => -x.cogs], ['Gross profit', (x) => x.gross_profit, 'b'], ['Gross margin %', (x) => x.gross_margin, 'p'],
-  ['Payroll', (x) => -x.payroll], ...COST_LINES.map((c) => [c.label, (x: (typeof res.value.months)[number]) => -(x.costs[c.key] ?? 0)] as [string, (x: (typeof res.value.months)[number]) => number]),
+  ['Payroll', (x) => -x.payroll], ...a.value.costs.map((c) => [c.label, (x: (typeof res.value.months)[number]) => -(x.costs[c.key] ?? 0)] as [string, (x: (typeof res.value.months)[number]) => number]),
   ['Operating costs', (x) => -x.opex, 'b'], ['EBITDA', (x) => x.ebitda, 'b'], ['Tax', (x) => -x.tax], ['Net income', (x) => x.net_income, 'b'],
   ['One-off items', (x) => x.items], ['Funding', (x) => x.funding], ['Net cash flow', (x) => x.cash_flow, 'b'], ['Cash at month end', (x) => x.cash, 'h'],
-  ['Customers', (x) => x.customers, 'n'], ['Headcount', (x) => x.headcount, 'n'], ['ARR', (x) => x.arr]]
+  ['Customers', (x) => x.customers, 'n'], ['Headcount', (x) => x.headcount, 'n'], ['ARR', (x) => x.arr]])
 function csv() {
   const head = ['Line', ...res.value.months.map((x) => x.month)]
-  const lines = [head, ...ROWS.map(([l, f]) => [l, ...res.value.months.map((x) => { const v = f(x); return v === null ? '' : String(Math.round(v * 100) / 100) })])]
+  const lines = [head, ...ROWS.value.map(([l, f]) => [l, ...res.value.months.map((x) => { const v = f(x); return v === null ? '' : String(Math.round(v * 100) / 100) })])]
   const blob = new Blob([lines.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n')], { type: 'text/csv' })
   const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = (name.value || 'forecast') + ' (' + sc.value + ').csv'; l.click(); URL.revokeObjectURL(u)
 }
@@ -102,7 +105,8 @@ function csv() {
               <label>Monthly churn %<input v-model.number="a.revenue.churn_pct" type="number" min="0" step="0.5"></label><label>Revenue per customer / month<input v-model.number="a.revenue.arpu" type="number" min="0"></label><label>Price growth % a month<input v-model.number="a.revenue.arpu_growth_pct" type="number" step="0.5"></label></div>
             <div class="g2"><label>Cost of revenue (% of revenue)<input v-model.number="a.cogs_pct" type="number" min="0" max="100"></label></div></div></div>
         <div class="sec"><button class="sh" @click="open.costs = !open.costs"><b>Operating costs</b><span>{{ m(a.costs.reduce((s, c) => s + c.amount, 0)) }} a month</span></button>
-          <div v-if="open.costs" class="sb"><div v-for="c in a.costs" :key="c.key" class="cl"><span>{{ c.label }}</span><input v-model.number="c.amount" type="number" min="0" :aria-label="c.label + ' per month'"><input v-model.number="c.growth_pct" type="number" step="0.5" :aria-label="c.label + ' growth % a month'" class="pc"><em>% / mo</em></div>
+          <div v-if="open.costs" class="sb"><div v-for="c in a.costs" :key="c.key" class="cl"><span>{{ c.label }}</span><input v-model.number="c.amount" type="number" min="0" :aria-label="c.label + ' per month'"><input v-model.number="c.growth_pct" type="number" step="0.5" :aria-label="c.label + ' growth % a month'" class="pc"><em>% / mo</em><button v-if="!COST_LINES.some((b) => b.key === c.key)" type="button" class="rmc" :aria-label="'Remove ' + c.label" @click="a.costs = a.costs.filter((x) => x !== c)">×</button></div>
+            <form v-if="a.costs.length < 12" class="addc" @submit.prevent="addCost"><input v-model="newCost" maxlength="60" placeholder="Add your own cost line (e.g. Consultants, Rent)"><button class="btn secondary sm" type="submit" :disabled="!newCost.trim()">Add</button></form>
             <div class="g2"><label>Tax on profit %<input v-model.number="a.tax_pct" type="number" min="0" max="100"></label></div></div></div>
         <div class="sec"><button class="sh" @click="open.people = !open.people"><b>People</b><span>{{ m(a.opening.payroll) }} payroll · {{ a.hires.length }} hire{{ a.hires.length === 1 ? '' : 's' }}</span></button>
           <div v-if="open.people" class="sb"><div class="g2"><label>Payroll today (a month)<input v-model.number="a.opening.payroll" type="number" min="0"></label><label>Yearly raise % (each January)<input v-model.number="a.payroll_raise_pct" type="number" step="0.5"></label></div>
@@ -143,7 +147,7 @@ function csv() {
 .sb { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; } .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .g2 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--c-ink-soft); }
 .sb input:not([type="radio"]), .sb select { font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); background: #fff; min-width: 0; width: 100%; }
 .rad { display: flex; gap: 14px; font-size: 13px; } .rad label { display: flex; gap: 6px; align-items: center; }
-.cl { display: grid; grid-template-columns: minmax(0, 1fr) 96px 54px auto; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); } .cl em { font-style: normal; font-size: 11px; color: var(--c-muted); }
+.cl { display: grid; grid-template-columns: minmax(0, 1fr) 96px 54px auto 18px; gap: 6px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); } .cl em { font-style: normal; font-size: 11px; color: var(--c-muted); }
 .row3 { display: grid; grid-template-columns: minmax(0, 1fr) 112px 92px 20px; gap: 6px; align-items: center; } .x { background: none; border: 0; color: var(--c-muted); font-size: 16px; cursor: pointer; } .kl { margin: 4px 0 0; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); } .hint { margin: 0; font-size: 12px; color: var(--c-muted); }
 .rs { display: flex; flex-direction: column; gap: 16px; min-width: 0; } .pad0 { padding: 0; } .tw { overflow-x: auto; }
 .t { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; width: max-content; min-width: 100%; } .t th { font-weight: 500; color: var(--c-muted); text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; background: #fbfaf7; }
@@ -151,4 +155,5 @@ function csv() {
 .t tr.b td { font-weight: 600; color: var(--c-ink); } .t tr.h td { font-weight: 600; color: var(--c-navy); background: #f4f6f9; } .t tr.h td.st { background: #f4f6f9; } .t td.neg { color: var(--c-danger); }
 .t.sm { width: 100%; } .t.sm th, .t.sm td { text-align: left; } h3 { margin: 0 0 10px; font-size: 15px; } .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .as { position: static; max-height: none; } }
+.rmc { background: none; border: 0; color: var(--c-muted); font-size: 16px; cursor: pointer; padding: 0 4px; } .addc { display: flex; gap: 8px; margin: 6px 0 10px; } .addc input { flex: 1; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); }
 </style>

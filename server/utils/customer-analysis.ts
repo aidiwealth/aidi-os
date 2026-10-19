@@ -75,14 +75,15 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
   let facts = FACTS.get(org + kind)?.key === key ? FACTS.get(org + kind)!.facts : null
   if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(org + kind, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
   const subject = 'customers:' + kind
-  const hash = createHash('sha256').update(JSON.stringify({ facts, v: 1 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, v: 2 })).digest('hex').slice(0, 40)
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }
   const ins = rules(kind, facts)
   let out: CustAnalysis = { headline: ins[0] ? ins.map((i) => i.title).slice(0, 2).join('; ') + '.' : 'Upload more months to see the analysis.', insights: ins, ai: false, as_of: String(facts.as_of), kind }
   if (useRuntimeConfig().anthropicApiKey) {
     try {
-      const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v1', inputRef: subject,
+      const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v2', inputRef: subject,
         system: 'You are a growth-stage CFO and investor reviewing a company\'s ' + (kind === 'retention' ? 'revenue retention and churn' : 'customer base (top and least performing customers, sectors, concentration, lifetime value and acquisition cost)') + '. Use only the facts given (amounts in ' + facts.currency + '). ' +
+          'Use only the numbers in the facts, exactly as given: never multiply, annualise or add them up yourself (a wrong total is worse than none). Each detail at most two short sentences, in plain words a founder understands, ending with what to do. ' +
           'Give a one-sentence headline and exactly 4 key points, most important first, each with the numbers behind it and what to do about it. Compare with usual benchmarks for B2B software and fintech where useful. Plain words, no filler. If customer revenue does not match Financials by more than 5%, make that a risk point.',
         user: JSON.stringify(facts), toolName: 'record_points', toolDescription: 'Record the headline and four key points.', schema: Out, maxTokens: 1500,
         jsonSchema: { type: 'object', additionalProperties: false, required: ['headline', 'insights'], properties: { headline: { type: 'string' }, insights: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'detail', 'tone'], properties: { title: { type: 'string' }, detail: { type: 'string' }, tone: { type: 'string', enum: ['good', 'watch', 'risk'] } } } } } } })

@@ -26,8 +26,8 @@ const fmt = (v: number) => (props.unit === 'money' ? briefMoney(v, props.currenc
 <style scoped>
 .hb { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
 .hb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .hb-title { font-family: var(--font-heading); font-size: 17px; font-weight: 500; color: var(--c-navy); } .hb-sub { font-size: 12px; color: var(--c-muted); }
-.hb-rows { display: flex; flex-direction: column; gap: 8px; } .hb-row { display: grid; grid-template-columns: minmax(0, 150px) 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
-.hb-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hb-l em { font-style: normal; color: var(--c-muted); font-size: 11.5px; margin-left: 6px; }
+.hb-rows { display: flex; flex-direction: column; gap: 8px; } .hb-row { display: grid; grid-template-columns: minmax(0, 170px) 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+.hb-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; } .hb-l em { display: block; font-style: normal; color: var(--c-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 .hb-t { position: relative; height: 12px; background: var(--c-paper-2, #f4f6fa); } .hb-t i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c-navy); } .hb-t i.below { background: #b2453b; }
 .hb-t u { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1px dashed var(--c-ink-soft); text-decoration: none; }
 .hb-row b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; } .hb-empty { color: var(--c-muted); font-size: 13px; padding: 20px 0; }

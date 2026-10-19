@@ -9,6 +9,18 @@ const { data, pending, refresh, cs, sp, asOf, months, t, cur, stamp } = await us
 const by = ref<GroupBy>('sector')
 const up = ref(false); const ok = ref(''); const msg = ref('')
 const rpt = ref(false)
+// ---- Direction: concentration, customer economics and growth against what is usual. ----
+const P1 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 1000) / 10)
+const prevS = computed(() => (asOf.value ? customerStats(cs.value, addM(asOf.value, -3), t.value, by.value, data.value?.fin.gm ?? null, cur.value).summary : null))
+const growthTtm = computed(() => { const a = st.value.rows.reduce((x, r) => x + r.ttm, 0), b = st.value.rows.reduce((x, r) => x + r.prior_ttm, 0); return b > 0 ? (a / b - 1) * 100 : null })
+const verdict = computed(() => {
+  const top = ranked.value[0], g = growthTtm.value, won = brC.value.reduce((x, r) => x + r.new_logos, 0), lost = brC.value.reduce((x, r) => x + r.lost_logos, 0)
+  if (!top) return ''
+  return (g == null ? '' : 'Customer revenue ' + (g >= 0 ? 'grew ' : 'fell ') + Math.abs(Math.round(g)) + '% on the year before. ') +
+    (S.value.top1 != null && S.value.top1 > 0.15 ? top.name + ' alone is ' + cPct(S.value.top1) + ' of revenue: losing them would cut revenue by ' + (S.value.top1 > 0.33 ? 'over a third' : 'a large share') + '. ' : 'No single customer dominates. ') +
+    (won || lost ? won + ' customers won and ' + lost + ' lost in 12 months.' : '')
+})
+const quad = computed(() => groups.value.filter((g) => g.group !== 'Not set').map((g) => ({ label: g.group, share: g.share, growth: g.growth, customers: g.active })))
 const { data: modsR } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')
 const rptOk = computed(() => !!modsR.value?.find((m) => m.code === 'fin_report' && m.usable))
 // The last 12 months to the chosen month: revenue and paying customers, customers won and lost, concentration.
@@ -67,11 +79,20 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     </div>
 
     <template v-else>
-      <div class="fx-stats">
-        <StatTile label="Active customers" icon="users" tone="b" :value="S.active" :note="'Average ' + cMoney(S.arpa, cur) + ' a month each'" />
-        <StatTile label="Lifetime value (LTV)" icon="money" tone="n" :value="cMoney(S.ltv, cur, true)" :note="S.lifetime_months ? 'Expected ' + yrs(Math.round(S.lifetime_months)) + (S.gm !== null ? ' at ' + cPct(S.gm) + ' gross margin' : ' (revenue, no margin known)') : 'Needs a year of history'" />
-        <StatTile label="LTV to CAC" icon="chart" tone="c" :value="S.ltv_cac ? S.ltv_cac.toFixed(1) + '×' : '—'" :note="S.payback ? 'Payback ' + Math.round(S.payback) + ' months' : 'Add acquisition cost to your file'" />
-        <StatTile label="Top 10 customers" icon="flag" :tone="(S.top10 ?? 0) > 0.6 ? 'r' : 'a'" :value="cPct(S.top10)" :note="'of revenue · largest ' + cPct(S.top1) + (S.pareto !== null ? ' · ' + cPct(S.pareto) + ' of customers make 80%' : '')" />
+      <div class="dir card">
+        <div class="dh"><span class="eyebrow">Where you stand</span><p class="vd">{{ verdict }}</p></div>
+        <div class="sc">
+          <BenchBar label="Largest customer" :value="P1(S.top1)" :prev="P1(prevS?.top1)" :bands="[10, 20]" :max="60" lower-is-better :hint="ranked[0]?.name ?? ''" />
+          <BenchBar label="Top 10 customers" :value="P1(S.top10)" :prev="P1(prevS?.top10)" :bands="[30, 50]" :max="100" lower-is-better hint="Share of revenue" />
+          <BenchBar label="Customer revenue growth" :value="growthTtm" :bands="[0, 20]" :max="100" hint="Last 12 months vs the 12 before" />
+          <BenchBar v-if="S.ltv_cac" label="Lifetime value to acquisition cost" unit="×" :value="S.ltv_cac" :prev="prevS?.ltv_cac ?? null" :bands="[1.5, 3]" :max="10" :hint="S.payback ? 'Payback ' + Math.round(S.payback) + ' months' : ''" />
+          <BenchBar v-else label="Paying customers" unit="×" :value="null" :bands="[1, 2]" :max="3" :hint="S.active + ' paying · add acquisition cost for LTV to CAC'" />
+        </div>
+        <div class="kvr"><span><b>{{ S.active.toLocaleString('en-US') }}</b> paying customers</span><span><b>{{ cMoney(S.arpa, cur) }}</b> average a month</span><span><b>{{ cMoney(S.ltv, cur, true) }}</b> lifetime value{{ S.lifetime_months ? ' over ' + yrs(Math.round(S.lifetime_months)) : '' }}</span><span v-if="S.pareto != null"><b>{{ cPct(S.pareto, 1) }}</b> of customers make 80% of revenue</span></div>
+      </div>
+      <div class="charts two">
+        <ParetoChart title="How concentrated revenue is" sub="Last 12 months" :shares="st.rows.map((r) => r.ttm)" />
+        <FocusBars :title="'Where to focus, by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Change the grouping in By sector below" :items="quad" />
       </div>
       <CustAnalysis kind="customers" :stamp="stamp" />
       <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="customer analysis" /></ClientOnly>
@@ -85,9 +106,8 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
         <HBars title="Top 10 customers" sub="Share of revenue, last 12 months" :rows="ranked.slice(0, 10).map((r) => ({ label: r.name, value: Math.round(r.share * 1000) / 10 }))" />
         <HBars :title="'Revenue by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Share of revenue, last 12 months" :rows="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10, note: g.active + ' paying' }))" />
       </div>
-      <div class="charts two">
-        <HBars title="How concentrated revenue is" sub="Share of revenue from the largest customers" :rows="conc" />
-        <StackBars title="Customers won and lost" sub="Last 12 months" unit="count" :labels="brC.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: brC.map((x) => x.new_logos) }, { name: 'Lost', values: brC.map((x) => x.lost_logos), down: true }]" />
+      <div class="charts">
+        <StackBars class="wide" title="Customers won and lost" sub="Last 12 months" unit="count" :labels="brC.map((x) => cMon(x.month))" :series="[{ name: 'Won', values: brC.map((x) => x.new_logos) }, { name: 'Lost', values: brC.map((x) => x.lost_logos), down: true }]" />
       </div>
 
       <div class="three">
@@ -142,7 +162,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 </template>
 
 <style scoped>
-.charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .charts.two { grid-template-columns: 1fr 1fr; }
+.charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .charts.two { grid-template-columns: 1fr 1fr; } .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 1000px) { .charts, .charts.two { grid-template-columns: 1fr; } }
 .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; } .head h1 { margin: 0; } .sub { margin: 4px 0 0; color: var(--c-muted); font-size: 14px; }
 .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sel { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--c-muted); }
@@ -164,4 +184,8 @@ td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .dat { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; } .dat > div:first-child { display: flex; flex-direction: column; gap: 2px; } .dat span { font-size: 12.5px; color: var(--c-muted); }
 .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; } .g2 .wide { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm { display: flex; flex-direction: column; gap: 10px; } .sp { flex: 1; }
 @media (max-width: 1100px) { .three { grid-template-columns: 1fr; } }
+.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 19px; line-height: 1.4; color: var(--c-navy); max-width: 980px; }
+.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
+.kvr { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: var(--c-ink-soft); } .kvr b { color: var(--c-ink); font-weight: 600; }
+@media (max-width: 1000px) { .sc { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc { grid-template-columns: 1fr; } }
 </style>
