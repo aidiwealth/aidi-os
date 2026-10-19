@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // What the founder's figures say, as one calm panel: runway and burn (checked several ways), where each dollar of
 // revenue goes, four key points (detail on demand) and what to take to each part of the team.
 import type { BurnReview } from '~/shared/fin-view'
@@ -17,7 +18,7 @@ const fullW = ref<string[]>([]); const openI = ref<number | null>(null); const s
 const TONE: Record<string, string> = { good: 'Going well', watch: 'Watch', risk: 'Risk' }
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const sym = computed(() => SYM[props.currency] ?? props.currency + ' ')
-const short = (v: number) => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return s + sym.value + (a >= 1e6 ? (a / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'm' : a >= 1e4 ? (a / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(a).toLocaleString('en-US')) }
+const short = (v: number) => shortAmount(v, sym.value)
 const mon = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
 // Runway ring: share of a 24-month horizon.
 const R = 42, C = 2 * Math.PI * R

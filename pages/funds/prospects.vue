@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // Prospective LPs: family offices, funds of funds, endowments, foundations, pensions, sovereign funds, insurers,
 // corporates, banks, DFIs, lenders and individuals, with their mandate, ticket and contact; imported from a list or a
 // Google Sheet, found with AI, or added by hand; added to the LP pipelines.
@@ -12,7 +13,7 @@ const q = ref(''), kind = ref(''), cap = ref(''), pri = ref(''), sel = ref<strin
 const shown = computed(() => (data.value?.items ?? []).filter((p) => (!kind.value || p.kind === kind.value) && (!pri.value || p.priority === pri.value) && (!cap.value || (cap.value === 'debt' ? p.capital !== 'equity' : p.capital !== 'debt')) && (!q.value || [p.name, p.country, p.mandate, p.contact_name, p.regions.join(' '), p.sectors.join(' ')].join(' ').toLowerCase().includes(q.value.toLowerCase()))))
 const priorities = computed(() => [...new Set((data.value?.items ?? []).map((p) => p.priority).filter((x): x is string => !!x))].sort())
 const counts = computed(() => { const c: Record<string, number> = {}; for (const p of data.value?.items ?? []) c[p.kind] = (c[p.kind] ?? 0) + 1; return c })
-const usdS = (v: number | null) => (v == null ? '' : '$' + (v >= 1e9 ? (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : v))
+const usdS = (v: number | null) => (v == null ? '' : shortAmount(v))
 const ticket = (p: P) => (p.ticket_min_usd || p.ticket_max_usd ? usdS(p.ticket_min_usd) + (p.ticket_max_usd && p.ticket_max_usd !== p.ticket_min_usd ? '–' + usdS(p.ticket_max_usd) : '') : '')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 // Bulk add, import, AI search.

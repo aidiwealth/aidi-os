@@ -38,7 +38,7 @@ async function saveVis() { if (!vis.data) return; vis.busy = true; try { await $
 const greeting = ref('Welcome'), dateLabel = ref('')
 onMounted(() => { const h = new Date().getHours(); greeting.value = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; dateLabel.value = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) })
 const first = computed(() => (data.value?.name ?? '').split(' ')[0])
-const money = (v: number, c = 'USD') => { const a = Math.abs(v); const s = a >= 1e9 ? (v / 1e9).toFixed(1) + 'bn' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : a >= 1e4 ? (v / 1e3).toFixed(1) + 'k' : Math.round(v).toLocaleString(); return (c === 'USD' ? '$' : c === 'NGN' ? '₦' : c === 'GBP' ? '£' : c === 'EUR' ? '€' : c + ' ') + s }
+const money = (v: number, c = 'USD') => briefMoney(v, c)
 const pts = (s?: Pt[]) => (s ?? []).map((x) => ({ label: new Date(x.period + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), value: x.value }))
 const month = (p: string | null) => (p ? new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' }) : '')
 const ago = (s: string) => { const m = Math.floor((Date.now() - Date.parse(s)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.floor(m / 60) + 'h ago' : Math.floor(m / 1440) + 'd ago' }

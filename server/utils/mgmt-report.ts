@@ -1,3 +1,4 @@
+import { shortAmount } from '~/shared/compact'
 // The monthly management report: how the business did in one month, for the executive team. The founder picks which
 // sections go in; every figure is worked out here from the company's own statements (nothing estimated), with the
 // analysis' key points, what to raise, and the founder's own comments. Made as a PDF or an Excel file.
@@ -70,7 +71,7 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
   const g = (r: typeof cur | null, k: string) => (r ? num(r.d[k]) : null)
   const sym = cy === 'USD' ? '$' : cy === 'GBP' ? '£' : cy === 'EUR' ? '€' : cy + ' '
   const money = (v: number | null) => (v === null ? '–' : (v < 0 ? '(' : '') + Math.round(Math.abs(v)).toLocaleString('en-US') + (v < 0 ? ')' : ''))
-  const short = (v: number | null) => { if (v === null) return '–'; const a = Math.abs(v), s = v < 0 ? '−' : ''; return s + sym + (a >= 1e9 ? (a / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'bn' : a >= 1e6 ? (a / 1e6).toFixed(2) + 'm' : a >= 1e4 ? (a / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : Math.round(a).toLocaleString('en-US')) }
+  const short = (v: number | null) => (v === null ? '–' : shortAmount(v, sym))
   const pct = (v: number | null, d = 1) => (v === null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d).replace(/\.0$/, '') + '%')
   const pts = (v: number | null) => (v === null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1).replace(/\.0$/, '') + ' pts')
   const COST = new Set(['cogs', 'opex_total', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other', 'depreciation', 'interest', 'tax'])

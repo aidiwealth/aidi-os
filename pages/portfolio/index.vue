@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 import type { PortfolioRow } from '~/server/api/portfolio/index.get'
 useHead({ title: 'Portfolio' })
 const { data, error, refresh } = await useFetch<PortfolioRow[]>('/api/portfolio')
@@ -21,7 +22,7 @@ async function add() {
   try { const r = await $fetch<{ id: string }>('/api/portfolio', { method: 'POST', body: { ...form } }); await navigateTo('/portfolio/' + r.id) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the company.' }
 }
-const usd = (v: string | null) => { if (v === null) return '—'; const x = Number(v), a = Math.abs(x); return (x < 0 ? '-$' : '$') + (a >= 1e6 ? (a / 1e6).toFixed(1) + 'm' : a >= 1e4 ? Math.round(a / 1e3) + 'k' : Math.round(a).toLocaleString('en-US')) }
+const usd = (v: string | null) => (v === null ? '—' : shortAmount(v))
 const runway = (r: PortfolioRow) => (r.cash && r.net_burn && Number(r.net_burn) > 0 ? (Number(r.cash) / Number(r.net_burn)).toFixed(1) + ' mo' : r.net_burn && Number(r.net_burn) <= 0 ? 'Profitable' : '—')
 const mon = (p: string | null) => (p ? new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Started', submitted: 'Submitted' }

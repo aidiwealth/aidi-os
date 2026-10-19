@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 useHead({ title: 'Analytics' })
 const entity = ref('')
 const range = ref<'90d' | '12m' | 'all'>('12m')
@@ -6,7 +7,7 @@ const { data: entities } = await useFetch<{ id: string; name: string; kind: stri
 const funds = computed(() => (entities.value ?? []).filter((e) => e.kind === 'fund' || e.kind === 'spv'))
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { data, pending } = await useFetch<any>('/api/analytics', { query: { entity, range }, watch: [entity, range] })
-const usd = (v: number | null | undefined) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(1) + 'm' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v)))
+const usd = (v: number | null | undefined) => (v == null ? '—' : shortAmount(v))
 const lbl = (p: string) => new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.bucket === 'week' ? { day: 'numeric', month: 'short', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const pts = (s?: { period: string; value: number }[]) => (s ?? []).map((x) => ({ label: lbl(x.period), value: x.value }))
 const STAGES = [['screening', 'Screening'], ['first_call', 'First call'], ['diligence', 'Diligence'], ['ic', 'IC'], ['invested', 'Invested'], ['passed', 'Passed']] as const

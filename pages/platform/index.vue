@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 useHead({ title: 'Finvry · Overview' })
 interface O { kpis: { total: number; active: number; trial: number; past_due: number; suspended: number; new30: number; seats: number; mrr: number; arr: number; newMrr: number; churnMrr: number; pipelineOpen: number; pipeline: number; weighted: number; overdueCount: number; overdue: number }
   mrrSeries: { period: string; value: number }[]; renewals: { id: string; customer: string; organization_id: string; renews: string; amount_usd: string; billing: string }[]
   byPlan: { plan: string; n: number }[]; trials: { id: string; name: string; ends: string | null }[]; recent: { id: string; name: string; status: string; plan: string }[] }
 const { data } = await useFetch<O>('/api/platform/overview')
-const usd = (v: number | string) => { const n = Number(v); return '$' + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : Math.round(n).toLocaleString()) }
+const usd = (v: number | string) => shortAmount(v)
 const pts = (s?: { period: string; value: number }[]) => (s ?? []).map((x) => ({ label: new Date(x.period + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), value: x.value }))
 const max = computed(() => Math.max(1, ...(data.value?.byPlan ?? []).map((p) => p.n)))
 const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 import { COUNTRIES } from '~/shared/countries'
 // Find investors and grants for your round: ranked by fit with your location, stage, sector and amount. Pick the ones
 // you like and add them to a pipeline (or start a new one).
@@ -18,7 +19,7 @@ const sel = ref<string[]>([])
 const toggle = (id: string) => { sel.value = sel.value.includes(id) ? sel.value.filter((x) => x !== id) : [...sel.value, id] }
 const items = computed(() => data.value?.items ?? [])
 const counts = computed(() => ({ investor: items.value.filter((i) => i.kind === 'investor').length, grant: items.value.filter((i) => i.kind === 'grant').length, strong: items.value.filter((i) => i.score >= 70).length }))
-const money = (n: number) => '$' + (n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n))
+const money = (n: number) => shortAmount(n)
 const range = (p: P) => (p.min_usd && p.max_usd && p.min_usd === p.max_usd ? money(p.min_usd) : p.min_usd || p.max_usd ? (p.min_usd ? money(p.min_usd) : 'Up to') + (p.max_usd ? (p.min_usd ? '–' : ' ') + money(p.max_usd) : '+') : '')
 const fit = (s: number) => (s >= 70 ? 'Strong fit' : s >= 45 ? 'Good fit' : 'Possible')
 // Add to a pipeline

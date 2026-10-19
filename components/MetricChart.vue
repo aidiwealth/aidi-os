@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // A small line chart: one metric across months. Plain SVG, no chart library.
 const props = defineProps<{ label: string; unit: string; points: { period: string; value: number | null }[] }>()
 const W = 300, H = 110, PAD = 8
@@ -11,7 +12,7 @@ const xy = computed(() => pts.value.map((p, i) => ({
   x: pts.value.length === 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (pts.value.length - 1),
   y: H - PAD - ((p.value - range.value.lo) / (range.value.hi - range.value.lo)) * (H - 2 * PAD), ...p
 })))
-const fmt = (n: number) => props.unit === 'usd' ? '$' + (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : Math.abs(n) >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)))
+const fmt = (n: number) => props.unit === 'usd' ? shortAmount(n)
   : props.unit === 'pct' ? n.toFixed(0) + '%' : String(Math.round(n))
 const last = computed(() => pts.value[pts.value.length - 1])
 const mon = (p: string) => new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 import type { PipelineCard } from '~/server/api/pipeline/index.get'
 useHead({ title: 'Pipeline' })
 const { data, error, refresh } = await useFetch<PipelineCard[]>('/api/pipeline')
@@ -15,7 +16,7 @@ const inView = computed(() => (data.value ?? []).filter((d) => !vehicle.value ||
 const col = (s: string) => inView.value.filter((d) => d.stage === s)
 const passed = computed(() => inView.value.filter((d) => d.stage === 'passed'))
 const days = (s: string) => Math.max(0, Math.floor((Date.now() - new Date(s).getTime()) / 86400000))
-const money = (v: string | null) => (v ? '$' + (Number(v) >= 1e6 ? (Number(v) / 1e6).toFixed(1).replace('.0', '') + 'm' : Math.round(Number(v) / 1e3) + 'k') : '')
+const money = (v: string | null) => (v ? shortAmount(v) : '')
 const adding = ref(false)
 const form = reactive({ company: '', one_liner: '', website: '', round: '', raise_usd: '', source: 'referral', stage: 'screening', vehicle_entity_id: '' })
 const msg = ref('')

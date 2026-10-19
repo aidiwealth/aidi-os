@@ -13,3 +13,11 @@ export function compactNum(n: number): string | null {
 export function compactText(s: string): string {
   return s.replace(/\d[\d,]*(?:\.\d+)?/g, (m) => compactNum(Number(m.replace(/,/g, ''))) ?? m)
 }
+// The one short format for money everywhere (cards, tables, charts, reports, updates): $540, $9,800, $100k, $1.5M,
+// ₦1.5B, ₦2.3T. Below 10,000 the amount is shown whole.
+export function shortAmount(v: number | string | null | undefined, sym = '$'): string {
+  const n = Number(v ?? 0)
+  if (!Number.isFinite(n)) return '—'
+  const a = Math.abs(n)
+  return (n < 0 ? '−' : '') + sym + (compactNum(n) ?? a.toLocaleString('en-US', { maximumFractionDigits: a < 100 ? 2 : 0 }))
+}

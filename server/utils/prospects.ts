@@ -1,3 +1,4 @@
+import { shortAmount } from '~/shared/compact'
 // Find investors and grants for a round: a curated list (kept by the Finvry team) ranked by how well each fits the
 // company's location, stage, sector and the amount being raised. Founders add the ones they like to a pipeline.
 export const RAISE_STAGES = ['idea', 'pre_seed', 'seed', 'series_a', 'series_b', 'growth'] as const
@@ -10,7 +11,7 @@ const AFRICA = new Set(['Algeria', 'Angola', 'Benin', 'Botswana', 'Burkina Faso'
 export interface Prospect { id: string; kind: 'investor' | 'grant'; name: string; type: string; regions: string[]; stages: string[]; sectors: string[]; min_usd: number | null; max_usd: number | null; website: string | null; description: string | null; how_to_apply: string | null; deadline: string | null; active: boolean; updated_at: string }
 export interface Match extends Prospect { score: number; reasons: string[] }
 
-const money = (n: number) => '$' + (n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n))
+const money = (n: number) => shortAmount(n)
 export async function allProspects(activeOnly = true): Promise<Prospect[]> {
   return (await asPlatform(() => db().query<Prospect>(`SELECT id, kind, name, type, regions, stages, sectors, min_usd::float, max_usd::float, website, description, how_to_apply, deadline, active, updated_at FROM crm.prospects ${activeOnly ? 'WHERE active' : ''} ORDER BY kind, name`))).rows
 }

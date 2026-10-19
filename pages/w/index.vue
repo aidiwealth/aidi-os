@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // Aidi Wealth client portal: the client's own household only (net worth, holdings, accounts, family, calculator).
 useHead({ title: 'My wealth' })
 const route = useRoute()
@@ -17,7 +18,7 @@ const shownDeals = computed(() => [...(deals.value?.deals ?? [])].sort((a, b) =>
 function wantIn(d: Deal) { Object.assign(di, { id: d.id, amount: d.my_amount ?? d.min_investment ?? '', note: '', busy: false, msg: '' }) }
 async function sendInterest(action: 'interested' | 'withdraw', id = di.id) { if (route.query.client) { di.msg = 'Preview only.'; return } di.busy = true; di.msg = ''; try { await $fetch('/api/w/secondaries', { method: 'POST', body: { id, action, amount: di.amount, note: di.note } }); di.id = ''; await refreshDeals() } catch (e) { di.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } finally { di.busy = false } }
 const closesTxt = (d: Deal) => { if (d.closed) return 'Closed'; if (!d.closes_at) return ''; const n = Math.round((new Date(d.closes_at + 'T00:00:00Z').getTime() - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime()) / 86400e3); return n <= 0 ? 'Closes today' : 'Closes in ' + n + ' day' + (n === 1 ? '' : 's') }
-const usd0 = (v: number | null) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(v)))
+const usd0 = (v: number | null) => (v == null ? '—' : shortAmount(v))
 const TABS = computed(() => [['home', 'Overview'], ['plan', 'Financial plan'], ['holdings', 'Holdings'], ...(deals.value?.deals.length ? [['deals', 'Deal flow']] : []), ['accounts', 'Accounts'], ['statements', 'Statements'], ['docs', 'Documents'], ['family', 'Family'], ['billing', 'Invoices'], ['calculator', 'Calculator'], ...(data.value?.features?.savings || data.value?.features?.trading || data.value?.features?.wallet ? [['invest', data.value?.client?.country === 'NG' ? 'Wallet & savings' : 'Invest & wallet']] : [])])
 const { data: statements } = await useFetch<{ id: string; label: string; period_kind: string; ending: number }[]>('/api/w/statements', { key: 'w-stm', default: () => [], immediate: !route.query.client })
 const { data: docs, refresh: refreshDocs } = await useFetch<{ id: string; title: string; status: string; has_signed: boolean; created_at: string }[]>('/api/w/docs', { key: 'w-docs', default: () => [], immediate: !route.query.client })

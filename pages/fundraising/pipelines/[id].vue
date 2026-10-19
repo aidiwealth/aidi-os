@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // A fundraising pipeline: stages with totals on the left; investors with stage, amount and primary contact.
 const id = useRoute().params.id as string
 interface St { id: string; name: string; color: string; kind: string; sort: number; total: number; n: number }
@@ -11,7 +12,7 @@ const { data, refresh } = await useFetch<D>('/api/crm/pipelines/' + id)
 useHead({ title: () => data.value?.pipeline.name ?? 'Pipeline' })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦' }
 const money = (v: number | null | undefined) => (v == null ? '—' : (SYM[data.value?.pipeline.currency ?? 'USD'] ?? '') + Math.round(v).toLocaleString('en-US'))
-const short = (v: number) => (SYM[data.value?.pipeline.currency ?? 'USD'] ?? '') + (v >= 1e6 ? (v / 1e6).toFixed(v % 1e6 ? 1 : 0) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : String(v))
+const short = (v: number) => shortAmount(v, SYM[data.value?.pipeline.currency ?? 'USD'] ?? '')
 const stage = ref(''); const q = ref(''); const sel = ref<string[]>([])
 const st = (sid: string) => data.value?.stages.find((s) => s.id === sid)
 const sortBy = ref<'recent' | 'likely'>('recent')

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // A figure over time in plain SVG: a line (revenue, cash) or bars above and below zero (profit and loss), so losses
 // show as clearly as gains. Zero is drawn whenever the figures cross it. Hover a period to read its value.
 const props = withDefaults(defineProps<{ title: string; sub?: string; points: { label: string; value: number }[]; unit?: 'usd' | 'count' | 'pct'; foot?: string; symbol?: string; bars?: boolean; footValue?: number | null }>(), { sub: '', unit: 'count', foot: '', symbol: '$', bars: false, footValue: undefined })
@@ -26,7 +27,7 @@ const line = computed(() => smooth(pts.value))
 const area = computed(() => (pts.value.length ? line.value + ' L' + pts.value[pts.value.length - 1]!.x.toFixed(1) + ' ' + zero.value.toFixed(1) + ' L' + pts.value[0]!.x.toFixed(1) + ' ' + zero.value.toFixed(1) + ' Z' : ''))
 const bw = computed(() => Math.max(3, Math.min(28, (W / Math.max(1, props.points.length)) * 0.62)))
 const bx = (i: number) => (props.points.length > 1 ? (i + 0.5) * (W / props.points.length) : W / 2)
-const fmt = (n: number) => { const a = Math.abs(n), s = n < 0 ? '−' : ''; return props.unit === 'usd' ? s + props.symbol + (a >= 1e9 ? (a / 1e9).toFixed(1) + 'bn' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'm' : a >= 1e3 ? (a / 1e3).toFixed(a >= 1e5 ? 0 : 1) + 'k' : Math.round(a)) : props.unit === 'pct' ? n.toFixed(0) + '%' : s + Math.round(a).toLocaleString('en-US') }
+const fmt = (n: number) => { const a = Math.abs(n), s = n < 0 ? '−' : ''; return props.unit === 'usd' ? shortAmount(n, props.symbol) : props.unit === 'pct' ? n.toFixed(0) + '%' : s + Math.round(a).toLocaleString('en-US') }
 const lastVal = computed(() => (props.footValue !== undefined ? props.footValue : props.points[props.points.length - 1]?.value ?? null))
 const hasData = computed(() => props.points.some((p) => p.value !== 0))
 const crosses = computed(() => lo.value < 0)

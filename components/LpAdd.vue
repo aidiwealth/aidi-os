@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // Add prospective LPs in bulk: import a list (drop Excel / CSV / PDF / Word, or paste a Google Sheet link), or find
 // them with AI against a mandate. The result comes back to pick from (ranked by fit when there is a pipeline or a
 // mandate), then is saved to the LP list and, with a pipeline, added to it.
@@ -41,7 +42,7 @@ async function save() {
     emit('done', r.added + ' LP' + (r.added === 1 ? '' : 's') + ' added' + (r.updated ? ', ' + r.updated + ' already on the list (details filled in)' : '') + (props.pipelineId ? '; ' + r.in_pipeline + ' added to ' + (props.pipelineName ?? 'the pipeline') : '') + '.')
   } catch (e) { st.msg = err(e) } finally { st.saving = false }
 }
-const usdS = (v: number | null) => (v == null ? '' : '$' + (v >= 1e9 ? (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : v))
+const usdS = (v: number | null) => (v == null ? '' : shortAmount(v))
 const ticket = (r: Row) => (r.ticket_min_usd || r.ticket_max_usd ? usdS(r.ticket_min_usd) + (r.ticket_max_usd && r.ticket_max_usd !== r.ticket_min_usd ? '–' + usdS(r.ticket_max_usd) : '') : '')
 const stageText = computed(() => job.stage.value === 'fetch' ? 'Opening the sheet…' : job.stage.value === 'search' ? 'Searching for LPs that fit the mandate… (a few minutes)' : job.stage.value === 'score' ? 'Ranking them by fit' + (job.progress.value.total ? ' (' + (job.progress.value.done ?? 0) + ' of ' + job.progress.value.total + ')' : '') + '…' : 'Reading the list…')
 const lk = (v: number | null) => (v == null ? '' : v >= 70 ? 'hi' : v >= 45 ? 'md' : 'lo')

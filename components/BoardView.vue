@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // Renders a board: KPI cards with change on the prior period, then charts drawn as line, bar, area, pie or table.
 interface K { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }
 type CT = 'line' | 'bar' | 'area' | 'pie' | 'table'
@@ -14,7 +15,7 @@ function fmt(v: number | null, unit: string, short = true) {
   if (unit === 'number') return Math.round(v).toLocaleString('en-US')
   if (unit === 'months') return v >= 99 ? '99+ mo' : v.toFixed(1).replace(/\.0$/, '') + ' mo'
   const s = SYM[props.data.currency] ?? props.data.currency + ' ', a = Math.abs(v)
-  const t = !short ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : a >= 1e9 ? (a / 1e9).toFixed(2) + 'bn' : a >= 1e6 ? (a / 1e6).toFixed(2) + 'm' : a >= 1e3 ? (a / 1e3).toFixed(1) + 'k' : a.toFixed(0)
+  const t = !short ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : shortAmount(a, '')
   return (v < 0 ? '−' : '') + s + t
 }
 const COLORS = ['#1c4f9c', '#3fa7d6', '#b5470b']

@@ -1,3 +1,4 @@
+import { shortAmount } from '~/shared/compact'
 // Customer revenue for the Retention and Customers pages, with the as-of month and grouping the founder picks.
 import { addM, monthsBetween, span, type Cust, type GroupBy } from '~/shared/customer-metrics'
 export interface CustScopeInfo { entity: string | null; common_last?: string | null; entities: { id: string; name: string; currency: string | null; main: boolean; has_data: boolean; last?: string | null }[] }
@@ -27,12 +28,12 @@ export async function useCustomers() {
   return { ...r, cs, sp, asOf, months, groupBy, t, cur, stamp, last12, grace, billing, scope }
 }
 export const C_SYMS: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€', KES: 'KSh ', GHS: 'GH₵', ZAR: 'R ' }
-export const cMoney = (v: number | null | undefined, cur: string, compact = false) => {
+// Customer amounts, short and easy to read everywhere ($100k, $1.5M, ₦1.5B, ₦2.3T); exact with compact = false.
+export const cMoney = (v: number | null | undefined, cur: string, compact = true) => {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—'
-  const s = C_SYMS[cur] ?? cur + ' ', a = Math.abs(v), neg = v < 0 ? '−' : ''
-  if (compact && a >= 1e6) return neg + s + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm'
-  if (compact && a >= 1e4) return neg + s + Math.round(a / 1e3) + 'k'
-  return neg + s + Math.round(a).toLocaleString('en-US')
+  const s = C_SYMS[cur] ?? cur + ' '
+  if (compact) return shortAmount(v, s)
+  return (v < 0 ? '−' : '') + s + Math.round(Math.abs(v)).toLocaleString('en-US')
 }
 export const cPct = (v: number | null | undefined, d = 0) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : (v * 100).toFixed(d) + '%')
 export const cMon = (m: string, long = false) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: long ? 'long' : 'short', year: long ? 'numeric' : '2-digit', timeZone: 'UTC' }) : '')

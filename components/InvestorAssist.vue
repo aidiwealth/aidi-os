@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // "Fill with AI" for adding an investor: type a name or firm, or paste an email signature, LinkedIn summary or note.
 import type { InvestorGuess } from '~/shared/investor'
 const props = withDefaults(defineProps<{ context?: string }>(), { context: '' })
@@ -9,7 +10,7 @@ async function go() {
   try { const g = await $fetch<InvestorGuess>('/api/ai/investor', { method: 'POST', body: { text: text.value, context: props.context || undefined } }); done.value = g; emit('fill', g) }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read that.' } finally { busy.value = false }
 }
-const usd = (v: number) => '$' + (v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(v))
+const usd = (v: number) => shortAmount(v)
 </script>
 <template>
   <div class="ia">

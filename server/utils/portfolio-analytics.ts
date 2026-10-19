@@ -1,3 +1,4 @@
+import { shortAmount } from '~/shared/compact'
 // Turns reported figures into the numbers and flags a partner wants first. Deterministic: no AI, no guessing.
 // Companies that report quarterly are compared quarter on quarter; monthly reporters month on month.
 import { periods, granularity, lastClosedQuarter, type PeriodRow, type Granularity } from '~/shared/portfolio-periods'
@@ -7,7 +8,7 @@ export interface Analysis {
   granularity: Granularity; runwayMonths: number | null; revenueGrowthPct: number | null; burnGrowthPct: number | null
 }
 
-const usd = (n: number) => '$' + (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1) + 'm' : Math.abs(n) >= 1e3 ? Math.round(n / 1e3) + 'k' : Math.round(n))
+const usd = (n: number) => shortAmount(n)
 const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(0) + '%'
 const change = (a: number | null | undefined, b: number | null | undefined) => (a != null && b != null && b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null)
 

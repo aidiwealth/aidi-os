@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // An LP pipeline: a fund raise (tied to a fund), a debt facility, or a co-investment / SPV (tied to a deal's round
 // and the portfolio company). Stages with totals; each LP with stage, amount, how likely they are to commit and the
 // next step; LPs who sign go onto the LP register (and, for a fund, as a commitment).
@@ -16,7 +17,7 @@ const PK: Record<string, string> = { fund: 'Fund raise', debt: 'Debt facility', 
 const cur = computed(() => data.value?.pipeline.currency ?? 'USD')
 const money = (v: number | null | undefined) => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: cur.value, maximumFractionDigits: 0 }).format(v))
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
-const short = (v: number) => (SYM[cur.value] ?? cur.value + ' ') + (v >= 1e9 ? (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : String(Math.round(v)))
+const short = (v: number) => shortAmount(v, SYM[cur.value] ?? cur.value + ' ')
 const st = (sid: string) => data.value?.stages.find((s) => s.id === sid)
 const stage = ref(''), q = ref(''), sel = ref<string[]>([]), sortBy = ref<'recent' | 'likely' | 'amount'>('recent'), okMsg = ref(''), msg = ref('')
 const list = computed(() => { const l = (data.value?.targets ?? []).filter((x) => (!stage.value || x.stage_id === stage.value) && (!q.value || (x.name + ' ' + (x.contact_name ?? '') + ' ' + (x.country ?? '')).toLowerCase().includes(q.value.toLowerCase()))); return sortBy.value === 'likely' ? l.slice().sort((a, b) => (b.likelihood ?? -1) - (a.likelihood ?? -1)) : sortBy.value === 'amount' ? l.slice().sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)) : l })

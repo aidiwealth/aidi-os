@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // Secondaries: SPV and secondary opportunities from Meridian (AngelList) and Wefunder, picked up from Notices as the
 // alerts arrive, plus any added by hand. Review, mark interest, record what was invested.
 useHead({ title: 'Secondaries' })
@@ -16,7 +17,7 @@ watch([status, source, qd], () => router.replace({ query: { status: status.value
 const { data, refresh, pending } = await useFetch<{ criteria: { stages: string[]; sectors: string[]; expiry_days: number }; stages: string[]; rows: S[]; total: number; page: number; pages: number; size: number; counts: { status: string; n: number }[]; kpi: { month: number; invested: number } }>('/api/secondaries', { query: { status, source, q: qd, page, size } })
 const cnt = (s: string) => data.value?.counts.find((c) => c.status === s)?.n ?? 0
 const openCount = computed(() => cnt('new') + cnt('reviewing') + cnt('interested'))
-const usd = (v: number | null | undefined) => (v == null ? '—' : '$' + (v >= 1e6 ? (v / 1e6).toFixed(v % 1e6 ? 1 : 0) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v).toLocaleString('en-US')))
+const usd = (v: number | null | undefined) => (v == null ? '—' : shortAmount(v))
 const daysTo = (d: string) => Math.round((new Date(d + 'T00:00:00Z').getTime() - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime()) / 86400e3)
 const closeLabel = (r: S) => { if (!r.closes_at) return '—'; const n = daysTo(r.closes_at); return r.status === 'expired' || n < 0 ? 'Closed ' + day(r.closes_at) : n === 0 ? 'Closes today' : 'In ' + n + ' day' + (n === 1 ? '' : 's') }
 const day = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })

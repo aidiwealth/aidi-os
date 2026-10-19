@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shortAmount } from '~/shared/compact'
 // A wealth client's risk level and how their holdings fit it. Staff choose the level; clients take a short
 // questionnaire (or pick a level) on their portal. Ratings and limits come from Wealth management → Settings.
 import { RISK_LEVELS, RISK_QUESTIONS, RATING_LABEL, levelFromAnswers, levelLabel, type RiskFit } from '~/shared/risk'
@@ -21,7 +22,7 @@ async function saveClient(level?: string) {
   try { await $fetch('/api/w/risk', { method: 'POST', body: level ? { level } : { answers: qz.answers } }); qz.open = false; emit('saved') } catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const total = computed(() => props.fit.by_rating.reduce((a, x) => a + x.value, 0))
-const usd = (v: number) => '$' + (v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : Math.round(v).toLocaleString('en-US'))
+const usd = (v: number) => shortAmount(v)
 const SHADE = ['#c9d8ec', '#9fbbe0', '#6d97cc', '#3d6fae', '#1b3f73']
 </script>
 <template>

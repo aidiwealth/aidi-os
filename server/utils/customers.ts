@@ -3,7 +3,7 @@
 import type { Cust, GroupBy } from '~/shared/customer-metrics'
 import { deriveLines } from '~/shared/fin-view'
 import { rateBook } from './fx-book'
-import { custEntities, custEntityId } from './cust-scope'
+import { custEntities, custEntityId, withAllCompanies } from './cust-scope'
 
 // billing: how customers pay. Usage (pay as you go) and prepaid credits (customers buy credit and use it over months,
 // like SMS units) make revenue lumpy: dormant_months is how long without revenue before a customer counts as lost, and
@@ -32,10 +32,10 @@ export async function customerConfig(): Promise<CustConfig> {
   const rows = await configRows()
   const one = custEntityId()
   if (one) {
-    // A company's customer figures are in its own currency (a Nigerian subsidiary in naira). Figures saved in another
-    // currency (e.g. converted to US dollars before the group had its companies, then moved here) are converted once.
+    // A company's customer figures are in its own currency (a Nigerian subsidiary in naira). Saved figures are never
+    // converted here: a currency on old settings rows is not a reliable record of what the figures are in.
     const e = (await custEntities()).find((x) => x.id === one), r = rows.find((x) => x.entity_id === one)
-    if (r && e?.currency && r.currency !== e.currency) { await alignCurrency(one, r.currency, e.currency); r.currency = e.currency }
+    if (r && e?.currency) r.currency = e.currency
     if (r) return strip(r)
     const d = await defaultConfig(); return { ...d, currency: e?.currency ?? d.currency }
   }
@@ -46,22 +46,17 @@ export async function customerConfig(): Promise<CustConfig> {
   return { ...(main ? strip(main) : await defaultConfig()), currency: await groupCurrency() }
 }
 // Convert one company's saved customer revenue (and acquisition costs) from one currency to another, month by month at
-// the book rates (fx-book.ts). Only the request that flips the settings' currency does it, so it runs once.
-async function alignCurrency(entityId: string, from: string, to: string): Promise<void> {
+// the book rates (fx-book.ts). Used when customer data is moved to a company that reports in another currency.
+export async function convertCustomerCurrency(entityId: string, from: string, to: string): Promise<void> {
+  if (from === to) return
   const book = await rateBook()
-  const c = await db().connect()
-  try {
-    await c.query('BEGIN')
-    const flipped = (await c.query('UPDATE financials.customer_config SET currency = $3, updated_at = now() WHERE entity_id = $1 AND currency = $2 RETURNING 1', [entityId, from, to])).rowCount
-    if (flipped) {
-      const ms = (await c.query<{ m: string }>("SELECT DISTINCT to_char(month, 'YYYY-MM') AS m FROM financials.customer_revenue WHERE entity_id = $1", [entityId])).rows.map((x) => x.m)
-      for (const m of ms) { const k = book.convert(from, to, m); if (k) await c.query('UPDATE financials.customer_revenue SET amount = round(amount * $3::numeric, 2) WHERE entity_id = $1 AND month = $2::date', [entityId, m + '-01', k.rate]) }
-      const k0 = book.convert(from, to, ms.sort().pop() ?? new Date().toISOString().slice(0, 7))
-      if (k0) await c.query('UPDATE financials.customers SET acquisition_cost = round(acquisition_cost * $2::numeric, 2), updated_at = now() WHERE entity_id = $1 AND acquisition_cost IS NOT NULL', [entityId, k0.rate])
-      await c.query("DELETE FROM financials.analyses WHERE subject LIKE 'customers:%' OR subject LIKE 'advice:%'")
-    }
-    await c.query('COMMIT')
-  } catch (err) { await c.query('ROLLBACK').catch(() => {}); throw err } finally { c.release() }
+  await withAllCompanies(async () => {
+    const ms = (await db().query<{ m: string }>("SELECT DISTINCT to_char(month, 'YYYY-MM') AS m FROM financials.customer_revenue WHERE entity_id = $1", [entityId])).rows.map((x) => x.m)
+    for (const m of ms) { const k = book.convert(from, to, m); if (k) await db().query('UPDATE financials.customer_revenue SET amount = round(amount * $3::numeric, 2) WHERE entity_id = $1 AND month = $2::date', [entityId, m + '-01', k.rate]) }
+    const k0 = book.convert(from, to, ms.sort().pop() ?? new Date().toISOString().slice(0, 7))
+    if (k0) await db().query('UPDATE financials.customers SET acquisition_cost = round(acquisition_cost * $2::numeric, 2), updated_at = now() WHERE entity_id = $1 AND acquisition_cost IS NOT NULL', [entityId, k0.rate])
+    await db().query('UPDATE financials.customer_config SET currency = $2, updated_at = now() WHERE entity_id = $1', [entityId, to])
+  })
 }
 // The companies that have customer revenue (all of them in the group view).
 export async function entitiesWithCustomers(): Promise<string[]> {

@@ -1,3 +1,4 @@
+import { shortAmount } from '~/shared/compact'
 import { mdPlain, mdRender } from '../../shared/markdown'
 // Turning an update (cover + blocks) into HTML for email and the web. All user text is escaped first; charts are drawn
 // with plain HTML (bars and tables) so they show in every email client.
@@ -50,7 +51,7 @@ function fmt(k: string, v: number | null, cur: string, short = false): string {
   if (u === 'months') return v + ' mo'
   if (u === 'number') return Math.round(v).toLocaleString('en-US')
   const a = Math.abs(v), s = SYM[cur] ?? cur + ' '
-  const n = short ? (a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(0) + 'K' : String(Math.round(a))) : Math.round(a).toLocaleString('en-US')
+  const n = short ? shortAmount(a, '') : Math.round(a).toLocaleString('en-US')
   return (v < 0 ? '-' : '') + s + n
 }
 function chartHtml(b: Block, d: Series): string {
