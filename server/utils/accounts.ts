@@ -21,11 +21,34 @@ export function addFigure(lines: Record<string, number>, detail: Record<string, 
   const x = COST.includes(to) ? Math.abs(v) : v
   lines[to] = Math.round(((lines[to] ?? 0) + x) * 100) / 100
 }
-// Fills each standard line its categories belong to, when the sheet did not give the line itself.
+// Fills each standard line from its categories. When the sheet gives the line itself too, the line is either the
+// total of those categories (keep it) or one more item beside them ("Other current assets" next to "Loans receivable",
+// "Property & equipment"…: add them up). The sheet's own grand total decides which (total assets, total liabilities,
+// total operating costs); with no grand total, a line equal to its categories is their total, otherwise they are added.
+// Lines that are totals by nature (equity, revenue, cost of sales) keep the figure given.
+const GROUPS: { total: string; parts: string[] }[] = [
+  { total: 'total_assets', parts: ['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets'] },
+  { total: 'total_liabilities', parts: ['payables', 'debt', 'other_liabilities'] },
+  { total: 'opex_total', parts: ['opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other'] }]
 export function foldCategories(lines: Record<string, number>, detail: Record<string, number>, given = new Set(Object.keys(lines))) {
   const sums: Record<string, number> = {}
   for (const [k, v] of Object.entries(detail)) { const p = k.slice(0, k.indexOf('|')); if (p) sums[p] = (sums[p] ?? 0) + v }
-  for (const [p, v] of Object.entries(sums)) if (!given.has(p)) lines[p] = Math.round(v * 100) / 100
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const close = (a: number, b: number) => Math.abs(a - b) <= Math.max(2, Math.abs(b) * 0.005)
+  for (const [p, c] of Object.entries(sums)) {
+    if (!given.has(p)) { lines[p] = r2(c); continue }
+    const v = lines[p]!
+    if (close(v, c)) continue // the line is the total of its categories
+    const grp = GROUPS.find((x) => x.parts.includes(p))
+    if (!grp) continue // equity, cost of sales, revenue…: the line given is the total
+    const tot = lines[grp.total]
+    if (typeof tot === 'number') {
+      const rest = grp.parts.filter((x) => x !== p).reduce((a, x) => a + (typeof lines[x] === 'number' ? lines[x]! : 0), 0)
+      if (close(rest + v + c, tot) && !close(rest + v, tot)) lines[p] = r2(v + c)
+      continue
+    }
+    lines[p] = r2(v + c)
+  }
   return lines
 }
 // Keeps the categories in the chart of accounts (new ones added; a category keeps the line it was first given).
@@ -44,10 +67,11 @@ export async function listAccounts(): Promise<{ id: string; name: string; parent
 // row that moved to another line (e.g. strategic investments out of short-term investments) does not leave the old
 // figure behind. Lines in a part the sheet does not cover, and figures typed in or uploaded (source other than sheet),
 // are kept.
-export function mergeStatement(old: { lines?: Record<string, number>; detail?: Record<string, number>; source?: string } | undefined, lines: Record<string, number>, detail: Record<string, number>) {
+export function mergeStatement(old: { lines?: Record<string, number>; detail?: Record<string, number>; source?: string } | undefined, lines: Record<string, number>, detail: Record<string, number>, clear: string[] = []) {
   if (old && old.source !== 'sheet') return { lines: { ...(old.lines ?? {}), ...lines }, detail: { ...(old.detail ?? {}), ...detail } }
   const sect = new Map(LINES.map((l) => [l.key, l.section]))
-  const covered = new Set([...Object.keys(lines), ...Object.keys(detail).map((k) => k.slice(0, k.indexOf('|')))].map((k) => sect.get(k)).filter(Boolean))
+  // clear: parts the sheet covers but whose figures were held back (an old reading of them is not kept either).
+  const covered = new Set([...[...Object.keys(lines), ...Object.keys(detail).map((k) => k.slice(0, k.indexOf('|')))].map((k) => sect.get(k)).filter(Boolean), ...clear])
   const keep = (k: string) => !covered.has(sect.get(k)!)
   const ol = Object.fromEntries(Object.entries(old?.lines ?? {}).filter(([k]) => keep(k)))
   const od = Object.fromEntries(Object.entries(old?.detail ?? {}).filter(([k]) => { const p = k.slice(0, k.indexOf('|')); return !p || keep(p) }))

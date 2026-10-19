@@ -18,7 +18,7 @@ Object.assign(globalThis, { LINES: F.LINES, LINE_KEYS: F.LINE_KEYS, balanceError
 const A = await jiti.import(join(root, 'server/utils/accounts.ts'))
 Object.assign(globalThis, { isCat: A.isCat, catOf: A.catOf, addFigure: A.addFigure, foldCategories: A.foldCategories, mergeStatement: A.mergeStatement })
 const S = await jiti.import(join(root, 'server/utils/sheet-links.ts'))
-Object.assign(globalThis, { suggestMapping: S.suggestMapping })
+Object.assign(globalThis, { suggestMapping: S.suggestMapping, monthOf: S.monthOf })
 const AI = await jiti.import(join(root, 'server/utils/sheet-ai.ts'))
 
 const fx = (n) => readFileSync(join(root, 'tests/sheets/fixtures', n))
@@ -88,6 +88,54 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   const grand = { name: 'G', rows: [['', 'Jan', 'Feb'], ['A', 1, 2], ['B', 3, 4], ['Subtotal', 4, 6], ['C', 10, 10], ['D', 5, 5], ['Subtotal 2', 15, 15], ['Grand total', 19, 21]] }
   const s2 = AI.subtotalRows(grand, [1, 2])
   check('a grand total of two subtotals is not mistaken for a part', s2.has(3) && s2.has(6))
+}
+
+// 3b. The production read (Oct 2026): "Other Current Assets" mapped to other assets with the other asset rows as
+// categories beside it. They are siblings, so they are added; no month is held back.
+{
+  const grids = await S.readGrids(fx('messaging-co-2026.xlsx'), 'xlsx')
+  const sheet = grids[0].name, periods = months(1, 12, 66)
+  const m = mapOf(sheet, periods, [[7, 'Revenue', 'revenue'], [40, 'Cash & Marketable Securities', 'cash'], [41, 'Receivables & Prepayments', 'receivables'], [42, 'Prepaid Carrier & Platform Costs', 'cat:other_assets:Prepaid Carrier & Platform Costs'],
+    [43, 'Loans Receivable', 'cat:other_assets:Loans Receivable'], [44, 'Other Current Assets', 'other_assets'], [47, 'Property, Plant & Equipment', 'cat:other_assets:Property, Plant & Equipment'], [48, 'Intangible Assets & Certifications', 'cat:other_assets:Intangible Assets & Certifications'],
+    [49, 'Notes Receivable – Startup Lending Program', 'cat:other_assets:Notes Receivable'], [50, 'Strategic Investments', 'long_term_investments'], [52, 'TOTAL ASSETS', 'total_assets'], [56, 'Accounts Payable', 'payables'],
+    [57, 'Accrued Expenses & Payroll', 'cat:other_liabilities:Accrued'], [58, 'Taxes Payable', 'cat:other_liabilities:Taxes Payable'], [59, 'Customer Prepayments – Unused Credits (Deferred Revenue)', 'cat:other_liabilities:Customer Prepayments'], [60, 'Other Current Liabilities', 'other_liabilities'],
+    [63, 'TOTAL LIABILITIES', 'total_liabilities'], [70, 'Total Equity', 'equity']])
+  const fails = bsChecks(grids, AI.guardMap(grids, m).map)
+  check('line beside its categories is added, not taken as their total', fails.length === 0, fails.slice(0, 2).map((c) => c.period_end.slice(0, 7) + ' ' + c.detail).join(' | '))
+  const lines = { total_assets: 100, cash: 50, other_assets: 10 }, d = { 'other_assets|A': 20, 'other_assets|B': 20 }
+  A.foldCategories(lines, d)
+  check('a sibling line is added to its categories when the total says so', lines.other_assets === 50)
+  const l2 = { total_assets: 100, cash: 60, other_assets: 40 }, d2 = { 'other_assets|A': 25, 'other_assets|B': 15 }
+  A.foldCategories(l2, d2)
+  check('a line that is the total of its categories is kept', l2.other_assets === 40)
+}
+
+{
+  const sk = AI.summariseSkipped(['Jan 2026: balance sheet held back (x). A subtotal may be mapped as a line; read the sheet again with AI or choose the rows.', 'Feb 2026: balance sheet held back (x). A subtotal…', 'Mar 2026: balance sheet held back (x). A subtotal…'])
+  check('held-back months summarised in one line', sk.length === 1 && /3 months \(Jan 2026 to Mar 2026\)/.test(sk[0]), sk[0])
+}
+
+// 4. A tab filed under the wrong year: each column's date comes from its own heading.
+{
+  const grids = await S.readGrids(fx('messaging-co-2026.xlsx'), 'xlsx')
+  const wrong = months(1, 12, 66).map((p) => ({ ...p, period_end: String(Number(p.period_end.slice(0, 4)) - 1) + p.period_end.slice(4) })) // 2025 instead of 2026
+  const m = mapOf(grids[0].name, wrong, [[7, 'Revenue', 'revenue'], [40, 'Cash & Marketable Securities', 'cash']])
+  const g = AI.guardMap(grids, m)
+  check('wrong year corrected from the column headings', g.map.blocks[0].periods.every((p) => p.period_end.startsWith('2026')), g.map.blocks[0].periods.slice(0, 2).map((p) => p.period_end).join(' '))
+}
+
+// 5. Analysis with a missing year and an old cash balance: no year-on-year against the wrong year, no runway.
+{
+  const V = await jiti.import(join(root, 'shared/fin-view.ts'))
+  Object.assign(globalThis, { burnReview: V.burnReview, checkRows: V.checkRows, deriveLines: V.deriveLines })
+  const FA = await jiti.import(join(root, 'server/utils/fin-analysis.ts'))
+  const mk = (y, m, cash) => { const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); const lines = { revenue: 100000 + m * 1000, cogs: 70000, opex_total: 60000, net_income: -30000, ...(cash ? { cash } : {}) }; return { period_end: end, period_type: 'month', currency: 'USD', lines, kpis: {}, derived: V.deriveLines(lines, 1) } }
+  const rows = [...Array.from({ length: 12 }, (_, k) => mk(2024, k + 1, k < 4 ? 3000000 : null)), ...Array.from({ length: 6 }, (_, k) => mk(2026, k + 1, null))]
+  const f = FA.factsOf(rows, 'cpaas').facts
+  check('no year-on-year against 2024 when 2025 is missing', f.revenue_growth_yoy_pct === null, String(f.revenue_growth_yoy_pct))
+  check('no runway from a cash balance 26 months old', f.runway_months === null && V.burnReview(rows).runway === null, String(f.runway_months))
+  const cs = V.checkRows(rows)
+  check('missing months and old cash flagged', cs.some((c) => c.what === 'Missing months' && /Jan 2025 to Dec 2025/.test(c.detail)) && cs.some((c) => c.what === 'Cash missing'), cs.filter((c) => c.severity === 'warn').map((c) => c.what).join(', '))
 }
 
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')

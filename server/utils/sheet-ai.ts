@@ -120,6 +120,13 @@ export async function mapWorkbook(grids: Grid[], currency: string, ref: string, 
   }
   const workers = Array.from({ length: Math.min(4, work.length) }, async () => { while (i < work.length) await one(work[i++]!) })
   await Promise.all(workers)
+  // A tab that failed (a slow or busy model) is tried once more, one at a time, so a year of figures is not left out.
+  const again = results.filter((r) => !r.out).map((r) => r.sheet)
+  for (const sheet of again) {
+    const g = work.find((x) => x.name === sheet)!
+    try { const out = await mapTab(g, currency, ref); const k = results.findIndex((r) => r.sheet === sheet); results[k] = { sheet, out, error: null } }
+    catch (err) { if ((err as { statusCode?: number }).statusCode) throw err; console.error('[sheets] tab retry', sheet, (err as Error).message) }
+  }
   const ok = results.filter((r) => r.out)
   if (work.length && !ok.length) throw Object.assign(new Error('every tab failed: ' + (results[0]?.error ?? '')), { stage: 'ai' })
   const order = (s: string) => grids.findIndex((g) => g.name === s)
@@ -216,13 +223,13 @@ export async function writePeriods(subject: string, periods: PeriodOut[], curren
     const held = holdBadBalanceSheet({ period_end: p.period_end, period_type: p.period_type, lines, detail: p.detail })
     if (held) skipped.push(held)
     const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = $2 AND period_end = $3`, [s.id, p.period_type, p.period_end])).rows[0]
-    const { lines: merged, detail: md } = mergeStatement(ex, lines, p.detail ?? {}), mk = { ...(ex?.kpis ?? {}), ...p.kpis }
+    const { lines: merged, detail: md } = mergeStatement(ex, lines, p.detail ?? {}, held ? ['bs'] : []), mk = { ...(ex?.kpis ?? {}), ...p.kpis }
     if (balanceError(merged)) { skipped.push(p.period_end + ' (' + p.period_type + '): balance sheet does not balance'); continue }
     if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), currency, JSON.stringify(md)])
     else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, detail, source, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,'sheet',$8)`, [s.id, p.period_type, p.period_end, currency, JSON.stringify(merged), JSON.stringify(mk), JSON.stringify(md), userId])
     written++
   }
-  return { written, skipped }
+  return { written, skipped: summariseSkipped(skipped) }
 }
 
 // A short view of what will come in, for the review step.
@@ -269,6 +276,18 @@ export function subtotalRows(g: Grid, cols: number[]): Set<number> {
 }
 export function guardMap(grids: Grid[], map0: AiMapT): { map: AiMapT; changed: string[] } {
   const map: AiMapT = JSON.parse(JSON.stringify(map0)), changed: string[] = []
+  // Each month column's date is taken from its own heading (Jan '25, 2025-01, an Excel date) when it has one, so a
+  // tab is never filed under the wrong year.
+  for (const b of map.blocks) {
+    const g = grids.find((x) => x.name === b.sheet) ?? grids.find((x) => norm(x.name) === norm(b.sheet)); if (!g) continue
+    const first = Math.min(...b.rows.map((r) => r.row - 1), g.rows.length)
+    for (const p of b.periods) {
+      if (p.period_type !== 'month') continue
+      const c = COL(p.col); let head: string | null = null
+      for (let i = Math.min(first, 40) - 1; i >= 0 && !head; i--) head = monthOf(g.rows[i]?.[c] ?? null)
+      if (head && head !== p.period_end.slice(0, 7)) { changed.push(b.sheet + ' column ' + p.col + ' dated ' + head + ' (was ' + p.period_end.slice(0, 7) + ')'); p.period_end = lastDay(head + '-01') }
+    }
+  }
   for (const b of map.blocks) {
     const g = grids.find((x) => x.name === b.sheet) ?? grids.find((x) => norm(x.name) === norm(b.sheet)); if (!g) continue
     const subs = subtotalRows(g, b.periods.filter((p) => !p.projected).map((p) => COL(p.col)))
@@ -296,7 +315,7 @@ export function guardMap(grids: Grid[], map0: AiMapT): { map: AiMapT; changed: s
       if (k && b.periods.some((p) => numAt(row[COL(p.col)]) !== null) && !b.rows.some((r) => r.to === k)) { b.rows.push({ row: i + 1, label: l.trim().slice(0, 120), to: k, kpi: '', pct: false }); changed.push(l.trim() + ' (added as ' + k + ')') }
     })
   }
-  if (changed.length) map.notes = (map.notes + ' Subtotals kept as metrics, not statement lines: ' + changed.join('; ') + '.').trim().slice(0, 800)
+  if (changed.length) map.notes = (map.notes + ' Checked and corrected: ' + changed.join('; ') + '.').trim().slice(0, 800)
   return { map, changed }
 }
 
@@ -364,6 +383,13 @@ export function holdBadBalanceSheet(p: { period_end: string; period_type: string
   for (const k of Object.keys(p.detail ?? {})) if (BS_KEYS.has(k.slice(0, k.indexOf('|')))) delete p.detail![k]
   const mon = new Date(p.period_end + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
   return mon + ': balance sheet held back (' + fails[0]!.detail.replace(/\.$/, '') + '). A subtotal may be mapped as a line; read the sheet again with AI or choose the rows.'
+}
+// Many months held back for the same reason read as one line: how many, which months, and the first reason.
+export function summariseSkipped(skipped: string[]): string[] {
+  const held = skipped.filter((x) => x.includes('balance sheet held back')), rest = skipped.filter((x) => !x.includes('balance sheet held back'))
+  if (held.length <= 2) return skipped
+  const mon = (x: string) => x.slice(0, x.indexOf(':'))
+  return [...rest, 'balance sheet held back for ' + held.length + ' months (' + mon(held[0]!) + ' to ' + mon(held[held.length - 1]!) + ')' + held[0]!.slice(held[0]!.indexOf(' (')).replace(/\. A subtotal.*$/, '') + '. A row may be mapped to the wrong line: read the sheet again with AI or choose the rows']
 }
 // Template columns for months not filled in yet (formulas showing 0): a balance sheet that is all zero or blank is
 // dropped, and a period with no figure other than zero is skipped entirely.

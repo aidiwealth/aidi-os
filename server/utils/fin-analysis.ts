@@ -19,10 +19,15 @@ export function factsOf(raw: FinRow[], model?: string | null): { facts: Record<s
   const today = new Date().toISOString().slice(0, 10)
   const rows = raw.filter((r) => r.period_end <= today).map((r) => ({ ...r, derived: r.derived ?? deriveLines(r.lines, r.period_type === 'year' ? 12 : r.period_type === 'quarter' ? 3 : 1) }))
   const per = rows[0]?.period_type === 'quarter' ? 3 : rows[0]?.period_type === 'year' ? 12 : 1
-  const n = Math.max(1, Math.round(3 / per)) // a quarter's worth of periods
-  const last = rows.slice(-n), prior = rows.slice(-2 * n, -n), yearAgo = rows.slice(-Math.round(12 / per) - n, -Math.round(12 / per))
-  const ttm = rows.slice(-Math.round(12 / per))
-  const rev3 = sumK(last, 'revenue'), revP = sumK(prior, 'revenue'), revY = sumK(yearAgo, 'revenue')
+  // Windows by date, not by position, so a missing month or year never shifts "a year ago" onto the wrong period:
+  // the last quarter (or year), the one before, the same window a year earlier, and the last 12 months.
+  const mi = (d: string) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)) - 1
+  const L = Math.max(3, per), end = rows.length ? mi(rows[rows.length - 1]!.period_end) : 0
+  const within = (a: number, b: number) => rows.filter((r) => mi(r.period_end) >= a && mi(r.period_end) <= b)
+  const last = within(end - L + 1, end), prior = within(end - 2 * L + 1, end - L), yearAgo = within(end - 12 - L + 1, end - 12)
+  const ttm = within(end - 11, end)
+  // A comparison window counts only when it is complete (the same number of periods as the latest one).
+  const rev3 = sumK(last, 'revenue'), revP = prior.length === last.length ? sumK(prior, 'revenue') : null, revY = yearAgo.length === last.length ? sumK(yearAgo, 'revenue') : null
   const gm3 = avg(last, 'gross_margin'), gmP = avg(prior, 'gross_margin')
   const ox3 = sumK(last, 'opex_total'), oxP = sumK(prior, 'opex_total')
   const cogs3 = sumK(last, 'cogs'), cogsP = sumK(prior, 'cogs')
@@ -30,7 +35,9 @@ export function factsOf(raw: FinRow[], model?: string | null): { facts: Record<s
   // Burn and runway checked three ways on monthly figures (cash flow, change in cash, net loss); else the average.
   const br = per === 1 ? burnReview(rows) : null
   const cash = lastKnown(rows, 'cash'), burn = br && br.burn !== null ? br.burn : avg(last, 'burn')
-  const runway = cash && burn ? Math.round((cash.v / burn) * 10) / 10 : null
+  // Runway only from a cash balance within two months of the latest figures.
+  const cashFresh = !!cash && end - mi(cash.at) < 2
+  const runway = cash && cashFresh && burn ? Math.round((cash.v / burn) * 10) / 10 : null
   const lossPeriods = ttm.filter((r) => (r.derived.net_income ?? 0) < 0).length
   const payroll3 = sumK(last, 'opex_payroll')
   // Break-even, worked out here so the write-up never does its own arithmetic: monthly averages over the last quarter.
@@ -46,7 +53,7 @@ export function factsOf(raw: FinRow[], model?: string | null): { facts: Record<s
     cost_of_revenue_growth_pct: pct(cogs3, cogsP), opex_growth_qoq_pct: pct(ox3, oxP), opex_to_revenue_pct: ox3 !== null && rev3 ? Math.round((ox3 / rev3) * 1000) / 10 : null,
     payroll_to_revenue_pct: payroll3 !== null && rev3 ? Math.round((payroll3 / rev3) * 1000) / 10 : null,
     net_income_last_quarter: ni3, net_income_ttm: niTtm, loss_periods_last_12m: lossPeriods, monthly_burn: burn === null ? null : Math.round(burn),
-    cash: cash?.v ?? null, cash_as_of: cash?.at ?? null, runway_months: runway, burn_basis: br?.basis || null, burn_methods: br ? JSON.stringify(br.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) }))) : null, burn_check_issues: br && br.issues.length ? br.issues.join(' ') : null, burn_notes: br && br.notes.length ? br.notes.join(' ') : null, burn_if_bills_paid: br?.runway_at_loss ? br.loss_burn : null, runway_if_bills_paid_months: br?.runway_at_loss ?? null,
+    cash: cash?.v ?? null, cash_as_of: cash?.at ?? null, cash_months_before_latest: cash ? end - mi(cash.at) : null, months_missing: (() => { const ms = rows.filter((r) => r.period_type === 'month').map((r) => mi(r.period_end)); let k = 0; for (let j = 1; j < ms.length; j++) k += Math.max(0, ms[j]! - ms[j - 1]! - 1); return k })(), runway_months: runway, burn_basis: br?.basis || null, burn_methods: br ? JSON.stringify(br.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) }))) : null, burn_check_issues: br && br.issues.length ? br.issues.join(' ') : null, burn_notes: br && br.notes.length ? br.notes.join(' ') : null, burn_if_bills_paid: br?.runway_at_loss ? br.loss_burn : null, runway_if_bills_paid_months: br?.runway_at_loss ?? null,
     business_type: bm?.label ?? 'not set', typical_gross_margin_pct: bm?.gm ? bm.gm[0] + '-' + bm.gm[1] : null, typical_margin_why: bm?.why || null,
     revenue_monthly: revM === null ? null : Math.round(revM), gross_profit_monthly: gpM === null ? null : Math.round(gpM), opex_monthly: oxM === null ? null : Math.round(oxM), other_income_monthly: oiM === null ? null : Math.round(oiM),
     gross_profit_covers_opex_pct: gpM !== null && oxM ? Math.round((gpM / oxM) * 100) : null, breakeven_revenue_monthly: beRev === null ? null : Math.round(beRev),
@@ -98,6 +105,7 @@ export function contradicts(text: string, f: Record<string, number | string | nu
   if (gp !== null && gp > 0 && /gross (profit|margin) (is |was )?negative|selling (at|below) (a )?(loss|cost)/.test(t)) return true
   if (f.business_type !== 'Software (SaaS)' && /\bsoftware\b/.test(t) && /\b(low|poor|dangerous|weak|thin|below)\b/.test(t)) return true
   const rw = num('runway_months'), rwPaid = num('runway_if_bills_paid_months')
+  if (rw === null && /\d+(\.\d+)?\s*months?\s+(of\s+)?runway|runway\s+of\s+\d/.test(t)) return true
   for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*months?\s+(?:of\s+)?runway|runway\s+(?:of|is|at)\s+(?:about\s+|around\s+)?(\d+(?:\.\d+)?)\s*months?/g)) {
     const v = Number(m[1] ?? m[2]); if (rw !== null && Math.abs(v - rw) > 1 && (rwPaid === null || Math.abs(v - rwPaid) > 1)) return true
   }
@@ -108,7 +116,7 @@ export function contradicts(text: string, f: Record<string, number | string | nu
 export async function analyseFinancials(subject: string, rows: FinRow[], currency: string, company: string, force = false, model: string | null = null): Promise<Analysis> {
   const { facts, rules, flags, period } = factsOf(rows, model)
   const checks = checkRows(rows).filter((c) => c.severity === 'error').length
-  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 7 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 8 })).digest('hex').slice(0, 40)
   if (!force) {
     const hit = (await db().query<{ analysis: Analysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]
     if (hit) return hit.analysis
@@ -128,6 +136,7 @@ export async function analyseFinancials(subject: string, rows: FinRow[], currenc
           'Give a one-sentence headline; exactly 4 key insights, the most important first (what is going well, what to watch, what is a risk), each with the numbers behind it; and 2 to 6 flags: things to raise with the executive team, the CFO or the board, each with why it matters. ' +
           'Business type: ' + (facts.business_type ?? 'not set') + '. Judge gross margin against typical_gross_margin_pct for that type (' + (facts.typical_margin_why ?? 'no range: the type is not set, so do not compare with software or any other industry') + '); never call a margin low for software unless the business is software. ' +
           'Break-even is already worked out in the facts (gross_profit_monthly, opex_monthly, gross_profit_covers_opex_pct, breakeven_revenue_monthly, revenue_increase_to_breakeven_pct, opex_cut_to_breakeven_monthly): quote those, never work out your own. Never say anything the facts contradict: when gross_profit_monthly is positive the company would make money with no operating costs. ' +
+          'If cash_months_before_latest is 2 or more, the cash balance is out of date: give no runway and raise it as a CFO flag. If months_missing is above 0, say figures are missing for some months. ' +
           'Check burn and runway: burn_methods gives monthly burn worked out several ways (including cash flow worked out from the balance sheet), burn_notes explains a gap between cash burn and the loss (e.g. bills left unpaid), and burn_check_issues lists real disagreements. When burn_notes explains the gap, it is not a data problem: say what drives it and, if runway_if_bills_paid_months is given, that runway is shorter once those bills are paid. Raise a CFO flag only for burn_check_issues or stale cash. If the facts point to a data problem (missing cash, totals that do not add up), say so as a CFO flag. Never invent figures.',
         user: 'Company: ' + company + '\nPeriod: ' + period + '\nFacts: ' + JSON.stringify(facts) + '\nArithmetic errors found in the figures: ' + checks + '\nRule-based notes so far: ' + JSON.stringify({ insights: rules, flags }),
         toolName: 'record_analysis', toolDescription: 'Record the analysis.', jsonSchema: { type: 'object', additionalProperties: false, required: ['headline', 'insights', 'flags'], properties: {

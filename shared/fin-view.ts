@@ -75,9 +75,22 @@ export function checkRow(r: { period_end: string; period_type: string; lines: Li
   for (const k of ['cogs', ...OPEX, 'opex_total']) { const v = g(k); if (v !== null && v < 0) out.push({ period_end: r.period_end, period_type: r.period_type, what: 'Sign of a cost', detail: k.replace('opex_', '').replace('_', ' ') + ' is negative; costs are usually entered as positive numbers.', diff: v, severity: 'warn' }) }
   return out
 }
-// Across periods: cash that jumps without the cash flow to explain it.
+const mi = (d: string) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)) - 1
+const mlabel = (k: number) => new Date(Date.UTC(Math.floor(k / 12), k % 12, 15)).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+// Across periods: months with no figures between others (a tab or a year not brought in), cash missing for recent
+// months, and cash that jumps without the cash flow to explain it.
 export function checkRows(rows: FinRow[]): Check[] {
   const out = rows.flatMap(checkRow)
+  const ms = rows.filter((r) => r.period_type === 'month').sort((a, b) => a.period_end.localeCompare(b.period_end))
+  for (let i = 1; i < ms.length; i++) {
+    const a = mi(ms[i - 1]!.period_end), b = mi(ms[i]!.period_end)
+    if (b - a > 1) out.push({ period_end: ms[i]!.period_end, period_type: 'month', what: 'Missing months', detail: 'No figures for ' + (b - a - 1 === 1 ? mlabel(a + 1) : mlabel(a + 1) + ' to ' + mlabel(b - 1)) + '. Growth, year-on-year and runway skip these months; add them or check the linked sheet brought in every tab.', diff: 0, severity: 'warn' })
+  }
+  if (ms.length >= 2) {
+    const withCash = ms.filter((r) => num(r.lines.cash) !== null)
+    const lastCash = withCash[withCash.length - 1], last = ms[ms.length - 1]!
+    if (lastCash && mi(last.period_end) - mi(lastCash.period_end) >= 2) out.push({ period_end: last.period_end, period_type: 'month', what: 'Cash missing', detail: 'The last cash balance is for ' + mlabel(mi(lastCash.period_end)) + ', ' + (mi(last.period_end) - mi(lastCash.period_end)) + ' months before your latest figures. Runway is not worked out from it; add the balance sheet for recent months.', diff: 0, severity: 'warn' })
+  }
   for (let i = 1; i < rows.length; i++) {
     const a = rows[i - 1]!, b = rows[i]!
     if (a.period_type !== b.period_type) continue
@@ -171,11 +184,14 @@ export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, numb
   if ((nl ?? 0) <= 0 && nl !== null && (cc ?? 0) > 0 && (cc ?? 0) > 1000 && !explained) issues.push('Profitable on paper but cash is falling about ' + fmt(cc!) + ' a month. Check receivables, stock, capital spending or loan repayments.')
   const single = last3.length && pick?.key !== 'balance_sheet' ? (() => { const x = last3[last3.length - 1]!; return x.operating_cf !== null ? -((x.operating_cf ?? 0) + (x.investing_cf ?? 0)) : x.net_income !== null ? -x.net_income : null })() : null
   if (single !== null && burn && burn > 0 && Math.abs(single - burn) / burn > 0.5) notes.push('The latest month (' + fmt(single) + ') is far from the 3-month average (' + fmt(burn) + '); runway uses the average.')
-  if (cashAt && rows.length && cashAt < rows[rows.length - 1]!.period_end) issues.push('Cash was last given at ' + cashAt + '; runway is from that balance.')
+  if (cashAt && rows.length && cashAt < rows[rows.length - 1]!.period_end) issues.push(mi(rows[rows.length - 1]!.period_end) - mi(cashAt) >= 2 ? 'Cash was last given for ' + mlabel(mi(cashAt)) + ', so runway is not worked out. Add the balance sheet for recent months.' : 'Cash was last given at ' + cashAt + '; runway is from that balance.')
   if (n < 3) issues.push('Fewer than three months of figures: burn is a rough guide.')
-  const runway = cash !== null && burn ? Math.round((cash / burn) * 10) / 10 : null
+  // A cash balance well before the latest month says nothing about runway today.
+  const stale = !!cashAt && rows.length > 0 && mi(rows[rows.length - 1]!.period_end) - mi(cashAt) >= 2
+  const runCash = stale ? null : cash
+  const runway = runCash !== null && burn ? Math.round((runCash / burn) * 10) / 10 : null
   const lossBurn = nl === null ? null : Math.max(0, nl)
-  const runwayAtLoss = cash !== null && lossBurn && explained ? Math.round((cash / lossBurn) * 10) / 10 : null
+  const runwayAtLoss = runCash !== null && lossBurn && explained ? Math.round((runCash / lossBurn) * 10) / 10 : null
   return { burn: burn === null ? null : Math.round(burn), basis: pick?.label ?? '', runway, cash, cash_at: cashAt, months: n, methods, status: !pick ? 'none' : issues.length ? 'check' : 'ok', issues, notes, drivers: drivers.slice(0, 4), loss_burn: lossBurn === null ? null : Math.round(lossBurn), runway_at_loss: runwayAtLoss, profitable: burn === 0 }
 }
 

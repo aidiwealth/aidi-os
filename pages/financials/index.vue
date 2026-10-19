@@ -99,7 +99,9 @@ async function makeStatements() {
 const review = computed(() => burnReview(monthly.value as unknown as FinRow[]))
 // Where each dollar of revenue went over the last three months.
 const unit = computed(() => { const l3 = monthly.value.slice(-3); if (!l3.length) return null; const sum = (k: string) => l3.reduce((a, r) => a + (Number(r.derived[k] ?? 0) || 0), 0); return { revenue: sum('revenue'), cogs: sum('cogs'), opex: sum('opex_total'), label: l3.length === 1 ? lbl(l3[0]!.period_end, 'month') : lbl(l3[0]!.period_end, 'month') + ' – ' + lbl(l3[l3.length - 1]!.period_end, 'month') } })
-const runwayKnown = computed(() => { if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
+// No runway from a cash balance two or more months older than the latest figures (it says nothing about today).
+const cashStale = computed(() => { const c = cashKnown.value, l = latest.value; if (!c || !l) return false; const m = (d: string) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)); return m(l.period_end) - m(c.at) >= 2 })
+const runwayKnown = computed(() => { if (cashStale.value) return null; if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? pages.value.map((p) => p.currency ?? '').filter(Boolean) : subj.value?.currencies ?? [])])])
@@ -254,7 +256,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
           <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
-          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
+          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
         </div>
         <BurnCheck v-if="!co && monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
@@ -265,6 +267,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         </div>
         <FinAnalysis v-if="co && !isGroup" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
         <ClientOnly><ShareTo v-if="co && !isGroup && canEdit && co.subject === baseCo?.subject" :sections="['intro', 'summary', 'scorecard', 'growth', 'cash']" what="these figures" /></ClientOnly>
+        <p v-for="(c, i) in (checks?.checks ?? []).filter((x) => x.what === 'Missing months' || x.what === 'Cash missing')" :key="'g' + i" class="gapw"><b>{{ c.what }}.</b> {{ c.detail }}</p>
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
           <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
         <div class="two"><div class="card"><DonutChart :title="'Operating expenses · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" total-label="Operating expenses" :currency="cur" :segments="mix" /></div>
@@ -402,4 +405,5 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .rc { font-size: 12.5px; color: var(--c-warn); }
 .lock { font-size: 11.5px; font-weight: 600; padding: 3px 8px; background: #fff6e6; color: #a5650b; white-space: nowrap; }
 .more { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); }
+.gapw { margin: 0 0 10px; padding: 10px 14px; border: 1px solid #d9e2ef; background: #f5f7fb; font-size: 13.5px; color: var(--c-ink); } .gapw b { font-weight: 500; }
 </style>

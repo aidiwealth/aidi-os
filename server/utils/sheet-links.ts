@@ -6,7 +6,7 @@
 import type ExcelJS from 'exceljs'
 import type { Cat } from './accounts'
 import { FIXED_KEYS } from '~/shared/forecast'
-import { AiMap, blankPeriod, holdBadBalanceSheet, readWithMap, repairMap, writePeriods, previewOf } from './sheet-ai'
+import { AiMap, blankPeriod, holdBadBalanceSheet, readWithMap, repairMap, summariseSkipped, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
 export interface Grid { name: string; rows: Cell[][]; formulas?: number } // formulas: share of filled cells that are formulas (derived tabs)
@@ -95,7 +95,7 @@ export function monthOf(c: Cell): string | null {
   if (typeof c === 'number') { if (c > 36000 && c < 73000 && Number.isInteger(c)) { const d = new Date(Date.UTC(1899, 11, 30) + c * 86400000); return d.toISOString().slice(0, 7) } return null }
   const s = c.toLowerCase().replace(/\s+/g, ' ').trim()
   let m = /^(\d{4})-(\d{2})(-\d{2})?$/.exec(s); if (m) return Number(m[2]) >= 1 && Number(m[2]) <= 12 ? ym(+m[1]!, +m[2]!) : null
-  m = /^([a-z]{3,9})\.?[ \-/']*(\d{2}|\d{4})$/.exec(s); if (m) { const i = MON.indexOf(m[1]!.slice(0, 3)); return i >= 0 ? ym(+m[2]!, i + 1) : null }
+  m = /^([a-z]{3,9})\.?[ \-/'’]*(\d{2}|\d{4})$/.exec(s); if (m) { const i = MON.indexOf(m[1]!.slice(0, 3)); return i >= 0 ? ym(+m[2]!, i + 1) : null }
   m = /^(\d{1,2})[/.-](\d{4})$/.exec(s); if (m && +m[1]! >= 1 && +m[1]! <= 12) return ym(+m[2]!, +m[1]!)
   m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); if (m) { const a = +m[1]!, b = +m[2]!; const mm = a > 12 ? b : a; return mm >= 1 && mm <= 12 ? ym(+m[3]!, mm) : null }
   return null
@@ -223,7 +223,7 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
         if (held) skipped.push(held)
         const pe = lastDay(m)
         const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
-        const { lines: merged, detail: md } = mergeStatement(ex, lines, detail)
+        const { lines: merged, detail: md } = mergeStatement(ex, lines, detail, held ? ['bs'] : [])
         if (balanceError(merged)) { skipped.push(m + ': balance sheet does not balance'); continue }
         const mk = { ...(ex?.kpis ?? {}), ...kpis }
         if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), l.currency, JSON.stringify(md)])
@@ -243,8 +243,9 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
       a.source = { file: 'Linked sheet: ' + l.name, imported_at: new Date().toISOString(), lines: chosen.map((c) => ({ label: c.label, maps_to: c.to })) }
       await db().query('UPDATE financials.forecasts SET assumptions = $2, updated_at = now() WHERE id = $1', [l.forecast_id, JSON.stringify(a)])
     }
-    await db().query('UPDATE financials.sheet_links SET last_synced_at = now(), last_error = NULL, last_result = $2 WHERE id = $1', [l.id, JSON.stringify({ months, skipped, sheet: lay.sheet })])
-    return { months, skipped }
+    const sk = summariseSkipped(skipped)
+    await db().query('UPDATE financials.sheet_links SET last_synced_at = now(), last_error = NULL, last_result = $2 WHERE id = $1', [l.id, JSON.stringify({ months, skipped: sk, sheet: lay.sheet })])
+    return { months, skipped: sk }
   } catch (err) {
     const msg = (err as { data?: { error?: { message?: string } }; statusMessage?: string }).data?.error?.message ?? (err as { statusMessage?: string }).statusMessage ?? 'Could not read the sheet.'
     await db().query('UPDATE financials.sheet_links SET last_error = $2, last_synced_at = now() WHERE id = $1', [l.id, String(msg).slice(0, 300)]).catch(() => {})
