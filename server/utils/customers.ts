@@ -31,12 +31,37 @@ export async function groupCurrency(): Promise<string> {
 export async function customerConfig(): Promise<CustConfig> {
   const rows = await configRows()
   const one = custEntityId()
-  if (one) { const r = rows.find((x) => x.entity_id === one); if (r) return strip(r); const d = await defaultConfig(); const e = (await custEntities()).find((x) => x.id === one); return { ...d, currency: e?.currency ?? d.currency } }
+  if (one) {
+    // A company's customer figures are in its own currency (a Nigerian subsidiary in naira). Figures saved in another
+    // currency (e.g. converted to US dollars before the group had its companies, then moved here) are converted once.
+    const e = (await custEntities()).find((x) => x.id === one), r = rows.find((x) => x.entity_id === one)
+    if (r && e?.currency && r.currency !== e.currency) { await alignCurrency(one, r.currency, e.currency); r.currency = e.currency }
+    if (r) return strip(r)
+    const d = await defaultConfig(); return { ...d, currency: e?.currency ?? d.currency }
+  }
   const ents = await custEntities()
   const withData = await entitiesWithCustomers()
   if (withData.length <= 1) { const r = rows.find((x) => x.entity_id === (withData[0] ?? ents[0]?.id)) ?? rows[0]; return r ? strip(r) : await defaultConfig() }
   const main = rows.find((x) => x.entity_id === ents[0]?.id) ?? rows[0]
   return { ...(main ? strip(main) : await defaultConfig()), currency: await groupCurrency() }
+}
+// Convert one company's saved customer revenue (and acquisition costs) from one currency to another, month by month at
+// the book rates (fx-book.ts). Only the request that flips the settings' currency does it, so it runs once.
+async function alignCurrency(entityId: string, from: string, to: string): Promise<void> {
+  const book = await rateBook()
+  const c = await db().connect()
+  try {
+    await c.query('BEGIN')
+    const flipped = (await c.query('UPDATE financials.customer_config SET currency = $3, updated_at = now() WHERE entity_id = $1 AND currency = $2 RETURNING 1', [entityId, from, to])).rowCount
+    if (flipped) {
+      const ms = (await c.query<{ m: string }>("SELECT DISTINCT to_char(month, 'YYYY-MM') AS m FROM financials.customer_revenue WHERE entity_id = $1", [entityId])).rows.map((x) => x.m)
+      for (const m of ms) { const k = book.convert(from, to, m); if (k) await c.query('UPDATE financials.customer_revenue SET amount = round(amount * $3::numeric, 2) WHERE entity_id = $1 AND month = $2::date', [entityId, m + '-01', k.rate]) }
+      const k0 = book.convert(from, to, ms.sort().pop() ?? new Date().toISOString().slice(0, 7))
+      if (k0) await c.query('UPDATE financials.customers SET acquisition_cost = round(acquisition_cost * $2::numeric, 2), updated_at = now() WHERE entity_id = $1 AND acquisition_cost IS NOT NULL', [entityId, k0.rate])
+      await c.query("DELETE FROM financials.analyses WHERE subject LIKE 'customers:%' OR subject LIKE 'advice:%'")
+    }
+    await c.query('COMMIT')
+  } catch (err) { await c.query('ROLLBACK').catch(() => {}); throw err } finally { c.release() }
 }
 // The companies that have customer revenue (all of them in the group view).
 export async function entitiesWithCustomers(): Promise<string[]> {

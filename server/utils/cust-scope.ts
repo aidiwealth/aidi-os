@@ -32,3 +32,23 @@ export async function withAllCompanies<T>(fn: () => Promise<T>): Promise<T> {
   e.context.custEntity = ''
   try { return await fn() } finally { e.context.custEntity = was }
 }
+// Customer revenue that goes with a Financials subject: a company's own ('entity:<operating id>'), or every company's
+// combined for the group. Anything else (a fund, a portfolio company) has none.
+export async function custForSubject(subject: string): Promise<string | null> {
+  if (subject === 'group') return ''
+  const m = /^entity:([0-9a-f-]{36})$/.exec(subject)
+  return m && (await custEntities()).some((e) => e.id === m[1]) ? m[1]! : null
+}
+export async function withCustFor<T>(subject: string, fn: () => Promise<T>): Promise<T | null> {
+  const c = await custForSubject(subject)
+  if (c === null) return null
+  const e = useEvent(), was = e.context.custEntity
+  e.context.custEntity = c
+  try { return await fn() } finally { e.context.custEntity = was }
+}
+// The currency a subject's figures are read in: the group in the reporting currency (else the company's).
+export async function subjectCurrency(subject: string): Promise<string> {
+  const org = await currentOrg()
+  const base = (org?.settings.currency as string) || 'USD'
+  return subject === 'group' ? ((org?.settings.reporting_currency as string) || base) : base
+}

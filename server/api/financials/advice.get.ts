@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const org = (await currentOrg())!
   const ent = await companyEntityId().catch(() => null)
   const subject = String(q.subject || '') || (ent ? 'entity:' + ent : '')
-  if (!/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
+  if (subject !== 'group' && !/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
   await subjectName(subject)
   if (q.refresh === '1') await rateLimit('fin_advice', user.userId, 10, 60 * 60 * 1000)
   void org

@@ -6,7 +6,9 @@ useHead({ title: 'Financials' })
 interface Line { key: string; label: string; section: string }
 interface Subjects { company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null } | null; entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]; currencies: string[]; lines: Line[]; derived: { key: string; label: string }[]; pages?: { id: string; name: string; currency: string | null; main: boolean }[]; paid?: boolean }
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; derived: Record<string, number | null>; cf_generated?: boolean; parts?: { who: string; currency: string; rate: number; uses: { quote: string; month: string; per_usd: number; source: 'book' | 'book_near' | 'history' | 'daily'; from_month?: string }[]; lines: Record<string, number> }[]; left_out?: string[]; eliminated?: { receivables: number; payables: number; equity: number; unreconciled: number; income: number; costs: number; items: { line: string; name: string; value: number; who: string }[] } }
-const { data: subj } = await useFetch<Subjects>('/api/financials/subjects')
+// The company (or the group) being viewed lives in the address (?s=), shared with every Financials sub-page.
+const fs = await useFinScope()
+const subj = fs.subj as unknown as Ref<Subjects | null>
 const { data: me } = await useFetch<{ roles: string[]; entity_scoped?: boolean }>('/api/auth/me', { key: 'me' })
 // Someone limited to some companies sees those companies, not the group consolidation.
 const scoped = computed(() => !!me.value?.entity_scoped)
@@ -16,12 +18,10 @@ const baseCo = computed(() => subj.value?.company ?? null)
 const structDone = ref(false)
 async function structAnswered(v: 'single' | 'group') { structDone.value = true; if (v === 'group') { if (subj.value?.paid) subForm.open = true; else subWall.value = true } }
 const subjLabel = computed(() => { const m = subject.value.match(/^(entity|company):(.+)$/); if (!m) return ''; return (m[1] === 'entity' ? subj.value?.entities : subj.value?.companies)?.find((x) => x.id === m[2])?.name ?? '' })
-const startGroup = !!baseCo.value && (subj.value?.pages?.length ?? 0) > 1 && !me.value?.entity_scoped
-const subject = ref(startGroup ? 'group' : baseCo.value?.subject ?? (me.value?.entity_scoped && subj.value?.entities[0] ? 'entity:' + subj.value.entities[0].id : 'group')); const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref((startGroup ? baseCo.value?.reporting : null) ?? baseCo.value?.currency ?? 'USD')
-// A company with subsidiaries opens on the consolidated group; a person limited to some companies opens on their first.
-const groupFirst = (c: { subject: string; currency: string; reporting?: string | null } | null) => !!c && (subj.value?.pages?.length ?? 0) > 1 && !me.value?.entity_scoped
-function openStart(c: { subject: string; currency: string; reporting?: string | null } | null) { if (!c) return; if (groupFirst(c)) { subject.value = 'group'; currency.value = c.reporting ?? c.currency } else { subject.value = c.subject; currency.value = c.currency } }
-watch(baseCo, (c, old) => { if (c && !old) openStart(c) })
+const subject = fs.s
+const periodType = ref('month'); const view = ref<'month' | 'quarter' | 'year' | 'custom'>('month'); watch(view, (v) => { periodType.value = v === 'custom' ? 'month' : v }); const currency = ref(fs.currencyOf(fs.s.value))
+// Each view's own currency: a company its own, the group the reporting currency.
+watch(subject, (v) => { currency.value = fs.currencyOf(v) })
 // A company's Financials pages: the company, each subsidiary (own name and currency) and, with subsidiaries, the group.
 const pages = computed(() => subj.value?.pages ?? [])
 const co = computed(() => {
@@ -32,7 +32,7 @@ const co = computed(() => {
 })
 const isGroup = computed(() => !!baseCo.value && subject.value === 'group')
 useHead({ title: computed(() => (co.value && pages.value.length > 1 ? co.value.name + ' · ' : '') + 'Financials') })
-function pickPage(v: string) { if (v === '+add') { subForm.open = true; return } subject.value = v; if (v === 'group') currency.value = baseCo.value?.reporting ?? baseCo.value?.currency ?? 'USD'; else { const p = pages.value.find((x) => 'entity:' + x.id === v); currency.value = p?.currency ?? baseCo.value?.currency ?? 'USD' } }
+function pickPage(v: string) { if (v === '+add') { subForm.open = true; return } subject.value = v }
 const subForm = reactive({ open: false, name: '', currency: baseCo.value?.currency ?? 'USD', country: '', busy: false, msg: '' })
 const subWall = ref(false)
 async function addSub() {
@@ -74,6 +74,7 @@ const vrows = computed<St[]>(() => {
 // Group figures: the latest month's intercompany eliminations (balances are at a date, so the latest month is the one to check).
 const elim = computed(() => (subject.value === 'group' ? [...monthly.value].reverse().find((r) => r.eliminated) ?? null : null))
 const fxOpen = ref(false)
+const elimX = computed(() => elim.value?.eliminated ?? null)
 const elimMonth = computed(() => (elim.value ? new Date(elim.value.period_end.slice(0, 7) + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''))
 const rolled = computed(() => view.value !== 'month' && view.value !== 'custom' && !rows.value.length && vrows.value.length > 0)
 const rangeTotal = computed(() => (view.value === 'custom' && inRange.value.length ? combine(inRange.value as unknown as FinRow[], inRange.value[inRange.value.length - 1]!.period_end, 'custom') : null))
@@ -128,13 +129,21 @@ const change = (k: string) => { const a = latest.value?.derived[k], b = prev.val
 const mix = computed(() => { const d = latest.value?.derived ?? {}; return [['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_ga', 'General & admin'], ['opex_other', 'Other operating']].map(([k, l]) => ({ label: l!, value: Number(d[k!] ?? 0) })) })
 const pctFmt = (v: number | null | undefined) => (v == null ? '—' : v + '%')
 const route0 = useRoute()
-const tab = ref<'overview' | 'statements' | 'shares'>((['statements', 'shares'] as const).find((t) => t === route0.query.tab) ?? 'overview')
-watch(() => route0.query.tab, (t) => { tab.value = t === 'statements' || t === 'shares' ? t : 'overview' })
+type Tab = 'overview' | 'statements' | 'shares' | 'consolidation' | 'reports'
+const TABS: Tab[] = ['statements', 'shares', 'consolidation', 'reports']
+const tabOf = (t: unknown): Tab => TABS.find((x) => x === t) ?? 'overview'
+const tab = computed<Tab>({ get: () => { const t = tabOf(route0.query.tab); return (t === 'consolidation' && subject.value !== 'group') || (t === 'shares' && subject.value === 'group') ? 'overview' : t }, set: (v) => { void navigateTo({ query: { ...route0.query, tab: v === 'overview' ? undefined : v } }, { replace: true }) } })
 const { data: modsF } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
 const custLocked = computed(() => !!modsF.value?.find((m) => m.code === 'fin_customers' && m.locked))
 // The monthly management report for the executive team (Startup and Scale).
 const rptMod = computed(() => (modsF.value as { code: string; locked?: boolean; usable?: boolean }[] | null | undefined)?.find((m) => m.code === 'fin_report') ?? null)
 const mr = reactive({ open: false })
+// Retention and customer report for the view: one company's customers, or the group's combined.
+const crpt = ref(false)
+const custOf = computed(() => (subject.value === 'group' ? '' : fs.entityId.value ?? ''))
+// The heading says exactly what is shown: the consolidated group, or one company.
+const viewName = computed(() => (subject.value === 'group' ? (co.value ? (pages.value.find((p) => p.main)?.name ?? baseCo.value?.name ?? 'The') + ' group' : 'Group') : fs.current.value?.label ?? (data.value?.name ?? 'Financials')))
+const viewSub = computed(() => (subject.value === 'group' ? 'Consolidated in ' + currency.value + ': ' + (co.value ? pages.value.length + ' companies' : 'every fund and entity') + ', after taking out what they owe and bill each other.' : (fs.current.value?.sub ?? '') + (co.value ? '. Its own figures; the group adds every company together.' : '')))
 function mrDone(m: string) { mr.open = false; ok.value = m }
 // Bulk delete / clear.
 const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = ref(false)
@@ -231,44 +240,49 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 <template>
   <section>
     <p class="label">{{ co ? 'Investors' : 'Records' }}</p>
+    <FinHeader manage @add="pickPage('+add')" @rename="openRename" />
     <div class="head">
-      <div class="tl"><h1>Financials</h1>
-        <select v-if="!co" v-model="subject" class="subj" aria-label="Show figures for"><option v-if="!scoped" value="group">Group (consolidated)</option>
-          <optgroup v-if="subj?.entities.length" label="Funds and entities"><option v-for="e in subj.entities" :key="e.id" :value="'entity:' + e.id">{{ e.name }}</option></optgroup>
-          <optgroup v-if="subj?.companies.length" label="Portfolio and group companies"><option v-for="c in subj.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}{{ c.relationship === 'subsidiary' ? ' (subsidiary)' : '' }}</option></optgroup></select>
-        <template v-else><select class="subj" :value="subject" aria-label="Financials for" @change="pickPage(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = subject">
-          <option v-for="p in pages" :key="p.id" :value="'entity:' + p.id">{{ p.name }}{{ p.main ? '' : ' (subsidiary)' }}</option>
-          <option v-if="pages.length > 1" value="group">Group (all, consolidated)</option>
-          <option v-if="canEdit" value="+add">+ Add a subsidiary{{ subj?.paid ? '' : ' (Scale plan)' }}</option></select>
-          <button v-if="canEdit && curPage" type="button" class="link rn" @click="openRename">Rename{{ curPage.main ? '' : ' · settings' }}</button></template></div>
-      <div class="tools">
+      <div class="tl"><h1>{{ viewName }}</h1><p class="vsub">{{ viewSub }}</p></div>
+      <div v-if="tab !== 'reports'" class="tools">
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
         <select v-if="(!co || isGroup) && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
-        <button v-if="(rows.length || monthly.length) && !isGroup" class="btn secondary" type="button" title="Annual and period statements (P&amp;L, balance sheet, cash flow) for investors, lenders and filings" @click="openStatements">Investor financial report</button>
-        <button v-if="monthly.length && !isGroup && rptMod && (rptMod.usable || rptMod.locked)" class="btn secondary" type="button" title="A month's performance for your executive team: growth, costs, cash, runway, customers" @click="mr.open = true">Monthly management report<svg v-if="rptMod.locked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></button>
         <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
-    <p v-if="isGroup" class="hint">Adds up the company and every subsidiary in {{ currency }}, converting other currencies at your book rate for each month (Exchange rates), else your nearest book rate, else the daily rate. Amounts the companies owe or bill each other are taken out.</p>
-    <p v-if="!co && subject === 'group'" class="hint">Adds up every fund and entity, plus companies marked as subsidiaries, in {{ currency }}. Amounts they owe or bill each other are taken out.</p>
-    <ClientOnly><FinConsolidation v-if="subject === 'group' && monthly.some((r) => r.parts?.length)" :rows="monthly" :currency="currency" :name="(pages[0]?.name ?? co?.name ?? 'Group') + ' group'" :can-edit="canEdit" @rates="fxOpen = true" /></ClientOnly>
-    <ClientOnly><FinFxRates :open="fxOpen" :can-edit="canEdit" @close="fxOpen = false" @changed="refresh(); refreshM()" /></ClientOnly>
-    <FinEliminations v-if="subject === 'group' && elim" :el="elim.eliminated" :period="elimMonth" :currency="currency" :total-assets="elim.lines.total_assets ?? null" @categories="coaOpen = true" />
     <p v-if="converting" class="hint">Shown in {{ co?.reporting }} for reporting, converted at the latest daily exchange rate{{ co?.rate_as_of ? ' (' + new Date(co.rate_as_of).toLocaleDateString('en-GB') + ')' : '' }}. Your figures are stored in their original currency; switch to Original to edit. Billing is not affected.</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg && !showForm" class="error">{{ msg }}</p>
 
+    <!-- The group's consolidation: each company, the eliminations and the group, the rates used, and intercompany. -->
+    <template v-if="tab === 'consolidation'">
+      <p class="hint">{{ co ? 'Adds up the company and every subsidiary' : 'Adds up every fund and entity, plus companies marked as subsidiaries,' }} in {{ currency }}, each month at your book rate for it (Exchange rates), else your nearest book rate, else the daily rate. Amounts the companies owe or bill each other are taken out.</p>
+      <ClientOnly><FinConsolidation v-if="monthly.some((r) => r.parts?.length)" :rows="monthly" :currency="currency" :name="viewName" :can-edit="canEdit" @rates="fxOpen = true" /></ClientOnly>
+      <FinEliminations v-if="elim" :el="elim.eliminated" :period="elimMonth" :currency="currency" :total-assets="elim.lines.total_assets ?? null" @categories="coaOpen = true" />
+      <EmptyState v-if="!monthly.some((r) => r.parts?.length)" card icon="financials" title="Nothing to consolidate yet" text="Add monthly figures for the company and its subsidiaries; the group is worked out from them." />
+    </template>
+    <!-- Reports for whatever is being viewed: the group or one company. -->
+    <template v-else-if="tab === 'reports'">
+      <div class="reps">
+        <div class="card rep"><h3>Investor financial report</h3><p>Annual report, or statements by period: profit and loss, balance sheet and cash flow{{ subject === 'group' ? ', consolidated, with a note on how the group is put together' : '' }}. PDF or Excel, for investors, lenders and filings.</p>
+          <button class="btn" type="button" :disabled="!(rows.length || monthly.length)" @click="openStatements">Make the report</button><span v-if="!(rows.length || monthly.length)" class="mut">Add figures first.</span></div>
+        <div v-if="rptMod && (rptMod.usable || rptMod.locked)" class="card rep"><h3>Monthly management report<svg v-if="rptMod.locked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></h3><p>A month's performance for {{ subject === 'group' ? 'the group' : viewName }}: growth, costs, cash, runway{{ co ? ', customers and retention' : '' }}, with what to raise with the team.</p>
+          <button class="btn" type="button" :disabled="!monthly.length" @click="mr.open = true">Make the report</button></div>
+        <div v-if="co && rptMod && rptMod.usable" class="card rep"><h3>Retention and customer report</h3><p>Revenue retention, churn and the customer base for {{ subject === 'group' ? 'the group (every company combined)' : viewName }}, for all customers or one group of them.</p>
+          <button class="btn" type="button" @click="crpt = true">Make the report</button></div>
+        <div v-if="subject === 'group'" class="card rep"><h3>Consolidation</h3><p>Each company, the eliminations and the group for any month, the exchange rates used, and what the companies owe and bill each other.</p>
+          <button class="btn secondary" type="button" @click="tab = 'consolidation'">Open the consolidation</button></div>
+      </div>
+    </template>
+    <template v-else>
     <ClientOnly><StructureAsk v-if="canEdit && baseCo && !baseCo.structure && !structDone && pages.length <= 1" :name="baseCo.name" @answered="structAnswered" /></ClientOnly>
-    <ClientOnly><FinGroupSummary v-if="baseCo && pages.length > 1 && subject === baseCo.subject" @open="pickPage" /></ClientOnly>
-    <ClientOnly><BankFeeds v-if="canEdit" compact class="feeds" /></ClientOnly>
-    <ClientOnly v-if="!isGroup"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
+    <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group'" compact class="feeds" /></ClientOnly>
+    <ClientOnly v-if="subject !== 'group' && tab !== 'shares'"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
     <p v-if="rolled" class="hint">Added up from your monthly figures (no {{ view === 'year' ? 'yearly' : 'quarterly' }} statements were entered).</p>
     <ClientOnly><CashFlowAsk v-if="canEdit && !isGroup && monthly.length >= 2 && !monthly.some((r) => ['operating_cf', 'investing_cf', 'financing_cf'].some((k) => typeof r.lines[k] === 'number'))" :subject="co?.subject ?? subject" @answered="cfAnswered" /></ClientOnly>
     <div v-if="co && canEdit && hasSec && data?.cash_policy == null" class="secq"><span><b>Your figures include investments such as treasury bills.</b> Count them with cash and show "Cash & marketable securities"? Runway then uses both.</span><span class="sb"><button class="btn sm" type="button" @click="setSec(true)">Yes, add them to cash</button><button class="btn secondary sm" type="button" @click="setSec(false)">No, bank balance only</button></span></div>
     <template v-if="vrows.length && latest">
-      <nav class="tabs"><button :class="{ on: tab === 'overview' }" @click="tab = 'overview'">Overview</button><button :class="{ on: tab === 'statements' }" @click="tab = 'statements'">Statements <em>{{ rows.length }}</em></button><button :class="{ on: tab === 'shares' }" @click="tab = 'shares'">Sharing <em>{{ shares?.length ?? 0 }}</em></button><template v-if="co"><NuxtLink to="/financials/retention" class="tsub">Revenue retention<svg v-if="custLocked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink><NuxtLink to="/financials/customers" class="tsub">Customers<svg v-if="custLocked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink><NuxtLink to="/financials/next" class="tsub">What to do next</NuxtLink></template><NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="tabl">Boards →</NuxtLink></nav>
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
@@ -282,7 +296,11 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <TrendChart title="Profit and loss" unit="usd" bars :symbol="SYM[cur] ?? cur + ' '" :points="pts('net_income')" :foot="view === 'custom' ? 'Net income, ' + rangeLbl : 'Net income after all costs'" :foot-value="latest.derived.net_income ?? null" />
           <TrendChart :title="secOn ? 'Cash & securities' : 'Cash'" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
-        <FinAnalysis v-if="co && !isGroup" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
+        <template v-if="subject === 'group' && co">
+          <ClientOnly><FinGroupSummary companies @open="pickPage" /></ClientOnly>
+          <p v-if="elimX && elimX.items.length" class="icn">Intercompany taken out for {{ elimMonth }}: <b>{{ briefMoney(elimX.receivables, currency) }}</b> owed and <b>{{ briefMoney(elimX.payables, currency) }}</b> owing within the group{{ Math.abs(elimX.unreconciled) >= 1 ? '; the books differ by ' + briefMoney(Math.abs(elimX.unreconciled), currency) : '' }}. <NuxtLink :to="{ query: { ...$route.query, tab: 'consolidation' } }">See the consolidation →</NuxtLink></p>
+        </template>
+        <FinAnalysis v-if="co" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
         <ClientOnly><ShareTo v-if="co && !isGroup && canEdit && co.subject === baseCo?.subject" :sections="['intro', 'summary', 'scorecard', 'growth', 'cash']" what="these figures" /></ClientOnly>
         <p v-for="(c, i) in (checks?.checks ?? []).filter((x) => x.what === 'Missing months' || x.what === 'Cash missing')" :key="'g' + i" class="gapw"><b>{{ c.what }}.</b> {{ c.detail }}</p>
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
@@ -311,6 +329,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <EmptyState v-else card icon="financials" :title="co ? 'Add your first month' : 'No figures yet' + (subject === 'group' ? '' : ' for ' + (data?.name ?? ''))"
       :text="co ? 'Drop in the profit and loss or management accounts you already keep and we read it for you to check, or type the figures in. Your dashboard, investor page and updates fill in from here.' : 'Add a profit and loss, balance sheet or KPI sheet for any fund, entity or company, monthly, quarterly or yearly. Upload a spreadsheet or type the figures in.'">
       <button v-if="canEdit && !isGroup" class="btn" @click="openForm()">Add figures</button></EmptyState>
+    </template>
+    <ClientOnly><FinFxRates :open="fxOpen" :can-edit="canEdit" @close="fxOpen = false" @changed="refresh(); refreshM()" /></ClientOnly>
 
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
@@ -385,7 +405,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <AppModal :open="subWall" title="Subsidiaries" wide @close="subWall = false"><Paywall code="subsidiaries" label="Subsidiaries" /></AppModal>
     <ClientOnly><ChartOfAccounts :open="coaOpen" :can-edit="canEdit" @close="coaOpen = false" @changed="refresh()" /></ClientOnly>
     <ClientOnly><ReportDetails :open="rp.open" @close="rp.open = false" @saved="(m) => { rp.missing = m; sf.warned = false }" /></ClientOnly>
-    <ClientOnly><MgmtReport v-if="mr.open && !rptMod?.locked" :open="mr.open" :subject="co?.subject ?? subject" :company="co?.name ?? title" @close="mr.open = false" @done="mrDone" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="mr.open && !rptMod?.locked" :open="mr.open" :subject="co?.subject ?? subject" :company="viewName" :cust="custOf" @close="mr.open = false" @done="mrDone" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="crpt" :open="crpt" :subject="co?.subject ?? subject" :company="viewName" :cust="custOf" :only="['retention', 'customers']" title="Retention and customer report" @close="crpt = false" @done="(m) => { crpt = false; ok = m }" /></ClientOnly>
     <AppModal v-if="mr.open && rptMod?.locked" :open="mr.open" title="Monthly management report" wide @close="mr.open = false"><Paywall code="fin_report" label="Monthly management report" /></AppModal>
     <AppModal :open="qbWall" title="QuickBooks" wide @close="qbWall = false"><Paywall code="quickbooks" label="QuickBooks" /></AppModal>
   </section>
@@ -425,4 +446,6 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .more { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); }
 .gapw { margin: 0 0 10px; padding: 10px 14px; border: 1px solid #d9e2ef; background: #f5f7fb; font-size: 13.5px; color: var(--c-ink); } .gapw b { font-weight: 500; }
 .tph { margin: 6px 0 0; } .tph a { color: var(--c-blue-deep); }
+.vsub { margin: 2px 0 0; font-size: 13.5px; color: var(--c-muted); } .icn { margin: 0 0 14px; font-size: 13.5px; color: var(--c-ink-soft); } .icn b { font-weight: 500; } .icn a { color: var(--c-blue-deep); text-decoration: none; }
+.reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; } .rep { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .rep h3 { margin: 0; font-size: 17px; font-weight: 500; color: var(--c-navy); display: flex; gap: 6px; align-items: center; } .rep p { margin: 0 0 4px; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.5; flex: 1; } .rep .mut { font-size: 12.5px; color: var(--c-muted); }
 </style>

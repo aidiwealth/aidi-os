@@ -5,7 +5,9 @@ useHead({ title: 'What to do next' })
 interface Item { kind: 'urgent' | 'next' | 'working'; team: string; title: string; why: string; steps: string[]; watch: string; target: string; when: string }
 interface Res { subject: string; name: string; advice: { as_of: string | null; currency: string; items: Item[]; ai: boolean; sources: string[]; generated_at: string } | null }
 const refreshQ = ref<string | undefined>(undefined)
-const { data, pending, refresh } = await useLazyFetch<Res>('/api/financials/advice', { query: { refresh: refreshQ }, server: false })
+// For the company (or the group) chosen at the top of Financials.
+const fs = await useFinScope()
+const { data, pending, refresh } = await useLazyFetch<Res>('/api/financials/advice', { query: { subject: fs.s, refresh: refreshQ }, watch: [fs.s], server: false })
 async function again() { refreshQ.value = '1'; await refresh(); refreshQ.value = undefined }
 const team = ref('')
 const items = computed(() => (data.value?.advice?.items ?? []).filter((i) => !team.value || i.team === team.value))
@@ -20,7 +22,7 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
 
 <template>
   <section>
-    <FinTabs />
+    <FinHeader />
     <div class="head"><div><h1>What to do next</h1><p class="sub">What each team should fix, do next and keep doing, worked out from your figures{{ data?.advice?.as_of ? ' to ' + mon(data.advice.as_of) : '' }}.</p></div>
       <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again">{{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
 

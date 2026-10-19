@@ -4,6 +4,10 @@
 import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, groupOf, retention, retentionTrend, win, type Basis, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Revenue retention' })
 const { q: custQ, scope: custScope } = useCustScope()
+// The company (or the group) chosen at the top of Financials: its customers; the group combines every company's.
+const fs = await useFinScope()
+custScope.value = fs.isGroup.value ? '' : fs.entityId.value ?? ''
+watch(fs.s, () => { custScope.value = fs.isGroup.value ? '' : fs.entityId.value ?? '' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 // In a group, customer revenue is added and changed per company: the group view (every company combined) is read only.
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)) && (!!custScope.value || (data.value?.scope?.entities.length ?? 0) <= 1))
@@ -81,7 +85,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
 
 <template>
   <section>
-    <FinTabs />
+    <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
     <div class="head"><div><h1>Revenue retention</h1><p class="sub">How much of last year's revenue your customers still pay, what they added, and who left.</p></div>
       <div v-if="cs.length" class="tools">
@@ -160,7 +164,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="retention" @close="up = false" @done="uploaded" /></ClientOnly>
-    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :cust="custScope" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" :subject="fs.s.value" :cust="custScope" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="sg.open" title="Suggested customer groups" wide @close="sg.open = false">
       <p v-if="sg.busy && !sg.s" class="mut">Looking at your customers…</p>
       <div v-else-if="sg.s" class="sgb"><h3>{{ sg.s.name }}</h3><p>{{ sg.s.why }}</p>

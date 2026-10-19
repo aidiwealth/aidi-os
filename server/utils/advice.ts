@@ -60,16 +60,16 @@ const Out = z.object({ items: z.array(z.object({ kind: z.enum(['urgent', 'next',
 
 export async function adviseCompany(subject: string, force = false): Promise<Advice | null> {
   const org = (await currentOrg())!
-  const cur = (org.settings.currency as string) || 'USD', sec = org.settings.cash_with_securities === true
+  const cur = await subjectCurrency(subject), sec = org.settings.cash_with_securities === true
   const model = ((org.settings.business_models as Record<string, string> | undefined) ?? {})[subject] ?? null
   let rows = await loadStatements(subject, 'month', cur)
   if (rows.length < 3) rows = await loadStatements(subject, 'quarter', cur)
   const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, r.period_type === 'quarter' ? 3 : r.period_type === 'year' ? 12 : 1), sec) }))
   const fin = fr.length >= 3 ? factsOf(fr, model).facts : null
   let cust: F | null = null
-  if (org.kind === 'company' && subject === 'entity:' + (await companyEntityId()) && (await enabledModules()).has('fin_customers')) {
-    const cs = await loadCustomers()
-    if (cs.length) { const cfg = await customerConfig(); cust = customerFacts('customers', cs, cfg, await financialsRevenue(cfg.currency)) }
+  // The company's own customers, or every company's combined for the group.
+  if (org.kind === 'company' && (await enabledModules()).has('fin_customers')) {
+    cust = await withCustFor(subject, async () => { const cs = await loadCustomers(); if (!cs.length) return null; const cfg = await customerConfig(); return customerFacts('customers', cs, cfg, await financialsRevenue(cfg.currency)) }) as F | null
   }
   if (!fin && !cust) return null
   const currency = fr[fr.length - 1]?.currency ?? cur

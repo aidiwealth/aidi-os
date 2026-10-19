@@ -5,7 +5,7 @@ import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx } from '~
 import { customerFacts } from '~/server/utils/customer-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
-const Body = z.object({ subject: z.string().regex(/^(entity|company):[0-9a-f-]{36}$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
+const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
   format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
   cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional() })
 export default defineEventHandler(async (event) => {
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   const d = { ...b.data, subject: b.data.subject ?? (ent ? 'entity:' + ent : '') }
   if (!d.subject) throw apiError('invalid', 'Choose a company.')
   const sec = org.settings.cash_with_securities === true
-  const rows = (await loadStatements(d.subject, 'month', (org.settings.currency as string) || 'USD')).map((r) => ({ ...r, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
+  const rows = (await loadStatements(d.subject, 'month', await subjectCurrency(d.subject))).map((r) => ({ ...r, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
   if (!rows.length) throw apiError('empty', 'Add your monthly figures first.')
   const name = await subjectName(d.subject)
   const month = d.month ?? rows.filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)).pop()?.period_end ?? rows[rows.length - 1]!.period_end
@@ -34,7 +34,10 @@ export default defineEventHandler(async (event) => {
     else if (upTo.length >= 3) { const f = factsOf(upTo as unknown as FinRow[], model); analysis = { headline: '', insights: f.rules, flags: f.flags } }
   }
   let customers: Record<string, unknown> | null = null
-  if ((d.sections.includes('customers') || d.sections.includes('retention')) && org.kind === 'company' && d.subject === 'entity:' + (await companyEntityId()) && (await enabledModules()).has('fin_customers')) {
+  // Customer sections: the company's own customers, or every company's combined for the group.
+  const custAt = await custForSubject(d.subject)
+  if ((d.sections.includes('customers') || d.sections.includes('retention')) && org.kind === 'company' && custAt !== null && (await enabledModules()).has('fin_customers')) {
+    event.context.custEntity = custAt
     const cfg = await customerConfig(), all = await loadCustomers(), g = d.cust_group ?? null
     // One group only (Enterprise, SMB, a segment…): the customers in it at the latest month; retention trends judge
     // size at the start of each window. Financials revenue is not compared for a group.

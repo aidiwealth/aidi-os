@@ -4,6 +4,10 @@
 import { addM, bridge, byGroup, customerStats, win, type CustStat, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Customers' })
 const { q: custQ, scope: custScope } = useCustScope()
+// The company (or the group) chosen at the top of Financials: its customers; the group combines every company's.
+const fs = await useFinScope()
+custScope.value = fs.isGroup.value ? '' : fs.entityId.value ?? ''
+watch(fs.s, () => { custScope.value = fs.isGroup.value ? '' : fs.entityId.value ?? '' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 // In a group, customer revenue is added and changed per company: the group view (every company combined) is read only.
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)) && (!!custScope.value || (data.value?.scope?.entities.length ?? 0) <= 1))
@@ -64,7 +68,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 
 <template>
   <section>
-    <FinTabs />
+    <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
     <div class="head"><div><h1>Customers</h1><p class="sub">Who pays the most, who is growing or slipping, which sectors matter, and what a customer is worth.</p></div>
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
@@ -145,7 +149,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     </template>
 
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="customers" @close="up = false" @done="uploaded" /></ClientOnly>
-    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" subject="" :cust="custScope" :company="''" :only="['customers', 'retention']" title="Customer and retention report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="rpt" :open="rpt" :subject="fs.s.value" :cust="custScope" :company="''" :only="['customers', 'retention']" title="Customer and retention report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="ed.open" title="Customer" wide @close="ed.open = false">
       <div class="g2"><label class="label wide">Name<input v-model="ed.name" maxlength="200"></label>
         <label class="label">Sector<input v-model="ed.sector" maxlength="80" list="secs"><datalist id="secs"><option v-for="s in sectors" :key="s" :value="s" /></datalist></label>
