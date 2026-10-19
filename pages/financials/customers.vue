@@ -70,7 +70,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
   <section>
     <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
-    <div class="head"><div><h1>Customers</h1></div>
+    <div class="head"><div />
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <button v-if="rptOk" class="btn secondary" type="button" title="Customers and revenue retention as a PDF or Excel report, for all customers or one group" @click="rpt = true">Customer report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>

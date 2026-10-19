@@ -143,7 +143,6 @@ const crpt = ref(false)
 const custOf = computed(() => (subject.value === 'group' ? '' : fs.entityId.value ?? ''))
 // The heading says exactly what is shown: the consolidated group, or one company.
 const viewName = computed(() => (subject.value === 'group' ? (co.value ? (pages.value.find((p) => p.main)?.name ?? baseCo.value?.name ?? 'The') + ' group' : 'Group') : fs.current.value?.label ?? (data.value?.name ?? 'Financials')))
-const viewSub = computed(() => (subject.value === 'group' ? 'Consolidated in ' + currency.value + ': ' + (co.value ? pages.value.length + ' companies' : 'every fund and entity') + ', after taking out what they owe and bill each other.' : (fs.current.value?.sub ?? '') + (co.value ? '. Its own figures; the group adds every company together.' : '')))
 function mrDone(m: string) { mr.open = false; ok.value = m }
 // Bulk delete / clear.
 const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = ref(false)
@@ -239,11 +238,9 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
 <template>
   <section>
-    <p class="label">{{ co ? 'Investors' : 'Records' }}</p>
     <FinHeader manage @add="pickPage('+add')" @rename="openRename" />
-    <div class="head">
-      <div class="tl"><h1>{{ viewName }}</h1><p class="vsub">{{ viewSub }}</p></div>
-      <div v-if="tab !== 'reports'" class="tools">
+    <div v-if="tab !== 'reports'" class="head">
+      <div class="tools">
         <div class="seg" role="group" aria-label="Show by"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Yearly'], ['custom', 'Custom']]" :key="k" :class="{ on: view === k }" @click="view = k as typeof view">{{ l }}</button></div>
         <select v-if="(!co || isGroup) && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>

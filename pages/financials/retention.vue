@@ -87,7 +87,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
   <section>
     <FinHeader />
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
-    <div class="head"><div><h1>Revenue retention</h1></div>
+    <div class="head"><div />
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>

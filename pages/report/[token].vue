@@ -140,7 +140,7 @@ async function upload(f: File | undefined) {
 h1 { margin: 6px 0 12px; }
 .lead { color: var(--c-ink-soft); margin: 0 0 24px; max-width: 62ch; }
 .center { text-align: center; } .center p { color: var(--c-muted); }
-.done { margin: 0 0 24px; border-color: #b7dfc9; background: #f2faf5; } .done h2 { margin-bottom: 6px; } .done p { margin: 0; }
+.done { margin: 0 0 24px; border-color: #b7cddf; background: #f2f6fa; } .done h2 { margin-bottom: 6px; } .done p { margin: 0; }
 .drop { border: 1px dashed var(--c-rule-strong); background: var(--c-paper); padding: 22px; text-align: center; cursor: pointer; margin-bottom: 12px; }
 .drop:hover, .drop.over { background: #eef4f9; border-color: var(--c-blue); }
 .drop:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }

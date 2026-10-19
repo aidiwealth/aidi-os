@@ -12,7 +12,7 @@ const VIA: Record<string, string> = { wallet: 'from wallet', stripe: 'by card', 
   <section v-if="data">
     <ClientTabs />
     <BillingTabs />
-    <h1>Service jobs</h1>
+    <div class="ih"><h1>Service jobs</h1><NuxtLink to="/client/invoices" class="jl">← All invoices</NuxtLink></div>
     <div class="box"><table v-if="data.length"><thead><tr><th>Job</th><th>Status</th><th>Billing</th></tr></thead><tbody>
       <tr v-for="j in data" :key="j.id"><td><NuxtLink :to="'/client/jobs/' + j.id" class="t">{{ j.title }}</NuxtLink><span class="s">{{ j.company ?? 'General' }} · {{ day(j.created_at) }}</span></td><td><span class="pill" :class="j.status">{{ ST[j.status] ?? j.status }}</span></td>
         <td><div v-for="i in j.invoices" :key="i.id" class="iv"><a :href="i.link">{{ i.number }}</a> · <Money :value="i.amount" :currency="i.currency" /> · <span :class="i.overdue ? 'over' : i.status">{{ i.status === 'paid' ? 'Paid ' + (VIA[i.paid_via ?? ''] ?? '') : i.overdue ? 'Overdue' : 'To pay' }}</span><NuxtLink v-if="i.status === 'sent'" to="/client/invoices" class="pay">Pay</NuxtLink></div><span v-if="!j.invoices.length" class="s">No invoice yet</span></td></tr>
@@ -23,4 +23,5 @@ const VIA: Record<string, string> = { wallet: 'from wallet', stripe: 'by card', 
 h1 { margin: 0 0 12px; } .box { background: #fff; border: 1px solid var(--c-rule); overflow-x: auto; } table { width: 100%; border-collapse: collapse; } th { text-align: left; font-weight: 400; font-size: 13px; color: var(--c-muted); padding: 12px 16px; border-bottom: 1px solid var(--c-rule); } td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); font-size: 14px; vertical-align: top; }
 .t { color: var(--c-navy); font-weight: 500; text-decoration: none; } .s { display: block; font-size: 12.5px; color: var(--c-muted); } .pill { font-size: 12.5px; background: var(--c-paper-2); padding: 3px 9px; white-space: nowrap; } .pill.waiting_client { color: var(--c-warn); } .pill.completed { color: var(--c-ok); }
 .iv { font-size: 13.5px; } .iv a { color: var(--c-blue-deep); } .paid { color: var(--c-ok); } .over { color: var(--c-danger); } .pay { margin-left: 8px; font-weight: 600; color: var(--c-blue-deep); } a.btn { text-decoration: none; }
+.ih { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; } .ih h1 { margin: 0 0 12px; } .jl { font-size: 13.5px; color: var(--c-blue-deep); text-decoration: none; }
 </style>

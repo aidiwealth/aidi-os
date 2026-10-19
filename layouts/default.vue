@@ -41,12 +41,12 @@ async function endSupport() { clearInterval(supTimer); const r = await $fetch<{ 
 // across the top of the page. Items list the modules they hold; a module the person cannot use is left out, one only a
 // higher plan unlocks shows a lock. A module no item lists gets its own item, so nothing is ever lost from the menu.
 interface WsDef { label: string; codes: string[]; extra?: WsTab[] }
-interface WsTab { to: string; label: string; code: string; locked?: boolean; pages?: string[] }
+interface WsTab { to: string; label: string; code: string; locked?: boolean; pages?: string[]; match?: (p: string) => boolean }
 interface WsItem { label: string; icon: string; to: string; tabs: WsTab[] }
 const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
   { label: 'Investors', items: [{ label: 'Financials', codes: ['financials'] }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity', 'forecast'] }, { label: 'Boards', codes: ['boards'] }] },
   { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
-    { label: 'Services', codes: ['company_services', 'client_inbox', 'client_raise', 'wallet'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
+    { label: 'Services', codes: ['company_services', 'client_inbox', 'wallet', 'client_raise'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
   { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'] }] }]
 // Aidi OS: grouped like Finvry, but the pages the team opens every day keep their own place in the side menu
 // (Pitches, Payments, Tax documents, Meeting minutes, Team, Blog).
@@ -57,14 +57,23 @@ const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [
   { label: 'Company', items: [{ label: 'Governance', codes: ['entities', 'governance', 'compliance'] }, { label: 'Meeting minutes', codes: ['meetings'] }, { label: 'Documents', codes: ['documents'] }, { label: 'Notices', codes: ['notices'] }] },
   { label: 'Administration', items: [{ label: 'Team', codes: ['team'] }, { label: 'Blog', codes: ['blog'] }, { label: 'Settings', codes: ['settings', 'modules'] }] }]
 const isCompany = computed(() => me.value?.org?.kind === 'company')
+// Services for a company is one sub-menu in the order work happens: see your jobs, order, talk to us, files, then
+// paying (invoices, the wallet you can pay from). Job pages sit under Overview; the job list sits with Invoices.
+const SVC_ORDER = ['/client', '/client/order', '/client/messages', '/client/documents', '/client/invoices', '/wallet', '/client/raise', '/perks']
+const svcTabs = (m: Mod): WsTab[] => [
+  { to: '/client', label: 'Overview', code: m.code, match: (p: string) => p === '/client' || p.startsWith('/client/jobs/') },
+  { to: '/client/order', label: 'Order a service', code: m.code },
+  { to: '/client/documents', label: 'Documents', code: m.code },
+  { to: '/client/invoices', label: 'Invoices', code: m.code, match: (p: string) => p === '/client/invoices' || p === '/client/jobs' }].filter((t) => t.to === '/client' || canPath(t.to))
 const wsMenu = computed(() => {
   const all = (mods.value ?? []).filter((x) => (x.usable || x.locked) && !x.navHidden && !(canPlatform.value && x.group === 'cs'))
   const by = new Map(all.map((m) => [m.code, m])); const used = new Set<string>()
   const tabOf = (m: Mod): WsTab => { used.add(m.code); return { to: m.to, label: isCompany.value && m.code === 'updates' ? 'Updates' : m.label, code: m.code, locked: !!m.locked && !m.usable, pages: m.pages } }
   const item = (label: string, tabs: WsTab[]): WsItem | null => { const first = tabs.find((t) => !t.locked) ?? tabs[0]; return first ? { label: tabs.length === 1 ? tabs[0]!.label : label, icon: first.code, to: first.to, tabs } : null }
   const out = (isCompany.value ? COMPANY_MENU : AIDI_MENU).map((s) => ({ label: s.label, items: s.items.map((d) => {
-    const tabs = d.codes.map((c) => by.get(c)).filter((m): m is Mod => !!m).map(tabOf)
+    const tabs = d.codes.map((c) => by.get(c)).filter((m): m is Mod => !!m).flatMap((m) => (isCompany.value && m.code === 'company_services' ? (used.add(m.code), svcTabs(m)) : [tabOf(m)]))
     if (d.extra && tabs.length && isCompany.value) tabs.push(...d.extra)
+    if (tabs.some((t) => t.code === 'company_services')) { tabs.sort((a, b) => (SVC_ORDER.indexOf(a.to) + 99) % 99 - (SVC_ORDER.indexOf(b.to) + 99) % 99); for (const t of tabs) if (t.code === 'client_inbox') t.label = 'Messages' }
     return item(d.label, tabs) }).filter((x): x is WsItem => !!x) }))
   for (const m of all.filter((x) => !used.has(x.code))) {
     let s = out.find((x) => x.label === m.groupLabel); if (!s) { s = { label: m.groupLabel, items: [] }; out.push(s) }
@@ -72,7 +81,7 @@ const wsMenu = computed(() => {
   }
   return out.filter((s) => s.items.length)
 })
-const tabOn = (t: WsTab) => isOn(t.to) || (t.pages ?? []).some((p) => p !== t.to && isOn(p))
+const tabOn = (t: WsTab) => (t.match ? t.match(nowPath.value) : isOn(t.to) || (t.pages ?? []).some((p) => p !== t.to && isOn(p)))
 const wsItemOn = (it: WsItem) => it.tabs.some(tabOn)
 const wsCurrent = computed(() => { for (const s of wsMenu.value) for (const it of s.items) if (wsItemOn(it)) return { s, it }; return null })
 const wsTabs = computed(() => (platformMode.value ? null : (wsCurrent.value && wsCurrent.value.it.tabs.length > 1 ? wsCurrent.value.it.tabs : null)))

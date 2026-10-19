@@ -43,7 +43,7 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
 <template>
   <section v-if="data">
     <template v-if="me?.org?.kind === 'company'"><ClientTabs /><BillingTabs /></template>
-    <p class="eyebrow">Billing</p><h1 class="ttl">Wallet</h1>
+    <h1 class="ttl">Wallet</h1>
     <p class="lead">Top up once and pay for services, filings and renewals from your balance. Every movement is listed below.</p>
     <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
     <p v-if="returned && data.pending" class="card note">Payment received; we're confirming it with {{ data.provider }}. Your balance updates in a moment.</p>

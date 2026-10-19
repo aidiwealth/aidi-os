@@ -4,9 +4,12 @@ const route = useRoute()
 const { canPath } = useModuleAccess()
 const tabs = computed(() => [{ to: '/client', label: 'Overview' }, { to: '/client/documents', label: 'Documents' }, { to: '/client/invoices', label: 'Billing' }, { to: '/client/messages', label: 'Messages' }, { to: '/client/order', label: 'Order a service' }].filter((t) => canPath(t.to)))
 const on = (to: string) => (to === '/client' ? route.path === '/client' || /^\/client\/jobs\/./.test(route.path) : to === '/client/invoices' ? route.path === '/client/invoices' || route.path === '/client/jobs' : route.path.startsWith(to))
+// In the Finvry app the menu's sub-menu covers these pages; these tabs show only where it does not (the portal).
+const wsTabs = inject<Ref<unknown[] | null> | null>('wsTabs', null)
+const covered = computed(() => !!wsTabs?.value?.length)
 </script>
 <template>
-  <nav class="ct"><NuxtLink v-for="t in tabs" :key="t.to" :to="t.to" :class="{ on: on(t.to) }">{{ t.label }}</NuxtLink></nav>
+  <nav v-if="!covered" class="ct"><NuxtLink v-for="t in tabs" :key="t.to" :to="t.to" :class="{ on: on(t.to) }">{{ t.label }}</NuxtLink></nav>
 </template>
 <style scoped>
 .ct { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin-bottom: 18px; } .ct a { padding: 10px 0; color: var(--c-muted); text-decoration: none; font-size: 14px; border-bottom: 2px solid transparent; } .ct a.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }

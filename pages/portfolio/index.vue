@@ -66,7 +66,7 @@ const STATUS: Record<string, string> = { sent: 'Link sent', in_progress: 'Starte
 
 <style scoped>
 .pt { display: flex; gap: 28px; align-items: baseline; flex-wrap: wrap; margin: 0 0 12px; padding: 12px 16px; background: #fff; border: 1px solid var(--c-rule); } .pt em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .pt b { font-size: 18px; font-weight: 500; color: var(--c-navy); } .pt .mut { margin-left: auto; font-size: 12.5px; color: var(--c-muted); } td.r, th.r { text-align: right; }
-.fvp { display: flex; gap: 10px; align-items: center; font-size: 14px; } .lkb { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .fvn { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; text-decoration: none; }
+.fvp { display: flex; gap: 10px; align-items: center; font-size: 14px; } .lkb { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .fvn { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf1f7; color: #1e5079; text-decoration: none; }
 .head { display: flex; justify-content: space-between; align-items: end; margin: 4px 0 20px; }
 .tools { display: flex; gap: 10px; align-items: center; }
 .add { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; align-items: end; margin-bottom: 20px; }

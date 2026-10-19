@@ -1,7 +1,7 @@
 /* Aidi OS / Finvry design tokens: Aidi blues on a soft neutral shell, white panels, hairline rules, rounded cards. */
 :root {
   --c-navy: #0c1a2e; --c-navy-2: #1a4b72; --c-blue-deep: #1c547d; --c-blue: #2675b0; --c-cyan: #2da7c3; --c-sky: #5fa8d3;
-  --c-green: #34a873; --c-white: #ffffff; --c-paper: #ffffff; --c-paper-2: #f4f4f1; --c-paper-3: #fafaf8;
+  --c-green: #3474a8; --c-white: #ffffff; --c-paper: #ffffff; --c-paper-2: #f4f4f1; --c-paper-3: #fafaf8;
   --c-ink: #0f1115; --c-ink-soft: #3d4148; --c-muted: #6e737b; --c-rule: rgba(15,17,21,.07); --c-line-soft: rgba(15,17,21,.06); --shadow-card: 0 1px 2px rgba(15,17,21,.04), 0 14px 30px -20px rgba(15,17,21,.22); --shadow-lift: 0 2px 4px rgba(15,17,21,.05), 0 20px 40px -22px rgba(15,17,21,.30); --c-rule-strong: rgba(15,17,21,.16);
   --c-signal: #1c547d; --c-signal-soft: rgba(28,84,125,.08);
   --c-danger: #b42318; --c-warn: #b54708; --c-ok: #1d5a86;

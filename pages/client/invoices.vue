@@ -1,5 +1,6 @@
 <script setup lang="ts">
 useHead({ title: 'Billing' })
+const { canPath } = useModuleAccess()
 interface I { id: string; number: string; currency: string; amount: string; status: string; issue_date: string; due_date: string; paid_at: string | null; paid_via: string | null; company: string | null; overdue: boolean; summary: string; link: string; job_id: string | null; job: string | null; tax_amount: string }
 const { data } = await usePortalFetch<I[]>('/api/portal/invoices')
 const unpaid = computed(() => (data.value ?? []).filter((i) => i.status === 'sent'))
@@ -14,7 +15,7 @@ async function payWallet(id: string) { paying.value = id; pmsg.value = ''; try {
   <section v-if="data">
     <ClientTabs />
     <BillingTabs />
-    <h1>Invoices</h1>
+    <div class="ih"><h1>Invoices</h1><NuxtLink v-if="canPath('/client/jobs')" to="/client/jobs" class="jl">See them by service job →</NuxtLink></div>
     <h2>To pay</h2><p v-if="wal" class="wb">Wallet balance: <b><Money :value="wal.balance_minor / 100" :currency="wal.currency" /></b> · <NuxtLink to="/wallet">Top up</NuxtLink> · invoices in {{ wal.currency }} can be paid from it</p><p v-if="pmsg" class="error">{{ pmsg }}</p>
     <div class="box"><table v-if="unpaid.length"><tbody><tr v-for="i in unpaid" :key="i.id"><td><b class="m">{{ i.number }}</b><span class="s">{{ i.summary }}{{ i.company ? ' · ' + i.company : '' }}</span><NuxtLink v-if="i.job_id" :to="'/client/jobs/' + i.job_id" class="jl">For: {{ i.job }}</NuxtLink></td>
       <td><span class="chip" :class="{ over: i.overdue }">{{ i.overdue ? 'Overdue · ' : 'Due ' }}{{ day(i.due_date) }}</span></td><td class="n"><b><Money :value="i.amount" :currency="i.currency" /></b></td><td class="n"><button v-if="wal && wal.currency === i.currency && wal.balance_minor >= Number(i.amount) * 100" class="btn" type="button" :disabled="!!paying" @click="payWallet(i.id)">{{ paying === i.id ? 'Paying…' : 'Pay from wallet' }}</button> <a :href="i.link" class="btn secondary">View &amp; pay</a></td></tr></tbody></table>
@@ -34,4 +35,5 @@ th { text-align: left; font-weight: 400; font-size: 13px; color: var(--c-muted);
 a.btn { text-decoration: none; } .link { color: var(--c-blue-deep); } .none { padding: 18px; color: var(--c-muted); margin: 0; }
 .jl { display: block; font-size: 12.5px; color: var(--c-blue-deep); text-decoration: none; margin-top: 2px; }
 .wb { font-size: 13.5px; color: var(--c-ink-soft); margin: -4px 0 10px; } .error { color: var(--c-danger); }
+.ih { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; } .ih h1 { margin: 0 0 12px; } .jl { font-size: 13.5px; color: var(--c-blue-deep); text-decoration: none; }
 </style>

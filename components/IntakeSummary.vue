@@ -56,7 +56,7 @@ const when = computed(() => (props.at ? new Date(props.at).toLocaleString('en-GB
 <style scoped>
 .isum { display: flex; flex-direction: column; }
 .ish { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .ish h2 { margin: 0; font-size: 17px; }
-.sent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 0; background: #e8f0f8; color: #23784a; } .sent i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 0; background: #e8f0f8; color: #235278; } .sent i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .ismeta { margin: 6px 0 14px; font-size: 13px; color: var(--c-muted); }
 .ishero { display: flex; gap: 14px; align-items: flex-start; padding: 14px; background: var(--c-paper-2); border-radius: 0; margin-bottom: 14px; }
 .mono { flex: none; width: 44px; height: 44px; border-radius: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
@@ -72,7 +72,7 @@ const when = computed(() => (props.at ? new Date(props.at).toLocaleString('en-GB
 .isf { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--c-rule); } .fh { display: block; font-size: 13px; color: var(--c-muted); margin-bottom: 10px; }
 .fg { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; } .fc { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--c-rule); border-radius: 0; padding: 10px 12px; } .fl { font-size: 12px; color: var(--c-muted); line-height: 1.35; }
 .fi { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--c-ink); min-width: 0; } a.fi:hover .fn { color: var(--c-blue-deep); text-decoration: underline; }
-.ft { flex: none; width: 32px; height: 36px; border-radius: 0; display: grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; background: #7b8794; } .ft[data-t="PDF"] { background: #d0473d; } .ft[data-t="IMG"] { background: #8a5cd1; } .ft[data-t="XLS"] { background: #23854f; } .ft[data-t="DOC"] { background: #2f6fd6; }
+.ft { flex: none; width: 32px; height: 36px; border-radius: 0; display: grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; background: #7b8794; } .ft[data-t="PDF"] { background: #d0473d; } .ft[data-t="IMG"] { background: #8a5cd1; } .ft[data-t="XLS"] { background: #235985; } .ft[data-t="DOC"] { background: #2f6fd6; }
 .fn { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dl { color: var(--c-blue-deep); } .none { font-size: 13px; color: var(--c-muted); }
 @media (max-width: 640px) { .isl { grid-template-columns: 1fr; gap: 2px; } .isl dd { margin-bottom: 10px; } .own li { grid-template-columns: 30px 1fr 44px; } .own .bar { display: none; } }
 </style>

@@ -39,7 +39,7 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', {
 .chev { color: var(--c-muted); font-size: 20px; line-height: 1; transition: transform .15s; } .ph[aria-expanded="true"] .chev { transform: rotate(90deg); } .acts { display: flex; gap: 14px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); } .muted { color: var(--c-muted); font-size: 13.5px; margin: 0; }
 .t { width: 100%; border-collapse: collapse; } .t th { text-align: left; font-size: 12px; font-weight: 400; color: var(--c-muted); padding: 8px 6px; border-bottom: 1px solid var(--c-rule); } .t td { padding: 10px 6px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; vertical-align: middle; }
-.sub { display: block; font-size: 12px; color: var(--c-muted); } .r { text-align: right; white-space: nowrap; } .dn { font-size: 12px; color: var(--c-ok); } .nw { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf7ef; color: #1d7a45; }
+.sub { display: block; font-size: 12px; color: var(--c-muted); } .r { text-align: right; white-space: nowrap; } .dn { font-size: 12px; color: var(--c-ok); } .nw { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 7px; background: #eaf1f7; color: #1e5079; }
 .btn.sm { padding: 6px 12px; font-size: 13px; } .ok { color: var(--c-ok); margin: 0; font-size: 13.5px; } .error { color: var(--c-danger); margin: 0; }
 .au { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--c-ink-soft); margin: 4px 0 10px; }
 </style>

@@ -27,7 +27,7 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
 <template>
   <section>
     <FinHeader />
-    <div class="head"><div><h1>What to do next</h1><p class="sub">{{ data?.advice?.as_of ? 'From your figures to ' + mon(data.advice.as_of) : '' }}</p></div>
+    <div class="head"><div><p class="sub">{{ data?.advice?.as_of ? 'From your figures to ' + mon(data.advice.as_of) : '' }}</p></div>
       <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again">{{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
 
 
