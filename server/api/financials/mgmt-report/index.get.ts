@@ -17,5 +17,7 @@ export default defineEventHandler(async (event) => {
   const customers = org.kind === 'company' && (await enabledModules()).has('fin_customers') && ((await withCustFor(subject, () => loadCustomers()).catch(() => null)) ?? []).length > 0
   // The report used to have one customer section: a saved choice with it keeps retention too.
   const on = (k: string) => (saved ? saved.includes(k) || (k === 'retention' && saved.includes('customers')) : MR_SECTIONS.find((x) => x.key === k)!.on)
-  return { subject, groups: customers ? ((await withCustFor(subject, () => customerGroups())) ?? []) : [], months, sections: MR_SECTIONS.map((s) => ({ ...s, on: on(s.key), available: (s.key !== 'customers' && s.key !== 'retention') || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, about: (await companyAbout(subject, mine?.about)).text }
+  // Treasury bills or other securities in the figures: the dialog asks whether to show them with cash.
+  const has_securities = rows.some((r) => typeof r.lines.investments === 'number' && r.lines.investments !== 0)
+  return { has_securities, subject, groups: customers ? ((await withCustFor(subject, () => customerGroups())) ?? []) : [], months, sections: MR_SECTIONS.map((s) => ({ ...s, on: on(s.key), available: (s.key !== 'customers' && s.key !== 'retention') || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, about: (await companyAbout(subject, mine?.about)).text }
 })

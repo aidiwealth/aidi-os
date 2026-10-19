@@ -24,7 +24,7 @@ export async function valuationBasis(): Promise<ValCompany> {
     if (lastRev) out.run_rate = Math.round(((await conv(lastRev, lastRev.lines.revenue)) ?? 0) * 12)
     if (out.ebitda_ttm != null && out.revenue_ttm) out.ebitda_margin_pct = Math.round(out.ebitda_ttm / out.revenue_ttm * 1000) / 10
     // Cash and debt: the latest month that has them (cash and marketable securities when the company counts them).
-    const sec = org?.settings.cash_with_securities === true
+    const sec = await investorCashPolicy()
     for (const r of [...rows].reverse()) { if (r.lines.cash == null) continue; out.cash = Math.round(((await conv(r, r.lines.cash)) ?? 0) + (sec ? ((await conv(r, r.lines.investments)) ?? 0) : 0)); out.debt = Math.round((await conv(r, r.lines.debt)) ?? 0); break }
   }
   return out

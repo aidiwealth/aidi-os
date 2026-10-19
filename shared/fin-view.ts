@@ -128,13 +128,23 @@ const WC: { key: string; side: 1 | -1; up: string; down: string }[] = [
   { key: 'other_assets', side: -1, up: 'other assets rose {x} (such as prepayments, loans given or equipment)', down: 'other assets fell {x} (such as prepayments used or loans repaid)' },
   { key: 'investments', side: -1, up: 'short-term investments rose {x}', down: 'short-term investments fell {x}' },
   { key: 'long_term_investments', side: -1, up: 'long-term investments rose {x}', down: 'long-term investments fell {x}' }]
-export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, number | null>) => number | null): BurnReview {
+// Burn and runway are about the money the company can spend: its bank cash and its short-term investments (treasury
+// bills and similar). Buying or selling them moves cash between two pockets, so it is never burn, and runway counts
+// both, whatever the pages show as "Cash" (the bank balance in Financials; investor-facing reads choose for
+// themselves). opts.securities = false keeps the older reading (trades in securities counted as investing cash).
+export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, number | null>) => number | null, opts: { securities?: boolean } = {}): BurnReview {
   const rows = raw.filter((r) => r.period_type === 'month').slice().sort((a, b) => (a.period_end < b.period_end ? -1 : 1))
   const d = rows.map((r) => r.derived ?? deriveLines(r.lines, 1))
-  const cashOf = (x: Record<string, number | null>) => (cashOverride ? cashOverride(x) : x.cash)
+  const liquid = (x: Record<string, number | null>) => (x.bank_cash !== undefined || typeof x.cash !== 'number' ? x.cash : x.cash + (opts.securities === false || typeof x.investments !== 'number' ? 0 : x.investments))
+  const cashOf = (x: Record<string, number | null>) => (cashOverride ? cashOverride(x) : liquid(x))
   const last3 = d.slice(-3), n = last3.length
   const avg = (f: (x: Record<string, number | null>) => number | null) => { const v = last3.map(f).filter((x): x is number => x !== null); return v.length === n && n ? v.reduce((a, b) => a + b, 0) / n : null }
-  const cf = avg((x) => (x.operating_cf === null ? null : -((x.operating_cf ?? 0) + (x.investing_cf ?? 0))))
+  const sec = opts.securities !== false
+  const hasSec = d.some((x) => typeof x.investments === 'number' && x.investments !== 0)
+  const secMove = (i: number) => { const x = d[i], p = d[i - 1]; return sec && x && p && typeof x.investments === 'number' && typeof p.investments === 'number' ? x.investments - p.investments : 0 }
+  const flowAt = (i: number) => { const x = d[i]!; return x.operating_cf === null ? null : -((x.operating_cf ?? 0) + (x.investing_cf ?? 0) + secMove(i)) }
+  const base = d.length - last3.length
+  const cf = (() => { const v = last3.map((_, j) => flowAt(base + j)).filter((x): x is number => x !== null); return v.length === n && n ? v.reduce((a, b) => a + b, 0) / n : null })()
   const nl = avg((x) => (x.net_income === null ? null : -(x.net_income + (x.depreciation ?? 0))))
   const fmt = (v: number) => Math.round(v).toLocaleString('en-US')
   // Cash change: from the month before the window to its last month, net of money raised (financing).
@@ -149,7 +159,7 @@ export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, numb
   if (n && a0 && a1 && nl !== null) {
     let wc = 0, seen = 0
     for (const w of WC) {
-      if (w.key === 'investments' && a1.bank_cash !== undefined) continue
+      if (w.key === 'investments' && sec) continue
       const x0 = a0[w.key], x1 = a1[w.key]
       if (typeof x0 !== 'number' || typeof x1 !== 'number') continue
       seen++
@@ -160,7 +170,7 @@ export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, numb
     if (seen >= 2) bs = nl - wc / n
     drivers.sort((p, q) => Math.abs(q.effect) - Math.abs(p.effect))
   }
-  const methods: BurnMethod[] = [{ key: 'cash_flow', label: 'Operating (and investing) cash flow', value: cf }, { key: 'balance_sheet', label: 'Cash flow worked out from the balance sheet', value: bs }, { key: 'cash_change', label: 'Fall in cash, excluding money raised', value: cc }, { key: 'net_loss', label: 'Net loss, depreciation added back', value: nl }]
+  const methods: BurnMethod[] = [{ key: 'cash_flow', label: sec && hasSec ? 'Operating and investing cash flow (treasury bills and other securities counted as cash)' : 'Operating (and investing) cash flow', value: cf }, { key: 'balance_sheet', label: 'Cash flow worked out from the balance sheet', value: bs }, { key: 'cash_change', label: 'Fall in cash, excluding money raised', value: cc }, { key: 'net_loss', label: 'Net loss, depreciation added back', value: nl }]
   const close = (p: number, q: number) => Math.abs(p - q) <= Math.max(2000, Math.abs(q) * 0.1)
   // Working capital explains the gap between cash burn and the loss when the balance sheet figure matches the fall in cash.
   const explained = bs !== null && nl !== null && (cc === null || close(bs, cc)) && !close(bs, nl)
@@ -189,7 +199,7 @@ export function burnReview(raw: FinRow[], cashOverride?: (d: Record<string, numb
   }
   if (cc !== null && cc < 0 && (nl ?? 0) > 0 && !last3.some((x) => (x.financing_cf ?? 0) !== 0) && !explained) issues.push('Cash went up while the figures show a loss. If money was raised or a loan drawn, add it as financing cash flow so burn is not understated.')
   if ((nl ?? 0) <= 0 && nl !== null && (cc ?? 0) > 0 && (cc ?? 0) > 1000 && !explained) issues.push('Profitable on paper but cash is falling about ' + fmt(cc!) + ' a month. Check receivables, stock, capital spending or loan repayments.')
-  const single = last3.length && pick?.key !== 'balance_sheet' ? (() => { const x = last3[last3.length - 1]!; return x.operating_cf !== null ? -((x.operating_cf ?? 0) + (x.investing_cf ?? 0)) : x.net_income !== null ? -x.net_income : null })() : null
+  const single = last3.length && pick?.key !== 'balance_sheet' ? (() => { const x = last3[last3.length - 1]!; return x.operating_cf !== null ? flowAt(d.length - 1) : x.net_income !== null ? -x.net_income : null })() : null
   if (single !== null && burn && burn > 0 && Math.abs(single - burn) / burn > 0.5) notes.push('The latest month (' + fmt(single) + ') is far from the 3-month average (' + fmt(burn) + '); runway uses the average.')
   if (cashAt && rows.length && cashAt < rows[rows.length - 1]!.period_end) issues.push(mi(rows[rows.length - 1]!.period_end) - mi(cashAt) >= 2 ? 'Cash was last given for ' + mlabel(mi(cashAt)) + ', so runway is not worked out. Add the balance sheet for recent months.' : 'Cash was last given at ' + cashAt + '; runway is from that balance.')
   if (n < 3) issues.push('Fewer than three months of figures: burn is a rough guide.')

@@ -11,8 +11,8 @@ export default defineEventHandler(async (event) => {
   const parts = (await readMultipartFormData(event)) ?? []
   const val = (k: string) => parts.find((p) => p.name === k && !p.filename)?.data.toString('utf8') ?? ''
   const b = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/), period_type: z.enum(['month', 'quarter', 'year']).default('month'), count: z.coerce.number().int().min(1).max(36).default(12),
-    format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), note_income: z.string().max(1500).default(''), note_balance: z.string().max(1500).default(''), note_cash: z.string().max(1500).default(''), room: z.enum(['0', '1']).default('0'), kind: z.enum(['report', 'statements']).default('statements'), year: z.coerce.number().int().min(1990).max(2100).optional() })
-    .safeParse(Object.fromEntries(['subject', 'period_type', 'count', 'format', 'comments', 'note_income', 'note_balance', 'note_cash', 'room', 'kind', 'year'].map((k) => [k, val(k) || undefined])))
+    format: z.enum(['pdf', 'xlsx']).default('pdf'), securities: z.enum(['1', '0']).optional(), comments: z.string().max(8000).default(''), note_income: z.string().max(1500).default(''), note_balance: z.string().max(1500).default(''), note_cash: z.string().max(1500).default(''), room: z.enum(['0', '1']).default('0'), kind: z.enum(['report', 'statements']).default('statements'), year: z.coerce.number().int().min(1990).max(2100).optional() })
+    .safeParse(Object.fromEntries(['subject', 'period_type', 'count', 'format', 'comments', 'note_income', 'note_balance', 'note_cash', 'room', 'kind', 'year', 'securities'].map((k) => [k, val(k) || undefined])))
   if (!b.success) throw apiError('invalid', 'Choose the period and format.')
   await rateLimit('fin_statements', user.userId, 60, 60 * 60 * 1000)
   const d = b.data, org = (await currentOrg())!
@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
       const start = new Date(Date.UTC(year - 1, fye, 0)).toISOString().slice(0, 10)
       cap = await shareholding(end, start, profile.share_classes).catch(() => null)
     }
-    const r = buildReport(raw, { p: { ...profile, legal_name: isGroup ? (profile.legal_name || mainName) + ' and its subsidiaries' : d.subject === main ? profile.legal_name || name : name }, year, withSecurities: org.settings.cash_with_securities === true, comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, subsidiaries, cap })
+    const r = buildReport(raw, { p: { ...profile, legal_name: isGroup ? (profile.legal_name || mainName) + ' and its subsidiaries' : d.subject === main ? profile.legal_name || name : name }, year, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, subsidiaries, cap })
     const bytes = d.format === 'xlsx' ? await reportXlsx(r, logo0) : Buffer.from(await reportPdf(r, logo0))
     const fname = (r.company + ' financial statements ' + r.period).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
     const mime = d.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
     return bytes
   }
-  const s = buildStatements(raw, { company: name, period_type: d.period_type, count: d.count, withSecurities: org.settings.cash_with_securities === true, comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash } })
+  const s = buildStatements(raw, { company: name, period_type: d.period_type, count: d.count, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash } })
   if (!s.periods.length) throw apiError('empty', 'No ' + d.period_type + 'ly figures up to today.')
   const logo = logo0
   const bytes = d.format === 'xlsx' ? await statementsXlsx(s, logo) : Buffer.from(await statementsPdf(s, logo))

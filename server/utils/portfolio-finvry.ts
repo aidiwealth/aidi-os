@@ -90,7 +90,7 @@ export async function notifyPortfolioOfUpdate(orgId: string, updateId: string, t
 export async function finvryPrefill(companyId: string, period: string, months: 1 | 3): Promise<{ values: Record<string, number | null>; from: string } | null> {
   const c = (await asPlatform(() => db().query<{ finvry_org_id: string | null }>('SELECT finvry_org_id FROM portfolio.companies WHERE id = $1', [companyId]))).rows[0]
   if (!c?.finvry_org_id) return null
-  const { rows, sec } = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return { rows: ent ? await loadStatements('entity:' + ent, 'month', 'USD') : [], sec: await cashPolicy() } })
+  const { rows, sec } = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return { rows: ent ? await loadStatements('entity:' + ent, 'month', 'USD') : [], sec: await investorCashPolicy() } })
   const end = period.slice(0, 7), start = new Date(end + '-01T00:00:00Z'); start.setUTCMonth(start.getUTCMonth() - (months - 1))
   const from = start.toISOString().slice(0, 7)
   const inP = rows.filter((r) => r.period_end.slice(0, 7) >= from && r.period_end.slice(0, 7) <= end)

@@ -1,4 +1,4 @@
-import { burnReview, deriveLines } from '~/shared/fin-view'
+import { burnReview, deriveLines, withSecurities } from '~/shared/fin-view'
 // More tools for the AI analyst: the newer areas (Secondaries with AI screening, wealth clients' risk levels, pitches,
 // notices, fundraising clients, linked sheets, contact lists, the data room, custom metrics), a calculator so figures
 // are computed rather than guessed, and proposed actions the person confirms with one click (carried out by
@@ -177,7 +177,9 @@ finvryExtra.push(
     run: async () => {
       const ent = await companyEntityId(); if (!ent) return { note: 'No company entity yet.' }
       const rows = (await db().query<{ period_end: string; period_type: string; currency: string; lines: Record<string, number> }>("SELECT to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines FROM financials.statements WHERE entity_id = $1 AND period_type = 'month' ORDER BY period_end", [ent])).rows
-      const r = burnReview(rows.map((x) => ({ ...x, kpis: {}, derived: deriveLines(x.lines, 1) })))
+      // Same basis as Financials: burn and runway count treasury bills, trading them is not burn.
+      const sec = await cashPolicy()
+      const r = burnReview(rows.map((x) => ({ ...x, kpis: {}, derived: withSecurities(deriveLines(x.lines, 1), sec) })))
       return { monthly_burn: r.burn, basis: r.basis, runway_months: r.runway, cash: r.cash, cash_as_of: r.cash_at, methods: r.methods.map((m) => ({ method: m.label, monthly: m.value === null ? null : Math.round(m.value) })), status: r.status, issues: r.issues, notes: r.notes, drivers: r.drivers.map((d) => d.label), burn_at_loss: r.loss_burn, runway_if_bills_paid: r.runway_at_loss }
     } })
 

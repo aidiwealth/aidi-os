@@ -1,5 +1,7 @@
 // Investor updates: the figures for a period (from Financials) and the AI first draft.
-export async function periodFigures(periodType: string, periodEnd: string, subject?: string | null): Promise<{ currency: string; current: Record<string, number | null> | null; previous: Record<string, number | null> | null; months: number }> {
+// securities: the team's choice for this update: treasury bills with cash ("cash_and_marketable_securities") or on their
+// own line ("short_term_investments"). Investor updates are investor-facing, so it is asked each time.
+export async function periodFigures(periodType: string, periodEnd: string, subject?: string | null, securities = false): Promise<{ currency: string; current: Record<string, number | null> | null; previous: Record<string, number | null> | null; months: number }> {
   const org = (await currentOrg())!
   const subj = await updateSubject(subject)
   if (!subj) return { currency: 'USD', current: null, previous: null, months: 0 }
@@ -12,8 +14,13 @@ export async function periodFigures(periodType: string, periodEnd: string, subje
     const lines: Record<string, number | null> = {}
     for (const k of flows) { const v = set.map((r) => r.lines[k]).filter((x): x is number => typeof x === 'number'); lines[k] = v.length ? v.reduce((a, b) => a + b, 0) : null }
     const lastRow = set[set.length - 1]!
-    for (const k of ['cash', 'total_assets', 'total_liabilities', 'equity']) lines[k] = (lastRow.lines[k] as number | undefined) ?? null
-    return derive(lines, periodType === 'quarter' ? 'quarter' : 'month')
+    for (const k of ['cash', 'investments', 'total_assets', 'total_liabilities', 'equity']) lines[k] = (lastRow.lines[k] as number | undefined) ?? null
+    const out: Record<string, number | null> = derive(lines, periodType === 'quarter' ? 'quarter' : 'month')
+    const inv = typeof lines.investments === 'number' && lines.investments !== 0 ? lines.investments : null
+    delete out.investments
+    if (inv !== null && securities && typeof out.cash === 'number') { out.cash_and_marketable_securities = out.cash + inv; delete out.cash }
+    else if (inv !== null) out.short_term_investments = inv
+    return out
   }
   return { currency: rows[0]?.currency ?? ((org.settings.currency as string) || 'USD'), current: sum(upto.slice(-n)), previous: sum(upto.slice(-2 * n, -n)), months: upto.length }
 }

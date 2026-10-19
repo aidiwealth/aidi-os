@@ -1,6 +1,7 @@
 // Exchange rates for the group view, month by month. For each currency and month, in this order:
 //   book       the company's own rate for that month (fx.monthly: an Exchange rates / FX rates tab, or typed in)
-//   book_near  its nearest own rate (earlier first): book rates move in steps, so the last one set still applies
+//   book_near  its nearest own rate (earlier first): book rates move in steps, so the last one set still applies,
+//              except after its last own rate, where that month's recorded rate (history) is used when there is one
 //   history    the daily rate recorded during that month (fx.history, kept since this was added)
 //   daily      today's daily rate: only when nothing else exists, and the page says so
 // Every rate is units of the currency per 1 USD.
@@ -20,9 +21,12 @@ export async function rateBook(): Promise<{ perUsd: (quote: string, month: strin
     const exact = list.find((x) => x.m === month)
     if (exact) return { quote, month, per_usd: exact.v, source: 'book' }
     const before = [...list].reverse().find((x) => x.m < month), after = list.find((x) => x.m > month)
+    const h = hmap.get(quote + '|' + month)
+    // Past the company's last own rate (it has not set this month yet), that month's recorded rate is closer to the
+    // truth than repeating the last one. Between two own rates, the earlier own rate still applies (book rates move in steps).
+    if (h && before && !after) return { quote, month, per_usd: h, source: 'history' }
     const near = before ?? after
     if (near) return { quote, month, per_usd: near.v, source: 'book_near', from_month: near.m }
-    const h = hmap.get(quote + '|' + month)
     if (h) return { quote, month, per_usd: h, source: 'history' }
     const d = daily.get(quote)
     return d ? { quote, month, per_usd: d, source: 'daily' } : null

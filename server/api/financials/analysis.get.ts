@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   if (subject !== 'group' && !/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
   if (q.refresh === '1') await rateLimit('fin_analysis', user.userId, 20, 60 * 60 * 1000)
   const org = (await currentOrg())!
-  const sec = org.settings.cash_with_securities === true
+  const sec = await cashPolicy()
   const cur = await subjectCurrency(subject)
   let rows = await loadStatements(subject, 'month', cur)
   if (rows.length < 3) rows = await loadStatements(subject, 'quarter', cur)

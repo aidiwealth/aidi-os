@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const subject = group ? 'group' : ent ? 'entity:' + ent : null
   const rows = subject ? (await loadStatements(subject, 'month', await subjectCurrency(subject))).filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)) : []
   type Pt = Record<string, number | null> & { period: string; currency: string }
-  const sec = org.settings.cash_with_securities === true
+  const sec = await cashPolicy() // Financials: cash is the bank balance (treasury bills on their own line)
   const series: Pt[] = rows.slice(-12).map((r) => Object.assign({}, withSecurities(derive(r.lines, r.period_type), sec), { period: r.period_end, currency: r.currency }) as Pt)
   const last = series[series.length - 1] ?? null, prev = series[series.length - 2] ?? null
   // Burn is the 3-month average (as on Financials and in the reports), not the latest month alone, which can swing with

@@ -197,10 +197,13 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
 
   if (want('balance')) {
     const BK = ['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity']
-    const bsPart = (keys: string[]) => keys.flatMap((k) => { const names = Object.keys(cur.detail ?? {}).filter((x) => x.startsWith(k + '|')); return names.length ? names.map((n) => ({ label: n.slice(k.length + 1), value: det(cur, n) ?? 0 })) : [{ label: LBL[k] ?? k, value: g(cur, k) ?? 0 }] }).filter((x) => x.value > 0)
+    // Cash in the balance sheet is the bank balance: with securities counted as cash, the headline cash already includes
+    // the short-term investments line, which is shown on its own row here.
+    const gb = (r: typeof cur | null, k: string) => (k === 'cash' && r && o.withSecurities && r.d.bank_cash !== undefined ? num(r.d.bank_cash) : g(r, k))
+    const bsPart = (keys: string[]) => keys.flatMap((k) => { const names = Object.keys(cur.detail ?? {}).filter((x) => x.startsWith(k + '|')); return names.length ? names.map((n) => ({ label: n.slice(k.length + 1), value: det(cur, n) ?? 0 })) : [{ label: LBL[k] ?? k, value: gb(cur, k) ?? 0 }] }).filter((x) => x.value > 0)
     const balPies = [pieOf('What the company owns', bsPart(['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets']), 'Assets at ' + ML(cur.period_end)), pieOf('What it owes', bsPart(['payables', 'debt', 'other_liabilities']), 'Liabilities at ' + ML(cur.period_end))].filter((x) => x.slices.length >= 2)
     sections.push({ key: 'balance', title: 'Balance sheet', pies: balPies, tables: [{ head: ['', ML(cur.period_end, true), prev ? ML(prev.period_end, true) : 'Last month', 'Change', openRow ? 'Start of year' : ''].filter((h, n) => n < 4 || openRow),
-      rows: withCats(BK, [(k) => g(cur, k), (k) => g(prev, k), (k) => (g(cur, k) !== null && g(prev, k) !== null ? g(cur, k)! - g(prev, k)! : null), ...(openRow ? [(k: string) => g(openRow, k)] : [])], [(n) => det(cur, n), (n) => det(prev, n), (n) => (det(cur, n) !== null && det(prev, n) !== null ? det(cur, n)! - det(prev, n)! : null), ...(openRow ? [(n: string) => det(openRow, n)] : [])]) }] })
+      rows: withCats(BK, [(k) => gb(cur, k), (k) => gb(prev, k), (k) => (gb(cur, k) !== null && gb(prev, k) !== null ? gb(cur, k)! - gb(prev, k)! : null), ...(openRow ? [(k: string) => gb(openRow, k)] : [])], [(n) => det(cur, n), (n) => det(prev, n), (n) => (det(cur, n) !== null && det(prev, n) !== null ? det(cur, n)! - det(prev, n)! : null), ...(openRow ? [(n: string) => det(openRow, n)] : [])]) }] })
   }
 
   if (want('cashflow')) {

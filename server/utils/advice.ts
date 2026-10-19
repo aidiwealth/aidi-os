@@ -60,7 +60,7 @@ const Out = z.object({ items: z.array(z.object({ kind: z.enum(['urgent', 'next',
 
 export async function adviseCompany(subject: string, force = false): Promise<Advice | null> {
   const org = (await currentOrg())!
-  const cur = await subjectCurrency(subject), sec = org.settings.cash_with_securities === true
+  const cur = await subjectCurrency(subject), sec = await cashPolicy()
   const model = ((org.settings.business_models as Record<string, string> | undefined) ?? {})[subject] ?? null
   let rows = await loadStatements(subject, 'month', cur)
   if (rows.length < 3) rows = await loadStatements(subject, 'quarter', cur)

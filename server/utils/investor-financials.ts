@@ -14,8 +14,9 @@ export async function investorFinancials(): Promise<InvestorFin | null> {
   let summary: InvestorFin['summary'] = null
   if (on) {
     const ent = await companyEntityId()
+    const sec = await investorCashPolicy()
     const rows = ent ? await loadStatements('entity:' + ent, 'month', (org.settings.currency as string) || 'USD') : []
-    const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), org.settings.cash_with_securities === true) }))
+    const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
     if (fr.length) {
       const { facts, period } = factsOf(fr)
       const f = (k: string) => (typeof facts[k] === 'number' ? (facts[k] as number) : null)
@@ -24,7 +25,7 @@ export async function investorFinancials(): Promise<InvestorFin | null> {
         { label: 'Revenue, last quarter', value: f('revenue_last_quarter'), unit: 'money' as const, note: f('revenue_growth_qoq_pct') !== null ? (f('revenue_growth_qoq_pct')! >= 0 ? '+' : '') + f('revenue_growth_qoq_pct') + '% on the quarter before' : undefined },
         { label: 'Gross margin', value: f('gross_margin_pct'), unit: 'pct' as const },
         { label: 'Net income, last quarter', value: f('net_income_last_quarter'), unit: 'money' as const },
-        { label: 'Cash', value: f('cash'), unit: 'money' as const, note: facts.cash_as_of ? 'at ' + facts.cash_as_of : undefined },
+        { label: sec && fr.some((r) => typeof r.lines.investments === 'number' && r.lines.investments !== 0) ? 'Cash and marketable securities' : 'Cash', value: f('cash'), unit: 'money' as const, note: facts.cash_as_of ? 'at ' + facts.cash_as_of : undefined },
         { label: 'Runway', value: f('runway_months'), unit: 'months' as const }
       ].filter((x) => x.value !== null) }
     }

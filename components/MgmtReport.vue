@@ -8,15 +8,17 @@ const props = defineProps<{ open: boolean; subject: string; company: string; onl
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Sec { key: string; title: string; desc: string; on: boolean; available: boolean }
 interface Grp { by: string; value: string; customers: number }
-const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] } | null>(null)
+const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[]; has_securities?: boolean } | null>(null)
+// Treasury bills with cash or not: asked for every report (investor-facing), no default.
+const sec = ref<boolean | null>(null)
 const grp = ref('')
 const about0 = ref('')
 const f = reactive({ chart: 'area', pies: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
 async function load() {
   f.loading = true; f.msg = ''
   try {
-    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[] }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined, cust: props.cust || undefined } })
-    opts.value = o; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies
+    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[]; has_securities?: boolean }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined, cust: props.cust || undefined } })
+    opts.value = o; sec.value = null; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies
     f.picked = o.sections.filter((s) => (props.only ? props.only.includes(s.key) : s.on) && s.available).map((s) => s.key); grp.value = ''
   } catch (e) { f.msg = err(e, 'Could not load the report options.') } finally { f.loading = false }
 }
@@ -34,7 +36,7 @@ async function make() {
   f.busy = true; f.msg = ''
   try {
     const res = await fetch('/api/financials/mgmt-report' + (props.cust ? '?cust=' + encodeURIComponent(props.cust) : ''), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subject: props.subject || undefined, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
+      body: JSON.stringify({ cash_with_securities: opts.value?.has_securities ? sec.value : undefined, subject: props.subject || undefined, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)
     const upd = res.headers.get('x-update-id')
@@ -56,6 +58,9 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
           <label class="label">Format<select v-model="f.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label></div>
         <div class="g2"><label class="label">Charts over time<select v-model="f.chart"><option value="area">Area line (shaded)</option><option value="line">Line</option><option value="bar">Bars</option></select></label>
           <label class="label">Breakdowns (costs, assets, sectors, top customers)<select v-model="f.pies"><option :value="true">Pie charts</option><option :value="false">Bars</option></select></label></div>
+        <fieldset v-if="opts.has_securities" class="secq"><legend>Treasury bills and other securities</legend>
+          <label><input v-model="sec" type="radio" :value="true"> With cash, as "Cash and marketable securities"</label>
+          <label><input v-model="sec" type="radio" :value="false"> On their own line; cash is the bank balance</label></fieldset>
         <div class="sh"><b>What goes in</b><span><button type="button" class="lk" @click="toggleAll(true)">All</button> · <button type="button" class="lk" @click="toggleAll(false)">None</button></span></div>
         <div class="secs">
           <label v-for="s in opts.sections" :key="s.key" class="sec" :class="{ on: f.picked.includes(s.key), off: !s.available }"><input v-model="f.picked" type="checkbox" :value="s.key" :disabled="!s.available"><span><b>{{ s.title }}</b><em>{{ s.available ? s.desc : 'Add your customer data on the Customers page to include this.' }}</em></span></label>
@@ -73,7 +78,7 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
       </template>
       <p v-if="f.msg" class="error">{{ f.msg }}</p>
     </div>
-    <template #foot><button class="btn secondary" type="button" @click="emit('close')">Cancel</button><button class="btn" type="button" :disabled="f.busy || !f.month || !f.picked.length" @click="make">{{ f.busy ? 'Making the report…' : 'Download report' }}</button></template>
+    <template #foot><button class="btn secondary" type="button" @click="emit('close')">Cancel</button><button class="btn" type="button" :disabled="f.busy || !f.month || !f.picked.length || (!!opts?.has_securities && sec === null)" :title="opts?.has_securities && sec === null ? 'Choose how to show treasury bills' : ''" @click="make">{{ f.busy ? 'Making the report…' : 'Download report' }}</button></template>
   </AppModal>
 </template>
 
@@ -93,4 +98,5 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 700px) { .secs, .g2 { grid-template-columns: 1fr; } }
+.secq { border: 1px solid var(--c-rule-strong); padding: 10px 14px; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; } .secq legend { font-size: 12.5px; font-weight: 500; color: var(--c-ink); padding: 0 4px; } .secq label { display: flex; gap: 8px; align-items: center; }
 </style>

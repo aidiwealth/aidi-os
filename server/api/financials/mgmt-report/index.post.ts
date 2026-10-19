@@ -7,7 +7,7 @@ import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
   format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
-  cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional() })
+  cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional(), cash_with_securities: z.boolean().nullable().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'admin')
   const b = Body.safeParse(await readBody(event))
@@ -18,7 +18,8 @@ export default defineEventHandler(async (event) => {
   const ent = await companyEntityId().catch(() => null)
   const d = { ...b.data, subject: b.data.subject ?? (ent ? 'entity:' + ent : '') }
   if (!d.subject) throw apiError('invalid', 'Choose a company.')
-  const sec = org.settings.cash_with_securities === true
+  // Treasury bills with cash or on their own line: the team chooses for each report (investor-facing).
+  const sec = await investorCashPolicy(d.cash_with_securities ?? null)
   const rows = (await loadStatements(d.subject, 'month', await subjectCurrency(d.subject))).map((r) => ({ ...r, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
   if (!rows.length) throw apiError('empty', 'Add your monthly figures first.')
   const name = await subjectName(d.subject)

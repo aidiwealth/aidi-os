@@ -23,9 +23,12 @@ export function customerFacts(kind: 'retention' | 'customers', cs: Cust[], cfg: 
   const co = cohorts(cs, asOf).filter((c) => c.cells[3] !== null)
   const facts: Record<string, unknown> = { billing: cfg.billing ?? 'subscription', retention_windows: basis, months_without_revenue_before_lost: grace, as_of: asOf, months_of_data: monthsBetween(sp.first, sp.last).length, currency: cfg.currency, customers: cs.length, active: summary.active, mrr: R(summary.mrr), arr: R(summary.arr),
     nrr_12m_pct: P(r12.nrr), grr_12m_pct: P(r12.grr), logo_churn_12m_pct: P(r12.logo_churn), nrr_12m_pct_3_months_ago: P(r12p.nrr), customers_a_year_ago: r12.customers,
+    // Customers lost is a count; this is the share of last year's revenue that left with them, so small accounts leaving
+    // are not read as a revenue problem.
+    revenue_lost_with_lost_customers_12m_pct: r12.base ? P(r12.churned / r12.base) : null, revenue_lost_to_customers_spending_less_12m_pct: r12.base ? P(r12.contraction / r12.base) : null,
     last_3_months: { new: R(sum('new')), expansion: R(sum('expansion')), contraction: R(sum('contraction')), churned: R(sum('churned')) },
     group_by: cfg.group_by, groups: groups.slice(0, 8).map((g) => ({ group: g.group, customers: g.customers, share_pct: P(g.share), nrr_pct: P(g.nrr), grr_pct: P(g.grr), logo_churn_pct: P(g.logo_churn), arpa_month: R(g.arpa), growth_pct: P(g.growth) })),
-    customer_revenue_vs_financials_pct: fin3 ? P(cust3 / fin3 - 1) : null, cohort_m12_retention_pct: co.length ? P(co.reduce((s, c) => s + c.cells[3]!, 0) / co.length) : null }
+    customer_revenue_vs_financials_pct: fin3 ? P(cust3 / fin3 - 1) : null, cohort_m12_retention_pct: (() => { const v = co.length ? P(co.reduce((s, c) => s + c.cells[3]!, 0) / co.length) : null; return v !== null && v > 200 ? null : v })() }
   if (kind === 'customers') {
     const top = [...rows].sort((a, b) => b.ttm - a.ttm)
     const movers = rows.filter((r) => r.growth !== null && r.prior_ttm > 0)
@@ -66,6 +69,14 @@ function rules(kind: string, f: Record<string, unknown>): CustInsight[] {
   return out.sort((a, b) => order[a.tone] - order[b.tone]).slice(0, 4)
 }
 
+// The facts as the AI reads them: names that cannot be misread (every customer ever vs customers billed now; revenue
+// moved in 3 months, not ARR). The app keeps the short names.
+function aiFacts(f: Record<string, unknown>): Record<string, unknown> {
+  const { customers, active, last_3_months, ...rest } = f as Record<string, unknown> & { last_3_months?: Record<string, number> }
+  const l3 = last_3_months ?? {}
+  return { ...rest, customers_ever_billed: customers, active_customers_billed_now: active,
+    last_3_months_revenue_movement_not_arr: { from_new_customers: l3.new, existing_spending_more: l3.expansion, existing_spending_less: l3.contraction, from_customers_lost: l3.churned } }
+}
 const Out = z.object({ headline: z.string(), insights: z.array(z.object({ title: z.string(), detail: z.string(), tone: z.enum(['good', 'watch', 'risk']) })) })
 const FACTS = new Map<string, { key: string; facts: Record<string, unknown> }>()
 export async function analyseCustomers(kind: 'retention' | 'customers', force = false): Promise<CustAnalysis | null> {
@@ -78,18 +89,20 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
   if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(sk, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
   // Each company's analysis and the group's are kept apart.
   const subject = 'customers:' + kind + (custEntityId() ? ':' + custEntityId() : '')
-  const hash = createHash('sha256').update(JSON.stringify({ facts, v: 2 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, v: 3 })).digest('hex').slice(0, 40)
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }
   const ins = rules(kind, facts)
   let out: CustAnalysis = { headline: ins[0] ? ins.map((i) => i.title).slice(0, 2).join('; ') + '.' : 'Upload more months to see the analysis.', insights: ins, ai: false, as_of: String(facts.as_of), kind }
   if (useRuntimeConfig().anthropicApiKey) {
     try {
-      const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v2', inputRef: subject,
+      const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v3', inputRef: subject,
         system: 'You are a growth-stage CFO and investor reviewing a company\'s ' + (kind === 'retention' ? 'revenue retention and churn' : 'customer base (top and least performing customers, sectors, concentration, lifetime value and acquisition cost)') + '. Use only the facts given (amounts in ' + facts.currency + '). ' +
           'When billing is usage or prepaid (customers buy credit, like SMS units, and use it over months), a quiet month is not a lost customer and revenue is seasonal: the facts already count a customer lost only after months_without_revenue_before_lost months with nothing, and compare retention_windows; say so where it matters. ' +
-          'Use only the numbers in the facts, exactly as given: never multiply, annualise or add them up yourself (a wrong total is worse than none). Each detail at most two short sentences, in plain words a founder understands, ending with what to do. ' +
+          'Use only the numbers in the facts, exactly as given: never multiply, annualise or add them up yourself (a wrong total is worse than none). ' +
+          'Read the facts by their names: customers_ever_billed is every customer ever billed, active_customers_billed_now is customers billed now; never compare one with the other as growth. last_3_months_revenue_movement_not_arr is revenue in those 3 months, never ARR. logo_churn_12m_pct counts customers; judge how much it matters by revenue_lost_with_lost_customers_12m_pct (when that is small, the customers lost are small accounts). A group with net revenue retention under 100% is shrinking, never call it expansion. ' +
+          'Each detail at most two short sentences, in plain words a founder understands, ending with what to do. ' +
           'Give a one-sentence headline and exactly 4 key points, most important first, each with the numbers behind it and what to do about it. Compare with usual benchmarks for B2B software and fintech where useful. Plain words, no filler. If customer revenue does not match Financials by more than 5%, make that a risk point.',
-        user: JSON.stringify(facts), toolName: 'record_points', toolDescription: 'Record the headline and four key points.', schema: Out, maxTokens: 1500,
+        user: JSON.stringify(aiFacts(facts)), toolName: 'record_points', toolDescription: 'Record the headline and four key points.', schema: Out, maxTokens: 1500,
         jsonSchema: { type: 'object', additionalProperties: false, required: ['headline', 'insights'], properties: { headline: { type: 'string' }, insights: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'detail', 'tone'], properties: { title: { type: 'string' }, detail: { type: 'string' }, tone: { type: 'string', enum: ['good', 'watch', 'risk'] } } } } } } })
       if (output.insights.length) out = { ...out, headline: output.headline.slice(0, 300), insights: output.insights.slice(0, 4).map((x) => ({ ...x, title: x.title.slice(0, 160), detail: x.detail.slice(0, 500) })), ai: true }
     } catch (e) { console.error('[customer-analysis]', (e as Error).message) }

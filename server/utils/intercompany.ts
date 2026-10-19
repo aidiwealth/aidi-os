@@ -1,3 +1,4 @@
+import { foldCategories } from './accounts'
 // Intercompany eliminations for the group (consolidated) view.
 // A parent and its subsidiaries owe each other money (intercompany receivables and payables) and may bill each other
 // (management fees, recharged hosting). Adding the statements together counts those twice, so the group view takes them out.
@@ -20,6 +21,9 @@ export interface Eliminated {
   income: number // intercompany revenue / other income taken out
   costs: number // intercompany costs taken out
   items: { line: string; name: string; value: number; who: string }[]
+  // A company whose asset or liability lines do not add up to its own total (usually a category saved without its line):
+  // the gap is carried in other assets / other liabilities so the group adds up, and named here.
+  gaps: { who: string; side: 'assets' | 'liabilities'; value: number }[]
 }
 
 const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -27,6 +31,21 @@ const add = (t: L, k: string, v: number) => { t[k] = (n(t[k]) ?? 0) + v }
 // Only adjust a total the members gave (never invent one).
 const adj = (t: L, k: string, v: number) => { if (n(t[k]) !== null) t[k] = (t[k] as number) + v }
 const r2 = (v: number) => Math.round(v * 100) / 100
+const SIDES = [{ side: 'assets' as const, total: 'total_assets', parts: ASSET, rest: 'other_assets' }, { side: 'liabilities' as const, total: 'total_liabilities', parts: LIAB, rest: 'other_liabilities' }]
+// One company's lines ready to add up: categories folded into lines the company did not give itself, and any
+// remaining gap to its own totals carried in the "other" line (and reported).
+function memberLines(m: Member, gaps: Eliminated['gaps']): L {
+  const lines: Record<string, number> = {}
+  for (const [k, v] of Object.entries(m.lines)) { const x = n(v); if (x !== null) lines[k] = x }
+  const given = new Set(Object.keys(lines))
+  foldCategories(lines, m.detail ?? {}, given)
+  for (const s of SIDES) {
+    const tot = lines[s.total]; if (typeof tot !== 'number') continue
+    const sum = s.parts.reduce((a, k) => a + (typeof lines[k] === 'number' ? lines[k]! : 0), 0), gap = tot - sum
+    if (Math.abs(gap) > Math.max(2, Math.abs(tot) * 0.005)) { lines[s.rest] = r2((lines[s.rest] ?? 0) + gap); gaps.push({ who: m.who ?? '', side: s.side, value: r2(gap) }) }
+  }
+  return lines
+}
 
 export function isIntercompany(name: string, tagged: Set<string> = new Set()): boolean {
   return tagged.has(name.trim().toLowerCase()) || IC_NAME.test(name)
@@ -37,9 +56,10 @@ export function isIntercompany(name: string, tagged: Set<string> = new Set()): b
 // do not agree on is reported as `unreconciled` so the user can fix it in the books.
 export function consolidate(members: Member[], keys: string[], tagged: Set<string> = new Set()): { lines: L; eliminated: Eliminated } {
   const t: L = {}
-  const e: Eliminated = { receivables: 0, payables: 0, equity: 0, unreconciled: 0, income: 0, costs: 0, items: [] }
+  const e: Eliminated = { receivables: 0, payables: 0, equity: 0, unreconciled: 0, income: 0, costs: 0, items: [], gaps: [] }
   for (const m of members) {
-    for (const k of keys) { const v = n(m.lines[k]); if (v !== null) add(t, k, v * m.rate) }
+    const ml = memberLines(m, e.gaps)
+    for (const k of keys) { const v = n(ml[k]); if (v !== null) add(t, k, v * m.rate) }
     for (const [key, raw] of Object.entries(m.detail ?? {})) {
       const i = key.indexOf('|'); if (i < 0) continue
       const line = key.slice(0, i), name = key.slice(i + 1), v = n(raw)
@@ -63,6 +83,7 @@ export function consolidate(members: Member[], keys: string[], tagged: Set<strin
   const net = e.receivables - e.payables
   if (net) adj(t, 'equity', -net)
   e.unreconciled = r2(net - e.equity)
+  for (const g of e.gaps) g.value = r2(g.value * (members.find((m) => (m.who ?? '') === g.who)?.rate ?? 1))
   for (const k of ['receivables', 'payables', 'equity', 'income', 'costs'] as const) e[k] = r2(e[k])
   return { lines: t, eliminated: e }
 }

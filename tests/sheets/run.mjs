@@ -306,6 +306,31 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('intercompany: a category ticked by the company counts', IC.isIntercompany('Loan to Webtech', new Set(['loan to webtech'])) && !IC.isIntercompany('Loan to Webtech'))
 }
 
+// 13b. A company whose lines do not add up to its own total: categories folded into missing lines, the rest carried
+// as "other" and named (Termii Inc: SAFE notes and credit cards saved under a line it did not give).
+{
+  const IC = await jiti.import(join(root, 'server/utils/intercompany.ts'))
+  const K = ['cash', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'total_assets', 'equity']
+  const m = { rate: 1, who: 'Termii Inc', lines: { cash: 100, total_assets: 100, payables: 300, total_liabilities: 1000, equity: -900 }, detail: { 'debt|SAFE notes (convertible)': 500 } }
+  const { lines, eliminated: e } = IC.consolidate([m], K)
+  check('group: a category under a line the company did not give is folded in', lines.debt === 500, String(lines.debt))
+  check('group: the rest of the gap is other liabilities and named', lines.other_liabilities === 200 && e.gaps.length === 1 && e.gaps[0].who === 'Termii Inc' && e.gaps[0].side === 'liabilities' && e.gaps[0].value === 200, JSON.stringify(e.gaps))
+  check('group: liability lines add up to the total again', lines.payables + lines.debt + lines.other_liabilities === lines.total_liabilities)
+}
+
+// 13c. Burn with treasury bills counted as cash: selling them is not cash coming in.
+{
+  const V = await jiti.import(join(root, 'shared/fin-view.ts'))
+  const mk = (m, inv, invcf) => ({ period_end: new Date(Date.UTC(2026, m, 0)).toISOString().slice(0, 10), period_type: 'month', currency: 'USD', kpis: {}, lines: { revenue: 100000, net_income: -80000, operating_cf: -80000, investing_cf: invcf, cash: 500000, investments: inv } })
+  const rows = [mk(5, 300000, 0), mk(6, 300000, 0), mk(7, 157000, 143000), mk(8, 157000, 0)].map((r) => ({ ...r, derived: V.withSecurities(V.deriveLines(r.lines, 1), true) }))
+  const on = V.burnReview(rows, (d) => d.cash, { securities: true })
+  const plain = V.burnReview(rows.map((r) => ({ ...r, derived: V.deriveLines(r.lines, 1) })))
+  const off = V.burnReview(rows.map((r) => ({ ...r, derived: V.deriveLines(r.lines, 1) })), undefined, { securities: false })
+  check('burn: T-bill sales left out when securities count as cash', Math.round(on.methods[0].value) === 80000 && on.burn === 80000, String(on.methods[0].value))
+  check('burn: T-bill sales left out even where the page shows cash without them (Financials)', Math.round(plain.methods[0].value) === 80000 && plain.cash === 657000, plain.methods[0].value + ' ' + plain.cash)
+  check('burn: the older reading still available', Math.round(off.methods[0].value) === Math.round((240000 - 143000) / 3), String(off.methods[0].value))
+}
+
 // 14. KPIs in the group view (Termii, Jun 2026: Webtech in NGN at 1,380, Termii Inc in USD).
 {
   const K = await jiti.import(join(root, 'server/utils/kpi-consolidate.ts'))

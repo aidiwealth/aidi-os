@@ -85,8 +85,11 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
     // KPIs: counts added, money KPIs converted then added, ratios (e.g. CAC per new customer) worked out again from the
     // group totals (kpi-consolidate.ts). The eliminations ride on the row (shown under the group figures), not as KPIs.
     const kpis: Record<string, number> = consolidateKpis(members, kpiRules)
-    const notes = Math.abs(eliminated.unreconciled) > Math.max(1, Math.abs(n(lines.total_assets) ?? 0) * 0.0005)
-      ? 'Intercompany balances do not agree between the companies by ' + eliminated.unreconciled.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + currency + '; the difference is taken through group equity.' : null
+    const fmt0 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + currency
+    const noteParts = [
+      ...(Math.abs(eliminated.unreconciled) > Math.max(1, Math.abs(n(lines.total_assets) ?? 0) * 0.0005) ? ['Intercompany balances do not agree between the companies by ' + fmt0(eliminated.unreconciled) + '; the difference is taken through group equity.'] : []),
+      ...eliminated.gaps.map((g) => g.who + ': ' + fmt0(Math.abs(g.value)) + ' of ' + g.side + ' are in its total but in no line (a category saved without its line?); counted as other ' + g.side + '. Re-import that company\'s figures to fix.')]
+    const notes = noteParts.length ? noteParts.join(' ') : null
     // Each company's figures in the group currency, the rate used and where it came from: the consolidation table.
     const parts = members.map((m) => ({ who: m.who ?? '', currency: m.currency, rate: m.rate, uses: m.uses,
       lines: Object.fromEntries(LINE_KEYS.map((k) => [k, n(m.lines[k])]).filter(([, v]) => v !== null).map(([k, v]) => [k, Math.round((v as number) * m.rate * 100) / 100])) as L }))
@@ -168,4 +171,15 @@ export async function cashFlowPolicy(subject: string): Promise<boolean | null> {
   return typeof v === 'boolean' ? v : null
 }
 // Whether this workspace counts marketable securities (treasury bills) with cash (asked once on Financials).
-export async function cashPolicy(): Promise<boolean> { return (await currentOrg())?.settings.cash_with_securities === true }
+// Treasury bills and other short-term investments in "Cash":
+// - Financials (the company's own pages, dashboard, analysis, advice, the AI analyst, statement exports): never; cash is
+//   the bank balance and treasury bills keep their own line. Burn and runway count both either way (fin-view.ts).
+// - Investor-facing reads (investor page, updates, data room, management and investor reports, valuation): the team
+//   chooses. Reports and updates ask each time; the pages use the answer saved in investor_cash_with_securities, and
+//   until the team answers, the earlier company-wide choice (cash_with_securities) still applies.
+export async function cashPolicy(): Promise<boolean> { return false }
+export async function investorCashPolicy(override?: boolean | null): Promise<boolean> {
+  if (typeof override === 'boolean') return override
+  const st = (await currentOrg())?.settings ?? {}
+  return typeof st.investor_cash_with_securities === 'boolean' ? st.investor_cash_with_securities : st.cash_with_securities === true
+}

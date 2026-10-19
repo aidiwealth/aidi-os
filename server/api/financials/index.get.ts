@@ -8,5 +8,5 @@ export default defineEventHandler(async (event) => {
   if (!q.success) throw apiError('invalid', 'Bad filter.')
   const rows = await loadStatements(q.data.subject, q.data.period_type, q.data.currency, { raw: getQuery(event).raw === '1' })
   const sec = await cashPolicy()
-  return { name: await subjectName(q.data.subject), cash_with_securities: sec, cash_policy: ((await currentOrg())?.settings.cash_with_securities ?? null) as boolean | null, statements: rows.map((r) => ({ ...r, derived: withSecurities(derive(r.lines, r.period_type), sec) })) }
+  return { name: await subjectName(q.data.subject), cash_with_securities: sec, cash_policy: ((await currentOrg())?.settings.investor_cash_with_securities ?? null) as boolean | null, statements: rows.map((r) => ({ ...r, derived: withSecurities(derive(r.lines, r.period_type), sec) })) }
 })
