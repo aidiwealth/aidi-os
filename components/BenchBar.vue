@@ -21,10 +21,10 @@ const segs = computed(() => { const [a, b] = props.bands; const z = props.lowerI
 </template>
 
 <style scoped>
-.bb { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--c-rule); background: #fff; min-width: 0; }
-.bb-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; } .bb-l { font-size: 12.5px; color: var(--c-muted); }
+.bb { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--c-line-soft, var(--c-rule)); background: var(--c-paper, #fff); min-width: 0; }
+.bb-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; } .bb-l { font-size: 13px; font-weight: 500; color: var(--c-muted); }
 .bb-z { font-size: 11px; padding: 1px 7px; } .bb-z.good { background: #e8eef8; color: var(--c-navy); } .bb-z.watch { background: #f3f1ec; color: #6b5a2e; } .bb-z.risk { background: #f8e8e6; color: #9b3b32; }
-.bb-v { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .bb-v b { font-size: 24px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.bb-v { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .bb-v b { font-family: var(--font-heading); font-size: 26px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; }
 .bb-m { font-size: 12px; } .bb-m em { font-style: normal; color: var(--c-muted); } .bb-m.up { color: var(--c-navy); } .bb-m.down { color: #b2453b; } .bb-m.flat { color: var(--c-muted); }
 .bb-t { position: relative; height: 8px; margin-top: 4px; } .bb-t i { position: absolute; top: 0; bottom: 0; } .bb-t i.risk { background: #efcfcb; } .bb-t i.watch { background: #e9e5dc; } .bb-t i.good { background: #c9d6ea; }
 .bb-t u { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--c-navy); text-decoration: none; }

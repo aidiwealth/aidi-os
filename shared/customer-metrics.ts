@@ -63,14 +63,19 @@ export function retention(cs: Cust[], to: string, months = 12, basis: Basis = 'm
 }
 
 export interface BridgeRow { month: string; start: number; new: number; expansion: number; contraction: number; churned: number; reactivated: number; end: number; active: number; new_logos: number; lost_logos: number }
-// Month by month: where revenue came from and went.
-export function bridge(cs: Cust[], months: string[]): BridgeRow[] {
+// Month by month: where revenue came from and went. `grace` > 1 is for usage and prepaid-credit businesses, where a
+// customer can skip a month (still using credit bought earlier) without having left: each customer's revenue is the
+// average of the last `grace` months, so a customer is lost only after `grace` months with nothing, and a quiet month
+// is not counted as lost and won back.
+export function bridge(cs: Cust[], months: string[], grace = 1): BridgeRow[] {
   const first = new Map(cs.map((c) => [c.id, firstMonth(c)]))
+  const g = Math.max(1, Math.min(12, Math.round(grace)))
+  const at = (c: Cust, m: string) => (g === 1 ? c.rev[m] ?? 0 : win(c, m, g) / g)
   return months.map((m) => {
     const p = addM(m, -1)
     const r: BridgeRow = { month: m, start: 0, new: 0, expansion: 0, contraction: 0, churned: 0, reactivated: 0, end: 0, active: 0, new_logos: 0, lost_logos: 0 }
     for (const c of cs) {
-      const a = c.rev[p] ?? 0, b = c.rev[m] ?? 0
+      const a = at(c, p), b = at(c, m)
       r.start += a; r.end += b; if (b > 0) r.active++
       if (a <= 0 && b > 0) { if (first.get(c.id) === m) { r.new += b; r.new_logos++ } else r.reactivated += b }
       else if (a > 0 && b <= 0) { r.churned += a; r.lost_logos++ }
@@ -101,8 +106,10 @@ export interface Summary { as_of: string; currency: string; active: number; mrr:
 
 // Per customer and overall: run-rate, last 12 months, growth, lifetime value and acquisition payback.
 // LTV = average monthly revenue per customer × gross margin ÷ monthly revenue churn (capped at five years).
-export function customerStats(cs: Cust[], asOf: string, t: Thresholds, by: GroupBy, gmDefault: number | null, currency: string): { rows: CustStat[]; summary: Summary } {
-  const r12 = retention(cs, asOf, 12, 'month')
+// opts: for usage and prepaid businesses, a customer counts as active with revenue in the last `grace` months, and
+// churn for lifetime value is measured on three-month windows (basis), which evens out quiet months and seasons.
+export function customerStats(cs: Cust[], asOf: string, t: Thresholds, by: GroupBy, gmDefault: number | null, currency: string, opts: { grace?: number; basis?: Basis } = {}): { rows: CustStat[]; summary: Summary } {
+  const r12 = retention(cs, asOf, 12, opts.basis ?? 'month'), aw = Math.max(3, opts.grace ?? 1)
   const monthlyChurn = r12.logo_churn === null ? null : 1 - Math.pow(Math.max(0, 1 - r12.logo_churn), 1 / 12)
   const monthlyRevChurn = r12.grr === null ? null : 1 - Math.pow(Math.max(0, r12.grr), 1 / 12)
   const life = monthlyRevChurn && monthlyRevChurn > 0 ? Math.min(60, 1 / monthlyRevChurn) : r12.grr !== null ? 60 : null
@@ -116,7 +123,7 @@ export function customerStats(cs: Cust[], asOf: string, t: Thresholds, by: Group
     const ltv = mrr > 0 && life ? mrr * (gm ?? 1) * life : null
     const cac = c.acquisition_cost
     const payback = cac && mrr > 0 ? cac / (mrr * (gm ?? 1)) : null
-    return { id: c.id, name: c.name, group: groupOf(c, by, asOf, t), sector: c.sector ?? '', segment: c.segment ?? '', country: c.country ?? '', plan: c.plan ?? '', first: f, last: l, active: (c.rev[asOf] ?? 0) > 0 || win(c, asOf, 3) > 0, mrr, arr: mrr * 12, ttm, prior_ttm: prior, growth: prior > 0 ? ttm / prior - 1 : null,
+    return { id: c.id, name: c.name, group: groupOf(c, by, asOf, t), sector: c.sector ?? '', segment: c.segment ?? '', country: c.country ?? '', plan: c.plan ?? '', first: f, last: l, active: (c.rev[asOf] ?? 0) > 0 || win(c, asOf, aw) > 0, mrr, arr: mrr * 12, ttm, prior_ttm: prior, growth: prior > 0 ? ttm / prior - 1 : null,
       lifetime: Object.entries(c.rev).filter(([m]) => m <= asOf).reduce((s, [, v]) => s + v, 0), tenure, ltv, cac, ltv_cac: ltv && cac ? ltv / cac : null, payback, share: 0 }
   })
   for (const r of rows) r.share = ttmAll ? Math.max(0, r.ttm) / ttmAll : 0

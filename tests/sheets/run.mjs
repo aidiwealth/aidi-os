@@ -266,5 +266,15 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('portfolio template: KPIs and notes', r?.other_kpis.some((k) => k.name === 'Runway (months)' && k.value === 20) && r?.highlights === 'Signed two banks.', JSON.stringify(r?.other_kpis) + ' ' + r?.highlights)
 }
 
+// 12. Prepaid credits / pay as you go: a quiet month is not a lost customer when it is within the grace months.
+{
+  const M = await jiti.import(join(root, 'shared/customer-metrics.ts'))
+  const c = { id: 'a', name: 'A', segment: null, sector: null, country: null, plan: null, started_on: null, acquisition_cost: null, gross_margin_pct: null, rev: { '2026-01': 300, '2026-03': 300, '2026-05': 300 } }
+  const ms = ['2026-02', '2026-03', '2026-04', '2026-05', '2026-06']
+  const b1 = M.bridge([c], ms, 1), b3 = M.bridge([c], ms, 3)
+  check('subscription: every quiet month is a lost and won customer', b1.reduce((s, x) => s + x.lost_logos, 0) === 3 && b1.reduce((s, x) => s + x.reactivated, 0) === 600)
+  check('prepaid (3 quiet months allowed): never lost, always active', b3.every((x) => x.lost_logos === 0 && x.active === 1), JSON.stringify(b3.map((x) => [x.month, x.lost_logos, x.active])))
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

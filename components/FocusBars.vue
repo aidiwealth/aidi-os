@@ -38,10 +38,10 @@ const gr = (v: number | null) => (v == null ? '—' : (v >= 0 ? '+' : '−') + M
 .fb { padding: 16px 20px 12px; display: flex; flex-direction: column; gap: 10px; } .fb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .fb-title { font-family: var(--font-heading); font-size: 17px; font-weight: 500; color: var(--c-navy); } .fb-sub { font-size: 12px; color: var(--c-muted); }
 .fb-rows { display: flex; flex-direction: column; } .fb-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) 52px minmax(0, 1.2fr); gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--c-rule); font-size: 13px; }
-.fb-row.hd { font-size: 11.5px; color: var(--c-muted); padding-top: 0; } .r { text-align: right; }
+.fb-row.hd { font-size: 12px; font-weight: 500; color: var(--c-muted); padding-top: 0; } .l { color: var(--c-ink-soft); } .r { text-align: right; }
 .l { min-width: 0; overflow: hidden; } .l, .l em { white-space: nowrap; text-overflow: ellipsis; } .l em { display: block; font-style: normal; font-size: 11.5px; color: var(--c-muted); overflow: hidden; }
-.b { display: flex; align-items: center; gap: 8px; } .b i { display: block; height: 10px; background: var(--c-navy); flex: none; max-width: 75%; } .b b { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 12.5px; }
-.g { font-weight: 600; color: var(--c-navy); font-variant-numeric: tabular-nums; } .g.dn { color: #b2453b; }
+.b { display: flex; align-items: center; gap: 8px; } .b i { display: block; height: 10px; background: var(--c-navy); flex: none; max-width: 75%; } .b b { font-weight: 500; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--c-ink); }
+.g { font-weight: 500; color: var(--c-navy); font-variant-numeric: tabular-nums; } .g.dn { color: #b2453b; }
 .tag { font-style: normal; font-size: 11.5px; padding: 2px 8px; display: inline-block; line-height: 1.35; } .tag.protect { background: #e8eef8; color: var(--c-navy); } .tag.invest { background: #eef2f8; color: #2f5ea8; } .tag.fix { background: #f8e8e6; color: #9b3b32; } .tag.rethink { background: #f3f1ec; color: #6b5a2e; } .tag.na { color: var(--c-muted); }
 .fb-empty { color: var(--c-muted); font-size: 13px; } .fb-foot { margin: 0; font-size: 12px; color: var(--c-muted); }
 </style>

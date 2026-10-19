@@ -45,7 +45,7 @@ const hasData = computed(() => tops.value.some((v) => v > 0) || bots.value.some(
 .sb { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .sb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 16px 20px 0; }
 .sb-title { font-family: var(--font-heading); font-size: 17px; font-weight: 500; color: var(--c-navy); } .sb-sub { font-size: 12px; color: var(--c-muted); white-space: nowrap; }
-.sb-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 20px 0; font-size: 12px; color: var(--c-ink-soft); } .sb-legend span { display: inline-flex; align-items: center; gap: 6px; } .sb-legend i { width: 9px; height: 9px; display: inline-block; } .sb-legend b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sb-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 20px 0; font-size: 12px; color: var(--c-ink-soft); } .sb-legend span { display: inline-flex; align-items: center; gap: 6px; } .sb-legend i { width: 9px; height: 9px; display: inline-block; } .sb-legend b { font-weight: 500; color: var(--c-ink); font-variant-numeric: tabular-nums; }
 .sb-body { padding: 12px 10px 4px; } .sb-body svg { width: 100%; height: 180px; display: block; cursor: crosshair; } .sb-empty { height: 180px; display: flex; align-items: center; justify-content: center; color: var(--c-muted); font-size: 13px; }
 .sb-axis { display: flex; justify-content: space-between; padding: 0 12px 12px; font-size: 11px; color: var(--c-muted); } .sb-foot { padding: 10px 20px; border-top: 1px solid var(--c-rule); font-size: 12.5px; color: var(--c-muted); }
 </style>

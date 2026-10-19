@@ -35,5 +35,5 @@ const pc = (v: number) => (v < 0.01 ? (Math.round(v * 1000) / 10) : Math.round(v
 .pc-title { font-family: var(--font-heading); font-size: 17px; font-weight: 500; color: var(--c-navy); } .pc-sub { font-size: 12px; color: var(--c-muted); }
 svg { width: 100%; height: auto; display: block; } .eq { stroke: var(--c-rule-strong); stroke-dasharray: 4 3; } .g { stroke: var(--c-rule); } .t { font-size: 11px; fill: var(--c-muted); }
 .ar { fill: var(--c-blue); opacity: .1; } .ln { fill: none; stroke: var(--c-navy); stroke-width: 2; } .mk { stroke: var(--c-navy); stroke-dasharray: 2 2; } .dt { fill: var(--c-navy); }
-.pc-foot { margin: 0; font-size: 12.5px; color: var(--c-ink-soft); } .pc-foot b { color: var(--c-ink); font-weight: 600; }
+.pc-foot { margin: 0; font-size: 12.5px; color: var(--c-ink-soft); } .pc-foot b { color: var(--c-navy); font-weight: 500; }
 </style>

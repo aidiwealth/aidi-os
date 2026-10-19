@@ -3,13 +3,17 @@
 import type { Cust, GroupBy } from '~/shared/customer-metrics'
 import { deriveLines } from '~/shared/fin-view'
 
-export interface CustConfig { currency: string; group_by: GroupBy; enterprise_arr: number; midmarket_arr: number; scheme: { name: string; why: string; segments: { name: string; rule: string }[] } | null }
+// billing: how customers pay. Usage (pay as you go) and prepaid credits (customers buy credit and use it over months,
+// like SMS units) make revenue lumpy: dormant_months is how long without revenue before a customer counts as lost, and
+// retention_basis evens out seasons (quarter or year windows).
+export type Billing = 'subscription' | 'usage' | 'prepaid'
+export interface CustConfig { currency: string; group_by: GroupBy; enterprise_arr: number; midmarket_arr: number; scheme: { name: string; why: string; segments: { name: string; rule: string }[] } | null; billing: Billing; dormant_months: number; retention_basis: 'month' | 'quarter' | 'year' }
 export async function customerConfig(): Promise<CustConfig> {
-  const r = (await db().query<CustConfig>('SELECT currency, group_by, enterprise_arr::float8 AS enterprise_arr, midmarket_arr::float8 AS midmarket_arr, scheme FROM financials.customer_config LIMIT 1')).rows[0]
+  const r = (await db().query<CustConfig>('SELECT currency, group_by, enterprise_arr::float8 AS enterprise_arr, midmarket_arr::float8 AS midmarket_arr, scheme, billing, dormant_months, retention_basis FROM financials.customer_config LIMIT 1')).rows[0]
   if (r) return r
   const org = await currentOrg()
   const cur = String((org?.settings.reporting_currency as string | undefined) || (org?.settings.currency as string | undefined) || 'USD')
-  return { currency: /^[A-Z]{3}$/.test(cur) ? cur : 'USD', group_by: 'size', enterprise_arr: 100000, midmarket_arr: 25000, scheme: null }
+  return { currency: /^[A-Z]{3}$/.test(cur) ? cur : 'USD', group_by: 'size', enterprise_arr: 100000, midmarket_arr: 25000, scheme: null, billing: 'subscription', dormant_months: 1, retention_basis: 'month' }
 }
 // Customer revenue can be tens of thousands of rows, read by several pages, boards, reports and the analysis, so each
 // workspace's copy is kept in memory until the data changes (the stamp: counts, totals and the last edit).

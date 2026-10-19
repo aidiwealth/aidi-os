@@ -1,7 +1,7 @@
 // Every metric a founder can put in front of investors, in one list: the figures from Financials, customer revenue
 // retention and customer numbers (from Customers), and the company's own KPIs (customers, volumes, headcount…). Used
 // by investor updates (charts and tables), boards and the investor page, so anything on the analysis can be shared.
-import { addM, arrOf, groupOf, retention, span, type Cust } from '~/shared/customer-metrics'
+import { addM, arrOf, groupOf, retention, span, win, type Cust } from '~/shared/customer-metrics'
 
 export type Unit = 'money' | 'pct' | 'months' | 'number'
 export interface MetricDef { key: string; label: string; unit: Unit; group: 'Financials' | 'Customers and retention' | 'Your KPIs' }
@@ -76,17 +76,18 @@ export async function customerSeries(keys: string[], months: string[]): Promise<
   const want = keys.filter(isCustKey)
   if (!want.length || !(await customersOn())) return Object.fromEntries(want.map((k) => [k, months.map(() => null)]))
   const all: Cust[] = await loadCustomers(), cfg = await customerConfig(), t = { enterprise: cfg.enterprise_arr, midmarket: cfg.midmarket_arr }
+  const basis = cfg.retention_basis ?? 'month', grace = Math.max(1, cfg.dormant_months ?? 1)
   const out: Record<string, (number | null)[]> = {}
   for (const key of want) out[key] = months.map((m) => {
     const ck = custKeyOf(key)!, k = ck.base
     const ret = k === 'cust:nrr' || k === 'cust:grr' || k === 'cust:logo_churn'
     const cs = ck.by ? inGroup(all, ck.by, ck.value!, ret ? addM(m, -12) : m, t) : all
     if (!all.some((c) => Object.keys(c.rev).some((x) => x <= m))) return null
-    if (k === 'cust:nrr' || k === 'cust:grr' || k === 'cust:logo_churn') { const r = retention(cs, m, 12); const v = k === 'cust:nrr' ? r.nrr : k === 'cust:grr' ? r.grr : r.logo_churn; return v == null ? null : Math.round(v * 1000) / 10 }
+    if (k === 'cust:nrr' || k === 'cust:grr' || k === 'cust:logo_churn') { const r = retention(cs, m, 12, basis); const v = k === 'cust:nrr' ? r.nrr : k === 'cust:grr' ? r.grr : r.logo_churn; return v == null ? null : Math.round(v * 1000) / 10 }
     const arrs = cs.map((c) => arrOf(c, m))
     if (k === 'cust:arr') return Math.round(arrs.reduce((a, b) => a + b, 0))
     if (k === 'cust:mrr') return Math.round(arrs.reduce((a, b) => a + b, 0) / 12)
-    if (k === 'cust:active') return cs.filter((c) => (c.rev[m] ?? 0) > 0).length
+    if (k === 'cust:active') return cs.filter((c) => (grace > 1 ? win(c, m, grace) : c.rev[m] ?? 0) > 0).length
     // Share of the last 12 months' revenue from the ten largest customers.
     const ttm = cs.map((c) => { let s = 0; for (let i = 0; i < 12; i++) s += c.rev[addM(m, -i)] ?? 0; return s }).sort((a, b) => b - a)
     const tot = ttm.reduce((a, b) => a + b, 0)

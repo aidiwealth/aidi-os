@@ -1,17 +1,17 @@
 <script setup lang="ts">
 // Customer analysis: top and least performing customers, sectors (or any grouping), concentration, lifetime value,
 // acquisition cost and payback. Same customer revenue as Retention, plus sector and acquisition cost when given.
-import { addM, bridge, byGroup, customerStats, type CustStat, type GroupBy } from '~/shared/customer-metrics'
+import { addM, bridge, byGroup, customerStats, win, type CustStat, type GroupBy } from '~/shared/customer-metrics'
 useHead({ title: 'Customers' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-const { data, pending, refresh, cs, sp, asOf, months, t, cur, stamp } = await useCustomers()
+const { data, pending, refresh, cs, sp, asOf, months, t, cur, stamp, grace } = await useCustomers()
 const by = ref<GroupBy>('sector')
 const up = ref(false); const ok = ref(''); const msg = ref('')
 const rpt = ref(false)
 // ---- Direction: concentration, customer economics and growth against what is usual. ----
 const P1 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 1000) / 10)
-const prevS = computed(() => (asOf.value ? customerStats(cs.value, addM(asOf.value, -3), t.value, by.value, data.value?.fin.gm ?? null, cur.value).summary : null))
+const prevS = computed(() => (asOf.value ? customerStats(cs.value, addM(asOf.value, -3), t.value, by.value, data.value?.fin.gm ?? null, cur.value, { grace: grace.value, basis: data.value?.config.retention_basis ?? 'month' }).summary : null))
 const growthTtm = computed(() => { const a = st.value.rows.reduce((x, r) => x + r.ttm, 0), b = st.value.rows.reduce((x, r) => x + r.prior_ttm, 0); return b > 0 ? (a / b - 1) * 100 : null })
 const verdict = computed(() => {
   const top = ranked.value[0], g = growthTtm.value, won = brC.value.reduce((x, r) => x + r.new_logos, 0), lost = brC.value.reduce((x, r) => x + r.lost_logos, 0)
@@ -25,11 +25,11 @@ const { data: modsR } = useNuxtData<{ code: string; usable?: boolean }[]>('modul
 const rptOk = computed(() => !!modsR.value?.find((m) => m.code === 'fin_report' && m.usable))
 // The last 12 months to the chosen month: revenue and paying customers, customers won and lost, concentration.
 const m12 = computed(() => Array.from({ length: 12 }, (_, i) => addM(asOf.value, i - 11)).filter((m) => months.value.includes(m)))
-const trendM = computed(() => m12.value.map((m) => { let rev = 0, active = 0; for (const c of cs.value) { const v = c.rev[m] ?? 0; rev += v; if (v > 0) active++ } return { m, rev, active } }))
-const brC = computed(() => bridge(cs.value, m12.value))
+const trendM = computed(() => m12.value.map((m) => { let rev = 0, active = 0; for (const c of cs.value) { const v = c.rev[m] ?? 0; rev += v; if ((grace.value > 1 ? win(c, m, grace.value) : v) > 0) active++ } return { m, rev, active } }))
+const brC = computed(() => bridge(cs.value, m12.value, grace.value))
 const conc = computed(() => { const s = ranked.value.map((r) => r.share); const at = (n: number) => Math.round(s.slice(0, n).reduce((a, b) => a + b, 0) * 1000) / 10; return [1, 5, 10, 20, 50].filter((n) => n <= s.length).map((n) => ({ label: 'Top ' + n, value: at(n) })) })
 async function uploaded(m: string) { up.value = false; ok.value = m; await refresh() }
-const st = computed(() => customerStats(cs.value, asOf.value, t.value, by.value, data.value?.fin.gm ?? null, cur.value))
+const st = computed(() => customerStats(cs.value, asOf.value, t.value, by.value, data.value?.fin.gm ?? null, cur.value, { grace: grace.value, basis: data.value?.config.retention_basis ?? 'month' }))
 const S = computed(() => st.value.summary)
 const groups = computed(() => byGroup(cs.value, st.value.rows, asOf.value, by.value, t.value))
 const ranked = computed(() => [...st.value.rows].filter((r) => r.ttm > 0).sort((a, b) => b.ttm - a.ttm))
@@ -184,8 +184,8 @@ td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .dat { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; } .dat > div:first-child { display: flex; flex-direction: column; gap: 2px; } .dat span { font-size: 12.5px; color: var(--c-muted); }
 .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; } .g2 .wide { grid-column: 1 / -1; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm { display: flex; flex-direction: column; gap: 10px; } .sp { flex: 1; }
 @media (max-width: 1100px) { .three { grid-template-columns: 1fr; } }
-.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 19px; line-height: 1.4; color: var(--c-navy); max-width: 980px; }
-.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
-.kvr { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: var(--c-ink-soft); } .kvr b { color: var(--c-ink); font-weight: 600; }
+.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 16px; font-weight: 500; line-height: 1.5; color: var(--c-navy); max-width: 90ch; }
+.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
+.kvr { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: var(--c-ink-soft); } .kvr b { color: var(--c-navy); font-weight: 500; }
 @media (max-width: 1000px) { .sc { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc { grid-template-columns: 1fr; } }
 </style>

@@ -12,15 +12,16 @@ const R = (x: number | null | undefined) => (x == null ? null : Math.round(x))
 export function customerFacts(kind: 'retention' | 'customers', cs: Cust[], cfg: CustConfig, fin: { revenue: Record<string, number>; gm: number | null }) {
   const sp = span(cs); if (!sp) return null
   const asOf = sp.last, t = { enterprise: cfg.enterprise_arr, midmarket: cfg.midmarket_arr }
-  const { rows, summary } = customerStats(cs, asOf, t, cfg.group_by, fin.gm, cfg.currency)
-  const groups = byGroup(cs, rows, asOf, cfg.group_by, t)
-  const r12 = retention(cs, asOf, 12), r12p = retention(cs, addM(asOf, -3), 12)
-  const br = bridge(cs, monthsBetween(addM(asOf, -2), asOf))
+  const basis = cfg.retention_basis ?? 'month', grace = cfg.dormant_months ?? 1
+  const { rows, summary } = customerStats(cs, asOf, t, cfg.group_by, fin.gm, cfg.currency, { grace, basis })
+  const groups = byGroup(cs, rows, asOf, cfg.group_by, t, basis)
+  const r12 = retention(cs, asOf, 12, basis), r12p = retention(cs, addM(asOf, -3), 12, basis)
+  const br = bridge(cs, monthsBetween(addM(asOf, -2), asOf), grace)
   const sum = (k: 'new' | 'expansion' | 'contraction' | 'churned') => br.reduce((s, r) => s + r[k], 0)
   const recent3 = [0, 1, 2].map((i) => addM(asOf, -i)), cust3 = recent3.reduce((s, m) => s + cs.reduce((a, c) => a + (c.rev[m] ?? 0), 0), 0)
   const fin3 = recent3.every((m) => typeof fin.revenue[m] === 'number') ? recent3.reduce((s, m) => s + fin.revenue[m]!, 0) : null
   const co = cohorts(cs, asOf).filter((c) => c.cells[3] !== null)
-  const facts: Record<string, unknown> = { as_of: asOf, months_of_data: monthsBetween(sp.first, sp.last).length, currency: cfg.currency, customers: cs.length, active: summary.active, mrr: R(summary.mrr), arr: R(summary.arr),
+  const facts: Record<string, unknown> = { billing: cfg.billing ?? 'subscription', retention_windows: basis, months_without_revenue_before_lost: grace, as_of: asOf, months_of_data: monthsBetween(sp.first, sp.last).length, currency: cfg.currency, customers: cs.length, active: summary.active, mrr: R(summary.mrr), arr: R(summary.arr),
     nrr_12m_pct: P(r12.nrr), grr_12m_pct: P(r12.grr), logo_churn_12m_pct: P(r12.logo_churn), nrr_12m_pct_3_months_ago: P(r12p.nrr), customers_a_year_ago: r12.customers,
     last_3_months: { new: R(sum('new')), expansion: R(sum('expansion')), contraction: R(sum('contraction')), churned: R(sum('churned')) },
     group_by: cfg.group_by, groups: groups.slice(0, 8).map((g) => ({ group: g.group, customers: g.customers, share_pct: P(g.share), nrr_pct: P(g.nrr), grr_pct: P(g.grr), logo_churn_pct: P(g.logo_churn), arpa_month: R(g.arpa), growth_pct: P(g.growth) })),
@@ -33,7 +34,7 @@ export function customerFacts(kind: 'retention' | 'customers', cs: Cust[], cfg: 
       top: top.slice(0, 5).map((r) => ({ name: r.name, ttm: R(r.ttm), share_pct: P(r.share), growth_pct: P(r.growth) })),
       fastest_growing: [...movers].sort((a, b) => (b.ttm - b.prior_ttm) - (a.ttm - a.prior_ttm)).slice(0, 3).map((r) => ({ name: r.name, change: R(r.ttm - r.prior_ttm), growth_pct: P(r.growth) })),
       biggest_declines: [...movers].sort((a, b) => (a.ttm - a.prior_ttm) - (b.ttm - b.prior_ttm)).slice(0, 3).filter((r) => r.ttm < r.prior_ttm).map((r) => ({ name: r.name, change: R(r.ttm - r.prior_ttm), growth_pct: P(r.growth) })),
-      sectors: byGroup(cs, rows, asOf, 'sector', t).slice(0, 8).map((g) => ({ sector: g.group, customers: g.customers, share_pct: P(g.share), growth_pct: P(g.growth), nrr_pct: P(g.nrr), arpa_month: R(g.arpa) })) })
+      sectors: byGroup(cs, rows, asOf, 'sector', t, basis).slice(0, 8).map((g) => ({ sector: g.group, customers: g.customers, share_pct: P(g.share), growth_pct: P(g.growth), nrr_pct: P(g.nrr), arpa_month: R(g.arpa) })) })
   }
   return facts
 }
@@ -83,6 +84,7 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
     try {
       const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v2', inputRef: subject,
         system: 'You are a growth-stage CFO and investor reviewing a company\'s ' + (kind === 'retention' ? 'revenue retention and churn' : 'customer base (top and least performing customers, sectors, concentration, lifetime value and acquisition cost)') + '. Use only the facts given (amounts in ' + facts.currency + '). ' +
+          'When billing is usage or prepaid (customers buy credit, like SMS units, and use it over months), a quiet month is not a lost customer and revenue is seasonal: the facts already count a customer lost only after months_without_revenue_before_lost months with nothing, and compare retention_windows; say so where it matters. ' +
           'Use only the numbers in the facts, exactly as given: never multiply, annualise or add them up yourself (a wrong total is worse than none). Each detail at most two short sentences, in plain words a founder understands, ending with what to do. ' +
           'Give a one-sentence headline and exactly 4 key points, most important first, each with the numbers behind it and what to do about it. Compare with usual benchmarks for B2B software and fintech where useful. Plain words, no filler. If customer revenue does not match Financials by more than 5%, make that a risk point.',
         user: JSON.stringify(facts), toolName: 'record_points', toolDescription: 'Record the headline and four key points.', schema: Out, maxTokens: 1500,

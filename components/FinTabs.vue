@@ -4,7 +4,7 @@
 const route = useRoute()
 const { data: mods } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
 const locked = computed(() => !!mods.value?.find((m) => m.code === 'fin_customers' && m.locked))
-const T: [string, string, boolean][] = [['/financials', 'Overview', false], ['/financials?tab=statements', 'Statements', false], ['/financials?tab=shares', 'Sharing', false], ['/financials/retention', 'Revenue retention', true], ['/financials/customers', 'Customers', true]]
+const T: [string, string, boolean][] = [['/financials', 'Overview', false], ['/financials?tab=statements', 'Statements', false], ['/financials?tab=shares', 'Sharing', false], ['/financials/retention', 'Revenue retention', true], ['/financials/customers', 'Customers', true], ['/financials/next', 'What to do next', false]]
 const on = (to: string) => (to.includes('?') ? route.fullPath === to : route.path === to && !route.query.tab)
 </script>
 <template><nav class="ft"><NuxtLink v-for="[to, l, paid] in T" :key="to" :to="to" :class="{ on: on(to) }">{{ l }}<svg v-if="paid && locked" class="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink></nav></template>

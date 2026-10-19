@@ -5,8 +5,9 @@ import { addM, bridge, byGroup, cohorts, COHORT_AT, customerStats, groupOf, rete
 useHead({ title: 'Revenue retention' })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
-const { data, pending, refresh, cs, sp, asOf, months, groupBy, t, cur, stamp } = await useCustomers()
+const { data, pending, refresh, cs, sp, asOf, months, groupBy, t, cur, stamp, grace, billing } = await useCustomers()
 const basis = ref<Basis>('month')
+watch(() => data.value?.config.retention_basis, (b) => { if (b) basis.value = b }, { immediate: true })
 const up = ref(false); const ok = ref(''); const msg = ref('')
 // The retention and customer report (the management report's customer sections), when the report module is on.
 const rpt = ref(false)
@@ -15,9 +16,9 @@ const rptOk = computed(() => !!modsR.value?.find((m) => m.code === 'fin_report' 
 async function uploaded(m: string) { up.value = false; ok.value = m; await refresh() }
 const r12 = computed(() => retention(cs.value, asOf.value, 12, basis.value))
 const r12prev = computed(() => retention(cs.value, addM(asOf.value, -3), 12, basis.value))
-const stats = computed(() => customerStats(cs.value, asOf.value, t.value, groupBy.value, data.value?.fin.gm ?? null, cur.value))
+const stats = computed(() => customerStats(cs.value, asOf.value, t.value, groupBy.value, data.value?.fin.gm ?? null, cur.value, { grace: grace.value, basis: basis.value }))
 const groups = computed(() => byGroup(cs.value, stats.value.rows, asOf.value, groupBy.value, t.value, basis.value))
-const br = computed(() => bridge(cs.value, months.value.filter((m) => m <= asOf.value).slice(-12)))
+const br = computed(() => bridge(cs.value, months.value.filter((m) => m <= asOf.value).slice(-12), grace.value))
 const churn3 = computed(() => { const b = br.value.slice(-3); const start = b.reduce((s, r) => s + r.start, 0); return start ? b.reduce((s, r) => s + r.churned + r.contraction, 0) / start : null })
 const trend = computed(() => retentionTrend(cs.value, months.value.filter((m) => m <= asOf.value).slice(-12), basis.value).filter((x) => x.nrr !== null))
 const coh = computed(() => cohorts(cs.value, asOf.value).slice(-12))
@@ -36,7 +37,7 @@ const sum12 = computed(() => { const z = { start: br.value[0]?.start ?? 0, new: 
 const leaks = computed(() => {
   const ms = months.value.filter((m) => m <= asOf.value).slice(-12), by = new Map<string, typeof cs.value>()
   for (const c of cs.value) { const g = groupOf(c, groupBy.value, ms[0] ?? asOf.value, t.value); const l = by.get(g) ?? []; l.push(c); by.set(g, l) }
-  return [...by.entries()].map(([g, l]) => { const b = bridge(l, ms); return { group: g, lost: b.reduce((s, x) => s + x.churned + x.contraction, 0), added: b.reduce((s, x) => s + x.new + x.expansion + x.reactivated, 0) } }).sort((a, b) => b.lost - a.lost)
+  return [...by.entries()].map(([g, l]) => { const b = bridge(l, ms, grace.value); return { group: g, lost: b.reduce((s, x) => s + x.churned + x.contraction, 0), added: b.reduce((s, x) => s + x.new + x.expansion + x.reactivated, 0) } }).sort((a, b) => b.lost - a.lost)
 })
 // Large customers whose last three months fell by a third or more against the three before: call them first.
 const atRisk = computed(() => cs.value.map((c) => ({ c, now: win(c, asOf.value, 3), before: win(c, addM(asOf.value, -3), 3) })).filter((x) => x.before > 0 && x.now < x.before * 0.67).sort((a, b) => (b.before - b.now) - (a.before - a.now)).slice(0, 5))
@@ -63,6 +64,13 @@ const sugCounts = computed(() => { const m = new Map<string, number>(); for (con
 // Size bands.
 const bands = reactive({ open: false, ent: 0, mid: 0 })
 function openBands() { Object.assign(bands, { open: true, ent: t.value.enterprise, mid: t.value.midmarket }) }
+// How customers pay. Usage and prepaid credits (e.g. SMS units bought ahead and used over months) make revenue lumpy:
+// a customer can be quiet for a month or two without leaving, and seasons move revenue. These settings count a
+// customer lost only after some months with nothing, and compare quarters or years instead of single months.
+const bill = reactive({ open: false, billing: 'subscription' as 'subscription' | 'usage' | 'prepaid', dormant: 1, basis: 'month' as Basis, busy: false, msg: '' })
+function openBill() { Object.assign(bill, { open: true, billing: billing.value, dormant: grace.value, basis: data.value?.config.retention_basis ?? 'month', msg: '' }) }
+function pickBilling(b: typeof bill.billing) { bill.billing = b; if (b === 'subscription') { bill.dormant = 1; bill.basis = 'month' } else { bill.dormant = Math.max(bill.dormant, 3); if (bill.basis === 'month') bill.basis = 'quarter' } }
+async function saveBill() { bill.busy = true; bill.msg = ''; try { await $fetch('/api/financials/customers/config', { method: 'POST', body: { billing: bill.billing, dormant_months: Number(bill.dormant) || 1, retention_basis: bill.basis } }); bill.open = false; ok.value = 'Saved. Retention now counts a customer lost after ' + bill.dormant + ' month' + (bill.dormant === 1 ? '' : 's') + ' without revenue.'; await refresh() } catch (e) { bill.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { bill.busy = false } }
 async function saveBands() { try { await $fetch('/api/financials/customers/config', { method: 'POST', body: { enterprise_arr: Number(bands.ent), midmarket_arr: Number(bands.mid), group_by: 'size' } }); bands.open = false; await refresh() } catch (e) { msg.value = errOf(e) } }
 const clr = reactive({ open: false, confirm: '' })
 async function clearAll() { try { await $fetch('/api/financials/customers/clear', { method: 'POST', body: { confirm: clr.confirm } }); clr.open = false; ok.value = 'Customer data deleted.'; await refresh() } catch (e) { msg.value = errOf(e) } }
@@ -76,6 +84,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>
+        <button v-if="canEdit" class="btn secondary" type="button" title="How customers pay: subscription, pay as you go or prepaid credits" @click="openBill">How customers pay</button>
         <button v-if="rptOk" class="btn secondary" type="button" title="Revenue retention and customers as a PDF or Excel report, for all customers or one group" @click="rpt = true">Retention report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
     <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
@@ -92,7 +101,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     <template v-else>
       <p v-if="!enough" class="note">You have {{ months.length }} month{{ months.length === 1 ? '' : 's' }} of customer revenue. Year-on-year retention needs 13 or more; add earlier months for NRR and GRR.</p>
       <div class="dir card">
-        <div class="dh"><span class="eyebrow">Where you stand</span><p class="vd">{{ verdict || 'Add 13 months or more of customer revenue to see where retention stands.' }}</p></div>
+        <div class="dh"><span class="eyebrow">Where you stand{{ billing !== 'subscription' ? ' · ' + (billing === 'prepaid' ? 'prepaid credits' : 'pay as you go') + ', lost after ' + grace + ' quiet month' + (grace === 1 ? '' : 's') : '' }}</span><p class="vd">{{ verdict || 'Add 13 months or more of customer revenue to see where retention stands.' }}</p></div>
         <div class="sc">
           <BenchBar label="Net revenue retention" :value="P1(r12.nrr)" :prev="P1(r12prev.nrr)" :bands="[90, 100]" :max="150" hint="110%+ is strong" />
           <BenchBar label="Gross revenue retention" :value="P1(r12.grr)" :prev="P1(r12prev.grr)" :bands="[80, 90]" :max="100" hint="Losses only" />
@@ -158,6 +167,17 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <p v-if="sg.msg" class="error">{{ sg.msg }}</p>
       <template #foot><button class="btn secondary" @click="sg.open = false">Cancel</button><button class="btn" :disabled="!sg.s || sg.busy" @click="applySug">Apply</button></template>
     </AppModal>
+    <AppModal :open="bill.open" title="How customers pay" wide @close="bill.open = false">
+      <div class="frm bl">
+        <p class="mut">This changes how retention and churn are counted, so a quiet month or a season does not look like customers leaving.</p>
+        <label v-for="o in ([['subscription', 'Subscription', 'Customers pay every month or year (software, memberships). A month without revenue means they left.'], ['usage', 'Pay as you go', 'Customers pay for what they use each month (API calls, transactions). Some months are quiet without the customer leaving.'], ['prepaid', 'Prepaid credits', 'Customers buy credit or units ahead (SMS units, wallet top-ups) and use them over the following months.']] as const)" :key="o[0]" class="opt" :class="{ on: bill.billing === o[0] }"><input type="radio" :checked="bill.billing === o[0]" @change="pickBilling(o[0])"><span><b>{{ o[1] }}</b><em>{{ o[2] }}</em></span></label>
+        <div class="g2"><label class="label">Count a customer as lost after<select v-model.number="bill.dormant"><option v-for="n in [1, 2, 3, 4, 6, 9, 12]" :key="n" :value="n">{{ n }} month{{ n === 1 ? '' : 's' }} without revenue</option></select></label>
+          <label class="label">Compare retention<select v-model="bill.basis"><option value="month">Month against the same month last year</option><option value="quarter">Last 3 months against the same 3 last year (evens out quiet months)</option><option value="year">Last 12 months against the 12 before (evens out seasons)</option></select></label></div>
+        <div v-if="bill.billing === 'prepaid'" class="pp"><b>Prepaid credits and deferred revenue</b><p>Customer revenue here should be credit <i>used</i> each month, not credit bought: that is your revenue. Credit customers have bought but not used yet is deferred revenue, a liability on your balance sheet (put it in Other liabilities in Financials). Top-ups bring in cash before revenue, so cash can look better than profit; when customers stop topping up, cash falls before revenue does.</p></div>
+        <p v-if="bill.msg" class="error">{{ bill.msg }}</p>
+      </div>
+      <template #foot><button class="btn secondary" @click="bill.open = false">Cancel</button><button class="btn" :disabled="bill.busy" @click="saveBill">{{ bill.busy ? 'Saving…' : 'Save' }}</button></template>
+    </AppModal>
     <AppModal :open="bands.open" title="Size bands" @close="bands.open = false">
       <div class="frm"><p class="mut">By annual revenue from the customer ({{ cur }}).</p><label class="label">Enterprise from<input v-model.number="bands.ent" type="number" min="1"></label><label class="label">Mid-market from<input v-model.number="bands.mid" type="number" min="1"></label><p class="mut">Below that is SMB.</p></div>
       <template #foot><button class="btn secondary" @click="bands.open = false">Cancel</button><button class="btn" @click="saveBands">Save</button></template>
@@ -182,17 +202,20 @@ select, input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px s
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .lk.red { color: var(--c-danger); }
 .scroll { overflow-x: auto; } .table { width: 100%; border-collapse: collapse; } th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); background: #fbfaf7; white-space: nowrap; }
 td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .n { text-align: right; white-space: nowrap; } th.n { text-align: right; } .sub { display: block; font-size: 11.5px; color: var(--c-muted); }
-td.g { color: var(--c-navy); font-weight: 600; } td.w { color: #8a5a0a; font-weight: 600; } td.r { color: var(--c-danger); font-weight: 600; } td.pos { color: var(--c-navy); } td.neg { color: var(--c-danger); }
+td.g { color: var(--c-navy); font-weight: 500; } td.w { color: #8a5a0a; font-weight: 500; } td.r { color: var(--c-danger); font-weight: 500; } td.pos { color: var(--c-navy); } td.neg { color: var(--c-danger); }
 .bar { display: inline-block; width: 60px; height: 5px; background: #eef1f6; margin-right: 8px; vertical-align: middle; } .bar i { display: block; height: 100%; background: var(--c-navy); }
 .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; } .charts.two { grid-template-columns: 1.4fr 1fr; }
 .coh td.hc { font-variant-numeric: tabular-nums; }
 .dat { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; } .dat > div:first-child { display: flex; flex-direction: column; gap: 2px; } .dat span { font-size: 12.5px; color: var(--c-muted); }
 .frm { display: flex; flex-direction: column; gap: 10px; } label.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .sgb h3 { margin: 0 0 6px; } .sgb p { margin: 0 0 10px; }
 @media (max-width: 1000px) { .charts, .charts.two { grid-template-columns: 1fr; } }
-.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 19px; line-height: 1.4; color: var(--c-navy); max-width: 980px; }
-.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
-.act { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; } .ac { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; } .ac b { font-size: 16px; font-weight: 600; color: var(--c-navy); } .ac p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.5; } .ac em { font-style: normal; font-size: 12.5px; color: var(--c-blue-deep); }
-.ac ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; } .ac li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--c-rule); padding-bottom: 5px; } .ac li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; } .ac li em { color: #9b3b32; white-space: nowrap; font-size: 12px; }
+.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; } .dh { display: flex; flex-direction: column; gap: 4px; } .vd { margin: 0; font-family: var(--font-heading); font-size: 16px; font-weight: 500; line-height: 1.5; color: var(--c-navy); max-width: 90ch; }
+.sc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
+.act { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; } .ac { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; } .ac b { font-family: var(--font-heading); font-size: 17px; font-weight: 500; letter-spacing: -.01em; color: var(--c-navy); } .ac p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.55; } .ac em { font-style: normal; font-size: 13px; color: var(--c-blue-deep); line-height: 1.5; }
+.ac ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; } .ac li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--c-rule); padding-bottom: 5px; } .ac li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-ink); } .ac li em { color: #9b3b32; white-space: nowrap; font-size: 12px; }
 .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 1000px) { .sc, .act { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .sc, .act { grid-template-columns: 1fr; } }
+.bl { display: flex; flex-direction: column; gap: 12px; } .opt { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule-strong); padding: 10px 12px; cursor: pointer; } .opt.on { border-color: var(--c-navy); background: #f5f7fb; } .opt input { margin-top: 3px; } .opt span { display: flex; flex-direction: column; gap: 2px; } .opt b { font-weight: 500; color: var(--c-ink); } .opt em { font-style: normal; font-size: 13px; color: var(--c-muted); }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .pp { border: 1px solid #d9e2ef; background: #f5f7fb; padding: 10px 14px; font-size: 13px; color: var(--c-ink-soft); } .pp b { font-weight: 500; color: var(--c-ink); } .pp p { margin: 4px 0 0; line-height: 1.55; }
+@media (max-width: 700px) { .g2 { grid-template-columns: 1fr; } }
 </style>

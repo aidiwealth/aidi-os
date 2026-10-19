@@ -25,7 +25,7 @@ const mon = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-
 .ca { background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; margin: 0 0 12px; }
 .cah { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--c-muted); } .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
-.hl { font-family: var(--font-heading); font-weight: 500; font-size: 21px; line-height: 1.3; color: var(--c-navy); margin: 10px 0 16px; max-width: 75ch; }
+.hl { font-family: var(--font-heading); font-weight: 500; font-size: 16px; line-height: 1.5; color: var(--c-navy); margin: 10px 0 16px; max-width: 75ch; }
 .ins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .ins article { background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .ins b { font-size: 14px; font-weight: 500; color: var(--c-ink); line-height: 1.35; } .ins p { margin: 0; font-size: 12.5px; color: var(--c-ink-soft); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }

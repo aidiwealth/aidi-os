@@ -43,14 +43,14 @@ const sym = computed(() => ({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as R
 </template>
 
 <style scoped>
-.gs { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; } .gh { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; } .gh h3 { margin: 2px 0 4px; }
-.eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .mut { color: var(--c-muted); font-size: 13px; margin: 0; max-width: 760px; }
+.gs { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; } .gh { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; } .gh h3 { margin: 2px 0 4px; font-size: 17px; font-weight: 500; color: var(--c-navy); }
+.eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .mut { color: var(--c-muted); font-size: 13px; margin: 0; max-width: 760px; }
 .gt { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--c-rule); } .gt > div { padding: 12px 14px; border-right: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 3px; } .gt > div:last-child { border-right: 0; }
-.gt span { font-size: 12px; color: var(--c-muted); } .gt b { font-size: 20px; font-weight: 600; color: var(--c-navy); font-variant-numeric: tabular-nums; } .neg { color: var(--c-danger) !important; }
+.gt span { font-size: 13px; font-weight: 500; color: var(--c-muted); } .gt b { font-family: var(--font-heading); font-size: 26px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; } .neg { color: var(--c-danger) !important; }
 .gw { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: start; } .t { width: 100%; border-collapse: collapse; font-size: 13.5px; } .t th { text-align: left; font-weight: 500; color: var(--c-muted); font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--c-rule); } .t th.r, .r { text-align: right; }
 .t td { padding: 9px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; font-variant-numeric: tabular-nums; } .sub { display: block; font-size: 11.5px; color: var(--c-muted); }
 .bar { display: inline-block; width: 70px; height: 6px; background: var(--c-paper-2, #f4f6fa); margin-right: 8px; vertical-align: middle; } .bar i { display: block; height: 100%; background: var(--c-navy); }
-.lk { background: none; border: 0; padding: 0; font: inherit; font-weight: 500; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .btn.sm { padding: 5px 10px; font-size: 12.5px; }
+.lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-align: left; } .btn.sm { padding: 5px 10px; font-size: 12.5px; }
 .note { margin: 0; font-size: 12.5px; color: var(--c-warn); }
 @media (max-width: 1000px) { .gw { grid-template-columns: 1fr; } .gt { grid-template-columns: 1fr 1fr; } }
 </style>

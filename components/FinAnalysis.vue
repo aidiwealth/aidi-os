@@ -95,7 +95,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 .fh { background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; margin: 0 0 12px; }
 .hd { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
 .eb, .bl { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--c-muted); } .bl small { text-transform: none; letter-spacing: 0; margin-left: 4px; }
-.hl { font-family: var(--font-heading); font-weight: 500; font-size: 20px; line-height: 1.35; color: var(--c-navy); margin: 6px 0 0; max-width: 72ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
+.hl { font-family: var(--font-heading); font-weight: 500; font-size: 16px; line-height: 1.5; color: var(--c-navy); margin: 6px 0 0; max-width: 72ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
 .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; white-space: nowrap; flex-wrap: wrap; justify-content: flex-end; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.7fr); gap: 12px; }
 .box { background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
