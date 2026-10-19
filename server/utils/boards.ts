@@ -18,6 +18,8 @@ export async function ensureBoards(): Promise<void> {
   for (const b of DEFAULT_BOARDS) await db().query('INSERT INTO financials.boards (audience, name, sort, kpis, charts, note) VALUES ($1,$2,$3,$4,$5,$6)', [b.audience, b.name, b.sort, b.kpis, JSON.stringify(b.charts), b.note])
 }
 // Series for a board's metrics (growth is derived from revenue). Values follow the reporting currency.
+// Any metric a board can show: the standard ones, plus customer and KPI metrics.
+export function boardMetric(k: string): { label: string; unit: string } { return BOARD_METRICS[k] ?? { label: metricLabel(k), unit: metricUnit(k) } }
 export async function boardData(kpis: string[], charts: BoardChart[], period: string, count: number) {
   const want = [...new Set([...kpis, ...charts.flatMap((c) => c.metrics)].flatMap((m) => (m === 'growth' ? ['revenue'] : [m])))]
   const s = await metricSeries(want, period, count + 1)
@@ -29,6 +31,8 @@ export async function boardData(kpis: string[], charts: BoardChart[], period: st
   const series: Record<string, (number | null)[]> = {}
   for (const k of new Set([...kpis, ...charts.flatMap((c) => c.metrics)])) series[k] = val(k).slice(1)
   const kpiCards = kpis.map((k) => { const v = val(k).filter((x): x is number => x != null); const last = v[v.length - 1] ?? null, prev = v[v.length - 2] ?? null
-    return { key: k, label: BOARD_METRICS[k]?.label ?? k, unit: BOARD_METRICS[k]?.unit ?? 'money', value: last, prev, change: last != null && prev != null && prev !== 0 && BOARD_METRICS[k]?.unit === 'money' ? Math.round(((last - prev) / Math.abs(prev)) * 1000) / 10 : last != null && prev != null && BOARD_METRICS[k]?.unit !== 'money' ? Math.round((last - prev) * 10) / 10 : null } })
-  return { labels, series, kpis: kpiCards, charts, currency: s.currency, period }
+    const def = boardMetric(k)
+    return { key: k, label: def.label, unit: def.unit, value: last, prev, change: last != null && prev != null && prev !== 0 && def.unit === 'money' ? Math.round(((last - prev) / Math.abs(prev)) * 1000) / 10 : last != null && prev != null && def.unit !== 'money' ? Math.round((last - prev) * 10) / 10 : null } })
+  const defs = Object.fromEntries([...new Set([...kpis, ...charts.flatMap((c) => c.metrics)])].map((k) => [k, boardMetric(k)]))
+  return { labels, series, kpis: kpiCards, charts, currency: s.currency, period, defs }
 }

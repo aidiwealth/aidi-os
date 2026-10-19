@@ -11,6 +11,7 @@
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
+    "test:sheets": "node tests/sheets/run.mjs",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

@@ -9,7 +9,7 @@ export function mdToHtml(src: string): string {
 export interface Block { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
 type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string }
 const FLOWS = new Set(['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf', 'burn'])
-const COLORS = ['#1c3d63', '#5b8fd1', '#2f9a5f', '#d99a1e', '#7b5fd8', '#d04444']
+const COLORS = ['#1c3d63', '#5b8fd1', '#46a7dc', '#8aa4c4', '#2b5a8c', '#b9c9dc']
 // Metric series from the company's statements: monthly, quarterly or yearly (flows summed, balances at period end).
 export async function updateSubject(subject?: string | null): Promise<string | null> {
   const org = (await currentOrg())!
@@ -29,8 +29,13 @@ export async function metricSeries(metrics: string[], period: string, count: num
     const g = groups.get(key) ?? { label, rows: [] }; g.rows.push(r); groups.set(key, g)
   }
   const keys = [...groups.keys()].sort().slice(-Math.max(1, Math.min(count || 12, 36)))
-  const series = metrics.filter((k) => k in METRIC_LABEL).map((k) => ({ key: k, label: METRIC_LABEL[k] ?? k, values: keys.map((gk) => {
-    const g = groups.get(gk)!; const ds = g.rows.map((r) => derive(r.lines, 'month'))
+  // Customer metrics (retention, recurring revenue…) at the end of each period, and the company's own KPIs.
+  const ends = keys.map((gk) => { const g = groups.get(gk)!; return g.rows[g.rows.length - 1]!.period_end.slice(0, 7) })
+  const cust = await customerSeries(metrics.filter((k) => k in CUST_METRICS), ends)
+  const series = metrics.filter(isMetricKey).map((k) => ({ key: k, label: metricLabel(k), values: k in CUST_METRICS ? cust[k] ?? keys.map(() => null) : keys.map((gk) => {
+    const g = groups.get(gk)!
+    if (k.startsWith('kpi:')) { for (let i = g.rows.length - 1; i >= 0; i--) { const v = g.rows[i]!.kpis?.[k.slice(4)]; if (typeof v === 'number') return v } return null }
+    const ds = g.rows.map((r) => derive(r.lines, 'month'))
     if (FLOWS.has(k)) { const v = ds.map((x) => x[k]).filter((x): x is number => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) : null }
     if (k === 'gross_margin') { const rev = ds.reduce((a, x) => a + (x.revenue ?? 0), 0), gp = ds.reduce((a, x) => a + (x.gross_profit ?? 0), 0); return rev ? Math.round((gp / rev) * 1000) / 10 : null }
     return ds[ds.length - 1]?.[k] ?? null
@@ -40,8 +45,10 @@ export async function metricSeries(metrics: string[], period: string, count: num
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 function fmt(k: string, v: number | null, cur: string, short = false): string {
   if (v == null) return '—'
-  if (k === 'gross_margin') return v + '%'
-  if (k === 'runway') return v + ' mo'
+  const u = metricUnit(k)
+  if (u === 'pct') return v + '%'
+  if (u === 'months') return v + ' mo'
+  if (u === 'number') return Math.round(v).toLocaleString('en-US')
   const a = Math.abs(v), s = SYM[cur] ?? cur + ' '
   const n = short ? (a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(0) + 'K' : String(Math.round(a))) : Math.round(a).toLocaleString('en-US')
   return (v < 0 ? '-' : '') + s + n
@@ -61,6 +68,13 @@ function tableHtml(b: Block, d: Series): string {
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>' + th('Metric', true) + d.labels.map((l) => th(l)).join('') + '</tr>' +
     d.series.map((s) => '<tr><td style="font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(s.label) + '</td>' + s.values.map((v) => '<td style="text-align:right;font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(fmt(s.key, v, d.currency, true)) + '</td>').join('') + '</tr>').join('') + '</table></div>'
 }
+// Revenue by customer sector: shares only, never customer names.
+export function sectorsHtml(title: string, d: Awaited<ReturnType<typeof sectorShares>>): string {
+  if (!d || !d.sectors.length) return '<div style="padding:18px;background:#f4f3ef;color:#8a8a8a;font-size:13px">No customer data yet. Add it on the Customers page.</div>'
+  const max = Math.max(...d.sectors.map((x) => x.share), 1)
+  return '<div style="border:1px solid #e6e4dd;padding:16px 18px;margin:0 0 18px"><div style="font-weight:600;font-size:15px;color:#0c1a2e;margin:0 0 4px">' + esc(title) + '</div><div style="font-size:12px;color:#6b6b6b;margin:0 0 10px">Share of revenue over the last 12 months</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' +
+    d.sectors.map((x) => '<tr><td style="padding:5px 10px 5px 0;font-size:13px;white-space:nowrap;width:1%">' + esc(x.sector) + '</td><td style="padding:5px 0;width:99%"><span style="display:inline-block;height:12px;width:' + Math.max(1, Math.round((x.share / max) * 80)) + '%;background:#1c3d63;vertical-align:middle"></span><span style="font-size:12px;color:#3a3a3a;margin-left:6px">' + x.share + '%</span></td></tr>').join('') + '</table></div>'
+}
 export async function renderBlocks(blocks: Block[], base: string, subject?: string | null): Promise<string> {
   const out: string[] = []
   for (const b of blocks.slice(0, 80)) {
@@ -69,6 +83,7 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
     else if (b.type === 'metrics_table') out.push(tableHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 6, subject)))
     else if (b.type === 'two_charts') { const l = b.left ?? { type: 'chart' }, r = b.right ?? { type: 'chart' }
       out.push('<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6, subject)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6, subject)) + '</td></tr></table>') }
+    else if (b.type === 'sectors') out.push(sectorsHtml(b.title || 'Revenue by customer sector', await sectorShares()))
     else if (b.type === 'image' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px"><img src="' + base + '/api/public/media/' + b.media_id + '" alt="' + esc(b.caption ?? '') + '" style="max-width:100%;display:block">' + (b.caption ? '<div style="font-size:12.5px;color:#6b6b6b;margin-top:6px">' + esc(b.caption) + '</div>' : '') + '</div>')
     else if (b.type === 'file' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:12px 14px"><a href="' + base + '/api/public/media/' + b.media_id + '" style="color:#1c4f9c;font-weight:600;text-decoration:none">📎 ' + esc(b.name || 'Attachment') + '</a></div>')
     else if ((b.type === 'video' || b.type === 'deck') && b.url && /^https?:\/\//i.test(b.url)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:14px 16px;background:#f7f9fc"><div style="font-size:12px;color:#6b6b6b;text-transform:uppercase;letter-spacing:.08em">' + (b.type === 'video' ? 'Video' : 'Deck') + '</div><a href="' + esc(b.url) + '" style="color:#1c4f9c;font-weight:600;text-decoration:none;font-size:15px">' + esc(b.title || (b.type === 'video' ? 'Watch the video' : 'View our deck')) + ' →</a></div>')

@@ -14,6 +14,6 @@ export default defineEventHandler(async (event) => {
   const contacts = await db().query('SELECT id, name, email FROM crm.contacts WHERE subscribed ORDER BY name LIMIT 3000')
   const sends = await db().query('SELECT i.id AS investor_id, i.name, i.email, s.sent_at, s.opened_at, s.opens FROM financials.update_sends s JOIN financials.investors i ON i.id = s.investor_id WHERE s.update_id = $1 ORDER BY s.opened_at DESC NULLS LAST, i.name', [id.data])
   const page = (await db().query<{ slug: string; published: boolean }>('SELECT slug, published FROM financials.public_pages LIMIT 1')).rows[0] ?? null
-  return { update: u, label: updateLabel(u.period_type, u.period_end), metrics: Object.entries(METRIC_LABEL).map(([key, label]) => ({ key, label })), lists: lists.rows, stages: stages.rows, contacts: contacts.rows, sends: sends.rows, page,
+  return { update: u, label: updateLabel(u.period_type, u.period_end), metrics: (await metricCatalog((u as { subject?: string | null }).subject ?? null)).map((m) => ({ key: m.key, label: m.label, group: m.group })), lists: lists.rows, stages: stages.rows, contacts: contacts.rows, sends: sends.rows, page,
     from: [first + ' from ' + org.name, org.name, (me ?? first) + ', ' + org.name], me: user.email, company: org.name, kind: org.kind }
 })

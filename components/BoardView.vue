@@ -5,10 +5,13 @@ type CT = 'line' | 'bar' | 'area' | 'pie' | 'table'
 const props = defineProps<{ data: { labels: string[]; series: Record<string, (number | null)[]>; kpis: K[]; charts: { title: string; metrics: string[]; type?: CT }[]; currency: string; period: string }; metrics: Record<string, { label: string; unit: string }>; editable?: boolean }>()
 const emit = defineEmits<{ type: [index: number, type: CT] }>()
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
-const unitOf = (k: string) => props.metrics[k]?.unit ?? 'money'
+// Metric names and units: the standard ones, plus customer and KPI metrics the board's figures describe.
+const M = computed<Record<string, { label: string; unit: string }>>(() => ({ ...((props.data as { defs?: Record<string, { label: string; unit: string }> }).defs ?? {}), ...props.metrics }))
+const unitOf = (k: string) => M.value[k]?.unit ?? 'money'
 function fmt(v: number | null, unit: string, short = true) {
   if (v == null) return '—'
   if (unit === 'pct') return v.toFixed(1).replace(/\.0$/, '') + '%'
+  if (unit === 'number') return Math.round(v).toLocaleString('en-US')
   if (unit === 'months') return v >= 99 ? '99+ mo' : v.toFixed(1).replace(/\.0$/, '') + ' mo'
   const s = SYM[props.data.currency] ?? props.data.currency + ' ', a = Math.abs(v)
   const t = !short ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : a >= 1e9 ? (a / 1e9).toFixed(2) + 'bn' : a >= 1e6 ? (a / 1e6).toFixed(2) + 'm' : a >= 1e3 ? (a / 1e3).toFixed(1) + 'k' : a.toFixed(0)
@@ -30,7 +33,7 @@ function geo(metrics: string[]) {
 }
 const lastOf = (m: string) => [...(props.data.series[m] ?? [])].reverse().find((v) => v != null) ?? null
 function pie(c: { metrics: string[] }) {
-  if (c.metrics.length > 1) return c.metrics.map((m) => ({ label: props.metrics[m]?.label ?? m, value: Math.abs(lastOf(m) ?? 0) }))
+  if (c.metrics.length > 1) return c.metrics.map((m) => ({ label: M.value[m]?.label ?? m, value: Math.abs(lastOf(m) ?? 0) }))
   const m = c.metrics[0]!; const s = props.data.series[m] ?? []
   return props.data.labels.map((l, i) => ({ label: l, value: Math.abs(s[i] ?? 0) })).slice(-6)
 }
@@ -43,9 +46,9 @@ const good = (k: K) => (k.change == null ? '' : (k.key === 'burn' || k.key === '
       <template #note><template v-if="k.change != null">{{ k.change > 0 ? '▲' : k.change < 0 ? '▼' : '' }} {{ k.unit === 'money' ? Math.abs(k.change) + '%' : (k.change > 0 ? '+' : '') + k.change + (k.unit === 'pct' ? ' pts' : ' mo') }} <span class="vp">vs prior {{ data.period }}</span></template><template v-else>No prior {{ data.period }}</template></template></StatTile></div>
     <div class="ch"><div v-for="(c, i) in data.charts" :key="i" class="card cc"><div class="ct"><b>{{ c.title }}</b>
         <span v-if="editable" class="tsw" role="group" aria-label="Chart type"><button v-for="[t, l] in TYPES" :key="t" type="button" :class="{ on: (c.type ?? 'line') === t }" :title="l" @click="emit('type', i, t)">{{ l }}</button></span>
-        <span v-if="(c.type ?? 'line') !== 'pie' && (c.type ?? 'line') !== 'table'" class="lg"><span v-for="(m, j) in c.metrics" :key="m"><i :style="{ background: COLORS[j % 3] }" />{{ metrics[m]?.label ?? m }}</span></span></div>
-      <template v-if="(c.type ?? 'line') === 'pie'"><DonutChart :title="c.metrics.length > 1 ? 'Latest ' + data.period : (metrics[c.metrics[0]!]?.label ?? '') + ' by ' + data.period" :segments="pie(c)" :currency="unitOf(c.metrics[0]!) === 'money' ? data.currency : ''" total-label="Total" /></template>
-      <div v-else-if="c.type === 'table'" class="tw" data-nopage><table><thead><tr><th>{{ data.period === 'month' ? 'Month' : data.period === 'quarter' ? 'Quarter' : 'Year' }}</th><th v-for="m in c.metrics" :key="m" class="n">{{ metrics[m]?.label ?? m }}</th></tr></thead>
+        <span v-if="(c.type ?? 'line') !== 'pie' && (c.type ?? 'line') !== 'table'" class="lg"><span v-for="(m, j) in c.metrics" :key="m"><i :style="{ background: COLORS[j % 3] }" />{{ M[m]?.label ?? m }}</span></span></div>
+      <template v-if="(c.type ?? 'line') === 'pie'"><DonutChart :title="c.metrics.length > 1 ? 'Latest ' + data.period : (M[c.metrics[0]!]?.label ?? '') + ' by ' + data.period" :segments="pie(c)" :currency="unitOf(c.metrics[0]!) === 'money' ? data.currency : ''" total-label="Total" /></template>
+      <div v-else-if="c.type === 'table'" class="tw" data-nopage><table><thead><tr><th>{{ data.period === 'month' ? 'Month' : data.period === 'quarter' ? 'Quarter' : 'Year' }}</th><th v-for="m in c.metrics" :key="m" class="n">{{ M[m]?.label ?? m }}</th></tr></thead>
         <tbody><tr v-for="(l, r) in data.labels.slice(-8).reverse()" :key="l"><td>{{ l }}</td><td v-for="m in c.metrics" :key="m" class="n">{{ fmt((data.series[m] ?? [])[data.labels.length - 1 - r] ?? null, unitOf(m), false) }}</td></tr></tbody></table></div>
       <template v-else><svg :viewBox="'0 0 ' + W + ' ' + H" preserveAspectRatio="none" class="sv"><template v-for="g in [geo(c.metrics)]" :key="'g' + i"><line :x1="P" :x2="W - P" :y1="g.zero" :y2="g.zero" stroke="#e4e2dc" />
           <template v-if="c.type === 'bar'"><rect v-for="b in g.bars" :key="b.k" :x="b.x" :y="b.y" :width="g.bw - 1" :height="b.h" :fill="b.color" rx="1" /></template>

@@ -108,7 +108,7 @@ export function contradicts(text: string, f: Record<string, number | string | nu
 export async function analyseFinancials(subject: string, rows: FinRow[], currency: string, company: string, force = false, model: string | null = null): Promise<Analysis> {
   const { facts, rules, flags, period } = factsOf(rows, model)
   const checks = checkRows(rows).filter((c) => c.severity === 'error').length
-  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 6 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 7 })).digest('hex').slice(0, 40)
   if (!force) {
     const hit = (await db().query<{ analysis: Analysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]
     if (hit) return hit.analysis
@@ -117,7 +117,7 @@ export async function analyseFinancials(subject: string, rows: FinRow[], currenc
   const f = facts as Record<string, number | null>
   const parts = [f.revenue_growth_qoq_pct != null ? 'Revenue ' + (f.revenue_growth_qoq_pct >= 0 ? 'up ' : 'down ') + Math.abs(f.revenue_growth_qoq_pct) + '% on the quarter' : '',
     (f.loss_periods_last_12m ?? 0) > 0 ? 'losses in ' + f.loss_periods_last_12m + ' of the last ' + Math.min(12, rows.length) + ' months' : (f.net_income_ttm ?? 0) > 0 ? 'profitable over the last year' : '',
-    f.runway_months != null ? (f.runway_months >= 24 ? 'over two years of runway' : f.runway_months + ' months of runway') : ''].filter(Boolean)
+    f.runway_months != null ? (f.runway_if_bills_paid_months != null ? f.runway_months + ' months of runway (' + f.runway_if_bills_paid_months + ' at the loss rate)' : f.runway_months >= 24 ? 'over two years of runway' : f.runway_months + ' months of runway') : ''].filter(Boolean)
   const head = parts.length ? parts.join('; ').replace(/^./, (c) => c.toUpperCase()) + '.' : 'Add a few months of figures to see the analysis.'
   const base: Analysis = { headline: head, insights: rules, flags, facts, checks, ai: false, as_of: new Date().toISOString(), period, currency }
   let out = base

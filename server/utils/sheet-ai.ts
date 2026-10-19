@@ -1,4 +1,4 @@
-import { checkRows } from '~/shared/fin-view'
+import { checkRow, checkRows } from '~/shared/fin-view'
 // Linked workbooks read with AI: for financial models too complex for "months across one row" (many tabs, years or
 // quarters, actuals beside projections, side-by-side tables, two currencies). The AI reads the workbook once and
 // returns a map: which tab, row and column holds which figure for which period. Figures are then always read from
@@ -65,6 +65,7 @@ const SYSTEM = (currency: string) => [
   'A block is one table: one label column, the period columns, and the rows. Side-by-side tables are separate blocks (each with its own label column). A balance sheet "as of" a date is a block with one month period ending that date.',
   'Periods: month (period_end = last day of the month), quarter (last day of the quarter), year (fiscal year end; if not stated use 31 Dec). projected=true for E / F / Budget / Forecast / Projected columns, false for A / Actual. LTM or trailing tabs usually hold monthly actuals.',
   'scale: 1000 if the block says figures are in thousands, 1000000 for millions, else 1. pct=true for percentage rows. Do not map two different rows to the same standard line for the same period; use a category for each part instead, and map the total row to the line.',
+  'Subtotals: a row that adds up the rows above it inside a section (Total current assets, Total non-current assets, Total fixed assets, Total other assets, Total current liabilities, Total long-term liabilities, Total bank accounts, a section total of operating expenses when a grand total follows) is NEVER mapped to a standard line or a category; map it to="kpi" with its label, or leave it out. Map total_assets only to the grand total of all assets (the last assets total before liabilities start), total_liabilities only to the grand total of all liabilities, and equity only to total equity. Never map a total row to other_assets, other_liabilities, an opex line or any cat:.',
   'If the tab has no time series (charts, notes, peer lists, investor lists), return no blocks and put what matters in facts.',
   'facts: one-off information (company description, website, share price, shares outstanding, valuation, cap table link, top customers, past or new investors, use of funds), with goes_to: "Company profile", "Cap table", "Fundraising pipeline", "Contacts", "Investor update" or "KPI". At most 12 per tab.',
   'suggestions: up to 3 figures investors expect that this tab lacks or hides, each with why. Keep every text short.'
@@ -91,20 +92,25 @@ function cleanTab(sheet: string, o: any, maxRow: number) {
 // A tab worth sending to the AI has some figures in it (chart-only and empty tabs are skipped).
 const figures = (g: Grid) => g.rows.reduce((n, r) => n + r.filter((c) => typeof c === 'number').length, 0)
 
+// One tab read by the AI. feedback (on a retry) lists the add-up checks the previous map failed.
+const PROMPT_VERSION = 'sheet-map-v4'
+export async function mapTab(g: Grid, currency: string, ref: string, feedback = '') {
+  const model = useRuntimeConfig().aiModelSheets || useRuntimeConfig().aiModelPitchScreen
+  const { output } = await runAiTool({ task: 'sheet_map_tab', model, promptVersion: PROMPT_VERSION, inputRef: ref + '#' + g.name.slice(0, 40), system: SYSTEM(currency),
+    user: 'Tab "' + g.name + '" (row number: column=value):\n\n' + workbookText([g], 16000, 16000) + (feedback ? '\n\n' + feedback : ''), toolName: 'map_tab', toolDescription: 'Say where each figure in this tab is.', jsonSchema: TAB_JSON, schema: z.any(), maxTokens: 4000 })
+  return cleanTab(g.name, output, g.rows.length)
+}
 // Reads each tab separately and in parallel (a few at a time): faster than one huge request, and one awkward tab cannot
 // sink the rest. onTab reports progress.
 export async function mapWorkbook(grids: Grid[], currency: string, ref: string, onTab?: (done: number, total: number, sheet: string) => unknown): Promise<AiMapT> {
   const filled = (g: Grid) => g.rows.reduce((n, r) => n + r.filter((c) => c !== null && c !== '').length, 0)
   const work = grids.filter((g) => figures(g) >= 1 && filled(g) >= 4)
   const skipped = grids.filter((g) => !work.includes(g)).map((g) => ({ sheet: g.name, what: 'Nothing to read (chart or empty tab)', used: false }))
-  const model = useRuntimeConfig().aiModelSheets || useRuntimeConfig().aiModelPitchScreen
   const results: { sheet: string; out: ReturnType<typeof cleanTab> | null; error: string | null }[] = []
   let done = 0, i = 0
   const one = async (g: Grid) => {
     try {
-      const { output } = await runAiTool({ task: 'sheet_map_tab', model, promptVersion: 'sheet-map-v3', inputRef: ref + '#' + g.name.slice(0, 40), system: SYSTEM(currency),
-        user: 'Tab "' + g.name + '" (row number: column=value):\n\n' + workbookText([g], 16000, 16000), toolName: 'map_tab', toolDescription: 'Say where each figure in this tab is.', jsonSchema: TAB_JSON, schema: z.any(), maxTokens: 4000 })
-      results.push({ sheet: g.name, out: cleanTab(g.name, output, g.rows.length), error: null })
+      results.push({ sheet: g.name, out: await mapTab(g, currency, ref), error: null })
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode) throw err // AI allowance used up: stop and say so
       console.error('[sheets] tab', g.name, (err as Error).message)
@@ -190,6 +196,8 @@ export function readWithMap(grids: Grid[], map: AiMapT, today = new Date().toISO
       if (Object.keys(cur.lines).length || Object.keys(cur.kpis).length || Object.keys(cur.detail!).length) out.set(k, cur)
     }
   }
+  // Months not filled in yet (formula columns showing 0) are not brought in as real zero figures.
+  for (const [k, p] of [...out.entries()]) if (blankPeriod(p) === 'all') out.delete(k)
   // The company's own categories fill their standard line when the tab does not give it.
   for (const p of out.values()) if (p.detail && Object.keys(p.detail).length) foldCategories(p.lines, p.detail)
   return { periods: [...out.values()].sort((a, b) => a.period_end.localeCompare(b.period_end) || a.period_type.localeCompare(b.period_type)), projected, missing, found }
@@ -205,6 +213,8 @@ export async function writePeriods(subject: string, periods: PeriodOut[], curren
   await ensureAccounts([...new Set(periods.flatMap((p) => Object.keys(p.detail ?? {})))].map((k) => ({ parent: k.slice(0, k.indexOf('|')), name: k.slice(k.indexOf('|') + 1) })))
   for (const p of periods) {
     const lines = Object.fromEntries(Object.entries(p.lines).map(([k, v]) => [k, COSTS.includes(k) ? Math.abs(v) : v]))
+    const held = holdBadBalanceSheet({ period_end: p.period_end, period_type: p.period_type, lines, detail: p.detail })
+    if (held) skipped.push(held)
     const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = $2 AND period_end = $3`, [s.id, p.period_type, p.period_end])).rows[0]
     const { lines: merged, detail: md } = mergeStatement(ex, lines, p.detail ?? {}), mk = { ...(ex?.kpis ?? {}), ...p.kpis }
     if (balanceError(merged)) { skipped.push(p.period_end + ' (' + p.period_type + '): balance sheet does not balance'); continue }
@@ -223,4 +233,144 @@ export function previewOf(r: ReturnType<typeof readWithMap>) {
   const checks = (['month', 'quarter', 'year'] as const).flatMap((t) => checkRows(by(t).filter((p) => p.period_end <= today).map((p) => ({ period_end: p.period_end, period_type: p.period_type, currency: '', lines: p.lines, kpis: p.kpis, derived: {} })))).slice(-40)
   return { checks, months: by('month').length, quarters: by('quarter').length, years: by('year').length, projected: r.projected, missing: r.missing.slice(0, 20), found: r.found,
     periods: r.periods.slice(-40).map((p) => ({ period_type: p.period_type, period_end: p.period_end, lines: Object.keys(p.lines).length, kpis: Object.keys(p.kpis).length, revenue: p.lines.revenue ?? null, net_income: p.lines.net_income ?? null, cash: p.lines.cash ?? null })) }
+}
+
+// ---- Guarding a map against subtotals ------------------------------------------------------------------------
+// Whatever the AI returns, code checks it before anything is saved: a row that adds up the rows above it (a section
+// subtotal such as Total current assets) can only feed a total line or a KPI, never a part line (cash, other assets,
+// other liabilities, an operating cost line) or a category, because its parts are already counted. Labels are checked
+// too: total assets or total liabilities can never be a "current" or "non-current" subtotal.
+const PART_LINES = new Set(['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets', 'payables', 'debt', 'other_liabilities', 'cogs', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other'])
+const SUB_LABEL = /\b(current|non current|noncurrent|fixed|long term|longterm|other assets|bank accounts)\b/
+const TOTAL_LABEL = /^(sub ?)?total\b|\b(sub ?)?total$/
+const OWN: Record<string, RegExp> = { cash: /\b(cash|bank)/, receivables: /receivable|debtors/, payables: /payable|creditors/, debt: /\b(loan|debt|borrowing)/ }
+const GRAND = ['total_assets', 'total_liabilities', 'equity']
+const GRAND_SYN: Record<string, string[]> = { total_assets: ['total assets'], total_liabilities: ['total liabilities'], equity: ['total equity', 'total shareholders equity', 'total stockholders equity', 'total members equity', 'net assets', 'total shareholders funds', 'shareholders funds'] }
+// Rows (0-based) that equal, in every period column with a figure, the sum of a run of two or more rows directly above
+// them; the run stops at a row with no figures (a section heading or a blank line).
+export function subtotalRows(g: Grid, cols: number[]): Set<number> {
+  const out = new Set<number>(), val = (i: number, c: number) => numAt(g.rows[i]?.[c])
+  for (let i = 1; i < g.rows.length; i++) {
+    const own = cols.map((c) => val(i, c))
+    if (own.filter((v) => v !== null && v !== 0).length < 2) continue
+    let n = 0
+    for (let start = i - 1; start >= 0 && n < 25; start--) {
+      if (!cols.some((c) => val(start, c) !== null)) break
+      if (++n < 2) continue
+      const ok = cols.every((c, k) => {
+        const tv = own[k]; if (tv === null || tv === undefined) return true
+        let sum = 0; for (let r = start; r < i; r++) sum += val(r, c) ?? 0
+        return Math.abs(sum - tv) <= Math.max(1, Math.abs(tv) * 0.001)
+      })
+      if (ok) { out.add(i); break }
+    }
+  }
+  return out
+}
+export function guardMap(grids: Grid[], map0: AiMapT): { map: AiMapT; changed: string[] } {
+  const map: AiMapT = JSON.parse(JSON.stringify(map0)), changed: string[] = []
+  for (const b of map.blocks) {
+    const g = grids.find((x) => x.name === b.sheet) ?? grids.find((x) => norm(x.name) === norm(b.sheet)); if (!g) continue
+    const subs = subtotalRows(g, b.periods.filter((p) => !p.projected).map((p) => COL(p.col)))
+    const lc = COL(b.label_col)
+    for (const r of b.rows) {
+      const n = norm(r.label), isPart = PART_LINES.has(r.to) || isCat(r.to)
+      const i = findRow(g, lc, r.row, r.label)
+      // A total of the line's own accounts is fine (Total bank accounts as cash, Total accounts receivable).
+      const own = OWN[r.to]?.test(n) ?? false
+      const bad = (i !== null && subs.has(i) && isPart && !own)
+        || ((r.to === 'total_assets' || r.to === 'total_liabilities') && SUB_LABEL.test(n))
+        || (TOTAL_LABEL.test(n) && isPart && !own)
+      if (bad) { changed.push(r.label + ' (was ' + r.to + ')'); r.to = 'kpi'; r.kpi = r.label.slice(0, 60) }
+    }
+  }
+  // The grand totals the AI left out (or that were subtotals) come from the row whose label says so.
+  for (const b of map.blocks) {
+    const g = grids.find((x) => x.name === b.sheet) ?? grids.find((x) => norm(x.name) === norm(b.sheet)); if (!g) continue
+    const missing = GRAND.filter((k) => !b.rows.some((r) => r.to === k))
+    if (!missing.length || !b.rows.some((r) => isBs(r.to) || r.to === 'kpi')) continue
+    const lc = COL(b.label_col)
+    g.rows.forEach((row, i) => {
+      const l = row[lc]; if (typeof l !== 'string') return
+      const k = missing.find((x) => GRAND_SYN[x]!.includes(norm(l)))
+      if (k && b.periods.some((p) => numAt(row[COL(p.col)]) !== null) && !b.rows.some((r) => r.to === k)) { b.rows.push({ row: i + 1, label: l.trim().slice(0, 120), to: k, kpi: '', pct: false }); changed.push(l.trim() + ' (added as ' + k + ')') }
+    })
+  }
+  if (changed.length) map.notes = (map.notes + ' Subtotals kept as metrics, not statement lines: ' + changed.join('; ') + '.').trim().slice(0, 800)
+  return { map, changed }
+}
+
+// ---- Checking a map before it is saved -----------------------------------------------------------------------
+const BS_CHECKS = ['Total assets', 'Total liabilities', 'Balance sheet']
+// The balance sheet add-up checks a map fails on actual periods up to today.
+export function bsFailures(grids: Grid[], map: AiMapT): { count: number; first: string[] } {
+  const cs = previewOf(readWithMap(grids, map)).checks.filter((c) => BS_CHECKS.includes(c.what))
+  return { count: cs.length, first: cs.slice(0, 5).map((c) => c.period_end.slice(0, 7) + ' ' + c.what + ': ' + c.detail) }
+}
+const BS_KEYS = new Set(LINES_BS())
+function LINES_BS() { return ['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity'] }
+const isBs = (to: string) => BS_KEYS.has(to) || (isCat(to) && BS_KEYS.has(to.slice(4, to.indexOf(':', 4))))
+// The same blocks with their balance sheet rows chosen by the row-by-row mapper (labels and sections, no AI).
+export function rowsMapFor(grids: Grid[], map: AiMapT): AiMapT {
+  const out: AiMapT = JSON.parse(JSON.stringify(map))
+  for (const b of out.blocks) {
+    const g = grids.find((x) => x.name === b.sheet) ?? grids.find((x) => norm(x.name) === norm(b.sheet)); if (!g) continue
+    const lc = COL(b.label_col), cols = b.periods.map((p) => COL(p.col))
+    const rows: { i: number; label: string; values: Record<string, number> }[] = []
+    g.rows.forEach((row, i) => { const l = row[lc]; if (typeof l !== 'string' || !l.trim()) return; const values: Record<string, number> = {}; b.periods.forEach((p, k) => { const v = numAt(row[cols[k]!]); if (v !== null) values[p.period_end.slice(0, 7)] = v }); if (Object.keys(values).length) rows.push({ i, label: l.trim(), values }) })
+    const sug = suggestMapping(rows.map((r) => ({ label: r.label, values: r.values })), 'financials')
+    const bsRows = sug.map((x, k) => ({ x, r: rows[k]! })).filter(({ x }) => x.to && isBs(x.to)).map(({ x, r }) => ({ row: r.i + 1, label: r.label.slice(0, 120), to: x.to, kpi: '', pct: false }))
+    if (!bsRows.length) continue
+    b.rows = [...b.rows.filter((r) => !isBs(r.to)), ...bsRows].slice(0, 200)
+  }
+  return out
+}
+// A map is checked before it is kept: the guarded AI map, then (if its balance sheet does not add up) the row-by-row
+// mapper on the same tabs, then one AI retry that is told which checks failed. The map with the fewest failures is
+// kept (the AI map on a tie); what was repaired and what still fails is written in its notes for the review screen.
+export async function repairMap(grids: Grid[], map0: AiMapT, retry?: (sheet: string, feedback: string) => Promise<AiMapT['blocks'] | null>): Promise<{ map: AiMapT; failures: number; how: string }> {
+  const g0 = guardMap(grids, map0)
+  let best = g0.map, score = bsFailures(grids, best), how = g0.changed.length ? 'guarded' : 'ai'
+  if (score.count) {
+    const alt = rowsMapFor(grids, best), s2 = bsFailures(grids, alt)
+    if (s2.count < score.count) { best = alt; score = s2; how = 'rows' }
+  }
+  if (score.count && retry) {
+    const tabs = [...new Set(best.blocks.filter((b) => b.rows.some((r) => isBs(r.to))).map((b) => b.sheet))].slice(0, 3)
+    const feedback = 'Your previous map fails these add-up checks: ' + score.first.join(' | ') + '. Fix the map: subtotals inside a section must not map to standard lines or categories; total_assets is the grand total of all assets only.'
+    let alt: AiMapT = JSON.parse(JSON.stringify(best))
+    for (const sheet of tabs) {
+      const blocks = await retry(sheet, feedback).catch(() => null)
+      if (blocks?.length) alt = { ...alt, blocks: [...alt.blocks.filter((b) => b.sheet !== sheet), ...blocks] }
+    }
+    alt = guardMap(grids, alt).map
+    const s3 = bsFailures(grids, alt)
+    if (s3.count < score.count) { best = alt; score = s3; how = 'retry' }
+  }
+  const note = how === 'rows' ? 'Balance sheet rows chosen by label because the AI reading did not add up.' : how === 'retry' ? 'Balance sheet read again after the first reading did not add up.' : ''
+  const left = score.count ? ' ' + score.count + ' balance sheet check' + (score.count === 1 ? '' : 's') + ' still fail; those months\' balance sheets are held back.' : ''
+  if (note || left) best = { ...best, notes: (best.notes + ' ' + note + left).trim().slice(0, 800) }
+  return { map: best, failures: score.count, how }
+}
+
+// ---- What a sync may write ----------------------------------------------------------------------------------
+const BS_LIST = LINES_BS()
+// A period whose asset or liability lines do not add up keeps its profit and loss and KPIs, but its balance sheet is
+// held back (with the reason) instead of being saved wrong.
+export function holdBadBalanceSheet(p: { period_end: string; period_type: string; lines: Record<string, number>; detail?: Record<string, number> }): string | null {
+  const fails = checkRow({ period_end: p.period_end, period_type: p.period_type, lines: p.lines }).filter((c) => c.what === 'Total assets' || c.what === 'Total liabilities')
+  if (!fails.length) return null
+  for (const k of BS_LIST) delete p.lines[k]
+  for (const k of Object.keys(p.detail ?? {})) if (BS_KEYS.has(k.slice(0, k.indexOf('|')))) delete p.detail![k]
+  const mon = new Date(p.period_end + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+  return mon + ': balance sheet held back (' + fails[0]!.detail.replace(/\.$/, '') + '). A subtotal may be mapped as a line; read the sheet again with AI or choose the rows.'
+}
+// Template columns for months not filled in yet (formulas showing 0): a balance sheet that is all zero or blank is
+// dropped, and a period with no figure other than zero is skipped entirely.
+export function blankPeriod(p: { lines: Record<string, number>; kpis?: Record<string, number>; detail?: Record<string, number> }): 'all' | 'bs' | null {
+  const vals = [...Object.values(p.lines), ...Object.values(p.kpis ?? {}), ...Object.values(p.detail ?? {})]
+  if (!vals.some((v) => v !== 0)) return 'all'
+  const bs = [...BS_LIST.map((k) => p.lines[k]).filter((v) => v !== undefined), ...Object.entries(p.detail ?? {}).filter(([k]) => BS_KEYS.has(k.slice(0, k.indexOf('|')))).map(([, v]) => v)]
+  if (bs.length && !bs.some((v) => v !== 0)) { for (const k of BS_LIST) delete p.lines[k]; for (const k of Object.keys(p.detail ?? {})) if (BS_KEYS.has(k.slice(0, k.indexOf('|')))) delete p.detail![k]; return 'bs' }
+  return null
 }

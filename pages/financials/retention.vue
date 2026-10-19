@@ -73,6 +73,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       </div>
       <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers, credits or revenue recorded differently.</p>
       <CustAnalysis kind="retention" :stamp="stamp" />
+      <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="revenue retention" /></ClientOnly>
 
       <div class="card flat">
         <div class="ch"><div><h3>Retention by {{ GB.find(([k]) => k === groupBy)?.[1].toLowerCase() }}</h3><p class="mut">{{ groupBy === 'size' ? 'Enterprise from ' + cMoney(t.enterprise, cur, true) + ' a year, Mid-market from ' + cMoney(t.midmarket, cur, true) + ', SMB below. Customers are placed by what they paid a year ago.' : data?.config.scheme?.name ? data.config.scheme.name + ': ' + data.config.scheme.why : 'Set on each customer (from your file, the Customers page, or a suggested grouping).' }}</p></div>

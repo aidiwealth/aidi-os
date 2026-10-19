@@ -116,6 +116,10 @@ const tab = ref<'overview' | 'statements' | 'shares'>((['statements', 'shares'] 
 watch(() => route0.query.tab, (t) => { tab.value = t === 'statements' || t === 'shares' ? t : 'overview' })
 const { data: modsF } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
 const custLocked = computed(() => !!modsF.value?.find((m) => m.code === 'fin_customers' && m.locked))
+// The monthly management report for the executive team (Startup and Scale).
+const rptMod = computed(() => (modsF.value as { code: string; locked?: boolean; usable?: boolean }[] | null | undefined)?.find((m) => m.code === 'fin_report') ?? null)
+const mr = reactive({ open: false })
+function mrDone(m: string) { mr.open = false; ok.value = m }
 // Bulk delete / clear.
 const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = ref(false)
 watch([subject, periodType], () => { picked.value = [] })
@@ -229,6 +233,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
         <button v-if="(rows.length || monthly.length) && !isGroup" class="btn secondary" type="button" @click="openStatements">Financial report (PDF / Excel)</button>
+        <button v-if="monthly.length && !isGroup && rptMod && (rptMod.usable || rptMod.locked)" class="btn secondary" type="button" @click="mr.open = true">Monthly report<svg v-if="rptMod.locked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></button>
         <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
@@ -259,6 +264,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <TrendChart :title="secOn ? 'Cash & securities' : 'Cash'" unit="usd" :symbol="SYM[cur] ?? cur + ' '" :points="pts('cash')" :foot="cashKnown ? 'At ' + lbl(cashKnown.at, 'month') : 'Period end'" :foot-value="cashKnown?.v ?? null" />
         </div>
         <FinAnalysis v-if="co && !isGroup" :subject="co.subject" :review="monthly.length >= 2 ? review : null" :unit="unit" :currency="cur" :with-securities="secOn" />
+        <ClientOnly><ShareTo v-if="co && !isGroup && canEdit && co.subject === baseCo?.subject" :sections="['intro', 'summary', 'scorecard', 'growth', 'cash']" what="these figures" /></ClientOnly>
         <div v-if="checks?.checks.length" class="ck2"><button type="button" class="ckh" :aria-expanded="checksOpen" @click="checksOpen = !checksOpen"><span class="dot" /><b>{{ checks.checks.length }} figure{{ checks.checks.length === 1 ? '' : 's' }} to check</b><span>Totals in your figures that do not add up. Fix them at the source (the sheet or file) and sync again.</span><em>{{ checksOpen ? 'Hide' : 'Show' }}</em></button>
           <ul v-if="checksOpen"><li v-for="(c, i) in checks.checks" :key="i" :class="c.severity"><b>{{ lbl(c.period_end, c.period_type) }} · {{ c.what }}</b><span>{{ c.detail }}</span><em v-if="c.source === 'sheet'">From the linked sheet</em></li></ul></div>
         <div class="two"><div class="card"><DonutChart :title="'Operating expenses · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" total-label="Operating expenses" :currency="cur" :segments="mix" /></div>
@@ -358,6 +364,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     <AppModal :open="subWall" title="Subsidiaries" wide @close="subWall = false"><Paywall code="subsidiaries" label="Subsidiaries" /></AppModal>
     <ClientOnly><ChartOfAccounts :open="coaOpen" :can-edit="canEdit" @close="coaOpen = false" @changed="refresh()" /></ClientOnly>
     <ClientOnly><ReportDetails :open="rp.open" @close="rp.open = false" @saved="(m) => { rp.missing = m; sf.warned = false }" /></ClientOnly>
+    <ClientOnly><MgmtReport v-if="mr.open && !rptMod?.locked" :open="mr.open" :subject="co?.subject ?? subject" :company="co?.name ?? title" @close="mr.open = false" @done="mrDone" /></ClientOnly>
+    <AppModal v-if="mr.open && rptMod?.locked" :open="mr.open" title="Monthly management report" wide @close="mr.open = false"><Paywall code="fin_report" label="Monthly management report" /></AppModal>
     <AppModal :open="qbWall" title="QuickBooks" wide @close="qbWall = false"><Paywall code="quickbooks" label="QuickBooks" /></AppModal>
   </section>
 </template>

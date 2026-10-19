@@ -64,6 +64,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
         <StatTile label="Top 10 customers" icon="flag" :tone="(S.top10 ?? 0) > 0.6 ? 'r' : 'a'" :value="cPct(S.top10)" :note="'of revenue · largest ' + cPct(S.top1) + (S.pareto !== null ? ' · ' + cPct(S.pareto) + ' of customers make 80%' : '')" />
       </div>
       <CustAnalysis kind="customers" :stamp="stamp" />
+      <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'customers']" what="customer analysis" /></ClientOnly>
 
       <div class="three">
         <div class="card flat"><div class="ch"><h3>Top customers</h3><span class="mut">Last 12 months</span></div>

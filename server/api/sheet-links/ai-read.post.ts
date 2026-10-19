@@ -38,7 +38,11 @@ export default defineEventHandler(async (event) => {
       const grids = await readGrids(buf, ext, AI_GRID)
       if (!grids.some((g) => g.rows.some((r) => r.some((c) => c !== null)))) { stage = 'empty'; throw apiError('empty', 'That workbook looks empty.', 422) }
       stage = 'ai'; await set('ai', { tabs: grids.length, done: 0 })
-      const map = await mapWorkbook(grids, b.data.currency, 'sheet:' + b.data.url.slice(0, 90), (done, total, sheet) => set('ai', { done, total, last: sheet }))
+      const map0 = await mapWorkbook(grids, b.data.currency, 'sheet:' + b.data.url.slice(0, 90), (done, total, sheet) => set('ai', { done, total, last: sheet }))
+      // Checked before it is kept: subtotals guarded, and a balance sheet that does not add up is repaired (row mapper,
+      // then one AI retry told what failed).
+      const ref = 'sheet:' + b.data.url.slice(0, 90)
+      const { map } = await repairMap(grids, map0, async (sheet, feedback) => { const g = grids.find((x) => x.name === sheet); return g ? (await mapTab(g, b.data.currency, ref, feedback)).blocks : null })
       const r = readWithMap(grids, map)
       if (!map.blocks.length && !map.facts.length) { stage = 'empty'; throw apiError('empty', 'No tables of figures were found in the workbook.', 422) }
       await db().query("UPDATE financials.sheet_reads SET status = 'done', stage = 'done', result = $2, updated_at = now() WHERE id = $1", [id, JSON.stringify({ provider, tabs: grids.map((g) => g.name), map, preview: previewOf(r), document_id: upload?.docId ?? null, file: upload?.name ?? null })])

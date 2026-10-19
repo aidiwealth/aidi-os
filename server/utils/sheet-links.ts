@@ -6,7 +6,7 @@
 import type ExcelJS from 'exceljs'
 import type { Cat } from './accounts'
 import { FIXED_KEYS } from '~/shared/forecast'
-import { AiMap, readWithMap, writePeriods, previewOf } from './sheet-ai'
+import { AiMap, blankPeriod, holdBadBalanceSheet, readWithMap, repairMap, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
 export interface Grid { name: string; rows: Cell[][]; formulas?: number } // formulas: share of filled cells that are formulas (derived tabs)
@@ -153,7 +153,7 @@ const SYN: Record<string, string[]> = {
   depreciation: ['depreciation', 'depreciation and amortisation', 'depreciation and amortization', 'd a'], interest: ['interest', 'interest expense', 'finance costs', 'interest paid'],
   other_income: ['other income', 'interest income', 'finance income', 'investment income', 'dividend income', 'non operating income', 'other income expense', 'other gains'],
   tax: ['tax', 'taxes', 'income tax'], net_income: ['net income', 'net profit', 'profit after tax', 'net profit loss', 'net loss', 'profit loss'],
-  cash: ['cash', 'cash balance', 'closing cash', 'cash at bank', 'cash and cash equivalents', 'cash cash equivalents', 'ending cash', 'cash and marketable securities', 'cash marketable securities', 'cash and short term investments'],
+  cash: ['cash', 'cash balance', 'closing cash', 'cash at bank', 'cash and cash equivalents', 'cash cash equivalents', 'ending cash', 'cash and marketable securities', 'cash marketable securities', 'cash and short term investments', 'total bank accounts', 'bank accounts', 'total cash', 'total cash and cash equivalents', 'total cash cash equivalents'],
   receivables: ['receivables', 'accounts receivable', 'trade receivables', 'debtors', 'receivables and prepayments', 'receivables prepayments'],
   investments: ['short term investments', 'treasury bills', 't bills', 'marketable securities', 'money market', 'fixed deposits'],
   long_term_investments: ['investments', 'long term investments', 'strategic investments', 'equity investments', 'investments in associates', 'investment in associates', 'investments in subsidiaries'],
@@ -215,8 +215,12 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
         // Rows to the same line are added together; the company's own categories fill their line when it is not given.
         const lines: Record<string, number> = {}, kpis: Record<string, number> = {}, detail: Record<string, number> = {}
         for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; if (c.to === 'kpi') kpis[c.label.slice(0, 60)] = v; else addFigure(lines, detail, c.to, v) }
+        // A month not filled in yet (template formulas showing 0) is skipped; an all-zero balance sheet is left out.
+        if (blankPeriod({ lines, kpis, detail }) === 'all') continue
         foldCategories(lines, detail)
         if (!Object.keys(lines).length && !Object.keys(kpis).length && !Object.keys(detail).length) continue
+        const held = holdBadBalanceSheet({ period_end: lastDay(m), period_type: 'month', lines, detail })
+        if (held) skipped.push(held)
         const pe = lastDay(m)
         const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
         const { lines: merged, detail: md } = mergeStatement(ex, lines, detail)
@@ -255,7 +259,12 @@ async function syncAiLink(l: LinkRow, userId: string | null): Promise<{ months: 
   const map = AiMap.safeParse(l.ai_map)
   if (!map.success) throw apiError('invalid', 'Read the workbook again with AI to refresh this link.', 422)
   const { buf, ext } = await fetchLinkedSheet(l.url)
-  const r = readWithMap(await readGrids(buf, ext, AI_GRID), map.data)
+  const grids = await readGrids(buf, ext, AI_GRID)
+  // A map saved before the subtotal checks is corrected here (guarded, and its balance sheet rows chosen by label if it
+  // still does not add up; no AI call) and kept, so existing links mend on their next sync.
+  const rep = await repairMap(grids, map.data)
+  if (JSON.stringify(rep.map.blocks) !== JSON.stringify(map.data.blocks)) await db().query('UPDATE financials.sheet_links SET ai_map = $2 WHERE id = $1', [l.id, JSON.stringify(rep.map)])
+  const r = readWithMap(grids, rep.map)
   if (!r.periods.length) throw apiError('empty', 'No figures found where they used to be. Use "Read again with AI" on this link.', 422)
   const w = await writePeriods(l.subject ?? '', r.periods, l.currency, userId)
   const lost = r.missing.length

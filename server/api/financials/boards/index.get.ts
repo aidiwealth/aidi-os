@@ -9,5 +9,7 @@ export default defineEventHandler(async (event) => {
   const forecasts = fcOn ? (await db().query<{ id: string; name: string; assumptions: unknown }>('SELECT id, name, assumptions FROM financials.forecasts ORDER BY updated_at DESC')).rows : []
   const out = []
   for (const b of rows) { const f = forecasts.find((x) => x.id === b.forecast_id); out.push({ ...b, share_url: b.share_token ? base + '/b/' + b.share_token : null, data: await boardData(b.kpis, b.charts, b.period, b.count), forecast: f ? { id: f.id, name: f.name, assumptions: f.assumptions } : null }) }
-  return { boards: out, metrics: BOARD_METRICS, forecasts: forecasts.map((f) => ({ id: f.id, name: f.name })) }
+  // Customer and KPI metrics are offered alongside the standard ones.
+  const extra = Object.fromEntries((await metricCatalog()).filter((m) => !(m.key in BOARD_METRICS) && m.group !== 'Financials').map((m) => [m.key, { label: m.label, unit: m.unit }]))
+  return { boards: out, metrics: { ...BOARD_METRICS, ...extra }, forecasts: forecasts.map((f) => ({ id: f.id, name: f.name })) }
 })
