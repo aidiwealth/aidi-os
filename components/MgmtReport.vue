@@ -33,7 +33,7 @@ async function make() {
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)
     const upd = res.headers.get('x-update-id')
-    emit('done', 'Management report for ' + mon(f.month) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
+    emit('done', 'Monthly management report for ' + mon(f.month) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
   } catch (e) { f.msg = (e as Error).message } finally { f.busy = false }
 }
 const { data: mods } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')

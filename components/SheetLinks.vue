@@ -6,7 +6,7 @@ interface Link { show_source?: boolean; id: string; name: string; url: string; t
 interface AiBlock { sheet: string; title: string; label_col: string; scale: number; periods: { col: string; period_type: string; period_end: string; projected: boolean }[]; rows: { row: number; label: string; to: string; kpi: string; pct: boolean }[]; use?: boolean }
 interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
 interface AiRes { template?: boolean; document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null; total_assets?: number | null; total_liabilities?: number | null; equity?: number | null }[] } }
-interface Prev { provider: string; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
+interface Prev { provider: string; document_id?: string | null; file?: string | null; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
 const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
 const emit = defineEmits<{ synced: [] }>()
 const links = ref<Link[]>([])
@@ -42,9 +42,10 @@ const recent = computed(() => (ai.value?.preview.periods ?? []).filter((p) => p.
 const prev = ref<Prev | null>(null), map = ref<Record<string, string>>({}), keep = ref<{ label: string; to: string }[] | null>(null)
 const tab = computed(() => prev.value?.sheets.find((s) => s.sheet === f.sheet) ?? prev.value?.sheets[0] ?? null)
 function start(l?: Link) {
-  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: l ? (l.mode ?? 'rows') : props.target === 'financials' ? 'ai' : 'rows' })
+  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: 'rows' })
   keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; confirmed.value = !!l; fail.value = null; upFile.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
-  if (l) { if (f.mode === 'ai') aiRead(); else read() }
+  // A link first read with AI opens here as rows to choose: figures come only from rows the founder picked.
+  if (l) read()
 }
 function applyMap() {
   const t = tab.value; if (!t) return
@@ -68,13 +69,16 @@ async function addCat() {
 }
 const catLabel = (a: { name: string; parent: string }) => a.name + (a.parent ? ' (in ' + (LINE_LABEL[a.parent] ?? a.parent) + ')' : ' (detail only)')
 async function read() {
-  if (!f.url.trim()) { msg.value = 'Paste the share link.'; return }
+  if (!upFile.value && !f.url.trim()) { msg.value = props.target === 'financials' ? 'Paste the share link, or upload the file.' : 'Paste the share link.'; return }
   busy.value = true; msg.value = ''
   try {
     await loadAccts()
-    prev.value = await $fetch<Prev>('/api/sheet-links/preview', { method: 'POST', body: { url: f.url, target: props.target } })
+    let body: FormData | Record<string, string>
+    if (upFile.value) { const fd = new FormData(); fd.append('file', upFile.value); fd.append('target', props.target); body = fd }
+    else body = { url: f.url, target: props.target }
+    prev.value = await $fetch<Prev>('/api/sheet-links/preview', { method: 'POST', body })
     if (!prev.value.sheets.some((s) => s.sheet === f.sheet)) f.sheet = prev.value.sheets[0]!.sheet
-    if (!f.name) f.name = f.sheet ? prev.value.provider + ': ' + f.sheet : prev.value.provider
+    if (!f.name) f.name = prev.value.file ? prev.value.file : f.sheet ? prev.value.provider + ': ' + f.sheet : prev.value.provider
     applyMap(); step.value = 2
   } catch (e) { msg.value = err(e, 'Could not read that sheet.') } finally { busy.value = false }
 }
@@ -83,9 +87,9 @@ async function read() {
 const prog = ref(''), fail = ref<{ message: string; advice: string[] } | null>(null)
 const STAGE: Record<string, string> = { fetch: 'Fetching the workbook…', parse: 'Opening the workbook…', ai: 'Reading the tabs…' }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-// Or upload the workbook (an .xlsx or .csv): read the same way, brought in once.
+// Or upload the workbook (an .xlsx or .csv): the rows are chosen the same way and brought in once.
 const upFile = ref<File | null>(null)
-function pickFile(e: Event) { upFile.value = (e.target as HTMLInputElement).files?.[0] ?? null; if (upFile.value) { fail.value = null; void aiRead() } }
+function pickFile(e: Event) { upFile.value = (e.target as HTMLInputElement).files?.[0] ?? null; if (upFile.value) { fail.value = null; void read() } }
 async function aiRead() {
   if (!upFile.value && !f.url.trim()) { msg.value = 'Paste the share link, or upload the file.'; return }
   busy.value = true; msg.value = ''; fail.value = null; prog.value = upFile.value ? 'Uploading…' : STAGE.fetch!
@@ -115,7 +119,7 @@ async function aiRead() {
       : { message: status === 504 || status === 502 ? 'The server took too long to answer.' : 'We lost contact with the server while reading.', advice: ['Try again in a minute.', 'Or download the workbook as Excel and upload it under Financials → Add figures.'] }
   } finally { busy.value = false; prog.value = '' }
 }
-function next() { fail.value = null; if (f.mode === 'ai') aiRead(); else read() }
+function next() { fail.value = null; read() }
 async function saveAi() {
   if (!ai.value) return
   busy.value = true; msg.value = ''
@@ -153,6 +157,16 @@ const chosen = computed(() => Object.values(map.value).filter(Boolean).length)
 async function save() {
   if (props.target === 'forecast' && !f.forecast_id) { msg.value = 'Save a forecast first, then link the sheet to it.'; return }
   busy.value = true; msg.value = ''
+  const mapping = Object.entries(map.value).filter(([, to]) => to).map(([label, to]) => ({ label, to }))
+  if (prev.value?.document_id) {
+    try {
+      const r = await $fetch<{ months: number; skipped: string[] }>('/api/sheet-links/rows-import', { method: 'POST', body: { document_id: prev.value.document_id, subject: props.subject, currency: f.currency, sheet: tab.value?.sheet ?? '', mapping } })
+      open.value = false; noteErr.value = false; upFile.value = null
+      note.value = 'Brought in ' + r.months + ' month' + (r.months === 1 ? '' : 's') + ' from ' + (prev.value?.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. An uploaded file does not stay in step; upload it again or link the sheet to keep it current.'
+      emit('synced')
+    } catch (e) { msg.value = err(e, 'Could not bring the figures in.') } finally { busy.value = false }
+    return
+  }
   try {
     const r = await $fetch<{ months?: number; skipped?: string[]; error?: string }>('/api/sheet-links', { method: 'POST', body: { id: f.id || undefined, name: f.name, url: f.url, target: props.target, subject: props.target === 'financials' ? props.subject : undefined, forecast_id: props.target === 'forecast' ? f.forecast_id : undefined, currency: f.currency, sheet: tab.value?.sheet ?? '', auto: f.auto, mapping: Object.entries(map.value).map(([label, to]) => ({ label, to })) } })
     open.value = false; noteErr.value = !!r.error
@@ -179,14 +193,12 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
       <div v-if="step === 1" class="slf">
         <div v-if="target === 'financials' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry template</b><span class="sub">Months across, our line names down the side, totals worked out for you. Finvry reads it exactly, with no AI, so nothing can land in the wrong line. Fill it in, open it in Google Sheets, and link it here (or drop the file below).</span></div><a class="btn secondary sm" href="/api/financials/template">Download template</a></div>
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
-        <div v-if="target === 'financials'" class="mo"><label class="ck"><input v-model="f.mode" type="radio" value="ai"> <span><b>Read the whole workbook with AI</b><span class="sub"> For full financial models: many tabs, years or quarters, actuals beside projections, side-by-side tables, two currencies. AI finds where each figure is; the figures are then read straight from your cells on every sync.</span></span></label>
-          <label class="ck"><input v-model="f.mode" type="radio" value="rows"> <span><b>Choose rows myself</b><span class="sub"> One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column.</span></span></label>
-          <template v-if="f.mode === 'ai'"><label class="fl cur">Reporting currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
-            <DropZone accept=".xlsx,.csv" :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv, read the same way and brought in once · or click to choose'" @change="pickFile" /></template></div>
+        <DropZone v-if="target === 'financials' && !f.id" accept=".xlsx,.csv" no-tip :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv · you choose the rows the same way, brought in once · or click to choose'" @change="pickFile" />
+        <p class="sub">One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column. You choose where each row goes; figures are read straight from your cells, with no AI.</p>
         <p class="sub">Share the file so anyone with the link can view it.</p>
         <p v-if="prog" class="prg">{{ prog }} <span class="sub">Big workbooks take a minute or two; you can keep this open.</span></p>
         <div v-if="fail" class="fl2"><b>{{ fail.message }}</b><ul v-if="fail.advice.length"><li v-for="a in fail.advice" :key="a">{{ a }}</li></ul>
-          <span class="fla"><button class="link" type="button" :disabled="busy" @click="aiRead">Try again</button><button v-if="f.mode === 'ai'" class="link" type="button" @click="f.mode = 'rows'; fail = null">Choose rows myself instead</button></span></div>
+          <span class="fla"><button class="link" type="button" :disabled="busy" @click="next">Try again</button></span></div>
       </div>
       <div v-else-if="step === 3 && ai" class="slf">
         <div class="g3"><label v-if="!ai.document_id" class="fl">Name<input v-model="f.name" maxlength="120"></label><label class="fl">Currency<input :value="f.currency" disabled></label></div>
@@ -217,7 +229,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
       </div>
       <div v-else-if="prev && tab" class="slf">
         <div class="g3">
-          <label class="fl">Name<input v-model="f.name" maxlength="120"></label>
+          <label v-if="!prev.document_id" class="fl">Name<input v-model="f.name" maxlength="120"></label>
           <label v-if="prev.sheets.length > 1" class="fl">Tab<select v-model="f.sheet"><option v-for="s in prev.sheets" :key="s.sheet" :value="s.sheet">{{ s.sheet }}</option></select></label>
           <label v-if="target === 'forecast'" class="fl">Forecast<select v-model="f.forecast_id"><option v-for="x in forecasts" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
           <label v-else class="fl">Currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
@@ -231,15 +243,16 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
               <option v-if="target === 'financials'" value="__new">+ New category…</option></select>
               <div v-if="nc.row === r.label" class="nc"><input v-model="nc.name" maxlength="80" placeholder="Category name"><select v-model="nc.parent" aria-label="Belongs to"><option value="">No line (keep as a detail)</option><option v-for="k in prev.keys.filter((x) => x.key !== 'kpi')" :key="k.key" :value="k.key">In {{ k.label }}</option></select><button type="button" class="btn sm" :disabled="nc.busy || !nc.name.trim()" @click="addCat">Add</button><button type="button" class="lnk" @click="nc.row = ''">Cancel</button><span v-if="nc.msg" class="error">{{ nc.msg }}</span></div></td></tr></tbody></table></div>
         <p v-if="target === 'financials'" class="sub">Rows that are not a standard line can go into your own categories (your chart of accounts). A category is added into its line when the sheet does not give that line; rows sent to the same line are added together.{{ summed ? ' Some rows here go to the same line and will be added together.' : '' }}</p>
-        <label class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <label v-if="!prev.document_id" class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
+        <p v-else class="sub">An uploaded file is brought in once. To keep figures in step, link the sheet instead.</p>
       </div>
       <ClientOnly><CashFlowAsk v-if="target === 'financials' && (step === 2 || step === 3) && subject" :subject="subject" inline /></ClientOnly>
       <p v-if="msg" class="error">{{ msg }}</p>
       <template #foot>
         <button class="btn secondary" type="button" @click="step > 1 && !f.id ? (step = 1) : (open = false)">{{ step > 1 && !f.id ? 'Back' : 'Cancel' }}</button>
-        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? (f.mode === 'ai' ? 'Reading…' : 'Reading…') : f.mode === 'ai' ? 'Read the workbook' : 'Read sheet' }}</button>
+        <button v-if="step === 1" class="btn" type="button" :disabled="busy" @click="next">{{ busy ? 'Reading…' : 'Read sheet' }}</button>
         <button v-else-if="step === 3" class="btn" type="button" :disabled="busy || !kept || (!f.id && recent.length > 0 && !confirmed)" @click="saveAi">{{ busy ? (ai?.document_id ? 'Bringing in…' : 'Linking…') : (ai?.document_id ? 'Bring in ' : 'Link ') + kept + ' table' + (kept === 1 ? '' : 's') }}</button>
-        <button v-else class="btn" type="button" :disabled="busy || !chosen || used.length !== new Set(used).size" @click="save">{{ busy ? 'Linking…' : 'Link ' + chosen + ' row' + (chosen === 1 ? '' : 's') }}</button>
+        <button v-else class="btn" type="button" :disabled="busy || !chosen || (target === 'forecast' && used.length !== new Set(used).size)" @click="save">{{ busy ? (prev?.document_id ? 'Bringing in…' : 'Linking…') : (prev?.document_id ? 'Bring in ' : 'Link ') + chosen + ' row' + (chosen === 1 ? '' : 's') }}</button>
       </template>
     </AppModal>
   </div>

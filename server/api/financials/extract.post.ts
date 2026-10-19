@@ -20,6 +20,14 @@ export default defineEventHandler(async (event) => {
   await putObject({ key, body: new Uint8Array(file.data), contentType: mime })
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)",
     [docId, 'Financials — ' + (file.filename ?? 'statement').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 120), key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
+  // Spreadsheets: read by their layout with no AI (the template, or months across and line names down a column), so
+  // every month comes in exactly as typed. Only PDFs go to the statement reader, and every figure is checked in the form.
+  if (!pdf) {
+    const org = await currentOrg(), cur = String((org?.settings.reporting_currency as string | undefined) || (org?.settings.currency as string | undefined) || 'USD')
+    const sp = await spreadsheetProposal(Buffer.from(file.data), ext as 'xlsx' | 'csv', /^[A-Z]{3}$/.test(cur) ? cur : 'USD', 'document:' + docId, wanted).catch((e) => { if ((e as { statusCode?: number }).statusCode === 429) throw e; console.error('[financials] sheet read', (e as Error).message); return null })
+    if (sp) return { ...sp, document_id: docId }
+    throw apiError('unreadable', 'We read spreadsheets by their layout, with no AI: put the months across one heading row and the line names down the first column, or use the Finvry template (Download the Finvry template, below).', 422)
+  }
   try {
     const out = await extractStatement(text, wanted, 'document:' + docId, pdf)
     return { ...out, kpis: Object.fromEntries(out.kpis.map((k) => [k.name, k.value])), more_periods: out.more_periods.map((p) => ({ ...p, kpis: Object.fromEntries(p.kpis.map((k) => [k.name, k.value])) })), document_id: docId }

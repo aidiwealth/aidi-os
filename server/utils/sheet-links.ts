@@ -83,7 +83,28 @@ export async function readGrids(buf: Buffer, ext: 'xlsx' | 'csv', lim: { tabs?: 
       const w = Math.max(0, ...rows.map((r) => r.length))
       out.push({ name: String(ws.name ?? 'Sheet' + (out.length + 1)), rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0 })
     }
-  } catch (e) { console.error('[sheets] load', (e as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
+  } catch (e) {
+    // The streamed reader fails on some files whose parts are stored in an unusual order (e.g. a workbook written by
+    // exceljs itself, like the Finvry templates, when its sheets land after the shared strings): read it whole instead.
+    console.error('[sheets] load', (e as Error).message)
+    try {
+      out.length = 0
+      const wb = new Excel.Workbook(); await wb.xlsx.load(buf as unknown as ArrayBuffer)
+      for (const ws of wb.worksheets.slice(0, maxT)) {
+        const rows: Cell[][] = []; let filled = 0, fx = 0
+        ws.eachRow({ includeEmpty: false }, (row, n) => {
+          if (n > maxR) return
+          while (rows.length < n - 1) rows.push([])
+          const vals = Array.isArray(row.values) ? (row.values as ExcelJS.CellValue[]).slice(1, maxC + 1) : []
+          const cells: Cell[] = []
+          for (let c = 0; c < vals.length; c++) { const v = vals[c]; if (n <= 300 && v !== null && v !== undefined) { filled++; if (typeof v === 'object' && v !== null && ('formula' in v || 'sharedFormula' in v)) fx++ } cells.push(cellVal(v ?? null)) }
+          rows.push(cells)
+        })
+        const w = Math.max(0, ...rows.map((r) => r.length))
+        out.push({ name: ws.name, rows: rows.map((r) => (r.length < w ? [...r, ...Array(w - r.length).fill(null)] : r)), formulas: filled ? fx / filled : 0 })
+      }
+    } catch (e2) { console.error('[sheets] load whole', (e2 as Error).message); throw apiError('sheet_unreadable', 'That workbook could not be opened. Save a copy without pivot tables or add-ons and try again.', 422) }
+  }
   return out
 }
 
@@ -197,10 +218,11 @@ export interface LinkRow { id: string; name: string; url: string; target: 'finan
 
 // Reads the sheet and writes the chosen rows. Financials: months up to this one, merged into each month's statement
 // (lines from the sheet replace those lines only). Forecast: the months become given months in that forecast.
-export async function syncLink(l: LinkRow, userId: string | null): Promise<{ months: number; skipped: string[] }> {
+// src: an uploaded file read once (no link to fetch, nothing remembered on a link).
+export async function syncLink(l: LinkRow, userId: string | null, src?: { buf: Buffer; ext: 'xlsx' | 'csv' }): Promise<{ months: number; skipped: string[] }> {
   try {
-    if (l.mode === 'ai') return await syncAiLink(l, userId)
-    const { buf, ext } = await fetchLinkedSheet(l.url)
+    if (l.mode === 'ai' && !src) return await syncAiLink(l, userId)
+    const { buf, ext } = src ?? await fetchLinkedSheet(l.url)
     const all = layouts(await readGrids(buf, ext))
     const lay = all.find((x) => x.sheet === l.sheet) ?? all[0]
     if (!lay) throw apiError('empty', 'No months found across the columns of that sheet.', 422)
@@ -246,11 +268,11 @@ export async function syncLink(l: LinkRow, userId: string | null): Promise<{ mon
       await db().query('UPDATE financials.forecasts SET assumptions = $2, updated_at = now() WHERE id = $1', [l.forecast_id, JSON.stringify(a)])
     }
     const sk = summariseSkipped(skipped)
-    await db().query('UPDATE financials.sheet_links SET last_synced_at = now(), last_error = NULL, last_result = $2 WHERE id = $1', [l.id, JSON.stringify({ months, skipped: sk, sheet: lay.sheet })])
+    if (l.id) await db().query('UPDATE financials.sheet_links SET last_synced_at = now(), last_error = NULL, last_result = $2 WHERE id = $1', [l.id, JSON.stringify({ months, skipped: sk, sheet: lay.sheet })])
     return { months, skipped: sk }
   } catch (err) {
     const msg = (err as { data?: { error?: { message?: string } }; statusMessage?: string }).data?.error?.message ?? (err as { statusMessage?: string }).statusMessage ?? 'Could not read the sheet.'
-    await db().query('UPDATE financials.sheet_links SET last_error = $2, last_synced_at = now() WHERE id = $1', [l.id, String(msg).slice(0, 300)]).catch(() => {})
+    if (l.id) await db().query('UPDATE financials.sheet_links SET last_error = $2, last_synced_at = now() WHERE id = $1', [l.id, String(msg).slice(0, 300)]).catch(() => {})
     throw err
   }
 }

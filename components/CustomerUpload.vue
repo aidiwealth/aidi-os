@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Upload customer revenue: say what is needed, read the file, check it for duplicates (AI), then save.
+// Upload customer revenue: the template first, read the file by fixed rules (no AI), check it for duplicates (AI
+// suggests, the founder confirms), then save.
 const props = defineProps<{ open: boolean; existing: number; extra?: 'retention' | 'customers' }>()
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Dup { names: string[]; to: string; reason: string; sure: boolean; existing: boolean }
@@ -35,23 +36,23 @@ const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString
 <template>
   <AppModal :open="open" :title="st.prev ? 'Check your customer data' : 'Upload customer revenue'" wide @close="emit('close')">
     <div v-if="!st.prev" class="cu">
+      <div class="tpl"><div><b>Start from the Finvry customer revenue template</b><span class="mut">Same layout as the financials template: one row per customer, months across. Finvry reads it exactly, with no AI, so every figure lands where it should.</span></div><a href="/api/financials/customers/template" class="btn secondary sm">Download template</a></div>
       <div class="need">
-        <div><h4>What we need</h4>
+        <div><h4>What goes in it</h4>
           <table><tbody>
-            <tr><td><b>Customer</b></td><td>The customer's name, written the same way every month</td></tr>
-            <tr><td><b>Month</b></td><td>The month the revenue is for (2025-01, Jan 2025 or a date)</td></tr>
-            <tr><td><b>Revenue</b></td><td>What the customer paid or was billed that month</td></tr>
-            <tr class="opt"><td>Currency</td><td>Optional: only if you bill in more than one currency (USD, NGN…)</td></tr>
+            <tr><td><b>Customer</b></td><td>The customer's name, one row per customer</td></tr>
+            <tr><td><b>Months across</b></td><td>Revenue billed or earned each month (Jan 2025, Feb 2025…), empty when none</td></tr>
+            <tr><td><b>Currency</b></td><td>The customer's billing currency (USD, NGN…); rates go on the Exchange rates tab</td></tr>
             <tr class="opt"><td>Segment</td><td>Optional: Enterprise, SMB, or your own groups</td></tr>
             <tr class="opt"><td>Sector</td><td>Optional: Banking, Retail, Telecoms… {{ extra === 'customers' ? '(needed for the sector view)' : '' }}</td></tr>
             <tr class="opt"><td>Country, Plan, Start date</td><td>Optional</td></tr>
             <tr class="opt"><td>Acquisition cost</td><td>Optional: what it cost to win the customer, for LTV to CAC and payback</td></tr>
           </tbody></table></div>
-        <div class="tips"><h4>Keep it simple</h4><ul><li>One table on one sheet, headings in the first row</li><li>One row per customer per month, or one row per customer with months across the top</li><li>No totals rows, merged cells or formulas that show errors</li><li>Give at least 13 months, so a year-on-year comparison is possible</li><li>Billing in more than one currency? Add a Currency column and an Exchange rates tab</li></ul>
-          <a href="/api/financials/customers/template" class="lk">Download the Finvry kit (Excel)</a><span class="mut kit">Your own layout works too: several tabs (for example one per country), other currencies with an exchange-rate tab, or a PDF or Word report. AI finds the right tables.</span></div>
+        <div class="tips"><h4>Keep it simple</h4><ul><li>Keep the template's headings on row 4 as they are</li><li>No totals rows, rankings or summary tabs: Finvry works them out</li><li>Give at least 13 months, so a year-on-year comparison is possible</li><li>Billing in more than one currency? Fill the Exchange rates tab (units per 1 USD, by month)</li></ul>
+          <span class="mut kit">A sheet with one row per customer per month (Customer, Month, Revenue, and the optional columns) is read too. Figures are read by fixed rules, never by AI; AI only suggests customers that may be written two ways, for you to confirm.</span></div>
       </div>
       <div class="srcs"><button type="button" :class="{ on: st.src === 'file' }" @click="st.src = 'file'">Upload a file</button><button type="button" :class="{ on: st.src === 'link' }" @click="st.src = 'link'">Link a Google Sheet</button></div>
-      <DropZone v-if="st.src === 'file'" accept=".xlsx,.csv,.docx,.pdf" :disabled="st.busy" :label="st.busy ? 'Reading and checking for duplicates…' : 'Drag and drop the file here'" hint="Excel, CSV, Word or PDF · AI reads other layouts · or click to choose" no-tip @change="read" />
+      <DropZone v-if="st.src === 'file'" accept=".xlsx,.csv,.docx" :disabled="st.busy" :label="st.busy ? 'Reading and checking for duplicates…' : 'Drag and drop the file here'" hint="Excel or CSV (the template), or a Word table · or click to choose" no-tip @change="read" />
       <form v-else class="lnk" @submit.prevent="readLink"><input v-model="st.url" type="url" required placeholder="Paste the share link (Google Sheets, Excel online or Dropbox)"><button class="btn" type="submit" :disabled="st.busy || st.url.length < 10">{{ st.busy ? 'Reading…' : 'Read the sheet' }}</button>
         <span class="mut">Share it so anyone with the link can view. Finvry re-reads it every day, keeps the duplicates you merge merged, and replaces the saved customers with what the sheet holds.</span></form>
       <p v-if="st.msg" class="error">{{ st.msg }}</p>
@@ -59,7 +60,7 @@ const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString
     <div v-else class="cu">
       <div class="sum"><div><b>{{ st.prev.summary.customers.toLocaleString('en-US') }}</b><span>customers</span></div><div><b>{{ st.prev.summary.months }}</b><span>months, {{ mon(st.prev.summary.first) }} – {{ mon(st.prev.summary.last) }}</span></div><div><b>{{ Math.round(st.prev.summary.total).toLocaleString('en-US') }}</b><span>total revenue</span></div><div><b>{{ st.prev.summary.known }}</b><span>already saved</span></div></div>
       <p v-if="st.linked" class="lk2">Linked to {{ st.linked }}: saving replaces the saved customers and the sheet is read again every day.</p>
-      <p class="mut">Read from "{{ st.prev.summary.sheet }}" ({{ st.prev.summary.layout === 'long' ? 'one row per customer per month' : 'months across the columns' }}{{ st.prev.summary.ai_mapped ? ', layout found by AI' : '' }}).{{ st.prev.summary.attrs.length ? ' Also found: ' + st.prev.summary.attrs.map((a) => ATTR[a]).join(', ') + '.' : '' }}</p>
+      <p class="mut">Read from "{{ st.prev.summary.sheet }}" ({{ st.prev.summary.layout === 'long' ? 'one row per customer per month' : 'months across the columns' }}).{{ st.prev.summary.attrs.length ? ' Also found: ' + st.prev.summary.attrs.map((a) => ATTR[a]).join(', ') + '.' : '' }}</p>
       <ul v-if="st.prev.summary.notes.length" class="notes"><li v-for="(n, i) in st.prev.summary.notes" :key="i">{{ n }}</li></ul>
       <label v-if="st.prev.summary.repeated && st.prev.summary.layout === 'long'" class="ck"><input v-model="st.keepRepeats" type="checkbox"> Keep the {{ st.prev.summary.repeated }} repeated row{{ st.prev.summary.repeated === 1 ? '' : 's' }} (only if they are real, separate charges)</label>
       <div class="dup"><h4>{{ st.prev.dupes.length ? 'Possible duplicate customers (' + st.prev.dupes.length + ')' : 'No duplicate customers found' }}</h4>
@@ -77,6 +78,7 @@ const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString
 
 <style scoped>
 .cu { display: flex; flex-direction: column; gap: 14px; font-size: 13.5px; }
+.tpl { display: flex; gap: 14px; align-items: center; justify-content: space-between; border: 1px solid #d9e2ef; background: #f5f7fb; padding: 12px 14px; margin-bottom: 14px; } .tpl b { display: block; font-weight: 500; margin-bottom: 2px; } .tpl .mut { font-size: 13px; } .tpl .btn { white-space: nowrap; text-decoration: none; }
 .need { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; } h4 { margin: 0 0 8px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); }
 table { width: 100%; border-collapse: collapse; } td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--c-rule); vertical-align: top; font-size: 13px; color: var(--c-ink-soft); } td:first-child { white-space: nowrap; color: var(--c-ink); width: 150px; } tr.opt td:first-child { color: var(--c-muted); }
 .tips { background: #f5f7fb; padding: 12px 14px; } .tips ul { margin: 0 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--c-ink-soft); }

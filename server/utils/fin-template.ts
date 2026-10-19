@@ -77,21 +77,27 @@ export async function templateWorkbook(currency: string): Promise<Buffer> {
 
 // A sheet made from the template, mapped by fixed rules (no AI): the month columns from the heading row, each line by
 // its name (your own rows inside a section become categories), and "KPI:" rows as metrics.
-export function templateMap(grids: Grid[], currency: string): AiMapT | null {
+export function templateMap(grids: Grid[], currency: string): AiMapT | null { return mapByNames(grids, currency, true) }
+// Any workbook with months across one heading row and line names down column A (or the first text column), read by
+// the same fixed rules: no AI. Each such tab becomes one table.
+export function namesMap(grids: Grid[], currency: string): AiMapT | null { return mapByNames(grids, currency, false) }
+function mapByNames(grids: Grid[], currency: string, mark: boolean): AiMapT | null {
   const letter = (i: number) => { let s = '', k = i + 1; while (k > 0) { const m = (k - 1) % 26; s = String.fromCharCode(65 + m) + s; k = Math.floor((k - 1) / 26) } return s }
   const blocks: AiMapT['blocks'] = []
   for (const g of grids) {
     const a1 = g.rows[0]?.[0]
-    if (typeof a1 !== 'string' || !a1.trim().startsWith(TEMPLATE_MARK)) continue
-    const hi = g.rows.findIndex((r) => r.slice(1).filter((c) => monthOf(c) !== null).length >= 3)
+    if (mark && (typeof a1 !== 'string' || !a1.trim().startsWith(TEMPLATE_MARK))) continue
+    const hi = g.rows.findIndex((r) => r.slice(1).filter((c) => monthOf(c) !== null).length >= (mark ? 3 : 2))
     if (hi < 0) continue
+    // The label column: A, or the first column holding text under the heading row.
+    const lc = mark ? 0 : Math.max(0, [0, 1, 2].find((j) => g.rows.slice(hi + 1, hi + 30).filter((r) => typeof r[j] === 'string' && !monthOf(r[j] ?? null)).length >= 3) ?? 0)
     const periods = g.rows[hi]!.map((c, j) => ({ j, m: j ? monthOf(c) : null })).filter((x) => x.m).map((x) => {
       const d = new Date(x.m + '-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0)
       return { col: letter(x.j), period_type: 'month' as const, period_end: d.toISOString().slice(0, 10), projected: false }
     })
     const rows: { i: number; label: string; values: Record<string, number> }[] = []
     for (let i = hi + 1; i < g.rows.length; i++) {
-      const l = g.rows[i]?.[0]; if (typeof l !== 'string' || !l.trim()) continue
+      const l = g.rows[i]?.[lc]; if (typeof l !== 'string' || !l.trim()) continue
       const values: Record<string, number> = {}
       periods.forEach((p) => { const v = g.rows[i]?.[letterIdx(p.col)]; if (typeof v === 'number') values[p.period_end.slice(0, 7)] = v })
       rows.push({ i, label: l.trim(), values: Object.keys(values).length ? values : { _: 0 } })
@@ -104,10 +110,10 @@ export function templateMap(grids: Grid[], currency: string): AiMapT | null {
       const to = sug[k]?.to
       if (to && to !== 'kpi') out.push({ row: r.i + 1, label: r.label.slice(0, 120), to, kpi: '', pct: false })
     })
-    if (periods.length && out.length) blocks.push({ sheet: g.name, title: 'Finvry template', label_col: 'A', scale: 1, periods, rows: out.slice(0, 200), use: true })
+    if (periods.length && out.length) blocks.push({ sheet: g.name, title: mark ? 'Finvry template' : g.name, label_col: letter(lc), scale: 1, periods, rows: out.slice(0, 200), use: true })
   }
   if (!blocks.length) return null
   return { company: { name: '', description: '', website: '' }, reporting_currency: currency, fiscal_year_end: '', tabs: grids.map((g) => ({ sheet: g.name, what: blocks.some((b) => b.sheet === g.name) ? 'Finvry financials template' : 'Not part of the template', used: blocks.some((b) => b.sheet === g.name) })),
-    blocks, facts: [], suggestions: [], notes: 'Finvry template: read exactly by its line names, with no AI.' }
+    blocks, facts: [], suggestions: [], notes: mark ? 'Finvry template: read exactly by its line names, with no AI.' : 'Read by line names, with no AI.' }
 }
 const letterIdx = (s: string) => s.toUpperCase().split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1

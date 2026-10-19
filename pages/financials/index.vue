@@ -92,7 +92,7 @@ async function makeStatements() {
     const res = await fetch('/api/financials/statements-file', { method: 'POST', body: fd, credentials: 'same-origin' })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the statements.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'financial-statements.' + sf.format; a.click(); URL.revokeObjectURL(a.href)
-    ok.value = (sf.kind === 'report' ? 'Financial report' : 'Statements') + ' downloaded' + (sf.room ? ' and added to the data room (Financials).' : '.'); sf.open = false
+    ok.value = (sf.kind === 'report' ? 'Investor financial report' : 'Statements') + ' downloaded' + (sf.room ? ' and added to the data room (Financials).' : '.'); sf.open = false
   } catch (e) { sf.msg = (e as Error).message } finally { sf.busy = false }
 }
 // Burn and runway checked three ways on the monthly figures (3-month average); else the latest period's burn.
@@ -101,6 +101,9 @@ const review = computed(() => burnReview(monthly.value as unknown as FinRow[]))
 const unit = computed(() => { const l3 = monthly.value.slice(-3); if (!l3.length) return null; const sum = (k: string) => l3.reduce((a, r) => a + (Number(r.derived[k] ?? 0) || 0), 0); return { revenue: sum('revenue'), cogs: sum('cogs'), opex: sum('opex_total'), label: l3.length === 1 ? lbl(l3[0]!.period_end, 'month') : lbl(l3[0]!.period_end, 'month') + ' – ' + lbl(l3[l3.length - 1]!.period_end, 'month') } })
 // No runway from a cash balance two or more months older than the latest figures (it says nothing about today).
 const cashStale = computed(() => { const c = cashKnown.value, l = latest.value; if (!c || !l) return false; const m = (d: string) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)); return m(l.period_end) - m(c.at) >= 2 })
+// Monthly view: burn is the 3-month average (one month alone swings with bills paid or collected); other views keep
+// the period's own figure.
+const burnShown = computed(() => view.value === 'month' && review.value.status !== 'none' ? (review.value.profitable ? 0 : review.value.burn) : latest.value?.derived.burn ?? null)
 const runwayKnown = computed(() => { if (cashStale.value) return null; if (review.value.status !== 'none' && review.value.runway !== null) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
@@ -160,7 +163,7 @@ function applyProposal(r: { period_end: string | null; period_type: string; curr
   aiNote.value = (r.source ? 'From ' + r.source + '. ' : '') + r.notes + ' Check every figure before saving.'
 }
 const errOf = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? d
-async function fromGoogle() { src.busy = 'gs'; msg.value = ''; try { applyProposal(await $fetch('/api/financials/gsheet', { method: 'POST', body: { url: src.gs, subject: form.subject, wanted: periodEnd.value || 'latest period' } })) } catch (e) { msg.value = errOf(e, 'Could not read the Google Sheet.') } finally { src.busy = '' } }
+async function fromGoogle() { src.busy = 'gs'; msg.value = ''; try { const gr = await $fetch<Parameters<typeof applyProposal>[0] & { more_periods?: MorePeriod[] }>('/api/financials/gsheet', { method: 'POST', body: { url: src.gs, subject: form.subject, wanted: periodEnd.value || 'latest period' } }); more.value = gr.more_periods ?? []; applyProposal(gr) } catch (e) { msg.value = errOf(e, 'Could not read the Google Sheet.') } finally { src.busy = '' } }
 const qbWall = ref(false)
 async function fromQuickBooks() { if (!periodEnd.value) { msg.value = 'Choose the period first.'; return } src.busy = 'qb'; msg.value = ''; try { applyProposal(await $fetch('/api/integrations/quickbooks/pull', { method: 'POST', body: { subject: form.subject, period_type: form.period_type, period_end: periodEnd.value } })) } catch (e) { msg.value = errOf(e, 'Could not pull from QuickBooks.'); if ((e as { data?: { data?: { error?: { code?: string } } } }).data?.data?.error?.code === 'quickbooks_reconnect') await loadSources() } finally { src.busy = '' } }
 async function qbDisconnect() { if (!confirm('Disconnect QuickBooks for this entity or company?')) return; await $fetch('/api/integrations/quickbooks/disconnect', { method: 'POST', body: { subject: form.subject } }); await loadSources() }
@@ -170,12 +173,10 @@ async function fromSheet(ev: Event) {
   busy.value = true; msg.value = ''
   const fd = new FormData(); fd.append('file', f); fd.append('wanted', periodEnd.value || 'latest period')
   try {
-    const r = await $fetch<{ period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id: string; more_periods: MorePeriod[] }>('/api/financials/extract', { method: 'POST', body: fd })
+    const r = await $fetch<{ period_end: string | null; period_type: string; currency: string; lines: Record<string, number | null>; kpis: Record<string, number>; notes: string; document_id: string; more_periods: MorePeriod[]; categories?: { name: string; line: string; value: number }[] }>('/api/financials/extract', { method: 'POST', body: fd })
+    // Every period in the file: this one in the form (with the company's own categories), the rest saved in one go.
     more.value = r.more_periods ?? []
-    if (r.period_end) setFromEnd(r.period_end, r.period_type)
-    const c = (r.currency || form.currency).toUpperCase()
-    Object.assign(form, { currency: CURS.value.includes(c) ? c : form.currency, document_id: r.document_id, lines: Object.fromEntries(Object.entries(r.lines).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)])), kpis: Object.entries(r.kpis).map(([name, v]) => ({ name, value: String(v) })) })
-    aiNote.value = r.notes + ' Check every figure before saving.'
+    applyProposal(r)
   } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read the file.' } finally { busy.value = false }
 }
 // Other periods found in the same file (a bank statement over several months, a multi-year P&L): saved in one go.
@@ -234,8 +235,8 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <select v-if="(!co || isGroup) && subject === 'group'" v-model="currency" aria-label="Currency"><option v-for="c in CURS" :key="c" :value="c">{{ c }}</option></select>
         <div v-if="co?.reporting && !isGroup" class="seg" role="group" aria-label="Show in"><button :class="{ on: !original }" @click="original = false">{{ co.reporting }}</button><button :class="{ on: original }" @click="original = true">Original</button></div>
         <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards" class="btn secondary bdl">Boards</NuxtLink>
-        <button v-if="(rows.length || monthly.length) && !isGroup" class="btn secondary" type="button" @click="openStatements">Financial report (PDF / Excel)</button>
-        <button v-if="monthly.length && !isGroup && rptMod && (rptMod.usable || rptMod.locked)" class="btn secondary" type="button" @click="mr.open = true">Monthly report<svg v-if="rptMod.locked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></button>
+        <button v-if="(rows.length || monthly.length) && !isGroup" class="btn secondary" type="button" title="Annual and period statements (P&amp;L, balance sheet, cash flow) for investors, lenders and filings" @click="openStatements">Investor financial report</button>
+        <button v-if="monthly.length && !isGroup && rptMod && (rptMod.usable || rptMod.locked)" class="btn secondary" type="button" title="A month's performance for your executive team: growth, costs, cash, runway, customers" @click="mr.open = true">Monthly management report<svg v-if="rptMod.locked" class="tlk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Upgrade to unlock"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></button>
         <button v-if="canEdit && !isGroup" class="btn" type="button" @click="openForm()">Add figures</button>
       </div>
     </div>
@@ -257,7 +258,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
           <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
           <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="g" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
-          <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="latest.derived.burn" :currency="cur" /> / month</template></StatTile>
+          <StatTile label="Gross margin" icon="chart" tone="c" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="burnShown" :currency="cur" /> / month{{ view === 'month' && review.status !== 'none' ? ' (3-month average)' : '' }}</template></StatTile>
         </div>
         <BurnCheck v-if="!co && monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />
         <div class="charts">
@@ -297,9 +298,9 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
 
     <AppModal :open="showForm" :title="rows.some((r) => r.period_end === periodEnd && r.period_type === form.period_type) ? 'Edit figures' : 'Add figures'" wide @close="showForm = false">
       <form id="finf" class="frm" @submit.prevent="save">
-        <DropZone accept=".xlsx,.csv,.pdf,application/pdf" :disabled="busy" :label="busy ? 'Reading your file…' : 'Fill from a file'" hint="Drop accounts or a bank statement (Excel, CSV or PDF) and we map the figures for you to check · or click to choose" @change="fromSheet" />
+        <DropZone accept=".xlsx,.csv,.pdf,application/pdf" :disabled="busy" :label="busy ? 'Reading your file…' : 'Fill from a file'" hint="Excel or CSV: months across, line names down the first column (or the Finvry template), read by line names with no AI. PDF: read with AI, check every figure · or click to choose" @change="fromSheet" />
         <p class="hint tph">No sheet yet? <a href="/api/financials/template">Download the Finvry template</a>: months across, our line names down the side, read exactly every time. Link it under Linked sheets to keep it in step.</p>
-        <div v-if="more.length" class="more"><span><b>{{ more.length }} more period{{ more.length === 1 ? '' : 's' }} in this file</b>: {{ more.map((p) => p.period_end.slice(0, 7)).join(', ') }}. Save the one below first, or save these as they were read.</span><button type="button" class="btn secondary sm" :disabled="moreBusy || !form.subject" @click="saveMore">{{ moreBusy ? 'Saving…' : 'Save these ' + more.length }}</button></div>
+        <div v-if="more.length" class="more"><span><b>{{ more.length }} more period{{ more.length === 1 ? '' : 's' }} in this file</b>: {{ more.length > 6 ? more[0]!.period_end.slice(0, 7) + ' to ' + more[more.length - 1]!.period_end.slice(0, 7) : more.map((p) => p.period_end.slice(0, 7)).join(', ') }}. Save the one below first, or save these as they were read.</span><button type="button" class="btn secondary sm" :disabled="moreBusy || !form.subject" @click="saveMore">{{ moreBusy ? 'Saving…' : 'Save these ' + more.length }}</button></div>
         <div v-if="form.subject && form.subject !== 'group'" class="srcs">
           <div class="src"><span class="sl"><b>Google Sheets</b><em>Share the sheet as "Anyone with the link: Viewer", then paste the link.</em></span><span class="sr"><input v-model="src.gs" placeholder="https://docs.google.com/spreadsheets/d/…"><button type="button" class="btn secondary sm" :disabled="!src.gs || !!src.busy" @click="fromGoogle">{{ src.busy === 'gs' ? 'Reading…' : 'Import' }}</button></span></div>
           <div v-if="src.qb" class="src"><span class="sl"><b>QuickBooks</b><em>{{ src.qb.connected ? 'Connected' + (src.qb.company ? ' · ' + src.qb.company : '') + (src.qb.last_pulled_at ? ' · last pulled ' + new Date(src.qb.last_pulled_at).toLocaleDateString('en-GB') : '') : src.qb.configured ? 'Pull P&L, balance sheet and cash flow for the period you choose.' : 'Not set up on this server yet.' }}</em></span>
@@ -332,7 +333,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       </form>
       <template #foot><button class="btn secondary" type="button" @click="showForm = false">Cancel</button><button class="btn" type="submit" form="finf" :disabled="busy">Save figures</button></template>
     </AppModal>
-    <AppModal :open="sf.open" title="Financial report" wide @close="sf.open = false">
+    <AppModal :open="sf.open" title="Investor financial report" wide @close="sf.open = false">
       <div class="frm"><div class="seg kinds" role="group" aria-label="What to make"><button :class="{ on: sf.kind === 'report' }" type="button" @click="sf.kind = 'report'">Annual report</button><button :class="{ on: sf.kind === 'statements' }" type="button" @click="sf.kind = 'statements'">Statements by period</button></div>
         <p class="hint">{{ sf.kind === 'report' ? 'The full set: cover, directors and advisers, report of the directors, accounting policies, balance sheet, statement of operations, changes in equity, cash flows and notes, with the year before for comparison.' : 'Income statement, balance sheet and cash flow side by side for each month, quarter or year.' }}</p>
         <div v-if="sf.kind === 'report'" class="g2r"><label class="label">Year<select v-model.number="sf.year"><option v-for="y in rp.years" :key="y.year" :value="y.year">{{ y.label.replace(/^./, (c) => c.toUpperCase()) }}</option><option v-if="!rp.years.length" :value="0" disabled>No figures yet</option></select></label>

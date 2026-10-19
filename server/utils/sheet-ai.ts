@@ -400,3 +400,25 @@ export function blankPeriod(p: { lines: Record<string, number>; kpis?: Record<st
   if (bs.length && !bs.some((v) => v !== 0)) { for (const k of BS_LIST) delete p.lines[k]; for (const k of Object.keys(p.detail ?? {})) if (BS_KEYS.has(k.slice(0, k.indexOf('|')))) delete p.detail![k]; return 'bs' }
   return null
 }
+
+// ---- Add figures from a spreadsheet ---------------------------------------------------------------------------
+// A spreadsheet dropped into "Add figures" (or a Google Sheet pasted there) is read the same way as a linked sheet:
+// the Finvry template, or any tab with months across and line names down a column, by fixed rules with no AI. Every period is returned, the asked-for (or latest)
+// month first, ready for the founder to check and save. null when nothing could be read this way.
+export async function spreadsheetProposal(buf: Buffer, ext: 'xlsx' | 'csv', currency: string, ref: string, wanted: string) {
+  const grids = await readGrids(buf, ext, AI_GRID)
+  const tmpl = templateMap(grids, currency)
+  // No AI for figures: the template, or any tab with months across and line names down a column, read by fixed rules.
+  const map = tmpl ?? namesMap(grids, currency)
+  if (!map) return null
+  const r = readWithMap(grids, map)
+  const ps = r.periods.filter((p) => Object.keys(p.lines).length || Object.keys(p.kpis).length)
+  if (!ps.length) return null
+  const want = /^\d{4}-\d{2}/.test(wanted) ? wanted.slice(0, 7) : ''
+  const months = ps.filter((p) => p.period_type === 'month')
+  const main = (want && ps.find((p) => p.period_end.slice(0, 7) === want)) || months[months.length - 1] || ps[ps.length - 1]!
+  const cats = (d?: Record<string, number>) => Object.entries(d ?? {}).map(([k, value]) => ({ name: k.slice(k.indexOf('|') + 1), line: k.slice(0, k.indexOf('|')), value }))
+  const one = (p: PeriodOut) => ({ period_end: p.period_end, period_type: p.period_type, lines: p.lines as Record<string, number | null>, kpis: p.kpis, categories: cats(p.detail) })
+  return { ...one(main), currency, more_periods: ps.filter((p) => p !== main).map(one),
+    notes: (tmpl ? 'Finvry template: read exactly by its line names, with no AI.' : 'Read by line names from your cells, with no AI. Check any line that did not come in.') + ' ' + ps.length + ' period' + (ps.length === 1 ? '' : 's') + ' found' + (r.projected ? '; ' + r.projected + ' projected or unfinished left out' : '') + '.' + (map.notes && !tmpl ? ' ' + map.notes : '') }
+}

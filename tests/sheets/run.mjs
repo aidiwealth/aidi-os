@@ -170,5 +170,51 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('template: categories added into their lines', !!jun && jun.lines.opex_other === 40000 && jun.lines.other_assets === 334000, jun ? 'opex_other ' + jun.lines.opex_other + ', other_assets ' + jun.lines.other_assets : 'no months')
 }
 
+// 7. Any sheet with months across and line names down a column, read by line names with no AI (Add figures).
+{
+  const { default: Excel } = await import('exceljs')
+  const wb = new Excel.Workbook(); const ws = wb.addWorksheet('P&L 2026')
+  ws.addRow(['Acme Ltd management accounts']); ws.addRow([])
+  ws.addRow(['', new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 1, 1)), new Date(Date.UTC(2026, 2, 1))])
+  for (const [l, a, b, c] of [['Revenue', 100, 110, 120], ['Cost of revenue', 40, 44, 48], ['Gross profit', 60, 66, 72], ['Payroll', 20, 20, 20], ['Net income', 40, 46, 52], ['Cash', 900, 940, 990]]) ws.addRow([l, a, b, c])
+  const grids = await S.readGrids(Buffer.from(await wb.xlsx.writeBuffer()), 'xlsx')
+  const m = T.namesMap(grids, 'USD')
+  const r = m ? AI.readWithMap(grids, m, TODAY) : { periods: [] }
+  const mar = r.periods.find((p) => p.period_end === '2026-03-31')
+  check('plain sheet read by line names (no AI)', !!mar && mar.lines.revenue === 120 && mar.lines.cash === 990 && mar.lines.opex_payroll === 20, mar ? JSON.stringify(mar.lines) : 'no March')
+}
+
+// 8. The Finvry customer revenue template: one row per customer, months across, currencies with the file's rates.
+{
+  Object.assign(globalThis, { numOf: S.numOf, fxRates: async () => ({ rates: new Map() }) })
+  const CT = await jiti.import(join(root, 'server/utils/customer-template.ts'))
+  const CI = await jiti.import(join(root, 'server/utils/customer-import.ts'))
+  const ms = ['2026-01', '2026-02', '2026-03']
+  const buf = await CT.customerTemplateWorkbook({ months: ms, customers: [
+    { name: 'Acme Bank', segment: 'Enterprise', sector: 'Banking', country: 'Nigeria', plan: 'Messaging', started_on: '2025-06-01', acquisition_cost: 500, currency: 'USD', rev: { '2026-01': 1000, '2026-02': 1100, '2026-03': 1200 } },
+    { name: 'Bright Shop', segment: 'SMB', sector: 'Retail', currency: 'NGN', rev: { '2026-02': 150000, '2026-03': 300000 } }],
+    rates: { NGN: { '2026-02': 1500, '2026-03': 1500 } } })
+  const grids = await S.readGrids(buf, 'xlsx', { tabs: 40, rows: 60000, cols: 240 })
+  const p = await CI.parseCustomers(grids, 'test', 'USD')
+  const acme = p.customers.find((c) => c.name === 'Acme Bank'), shop = p.customers.find((c) => c.name === 'Bright Shop')
+  check('customer template: read with no AI, Customers tab only', p.sheet === 'Customers' && !p.ai_mapped && p.customers.length === 2, p.sheet + ', ' + p.customers.length + ' customers')
+  check('customer template: months and attributes', !!acme && acme.rev['2026-03'] === 1200 && acme.sector === 'Banking' && acme.started_on === '2025-06-01' && acme.acquisition_cost === 500, JSON.stringify(acme))
+  check('customer template: NGN converted at the file\'s rates', !!shop && shop.rev['2026-03'] === 200 && shop.rev['2026-02'] === 100, JSON.stringify(shop?.rev))
+  // The same file with its parts in the order that broke the streamed reader (a sheet after the shared strings, the
+  // workbook part last): read whole instead.
+  const { default: JSZip } = await import('jszip')
+  const z = await JSZip.loadAsync(buf), names = Object.keys(z.files).filter((n) => !z.files[n].dir)
+  const order = names.filter((n) => n !== 'xl/worksheets/sheet3.xml' && n !== 'xl/workbook.xml'); order.splice(order.indexOf('xl/sharedStrings.xml') + 1, 0, 'xl/worksheets/sheet3.xml'); order.push('xl/workbook.xml')
+  const z2 = new JSZip(); for (const n of order) z2.file(n, await z.file(n).async('uint8array'))
+  const odd = await S.readGrids(await z2.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), 'xlsx', { tabs: 40, rows: 60000, cols: 240 })
+  check('workbook with parts in an unusual order still opens', odd.length === 3 && odd[0].name === 'Customers', odd.map((g) => g.name).join(', '))
+  // One row per customer per month still works.
+  const { default: Excel } = await import('exceljs')
+  const wb = new Excel.Workbook(); const ws = wb.addWorksheet('Revenue')
+  ws.addRow(['Customer', 'Month', 'Revenue', 'Sector']); ws.addRow(['Acme Bank', '2026-01', 1000, 'Banking']); ws.addRow(['Acme Bank', '2026-02', 1100, 'Banking'])
+  const lp = await CI.parseCustomers(await S.readGrids(Buffer.from(await wb.xlsx.writeBuffer()), 'xlsx'), 'test', 'USD')
+  check('long customer layout read', lp.customers.length === 1 && lp.customers[0].rev['2026-02'] === 1100)
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

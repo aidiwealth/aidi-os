@@ -58,9 +58,9 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
 
     <div v-if="!cs.length" class="start card">
       <div><h2>Measure retention and churn</h2><p>Upload what each customer paid each month. We work out net and gross revenue retention, customer churn, expansion and retention by customer group and cohort, the numbers investors ask for.</p>
-        <ul><li><b>Customer, Month, Revenue</b>: one row per customer per month (or months across the top)</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, so this year can be compared with last</li></ul>
-        <p class="mut">Keep it simple: one table, headings in the first row, no totals. We check for the same customer written two ways before saving.</p>
-        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the kit (Excel)</a></div></div>
+        <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, so this year can be compared with last</li></ul>
+        <p class="mut">Read exactly by its headings, with no AI, so every figure lands where it should. We check for the same customer written two ways before saving.</p>
+        <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the template</a></div></div>
     </div>
 
     <template v-else>

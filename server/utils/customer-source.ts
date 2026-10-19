@@ -1,4 +1,4 @@
-// Where customer revenue comes from: an uploaded file (Excel, CSV, Word table or a PDF read by AI) or a live link to a
+// Where customer revenue comes from: an uploaded file (Excel, CSV or a Word table, read by fixed rules with no AI) or a live link to a
 // Google Sheet / Excel online / Dropbox file that is re-read every day. Uploads are previewed (duplicates checked)
 // before saving; a live link applies the merges the founder already confirmed and lists any new possible duplicates.
 import { randomUUID } from 'node:crypto'
@@ -16,25 +16,13 @@ async function docxGrids(buf: Buffer): Promise<Grid[]> {
   const dec = (t: string) => t.replace(/<w:tab\/>/g, ' ').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").trim()
   return [...xml.matchAll(/<w:tbl>([\s\S]*?)<\/w:tbl>/g)].map((t, i) => ({ name: 'Table ' + (i + 1), rows: [...t[1]!.matchAll(/<w:tr[ >]([\s\S]*?)<\/w:tr>/g)].map((r) => [...r[1]!.matchAll(/<w:tc>([\s\S]*?)<\/w:tc>/g)].map((c) => { const v = dec(c[1]!.replace(/<\/w:p>/g, ' ')); return v === '' ? null : v as Cell })) }))
 }
-// A PDF (statement, invoice list, report) read by AI into rows of customer, month and amount.
-const PdfOut = z.object({ rows: z.array(z.object({ customer: z.string(), month: z.string(), amount: z.number(), currency: z.string(), segment: z.string(), sector: z.string() })).max(4000), note: z.string() })
-async function pdfGrids(buf: Buffer, ref: string): Promise<{ grids: Grid[]; note: string }> {
-  if (!useRuntimeConfig().anthropicApiKey) throw apiError('ai_off', 'Reading PDFs needs AI, which is not available just now. Upload the Excel or CSV instead.', 503)
-  if (buf.length > 10 * 1024 * 1024) throw apiError('too_large', 'PDFs can be up to 10 MB.', 413)
-  const { output } = await runAiTool({ task: 'customer_pdf', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-pdf-v1', inputRef: ref,
-    system: 'You read a document that lists revenue by customer (a billing report, invoice list, statement or table). Return one row per customer per month with the amount billed or paid, its currency (ISO code, "" if not shown) and, if the document says so, the customer segment and sector ("" otherwise). Only use figures that appear in the document; never estimate. Skip totals and subtotals. Month as YYYY-MM.',
-    userContent: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } }, { type: 'text', text: 'List the customer revenue in this document.' }],
-    user: 'List the customer revenue in this document.', toolName: 'record_customer_revenue', toolDescription: 'Record customer revenue rows.', schema: PdfOut, maxTokens: 16000,
-    jsonSchema: { type: 'object', additionalProperties: false, required: ['rows', 'note'], properties: { note: { type: 'string' }, rows: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['customer', 'month', 'amount', 'currency', 'segment', 'sector'], properties: { customer: { type: 'string' }, month: { type: 'string' }, amount: { type: 'number' }, currency: { type: 'string' }, segment: { type: 'string' }, sector: { type: 'string' } } } } } } })
-  if (!output.rows.length) throw apiError('unreadable', 'No customer revenue was found in that PDF.', 422)
-  return { grids: [{ name: 'Document', rows: [['Customer', 'Month', 'Revenue', 'Currency', 'Segment', 'Sector'], ...output.rows.map((r) => [r.customer, r.month, r.amount, r.currency || null, r.segment || null, r.sector || null] as Cell[])] }], note: output.note }
-}
 export async function gridsFromFile(buf: Buffer, filename: string, ref: string): Promise<{ grids: Grid[]; note?: string }> {
   const ext = (filename.split('.').pop() ?? '').toLowerCase()
   if (ext === 'xlsx' || ext === 'csv') return { grids: await readGrids(buf, ext, { tabs: 40, rows: 60000, cols: 240 }) }
   if (ext === 'docx') return { grids: await docxGrids(buf) }
-  if (ext === 'pdf') { const r = await pdfGrids(buf, ref); return { grids: r.grids, note: 'Read from the PDF by AI' + (r.note ? ': ' + r.note : '.') + ' Check the figures before saving.' } }
-  throw apiError('bad_type', 'Upload an Excel (.xlsx), CSV, Word (.docx) or PDF file.')
+  // Figures are read by fixed rules only, so a PDF (which needs AI to read) is not taken.
+  if (ext === 'pdf') throw apiError('bad_type', 'Customer revenue is read from a spreadsheet, with no AI, so every figure is exact. Put it in the Finvry customer revenue template (Download the template) and upload that.')
+  throw apiError('bad_type', 'Upload an Excel (.xlsx), CSV or Word (.docx) file.')
 }
 
 // Read, check for duplicates and keep as a preview until the founder confirms.

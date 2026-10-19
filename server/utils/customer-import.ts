@@ -1,10 +1,11 @@
 // Reading a customer revenue file: one row per customer per month (Customer, Month, Revenue), or one row per customer
 // with months across the columns. Optional columns: segment, sector, country, plan, start date, acquisition cost,
-// gross margin. Plain parsing first; AI only when the layout is unclear, and to spot the same customer written two
-// ways (within the file and against customers already saved).
+// gross margin, currency. Read by fixed rules only (no AI reads the figures): the Finvry customer revenue template,
+// or headings Finvry knows. AI only suggests the same customer written two ways, for the founder to confirm.
 import { z } from 'zod'
 import { custKey } from '~/shared/customer-metrics'
 import type { Cell, Grid } from './sheet-links'
+import { CUSTOMER_MARK } from './customer-template'
 
 export interface ParsedCust { name: string; segment?: string; sector?: string; country?: string; plan?: string; started_on?: string; acquisition_cost?: number; gross_margin_pct?: number; rev: Record<string, number>; rep?: Record<string, number> }
 export interface Parsed { sheet: string; sheets?: { name: string; currency: string }[]; currency?: string; layout: 'long' | 'wide'; customers: ParsedCust[]; rows: number; repeated: number; skipped: number; months: string[]; ai_mapped: boolean; notes: string[] }
@@ -17,7 +18,8 @@ const NAME = /^(customer|client|account|company|merchant|business|name|customer 
 const MONTH = /^(month|date|period|invoice date|billing (month|date|period)|transaction date|posted|paid on|payment date|year.?month|month start|billing cycle)/i
 const CUR = /^(currency|ccy|cur\.?|curr)$/i
 const AMOUNT = /(revenue|amount|mrr|arr|total|value|sales|billing|billed|invoice amount|income|net|fees?|paid|usd|ngn)/i
-const TOTAL = /^(grand )?(sub)?total\b|^all customers$|^sum$/i
+// A totals row (Total, Grand total, Total revenue (USD)…), not a customer whose name starts with Total (Total Health Trust).
+const TOTAL = /^(grand |sub ?)?totals?(\s+(revenue|customers|sales|amount|billing|income))?\s*(\(.*\))?\s*:?$|^all customers$|^sum$/i
 
 const txt = (c: Cell) => (c === null ? '' : String(c).trim())
 function monthCell(c: Cell): string | null {
@@ -36,16 +38,19 @@ function setAttr(t: ParsedCust, a: Attr, c: Cell) {
 }
 
 interface TMap { header: number; layout: 'long' | 'wide'; name: number; month: number; amount: number; monthCols: { col: number; month: string }[]; attrs: [Attr, number][]; cur?: number }
+const isTemplate = (g: Grid) => { const a = g.rows[0]?.[0]; return typeof a === 'string' && a.trim().startsWith(CUSTOMER_MARK) }
 function guess(g: Grid): TMap | null {
-  for (let h = 0; h < Math.min(12, g.rows.length); h++) {
+  // The template: headings on row 4.
+  for (let h = isTemplate(g) ? 3 : 0; h < Math.min(isTemplate(g) ? 4 : 12, g.rows.length); h++) {
     const row = g.rows[h] ?? []
     const heads = row.map(txt)
     const monthCols = row.map((c, i) => ({ col: i, month: monthCell(c) })).filter((x): x is { col: number; month: string } => !!x.month)
     const attrs: [Attr, number][] = []
     for (const [a, re] of ATTR) { const i = heads.findIndex((x, k) => x && re.test(x) && !monthCols.some((m) => m.col === k)); if (i >= 0 && !attrs.some(([, j]) => j === i)) attrs.push([a, i]) }
     if (monthCols.length >= 2) {
-      let name = heads.findIndex((x) => NAME.test(x)); if (name < 0) name = heads.findIndex((x, i) => x && i < monthCols[0]!.col && !attrs.some(([, j]) => j === i))
-      if (name >= 0) return { header: h, layout: 'wide', name, month: -1, amount: -1, monthCols, attrs: attrs.filter(([, i]) => i !== name) }
+      const cur = heads.findIndex((x, i) => CUR.test(x) && i < monthCols[0]!.col)
+      let name = heads.findIndex((x) => NAME.test(x)); if (name < 0) name = heads.findIndex((x, i) => x && i < monthCols[0]!.col && i !== cur && !attrs.some(([, j]) => j === i))
+      if (name >= 0) return { header: h, layout: 'wide', name, month: -1, amount: -1, monthCols, attrs: attrs.filter(([, i]) => i !== name && i !== cur), cur: cur >= 0 ? cur : undefined }
     }
     const name = heads.findIndex((x) => NAME.test(x)), month = heads.findIndex((x) => MONTH.test(x))
     let amount = heads.findIndex((x, i) => i !== name && i !== month && AMOUNT.test(x) && !/(count|qty|quantity|units|id|number|no\.?)$/i.test(x))
@@ -54,33 +59,6 @@ function guess(g: Grid): TMap | null {
     if (name >= 0 && month >= 0 && amount >= 0) return { header: h, layout: 'long', name, month, amount, monthCols: [], attrs: attrs.filter(([, i]) => ![name, month, amount, cur].includes(i)), cur: cur >= 0 ? cur : undefined }
   }
   return null
-}
-
-const AiMapOut = z.object({ sheet: z.string(), header_row: z.number().int(), layout: z.enum(['long', 'wide', 'none']), customer_col: z.string(), month_col: z.string(), amount_col: z.string(), first_month_col: z.string(),
-  segment_col: z.string(), sector_col: z.string(), country_col: z.string(), plan_col: z.string(), start_col: z.string(), cac_col: z.string(), margin_col: z.string() })
-const colIdx = (s: string) => { const t = s.trim().toUpperCase(); if (!/^[A-Z]{1,3}$/.test(t)) return -1; let n = 0; for (const ch of t) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1 }
-async function aiMap(grids: Grid[], ref: string): Promise<{ g: Grid; m: TMap } | null> {
-  if (!useRuntimeConfig().anthropicApiKey) return null
-  const L = (i: number) => { let s = '', n = i + 1; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26) } return s }
-  const sample = grids.slice(0, 4).map((g) => '## ' + g.name + '\n' + g.rows.slice(0, 15).map((r, i) => (i + 1) + ': ' + r.slice(0, 30).map((c, j) => c === null ? '' : L(j) + '=' + String(c).slice(0, 40)).filter(Boolean).join(' | ')).join('\n')).join('\n\n')
-  try {
-    const { output } = await runAiTool({ task: 'customer_map', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-map-v1', inputRef: ref,
-      system: 'You read spreadsheets of customer revenue. Find the sheet and columns. layout "long" = one row per customer per month (or per invoice) with a date column and an amount column; "wide" = one row per customer with months across the columns (give the first month column). Columns are letters; use "" when absent. header_row is the 1-based row with the headings. Use layout "none" if there is no customer revenue table.',
-      user: sample, toolName: 'map_customers', toolDescription: 'Say where the customer revenue table is.', schema: AiMapOut, maxTokens: 600,
-      jsonSchema: { type: 'object', additionalProperties: false, required: Object.keys(AiMapOut.shape), properties: Object.fromEntries(Object.keys(AiMapOut.shape).map((k) => [k, k === 'header_row' ? { type: 'integer' } : k === 'layout' ? { type: 'string', enum: ['long', 'wide', 'none'] } : { type: 'string' }])) } })
-    if (output.layout === 'none') return null
-    const g = grids.find((x) => x.name === output.sheet) ?? grids[0]!
-    const header = Math.max(0, output.header_row - 1), name = colIdx(output.customer_col)
-    if (name < 0) return null
-    const attrs = ([['segment', output.segment_col], ['sector', output.sector_col], ['country', output.country_col], ['plan', output.plan_col], ['started_on', output.start_col], ['acquisition_cost', output.cac_col], ['gross_margin_pct', output.margin_col]] as [Attr, string][]).map(([a, c]) => [a, colIdx(c)] as [Attr, number]).filter(([, i]) => i >= 0)
-    if (output.layout === 'wide') {
-      const start = Math.max(colIdx(output.first_month_col), 0)
-      const monthCols = (g.rows[header] ?? []).map((c, i) => ({ col: i, month: i >= start ? monthCell(c) : null })).filter((x): x is { col: number; month: string } => !!x.month)
-      return monthCols.length ? { g, m: { header, layout: 'wide', name, month: -1, amount: -1, monthCols, attrs } } : null
-    }
-    const month = colIdx(output.month_col), amount = colIdx(output.amount_col)
-    return month >= 0 && amount >= 0 ? { g, m: { header, layout: 'long', name, month, amount, monthCols: [], attrs } } : null
-  } catch (e) { console.error('[customers] map', (e as Error).message); return null }
 }
 
 // Currencies: a column, the amount heading ("Amount (NGN)", "Revenue $"), or the tab's name ("Nigeria Data").
@@ -100,6 +78,12 @@ export function fileRates(grids: Grid[]): Map<string, Map<string, number>> {
     for (let h = 0; h < Math.min(10, g.rows.length); h++) {
       const heads = (g.rows[h] ?? []).map(txt)
       const mc = heads.findIndex((x) => /^(month|period|date)/i.test(x)), rc = heads.findIndex((x) => /rate|per\s*\$|per\s*usd/i.test(x)), cc = heads.findIndex((x) => CUR.test(x))
+      // The template's layout: one row per currency, months across.
+      const wm = (g.rows[h] ?? []).map((c, i) => ({ i, m: monthCell(c) })).filter((x): x is { i: number; m: string } => !!x.m)
+      if (cc >= 0 && wm.length >= 1 && mc < 0) {
+        for (const r of g.rows.slice(h + 1)) { const c = curOf(txt(r[cc] ?? null)) ?? txt(r[cc] ?? null).toUpperCase(); if (!/^[A-Z]{3}$/.test(c) || c === 'USD') continue; for (const { i, m } of wm) { const v = numOf(r[i] ?? null); if (v !== null) put(c, m, v) } }
+        break
+      }
       if (mc < 0 || rc < 0) continue
       const hc = curOf(heads[rc]!.replace(/per\s*\$\s*1|per\s*usd|per\s*1\s*usd/i, '')) // "Rate (₦ per $1)" → NGN per USD
       for (const r of g.rows.slice(h + 1)) {
@@ -114,28 +98,16 @@ export function fileRates(grids: Grid[]): Map<string, Map<string, number>> {
 }
 const DERIVED = /(top ?\d*|working|combined|summary|cohort|first seen|matrix|readme|detail|unique|pivot|report|dashboard|chart|analysis|assignment|variant|rate)/i
 interface Pick { g: Grid; m: TMap; cur: string | null }
-const AiPlanOut = z.object({ tables: z.array(z.object({ sheet: z.string(), currency: z.string() })), reason: z.string() })
-// Which tabs hold the source rows (not totals, rankings or copies built from them), and their currencies.
-async function aiPlan(cands: Pick[], ref: string): Promise<Pick[] | null> {
-  if (!useRuntimeConfig().anthropicApiKey || cands.length < 2) return null
-  const list = cands.map((c) => '## ' + c.g.name + ' (' + c.g.rows.length + ' rows, ' + Math.round((c.g.formulas ?? 0) * 100) + '% formulas)\n' + c.g.rows.slice(c.m.header, c.m.header + 6).map((r) => r.slice(0, 10).map((x) => (x === null ? '' : String(x).slice(0, 30))).join(' | ')).join('\n')).join('\n\n')
-  try {
-    const { output } = await runAiTool({ task: 'customer_plan', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-plan-v1', inputRef: ref,
-      system: 'A workbook has several tables of customer revenue. Choose only the SOURCE tables (raw rows: one per customer per month or per transaction), never tables built from them (rankings, top 100, totals, combined or converted copies, working tabs), so nothing is counted twice. Give each chosen table its currency as an ISO code (or "" if not shown).',
-      user: list, toolName: 'choose_tables', toolDescription: 'Choose the source tables and their currencies.', schema: AiPlanOut, maxTokens: 600,
-      jsonSchema: { type: 'object', additionalProperties: false, required: ['tables', 'reason'], properties: { tables: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['sheet', 'currency'], properties: { sheet: { type: 'string' }, currency: { type: 'string' } } } }, reason: { type: 'string' } } } })
-    const out = output.tables.map((t) => { const c = cands.find((x) => x.g.name === t.sheet); return c ? { ...c, cur: c.cur ?? (/^[A-Z]{3}$/.test(t.currency.toUpperCase()) ? t.currency.toUpperCase() : null) } : null }).filter((x): x is Pick => !!x)
-    return out.length ? out : null
-  } catch (e) { console.error('[customers] plan', (e as Error).message); return null }
-}
-
 // Read customer revenue from a workbook: every source table (several tabs, e.g. one per country, are added together),
 // amounts converted to `target` at the file's own monthly rates when given, else the latest daily rate.
-export async function parseCustomers(grids: Grid[], ref: string, target = 'USD'): Promise<Parsed> {
+export async function parseCustomers(grids: Grid[], _ref: string, target = 'USD'): Promise<Parsed> {
   const cands: Pick[] = []
   for (const g of grids) { const m = guess(g); if (m) cands.push({ g, m, cur: m.layout === 'long' ? curOf(txt((g.rows[m.header] ?? [])[m.amount] ?? null)) ?? COUNTRY.find(([re]) => re.test(g.name))?.[1] ?? null : COUNTRY.find(([re]) => re.test(g.name))?.[1] ?? null }) }
-  let ai = false, picks: Pick[] = []
-  if (cands.length) {
+  let picks: Pick[] = []
+  // The template: its Customers tab only.
+  const tmpl = cands.filter((c) => isTemplate(c.g))
+  if (tmpl.length) picks = tmpl
+  else if (cands.length) {
     // Prefer source tabs: not named like a report, and mostly typed values rather than formulas.
     const src = cands.filter((c) => !DERIVED.test(c.g.name) || /\bdata\b|raw|transactions?|invoices?|billing/i.test(c.g.name))
     const pool = src.length ? src : cands
@@ -143,10 +115,8 @@ export async function parseCustomers(grids: Grid[], ref: string, target = 'USD')
     picks = (low.length ? low : pool)
     const longs = picks.filter((c) => c.m.layout === 'long')
     picks = longs.length ? longs : [picks.sort((a, b) => b.m.monthCols.length * b.g.rows.length - a.m.monthCols.length * a.g.rows.length)[0]!]
-    if (picks.length > 1) { const p = await aiPlan(picks, ref); if (p) { picks = p; ai = true } }
   }
-  if (!picks.length) { const p = await aiMap(grids, ref); if (p) { picks = [{ ...p, cur: null }]; ai = true } }
-  if (!picks.length) throw apiError('unreadable', 'We could not find customer revenue in that file. Use one row per customer per month with the columns Customer, Month and Revenue (or months across the top), headings in the first row.', 422)
+  if (!picks.length) throw apiError('unreadable', 'We could not find customer revenue in that file. Use the Finvry customer revenue template (one row per customer, months across), or one row per customer per month with the headings Customer, Month and Revenue in the first row.', 422)
   const rates = fileRates(grids)
   const usdRates = await fxRates().then((r) => r.rates).catch(() => new Map<string, number>())
   const perUsd = (c: string, mo: string) => (c === 'USD' ? 1 : rates.get(c)?.get(mo) ?? [...(rates.get(c)?.entries() ?? [])].sort((a, b) => Math.abs(Number(a[0].replace('-', '')) - Number(mo.replace('-', ''))) - Math.abs(Number(b[0].replace('-', '')) - Number(mo.replace('-', ''))))[0]?.[1] ?? usdRates.get(c) ?? null)
@@ -177,7 +147,8 @@ export async function parseCustomers(grids: Grid[], ref: string, target = 'USD')
       } else {
         const t = by.get(name.toLowerCase()); if (t) repeated++
         const c = t ?? get(name); let any = false
-        for (const { col, month } of m.monthCols) { const v0 = numOf(r[col] ?? null); const v = v0 === null ? null : conv(v0, cur, month); if (v !== null && v !== 0) { c.rev[month] = Math.round(((t ? c.rev[month] ?? 0 : 0) + v) * 100) / 100; any = true } }
+        const rc = m.cur !== undefined ? curOf(txt(r[m.cur] ?? null)) ?? (/^[A-Z]{3}$/i.test(txt(r[m.cur] ?? null)) ? txt(r[m.cur] ?? null).toUpperCase() : cur) : cur
+        for (const { col, month } of m.monthCols) { const v0 = numOf(r[col] ?? null); const v = v0 === null ? null : conv(v0, rc, month); if (v !== null && v !== 0) { c.rev[month] = Math.round(((t ? c.rev[month] ?? 0 : 0) + v) * 100) / 100; any = true } }
         for (const [a, i] of m.attrs) setAttr(c, a, r[i] ?? null)
         if (any) rows++; else if (!t) { by.delete(name.toLowerCase()); skipped++ }
       }
@@ -193,7 +164,7 @@ export async function parseCustomers(grids: Grid[], ref: string, target = 'USD')
   if (repeated) notes.push(m0.layout === 'long' ? repeated + ' row' + (repeated === 1 ? ' was' : 's were') + ' exact repeats of another row (same customer, month, amount and every other column). They are left out unless you keep them.' : repeated + ' customer' + (repeated === 1 ? ' appears' : 's appear') + ' on more than one row; the rows were added together.')
   if (skipped) notes.push(skipped + ' row' + (skipped === 1 ? '' : 's') + ' without a customer, month or amount (or totals) were skipped.')
   if (customers.some((c) => Object.values(c.rev).some((v) => v < 0))) notes.push('Some months are negative (credits or refunds); they are kept as given.')
-  return { sheet: picks.map((p) => p.g.name).join(', '), sheets: picks.map((p) => ({ name: p.g.name, currency: p.cur ?? target })), currency: target, layout: m0.layout, customers, rows, repeated, skipped, months, ai_mapped: ai, notes }
+  return { sheet: picks.map((p) => p.g.name).join(', '), sheets: picks.map((p) => ({ name: p.g.name, currency: p.cur ?? target })), currency: target, layout: m0.layout, customers, rows, repeated, skipped, months, ai_mapped: false, notes }
 }
 
 // The same customer written two ways: certain when the names match after removing case, punctuation and company

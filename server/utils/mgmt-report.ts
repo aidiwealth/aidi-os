@@ -257,7 +257,7 @@ const fmtK = (v: number | null) => (v === null ? '–' : Math.abs(v) >= 100 ? Ma
 const clean = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/−/g, '-').replace(/•/g, '-').replace(/₦/g, 'NGN ').replace(/…/g, '...').replace(/[^\x20-\x7E\xA0-\xFF\n£€]/g, '')
 export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
-  pdf.setTitle(r.company + ' management report, ' + r.label); pdf.setProducer('Finvry'); pdf.setCreator(clean(r.company))
+  pdf.setTitle(r.company + ' monthly management report, ' + r.label); pdf.setProducer('Finvry'); pdf.setCreator(clean(r.company))
   pdf.registerFontkit(fontkit)
   const reg = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.semibold, 'base64'), { subset: true })
   let img: PDFImage | null = null
