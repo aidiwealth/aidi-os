@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Finvry · Billing' })
+useHead({ title: 'Finvry · Platform billing' })
 interface Sub { id: string; organization_id: string; customer: string; plan: string; plan_code: string; billing: string; method: string; currency: string; amount_usd: string; monthly: string; status: string; start_date: string; ended_at: string | null; end_reason: string | null; renews: string | null }
 interface Inv { id: string; number: string; organization_id: string; customer: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; paid_at: string | null; overdue: boolean }
 const route = useRoute()
@@ -9,6 +9,13 @@ const { data: plans } = await useFetch<{ plans: { code: string; name: string; ac
 const { data: settings } = await useFetch<{ payment_terms_days: number }>('/api/platform/settings')
 const org = ref(String(route.query.org ?? ''))
 const tab = ref<'subs' | 'inv'>(route.query.tab === 'inv' ? 'inv' : 'subs')
+// The menu opens Subscriptions & renewals or Invoices: follow it.
+watch(() => route.query.tab, (t) => { tab.value = t === 'inv' ? 'inv' : 'subs' })
+watch(() => route.query.org, (o) => { org.value = String(o ?? '') })
+// In the console the sub-menu above the page switches the two views, so the page's own tabs hide and the URL follows.
+const inConsoleRef = inject<Ref<boolean> | null>('inConsole', null)
+const inConsole = computed(() => !!inConsoleRef?.value)
+watch(tab, (t) => { if ((route.query.tab === 'inv' ? 'inv' : 'subs') !== t) void navigateTo({ query: { ...route.query, tab: t } }, { replace: true }) })
 const showEnded = ref(false)
 const subs = computed(() => (data.value?.subscriptions ?? []).filter((s) => (!org.value || s.organization_id === org.value) && (showEnded.value || s.status !== 'ended')))
 const invs = computed(() => (data.value?.invoices ?? []).filter((i) => !org.value || i.organization_id === org.value))
@@ -65,7 +72,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
 <template>
   <section v-if="data">
     <p class="label">Finvry platform</p>
-    <div class="head"><h1>Billing</h1><div class="tools"><button class="btn secondary" type="button" @click="newSub">New subscription</button><button class="btn" type="button" @click="newInv()">New invoice</button></div></div>
+    <div class="head"><h1>{{ tab === 'inv' ? 'Platform invoices' : 'Subscriptions & renewals' }}</h1><div class="tools"><button class="btn secondary" type="button" @click="newSub">New subscription</button><button class="btn" type="button" @click="newInv()">New invoice</button></div></div>
     <div class="fx-stats">
       <StatTile label="MRR" :value="usd(data.kpis.mrr)" :note="data.kpis.live + ' live subscriptions'" icon="money" tone="n" />
       <StatTile label="ARR" :value="usd(data.kpis.arr)" icon="chart" tone="b" />
@@ -109,7 +116,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
     </form>
 
     <div class="bar2">
-      <div class="tabs"><button :class="{ on: tab === 'subs' }" @click="tab = 'subs'">Subscriptions</button><button :class="{ on: tab === 'inv' }" @click="tab = 'inv'">Invoices</button></div>
+      <div v-if="!inConsole" class="tabs"><button :class="{ on: tab === 'subs' }" @click="tab = 'subs'">Subscriptions &amp; renewals</button><button :class="{ on: tab === 'inv' }" @click="tab = 'inv'">Invoices</button></div>
       <select v-model="org" aria-label="Customer"><option value="">All customers</option><option v-for="o in customers" :key="o.id" :value="o.id">{{ o.name }}</option></select>
     </div>
 

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Payments received from clients, old and new: paid invoices, Finvry plan invoices and wallet top-ups, with totals
-// per client. An invoice paid from the wallet shows here but is not counted twice (its top-up is the money received).
+// Finvry Services → Payments: paid service invoices, old and new, with totals per client. Services only.
 useHead({ title: 'Payments received' })
 interface P { src: 'invoice' | 'subscription' | 'topup'; id: string; ref: string; client_key: string; client_id: string | null; client: string; currency: string; amount: number; date: string; method: string | null; what: string | null; link: string | null; counted: boolean }
 const { data } = await useFetch<{ rows: P[]; platform: boolean }>('/api/services/invoices/payments')
@@ -38,7 +37,7 @@ function csv() {
   <section v-if="data">
     <CsNav />
     <CsBillingTabs />
-    <div class="head"><div><h1>Payments received</h1><p class="lead">Every payment from clients, old and new{{ data.platform ? ': service invoices, Finvry plans and wallet top-ups' : '' }}.</p></div><button class="btn secondary" @click="csv">Export CSV</button></div>
+    <div class="head"><div><h1>Payments received</h1><p class="lead">Every paid service invoice, old and new, including those paid from a client's wallet. Finvry plan payments are under Finvry Platform → Payments.</p></div><button class="btn secondary" @click="csv">Export CSV</button></div>
     <div v-for="k in kpis" :key="k.c" class="fx-stats">
       <StatTile :label="'Received (' + k.c + ')'" :value="money(k.all, k.c)" :note="k.n + ' payments'" icon="money" tone="g" />
       <StatTile :label="'This year (' + k.c + ')'" :value="money(k.year, k.c)" icon="chart" tone="b" />

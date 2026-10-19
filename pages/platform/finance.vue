@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Finance room: wallet float and movements across every workspace; credit or debit a wallet.
-useHead({ title: 'Finance · Finvry' })
+useHead({ title: 'Wallets · Finvry' })
 const f = reactive({ kind: 'all', category: 'all', currency: 'all', org: '' })
 interface T { currency: string; float_minor: number; topups_minor: number; debits_minor: number; credits_minor: number }
 interface E { id: string; created_at: string; workspace: string; organization_id: string; kind: string; category: string; reason: string; currency: string; amount_minor: number; balance_after_minor: number; by: string | null }
@@ -20,7 +20,7 @@ function csv() { const rows = data.value?.ledger ?? []; const esc = (s: string) 
 <template>
   <section v-if="data">
     <CsBillingTabs />
-    <div class="hd"><div><p class="label">Finvry console</p><h1>Finance</h1><p class="lead">Every top-up, credit and debit across customer wallets.</p></div><button class="btn" @click="openAdj()">Credit or debit a wallet</button></div>
+    <div class="hd"><div><p class="label">Finvry Platform</p><h1>Wallets</h1><p class="lead">Every top-up, credit and debit across customer wallets.</p></div><button class="btn" @click="openAdj()">Credit or debit a wallet</button></div>
     <p v-if="ok" class="ok">{{ ok }}</p>
     <div v-for="t in data.totals" :key="t.currency" class="sum"><span class="cur">{{ t.currency }}</span>
       <div class="fx-stats">

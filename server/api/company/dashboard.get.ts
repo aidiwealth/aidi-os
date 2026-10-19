@@ -5,7 +5,11 @@ export default defineEventHandler(async (event) => {
   const org = await currentOrg()
   if (!org || org.kind !== 'company') throw apiError('not_found', 'Not found', 404)
   const ent = await companyEntityId()
-  const rows = ent ? await loadStatements('entity:' + ent, 'month', (org.settings.currency as string) || 'USD') : []
+  // With subsidiaries, the dashboard shows the consolidated group (in the reporting currency), as Financials opens on.
+  const subs = Number((await db().query<{ n: string }>("SELECT count(*) AS n FROM core.entities WHERE kind = 'operating' AND status <> 'closed'")).rows[0]?.n ?? 0)
+  const group = subs > 1
+  const subject = group ? 'group' : ent ? 'entity:' + ent : null
+  const rows = subject ? (await loadStatements(subject, 'month', await subjectCurrency(subject))).filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)) : []
   type Pt = Record<string, number | null> & { period: string; currency: string }
   const sec = org.settings.cash_with_securities === true
   const series: Pt[] = rows.slice(-12).map((r) => Object.assign({}, withSecurities(derive(r.lines, r.period_type), sec), { period: r.period_end, currency: r.currency }) as Pt)
@@ -31,7 +35,7 @@ export default defineEventHandler(async (event) => {
   }
   const name = (await asPlatform(() => db().query<{ n: string | null }>('SELECT p.full_name AS n FROM core.users u LEFT JOIN core.people p ON p.id = u.person_id WHERE u.id = $1', [user.userId]))).rows[0]?.n
   return {
-    company: org.name, first: (name ?? user.email).split(' ')[0], currency: last?.currency ?? ((org.settings.currency as string) || 'USD'), plan: org.plan_code, status: org.status,
+    company: org.name, group: group ? { companies: subs } : null, first: (name ?? user.email).split(' ')[0], currency: last?.currency ?? ((org.settings.currency as string) || 'USD'), plan: org.plan_code, status: org.status,
     last, growth, series, mix: last ? [['opex_payroll', 'Payroll'], ['opex_marketing', 'Sales & marketing'], ['opex_ga', 'General & admin'], ['opex_other', 'Other operating']].map(([k, l]) => ({ label: l, value: Number(last[k!] ?? 0) })) : [],
     due: due.rows, page, shares, services, wallet: await walletOf(org.id),
     setup: await (async () => {

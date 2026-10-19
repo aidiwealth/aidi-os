@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The founder's home: how the company is doing, what needs attention, and the next steps.
 type R = Record<string, number | null> & { period: string; currency: string }
-interface D { company: string; first: string; currency: string; plan: string; status: string; last: R | null; growth: number | null; series: R[]; mix: { label: string; value: number }[]
+interface D { group?: { companies: number } | null; company: string; first: string; currency: string; plan: string; status: string; last: R | null; growth: number | null; series: R[]; mix: { label: string; value: number }[]
   due: { id: string; title: string; next_due: string; overdue: boolean }[]; page: { slug: string; published: boolean; views: number } | null; shares: { n: number; views: number }
   services: { open: number; waiting: number; unpaid: number }; wallet: { currency: string; balance_minor: number }; setup: { key?: string; label: string; desc?: string; cta?: string; mins?: number; done: boolean; to: string }[] }
 const { data } = await useFetch<D>('/api/company/dashboard')
@@ -36,6 +36,7 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
     </div>
 
     <template v-if="fin">
+    <p v-if="data.group" class="grp">Group figures: {{ data.company }} and its subsidiaries consolidated in {{ data.currency }} ({{ data.group.companies }} companies, after taking out what they owe and bill each other). <NuxtLink :to="{ path: '/financials', query: { s: 'group' } }">Open the group in Financials →</NuxtLink></p>
     <div class="fx-stats">
       <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Month-on-month growth appears after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
       <StatTile label="Net income" icon="chart" tone="n" :note="'Gross margin ' + (data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%')"><Money :value="data.last?.net_income" :currency="data.currency" /></StatTile>
@@ -95,4 +96,5 @@ function fold() { folded.value = !folded.value; try { localStorage.setItem('finv
 .pv-art:after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255,255,255,0) 55%, #fff); } .pv-k { display: inline-flex; flex-direction: column; gap: 8px; width: calc(25% - 8px); margin-right: 8px; padding: 12px; border: 1px solid var(--c-rule); background: #fff; font-size: 11.5px; color: var(--c-muted); } .pv-k b { display: block; height: 14px; width: 70%; background: #e6ebf1; }
 .pv-art svg { width: 100%; height: 140px; margin-top: 16px; display: block; } .pv-cta { padding: 30px 30px 30px 10px; display: flex; flex-direction: column; justify-content: center; } .pv-cta h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.02em; } .pv-cta p { margin: 0; color: var(--c-muted); font-size: 14.5px; } .pv-acts { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
 @media (max-width: 900px) { .preview { grid-template-columns: 1fr; } .pv-cta { padding: 22px; } }
+.grp { margin: 0 0 10px; font-size: 13.5px; color: var(--c-muted); } .grp a { color: var(--c-blue-deep); text-decoration: none; }
 </style>

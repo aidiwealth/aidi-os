@@ -54,7 +54,46 @@ const groups = computed(() => {
   if (ir) for (const g of out) for (const x of g.items.filter((y) => (y.code === 'forecast' || y.code === 'equity') && (y.usable || y.locked))) { ir.alsoOn = [...(ir.alsoOn ?? []), x.to]; g.items = g.items.filter((y) => y !== x) }
   return out.filter((g) => g.items.length)
 })
-const PLATFORM_NAV = [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel', exact: false }, { to: '/platform/customers', label: 'Customers', icon: 'customers', exact: false }, { to: '/platform/billing', label: 'Billing', icon: 'billing', exact: false }, { to: '/platform/finance', label: 'Finance', icon: 'banking', exact: false }, { to: '/platform/plans', label: 'Plans & pricing', icon: 'plans', exact: false }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers', exact: false }, { to: '/platform/perks', label: 'Perks', icon: 'perks', exact: false }, { to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising', exact: false }, { to: '/platform/settings', label: 'Settings', icon: 'settings', exact: false }]
+// The Finvry console in two parts that never mix: Finvry Platform (the subscription business: customers, plans,
+// subscriptions and renewals, plan invoices, payments, wallets) and Finvry Services (the services desk: jobs, clients,
+// service renewals, service invoices and payments, prices).
+interface NavI { to: string; label: string; icon: string; exact?: boolean; tab?: string }
+// Each sidebar item opens its first page; the related pages are tabs across the top of the page (the sub-menu).
+interface NavG { label: string; icon: string; items: NavI[] }
+const PLATFORM_GROUPS: NavG[] = [
+  { label: 'Overview', icon: 'gauge', items: [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }] },
+  { label: 'Customers', icon: 'customers', items: [{ to: '/platform/customers', label: 'Customers', icon: 'customers' }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel' }] },
+  { label: 'Billing', icon: 'billing', items: [{ to: '/platform/billing', label: 'Subscriptions & renewals', icon: 'billing', tab: 'subs' }, { to: '/platform/billing', label: 'Invoices', icon: 'documents', tab: 'inv' }, { to: '/platform/payments', label: 'Payments', icon: 'banking' }, { to: '/platform/finance', label: 'Wallets', icon: 'wallet' }] },
+  { label: 'Plans & pricing', icon: 'plans', items: [{ to: '/platform/plans', label: 'Plans & pricing', icon: 'plans' }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers' }, { to: '/platform/perks', label: 'Perks', icon: 'perks' }] },
+  { label: 'Investors & grants', icon: 'fundraising', items: [{ to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising' }] },
+  { label: 'Settings', icon: 'settings', items: [{ to: '/platform/settings', label: 'Platform settings', icon: 'settings' }] }]
+const SERVICES_GROUPS: NavG[] = [
+  { label: 'Jobs', icon: 'services', items: [{ to: '/services', label: 'Jobs', icon: 'services' }, { to: '/services/tracker', label: 'Renewals & requests', icon: 'pipeline' }] },
+  { label: 'Clients', icon: 'customers', items: [{ to: '/services/clients', label: 'Clients', icon: 'customers' }, { to: '/services/raise', label: 'Fundraising clients', icon: 'fundraising' }, { to: '/services/agreements', label: 'Agreements', icon: 'sign' }] },
+  { label: 'Billing', icon: 'billing', items: [{ to: '/services/invoices', label: 'Invoices', icon: 'documents' }, { to: '/services/invoices/jobs', label: 'By job', icon: 'documents' }, { to: '/services/invoices/payments', label: 'Payments', icon: 'banking' }] },
+  { label: 'Inbox', icon: 'cs_inbox', items: [{ to: '/services/inbox', label: 'Inbox', icon: 'cs_inbox' }] },
+  { label: 'Prices & settings', icon: 'settings', items: [{ to: '/services/settings', label: 'Prices & settings', icon: 'settings' }] },
+  { label: 'Analytics', icon: 'cs_analytics', items: [{ to: '/client-services/analytics', label: 'Analytics', icon: 'cs_analytics' }] }]
+const PLATFORM_NAV: NavI[] = PLATFORM_GROUPS.flatMap((g) => g.items)
+const SERVICES_NAV: NavI[] = SERVICES_GROUPS.flatMap((g) => g.items)
+const { canPath } = useModuleAccess()
+// Services pages follow the desk modules (and the person's access); the jobs module carries clients, billing and prices.
+const svcOk = (n: NavI) => desk.value.some((m) => m.to === n.to) || (['/services/clients', '/services/invoices', '/services/invoices/jobs', '/services/invoices/payments', '/services/agreements', '/services/settings'].includes(n.to) && desk.value.some((m) => m.to === '/services') && canPath(n.to))
+const servicesGroups = computed(() => SERVICES_GROUPS.map((g) => ({ ...g, items: g.items.filter(svcOk) })).filter((g) => g.items.length))
+const servicesNav = computed(() => servicesGroups.value.flatMap((g) => g.items))
+const navOn = (n: NavI): boolean => {
+  if (n.tab) return route.path === n.to && (n.tab === 'inv' ? route.query.tab === 'inv' : route.query.tab !== 'inv')
+  if (n.to === '/services/invoices') return route.path === '/services/invoices' || route.path === '/services/invoices/new' || /^\/services\/invoices\/[0-9a-f-]{36}$/.test(route.path)
+  if (n.to === '/services/invoices/jobs' || n.to === '/services/invoices/payments') return route.path === n.to
+  if (n.to === '/services') return route.path === '/services' || /^\/services\/[0-9a-f-]{36}$/.test(route.path) || route.path === '/services/order' || route.path.startsWith('/services/requests')
+  return isOn(n.to, n.exact)
+}
+const groupOn = (g: NavG) => g.items.some(navOn)
+const linkOf = (n: NavI) => (n.tab === 'inv' ? { path: n.to, query: { tab: 'inv' } } : n.to)
+// The sub-menu for the page you are on (Finvry console only): the other pages of its sidebar item.
+const consoleTabs = computed(() => { if (!platformMode.value) return null; const g = [...PLATFORM_GROUPS, ...servicesGroups.value].find(groupOn); return g && g.items.length > 1 ? g.items : null })
+provide('consoleTabs', consoleTabs)
+provide('inConsole', platformMode)
 // Financials sub-menu (company workspaces): the figures, revenue retention and churn, and customer analysis.
 const FIN_SUBS: [string, string][] = [['/financials', 'Statements & overview'], ['/financials/retention', 'Revenue retention'], ['/financials/customers', 'Customers']]
 const custLocked = computed(() => !!(mods.value ?? []).find((x) => x.code === 'fin_customers' && x.locked))
@@ -67,8 +106,8 @@ const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/
 const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages')) && !(to === '/financials' && nowPath.value.startsWith('/financials/boards'))))
 const itemOn = (m: Mod & { alsoOn?: string[] }) => isOn(m.to) || (m.alsoOn ?? []).some((p) => isOn(p))
 const crumbs = computed(() => {
-  if (platformMode.value && deskPath.value) { const m = desk.value.find((x) => isOn(x.to)); return ['Services desk', m?.label ?? 'Clients'] }
-  if (platformMode.value) { const n = [...PLATFORM_NAV].reverse().find((x) => isOn(x.to, x.exact)); return ['Finvry', n?.label ?? 'Overview'] }
+  if (platformMode.value && deskPath.value) { const n = SERVICES_NAV.find((x) => navOn(x)); return ['Finvry Services', n?.label ?? 'Jobs'] }
+  if (platformMode.value) { const n = PLATFORM_NAV.find((x) => navOn(x)); return ['Finvry Platform', n?.label ?? 'Overview'] }
   if (route.path === '/') return [me.value?.org?.name ?? 'Workspace', me.value?.org?.kind === 'company' ? 'Dashboard' : 'Overview']
   const sub = FIN_SUBS.slice(1).find(([to]) => isOn(to)); if (sub) return ['Financials', sub[1]]
   for (const g of groups.value) { const m = g.items.find((x) => itemOn(x)); if (m) return [g.label, m.label] }
@@ -112,10 +151,10 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
           <a class="sb-link sb-help" :href="'mailto:' + (brand.key === 'finvry' ? 'support@finvry.com' : 'team@aidiventures.com') + '?subject=' + encodeURIComponent(brand.name + ' support')" title="Help & support"><AppIcon name="help" class="sb-icon" /><span class="sb-label">Help &amp; support</span></a>
         </template>
         <template v-else>
-          <p class="sb-group">Finvry platform</p>
-          <NuxtLink v-for="n in PLATFORM_NAV" :key="n.to" :to="n.to" class="sb-link" :class="{ on: isOn(n.to, n.exact) }" :title="n.label"><AppIcon :name="n.icon" class="sb-icon" /><span class="sb-label">{{ n.label }}</span></NuxtLink>
-          <template v-if="desk.length"><p class="sb-group">Services desk</p>
-            <NuxtLink v-for="m in desk" :key="m.code" :to="m.to" class="sb-link" :class="{ on: isOn(m.to, m.to === '/services') }" :title="m.label"><AppIcon :name="m.code" class="sb-icon" /><span class="sb-label">{{ m.label }}</span><span v-if="badges[m.to]" class="sb-badge">{{ badges[m.to]! > 99 ? '99+' : badges[m.to] }}</span></NuxtLink></template>
+          <p class="sb-group">Finvry Platform</p>
+          <NuxtLink v-for="g in PLATFORM_GROUPS" :key="g.label" :to="linkOf(g.items[0]!)" class="sb-link" :class="{ on: groupOn(g) }" :title="g.label"><AppIcon :name="g.icon" class="sb-icon" /><span class="sb-label">{{ g.label }}</span></NuxtLink>
+          <template v-if="servicesGroups.length"><p class="sb-group">Finvry Services</p>
+            <NuxtLink v-for="g in servicesGroups" :key="g.label" :to="linkOf(g.items[0]!)" class="sb-link" :class="{ on: groupOn(g) }" :title="g.label"><AppIcon :name="g.icon" class="sb-icon" /><span class="sb-label">{{ g.label }}</span><span v-if="g.items.reduce((t, n) => t + (badges[n.to] ?? 0), 0)" class="sb-badge">{{ g.items.reduce((t, n) => t + (badges[n.to] ?? 0), 0) }}</span></NuxtLink></template>
           <p v-if="!collapsed && !deskPath" class="sb-note">Commercial data only. Customer data is never shown here.</p>
         </template>
       </nav>
@@ -143,7 +182,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
         </div>
       </header>
       <div v-if="support" class="supbar" role="status"><span>Support access: you are seeing this account as <b>{{ me?.email }}</b></span><span class="sm">{{ support.can_edit ? 'Changes allowed, recorded as ' + support.by_name : 'View only' }} · ends in {{ supLeft }} min · the customer can see this visit</span><button type="button" @click="endSupport">End session</button></div>
-      <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
+      <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><nav v-if="consoleTabs" class="ctabs"><NuxtLink v-for="n in consoleTabs" :key="n.label" :to="linkOf(n)" :class="{ on: navOn(n) }">{{ n.label }}</NuxtLink></nav><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /></div></main>
       <AnalystPanel v-if="me && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
     </div>
   </div>
@@ -217,4 +256,5 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .sb-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -26px; height: 26px; background: linear-gradient(var(--c-paper-2), rgba(0,0,0,0)); pointer-events: none; opacity: 0; transition: opacity .2s; } .sidebar.sbs .sb-top::after { opacity: 1; }
 .sb-logo { width: 32px; height: 32px; display: block; margin-left: -4px; }
 a.sb-user { text-decoration: none; } a.sb-user:hover { color: var(--c-ink); }
+.ctabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 0 0 20px; overflow-x: auto; } .ctabs a { padding: 9px 0; font-size: 14px; color: var(--c-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; } .ctabs a.on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; } .ctabs a:hover { color: var(--c-ink); }
 </style>
