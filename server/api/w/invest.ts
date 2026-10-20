@@ -80,6 +80,7 @@ export default defineEventHandler(async (event) => {
     const bal = Number((await db().query<{ b: string }>("SELECT coalesce(sum(CASE WHEN kind IN ('withdrawal','fee') THEN -amount ELSE amount END), 0)::text AS b FROM wm.wallet_txns WHERE client_id = $1 AND currency = $2 AND status = 'confirmed'", [id, cur])).rows[0]?.b ?? 0)
     if (amt > bal) throw apiError('invalid', 'That is more than your available balance.')
     await db().query("INSERT INTO wm.wallet_txns (client_id, currency, kind, amount, status, source, detail, created_by) VALUES ($1,$2,'withdrawal',$3,'requested','request',$4,$5)", [id, cur, amt, JSON.stringify({ bank_details: s('bank_details', 500) }), user.userId])
+    wmAlert(id, 'asked to withdraw ' + (cur === 'NGN' ? '₦' : '$') + amt.toLocaleString('en-US'), [['Action', 'Pay out from their wallet']])
     return { ok: true }
   }
   if (a === 'busha_quote' || a === 'busha_trade') {
@@ -99,6 +100,7 @@ export default defineEventHandler(async (event) => {
     const plan = s('plan_id'), amt = Number(b.amount), kind = s('kind') === 'withdrawal' ? 'withdrawal' : 'deposit'
     if (!(amt > 0) || !(await db().query('SELECT 1 FROM wm.savings_plans WHERE id = $1 AND client_id = $2', [plan, id])).rowCount) throw apiError('invalid', 'Choose the plan and amount.')
     await db().query("INSERT INTO wm.savings_txns (plan_id, kind, amount, status, note, created_by) VALUES ($1,$2,$3,'requested',$4,$5)", [plan, kind, amt, s('note', 300) || null, user.userId])
+    wmAlert(id, 'asked for a savings ' + kind + ' of ' + amt.toLocaleString('en-US'))
     return { ok: true }
   }
   throw apiError('invalid', 'Unknown action.')

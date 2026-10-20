@@ -23,5 +23,6 @@ export async function payInvoiceFromWallet(invoiceId: string, o: { clientId?: st
   await db().query("UPDATE services.clients SET status = 'active' WHERE status = 'lead' AND id = $1", [inv.client_id])
   await subscriptionsFromInvoice(inv.id).catch((e) => console.error('[wallet] renewals failed', e))
   const full = await loadCsInvoice(inv.id); if (full) sendClientReceiptEmail(full).catch((e) => console.error('[wallet] receipt failed', e))
+  slack('finvry.payment', (full?.bill_to.name ?? 'A client') + ' paid service invoice ' + inv.number + ' from their wallet', [['Amount', minorMoney(minor, w.currency)]], { label: 'Service invoices', path: '/services/invoices', brand: 'aidi' })
   return { balance_minor: after?.balance ?? 0, currency: w.currency }
 }

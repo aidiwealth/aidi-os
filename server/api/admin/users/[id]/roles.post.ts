@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
       [id.data, b.data.role, scope])
     await revokeSessions(id.data, 'role removed: ' + b.data.role, admin.orgId)
   }
+  if (b.data.role === 'admin' && (b.data.action === 'add' || b.data.action === 'remove') && admin.orgId && (await isAidiOrg(admin.orgId))) { const who = (await db().query<{ email: string }>('SELECT email FROM core.users WHERE id = $1', [id.data])).rows[0]?.email ?? 'A user'; slack('critical.security', who + (b.data.action === 'add' ? ' was made an admin of ' : ' is no longer an admin of ') + (await orgName(admin.orgId)), [['By', admin.email]]) }
   await audit({ event, actorUserId: admin.userId, action: 'user.role_' + b.data.action, objectType: 'user', objectId: id.data, entityId: scope ?? undefined, detail: { role: b.data.role } })
   return { ok: true }
 })

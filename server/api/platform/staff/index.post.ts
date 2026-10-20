@@ -9,5 +9,7 @@ export default defineEventHandler(async (event) => {
   if (b.data.role) await asPlatform(() => db().query('INSERT INTO core.platform_staff (user_id, role) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role', [b.data.user_id, b.data.role]))
   else await asPlatform(() => db().query('DELETE FROM core.platform_staff WHERE user_id = $1', [b.data.user_id]))
   await audit({ event, actorUserId: s.userId, action: 'platform.staff_' + (b.data.role ?? 'removed'), objectType: 'user', objectId: b.data.user_id })
+  const who = (await asPlatform(() => db().query<{ email: string }>('SELECT email FROM core.users WHERE id = $1', [b.data.user_id]))).rows[0]?.email ?? 'A user'
+  slack('critical.security', b.data.role ? who + ' now has Finvry console access (' + b.data.role + ')' : who + ' no longer has Finvry console access', [['By', s.email]])
   return { ok: true }
 })

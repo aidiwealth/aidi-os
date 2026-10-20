@@ -1,7 +1,7 @@
 // Paystack events: a payment succeeded (and its card authorization, if reusable, is saved for renewals).
 export default defineEventHandler(async (event) => {
   const raw = (await readRawBody(event, 'utf8')) ?? ''
-  if (!paystackSignatureOk(raw, getRequestHeader(event, 'x-paystack-signature') ?? '')) throw apiError('forbidden', 'Bad signature', 400)
+  if (!paystackSignatureOk(raw, getRequestHeader(event, 'x-paystack-signature') ?? '')) { slack('critical.webhook', 'Paystack webhook rejected: bad signature'); throw apiError('forbidden', 'Bad signature', 400) }
   const ev = JSON.parse(raw) as { event: string; data: { reference?: string; gateway_response?: string } & Parameters<typeof paystackCard>[0] }
   if (!ev.data.reference) return { ok: true }
   if (ev.data.reference.startsWith('wt_')) { if (ev.event === 'charge.success') await walletTopupSucceeded(ev.data.reference, paystackCard(ev.data)); return { ok: true } }

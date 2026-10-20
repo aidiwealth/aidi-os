@@ -3,6 +3,15 @@ useHead({ title: 'Finvry · Settings' })
 const { data, refresh } = await useFetch<{ issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string; ngn_per_usd: number }>('/api/platform/settings')
 const { data: pay } = await useFetch<{ stripe: boolean; stripeWebhook: boolean; paystack: boolean; stripeWebhookUrl: string; paystackWebhookUrl: string }>('/api/platform/payments')
 const copy = (s: string) => navigator.clipboard.writeText(s)
+// Slack alerts: a webhook for each channel and the events that go to it.
+interface SC { key: 'aidi' | 'finvry' | 'critical'; label: string; hint: string; set: boolean; hint_url: string }
+const { data: sl, refresh: refSl } = await useFetch<{ owner: boolean; channels: SC[]; events: { key: string; channel: string; label: string; on: boolean }[] }>('/api/platform/slack')
+const hooks = reactive<Record<string, string>>({ aidi: '', finvry: '', critical: '' }), off = ref<string[]>([]), smsg = ref(''), sok = ref('')
+watch(sl, (v) => { if (v) off.value = v.events.filter((e) => !e.on).map((e) => e.key) }, { immediate: true })
+const serr = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
+async function saveSlack() { smsg.value = ''; sok.value = ''; try { await $fetch('/api/platform/slack', { method: 'POST', body: { ...hooks, off: off.value } }); Object.assign(hooks, { aidi: '', finvry: '', critical: '' }); sok.value = 'Saved.'; await refSl() } catch (e) { smsg.value = serr(e) } }
+async function testSlack(ch: string) { smsg.value = ''; sok.value = ''; try { await $fetch('/api/platform/slack/test', { method: 'POST', body: { channel: ch } }); sok.value = 'Test sent to ' + ch + '.' } catch (e) { smsg.value = serr(e) } }
+function toggleEv(k: string, on: boolean) { off.value = on ? off.value.filter((x) => x !== k) : [...off.value, k] }
 // Bank connections: Plaid for US banks; Mono for Nigerian banks, switched on here once it is set up.
 const { data: integ, refresh: refInteg } = await useFetch<{ mono: boolean; plaid: boolean }>('/api/platform/integrations')
 const imsg = ref('')
@@ -30,6 +39,14 @@ async function save() {
       <label class="label">How to pay<textarea v-model="f.payment_instructions" rows="6" maxlength="3000" placeholder="Bank name, account name, account number, routing / SWIFT, reference to quote" /><span class="hint">Shown on every invoice and invoice email.</span></label>
       <label class="label">Naira per US dollar (for reporting NGN subscriptions in MRR)<input v-model.number="f.ngn_per_usd" type="number" min="1" step="any"></label>
       <div class="row"><button class="btn" type="submit">Save</button><span v-if="ok" class="ok">{{ ok }}</span><span v-if="msg" class="error">{{ msg }}</span></div>
+    </form>
+    <form v-if="sl" class="card frm" @submit.prevent="saveSlack">
+      <h2>Slack alerts</h2>
+      <p class="hint">Paste an incoming webhook for each Slack channel (in Slack: Apps → Incoming Webhooks → Add to channel). Only events worth acting on the same day are sent; switch any off below.</p>
+      <div v-for="c in sl.channels" :key="c.key" class="sch"><label class="label">{{ c.label }} <span class="hint">· {{ c.hint }}</span><input v-model="hooks[c.key]" :disabled="!sl.owner" :placeholder="c.set ? 'Connected (' + c.hint_url + '). Paste a new link to replace, or - to remove' : 'https://hooks.slack.com/services/…'"></label>
+        <button v-if="c.set" type="button" class="btn secondary" @click="testSlack(c.key)">Send a test</button>
+        <div class="evs"><label v-for="e in sl.events.filter((x) => x.channel === c.key)" :key="e.key" class="ev"><input type="checkbox" :checked="!off.includes(e.key)" :disabled="!sl.owner" @change="toggleEv(e.key, ($event.target as HTMLInputElement).checked)"> {{ e.label }}</label></div></div>
+      <div class="row"><button v-if="sl.owner" class="btn" type="submit">Save</button><span v-if="sok" class="ok">{{ sok }}</span><span v-if="smsg" class="error">{{ smsg }}</span></div>
     </form>
     <div v-if="integ" class="card frm">
       <h2>Bank connections</h2>
@@ -59,4 +76,5 @@ input, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-t
 .prov { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; } .prov b { font-weight: 500; color: var(--c-navy); } .on { color: var(--c-ok); } .off { color: var(--c-muted); }
 .hk { display: flex; gap: 10px; align-items: center; } .hk code { flex: 1; font-size: 12px; background: var(--c-paper); padding: 7px 8px; overflow-x: auto; white-space: nowrap; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
+.sch { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--c-rule); } .sch > .btn { align-self: flex-start; } .evs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; } .ev { flex-direction: row !important; gap: 8px !important; align-items: center; font-size: 13px; color: var(--c-ink-soft); text-transform: none; letter-spacing: normal; }
 </style>

@@ -40,6 +40,7 @@ export default defineEventHandler(async (event) => {
     await client.query('COMMIT')
     if (d.kind === 'status' && d.status === 'completed' && job.status !== 'completed') { const codes = (await db().query<{ codes: string[] }>('SELECT codes FROM services.jobs WHERE id = $1', [id.data])).rows[0]?.codes ?? []; if (codes.length) await filingsCompleted(job.client_id, codes, job.title).catch((e) => console.error('[job] compliance', e)) }
   } catch (err) { await client.query('ROLLBACK'); throw err } finally { client.release() }
+  if (d.kind === 'status' && d.status === 'completed' && job.status !== 'completed') { const cn = (await db().query<{ name: string }>('SELECT name FROM services.clients WHERE id = $1', [job.client_id])).rows[0]?.name ?? job.contact_name; slack('finvry.job_done', 'Completed for ' + cn + ': ' + job.title.replace(/^Order: /, ''), [['By', user.email]], { label: 'Open the job', path: '/services/' + id.data, brand: 'aidi' }) }
   let emailed = false
   if (visible && !job.emails_muted) { // emails to this client can be switched off on the job page
     try {

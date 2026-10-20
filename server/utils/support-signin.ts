@@ -45,5 +45,7 @@ export async function supportSignIn(event: H3Event, staffUserId: string, orgId: 
   const detail = { as: t.email, reason: opts.reason.trim().slice(0, 500), changes_allowed: opts.canEdit, minutes, owner_created_quietly: created }
   await audit({ event, actorUserId: staffUserId, action: 'platform.support_signin', objectType: 'organization', objectId: orgId, detail })
   await platformAudit(event, staffUserId, 'support_signin', orgId, detail)
+  const who = (await asPlatform(() => db().query<{ email: string }>('SELECT email FROM core.users WHERE id = $1', [staffUserId]))).rows[0]?.email ?? 'Staff'
+  slack('critical.security', who + ' signed in as ' + t.email + ' (' + t.name + ')', [['Reason', detail.reason || '—'], ['Changes allowed', opts.canEdit ? 'Yes' : 'No, view only'], ['For', minutes + ' minutes']])
   return { as: t.email, name: t.name, owner_created: created, redirect }
 }

@@ -29,6 +29,8 @@ export default defineEventHandler(async (event) => {
       try { await sendFundNoticeEmail({ to: l.email, lp: l.name, fund: p.fund.name, kind: c.kind as 'call' | 'distribution', number: c.number, amount: Number(l.amount), currency: p.fund.currency, due: due.d, purpose: due.purpose, admin: adminName(p.fund), adminUrl: p.fund.admin_portal_url, portal: await issueLpLink(l.lp_id) }); sent++ }
       catch (err) { console.error('[funds] notice failed for ' + l.email, err) }
     }
+    const tot = lines.rows.reduce((s, x) => s + Number(x.amount), 0)
+    slack('aidi.fund', p.fund.name + ': ' + (c.kind === 'call' ? 'capital call' : 'distribution') + ' ' + c.number + ' sent to ' + lines.rows.length + ' LP' + (lines.rows.length === 1 ? '' : 's'), [['Total', p.fund.currency + ' ' + tot.toLocaleString('en-US')], ['Due', due.d], ['Notices emailed', String(sent)]], { label: 'Open the fund', path: '/funds/' + c.fund_id })
     await audit({ event, actorUserId: user.userId, action: 'funds.' + c.kind + '_sent', objectType: 'fund_call', objectId: id.data, detail: { notices: sent } })
     return { ok: true, notices: sent, lps: lines.rows.length }
   } else {

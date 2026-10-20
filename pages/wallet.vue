@@ -15,7 +15,7 @@ const copied = ref(''); async function copy(v: string) { await navigator.clipboa
 async function makeAccount() { busy.value = true; msg.value = ''; try { await $fetch('/api/wallet/account', { method: 'POST', body: { kyc: kyc.value, type: kycType.value } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the account.' } finally { busy.value = false } }
 async function sendNotice() { busy.value = true; msg.value = ''; try { await $fetch('/api/wallet/transfer-notice', { method: 'POST', body: notice }); notice.done = true } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } finally { busy.value = false } }
 async function removeCard() { if (!confirm('Remove the saved card? Renewals will then come from your wallet only.')) return; try { await $fetch('/api/wallet/card', { method: 'DELETE' }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove the card.' } }
-const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', internal: 'Internal' }
+const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_medium: 'Medium', company_scale: 'Scale', internal: 'Internal' }
 const sym = computed(() => (data.value?.currency === 'NGN' ? '₦' : '$'))
 const quick = computed(() => (data.value?.currency === 'NGN' ? [10000, 25000, 50000, 100000] : [25, 50, 100, 250]))
 const amount = ref<number | null>(null)

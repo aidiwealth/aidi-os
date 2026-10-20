@@ -101,11 +101,13 @@ export async function recordSuccess(reference: string, card: CardDetails = {}): 
   if (!done) return
   const inv = await loadInvoice(done.invoice_id)
   if (!inv) return
+  slack('finvry.payment', inv.customer + ' paid plan invoice ' + inv.number, [['Amount', inv.currency + ' ' + inv.amount], ['By', done.provider]], { label: 'Invoices', path: '/platform/billing', brand: 'aidi' })
   setOrgContext(inv.organization_id)
   try { await sendPaymentReceiptEmail(inv, (await billingSettings()).issuer_name) } catch (err) { console.error('[payments] receipt failed for ' + inv.number, err) }
   setOrgContext(null)
 }
 export async function recordFailure(reference: string, reason: string): Promise<void> {
+  slack('critical.charge_failed', 'A card payment failed', [['Reference', reference], ['Reason', reason]], { label: 'Payments', path: '/platform/payments', brand: 'aidi' })
   await asPlatform(() => db().query("UPDATE platform.payments SET status = 'failed', failure = left($2, 500), completed_at = now() WHERE reference = $1 AND status = 'pending'", [reference, reason]))
 }
 

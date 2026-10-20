@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PLAN_FOR, PLAN_NAME } from '~/shared/plans'
 // A locked page on the Free plan: a blurred preview of what the page holds, what it offers, and an upgrade call.
 const props = defineProps<{ code: string; label: string }>()
 interface P { code: string; name: string; usd: number | null; ngn: number | null }
@@ -23,9 +24,8 @@ const FEAT: Record<string, { title: string; lede: string; points: string[]; kind
   contacts: { title: 'Contacts', lede: 'Your investor CRM: everyone you talk to, what they opened and where they are in your raise.', kind: 'table',
     points: ['Lists, custom properties and subscribe status', 'Engagement chart for every contact', 'Every update open and data room view logged', 'Notes, pipelines and shared items on one page', 'Import your list in one paste'] } }
 const f = computed(() => FEAT[props.code] ?? { title: props.label, lede: 'This feature is part of our paid plans.', kind: 'table', points: ['Everything in your current plan', 'More team members, AI and storage', 'Priority service'] })
-// Revenue retention, customers, subsidiaries and forecasts are Scale features; the rest unlock on Startup.
-const SCALE = ['fin_customers', 'subsidiaries', 'forecast']
-const tier = computed(() => (SCALE.includes(props.code) ? { code: 'company_scale', name: 'Scale' } : { code: 'company_startup', name: 'Startup' }))
+// Forecasts, revenue retention, customers and the management report unlock on Medium; subsidiaries on Scale; the rest on Startup.
+const tier = computed(() => { const c = PLAN_FOR[props.code] ?? 'company_startup'; return { code: c, name: PLAN_NAME[c] ?? 'Startup' } })
 const startup = computed(() => data.value?.plans.find((p) => p.code === tier.value.code))
 const ngn = computed(() => data.value?.currency === 'NGN')
 const price = computed(() => { const p = startup.value; if (!p) return ''; const v = ngn.value ? p.ngn : p.usd; return v ? (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') : '' })

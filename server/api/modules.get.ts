@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const plan = await planModules()
   const isAdmin = user.roles.includes('admin')
   const company = (await currentOrg())?.kind === 'company'
-  const paid = company ? new Set((await asPlatform(() => db().query<{ modules: string[] }>("SELECT modules FROM core.plans WHERE code = 'company_scale'"))).rows[0]?.modules ?? []) : new Set<string>()
+  const paid = company ? new Set((await asPlatform(() => db().query<{ modules: string[] }>("SELECT modules FROM core.plans WHERE code IN ('company_startup', 'company_medium', 'company_scale')"))).rows.flatMap((r) => r.modules)) : new Set<string>()
   const raiseOn = company && (await currentOrg())?.settings.raise_enabled === true
   const ov = await moduleRoleOverrides()
   const ops = !company && ((await currentOrg())?.settings.services_operator === true || (await currentOrg())?.settings.services_operator === 'true')

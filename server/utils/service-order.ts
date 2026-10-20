@@ -15,6 +15,9 @@ export const OrderBody = z.object({ codes: z.array(z.string().regex(/^[a-z][a-z0
 export type OrderInput = z.infer<typeof OrderBody>
 export interface OrderOpts { admin?: boolean; prices?: Record<string, number>; payment?: 'online' | 'invoice' | 'draft' | 'paid' | 'none'; paid_on?: string; extra?: { description: string; quantity: number; unit_amount: number }[]; paid_note?: string; issue_date?: string }
 export async function placeServiceOrder(clientId: string, actor: { name: string; email: string }, d: OrderInput, opts: OrderOpts = {}) {
+  // A monthly cap on new orders from clients (set in the Finvry console), so the desk is never over-committed.
+  // Orders the team logs itself are not counted against it or stopped by it.
+  if (!opts.admin) await checkServicesCap()
   const ng = await clientIsNigerian(clientId)
   const items = (await db().query<{ code: string; name: string; price: string | null; price_ngn: string | null; currency: string; billing: string; region: string }>('SELECT code, name, price::text, price_ngn::text, currency, billing, region FROM services.catalog WHERE active AND code = ANY($1)', [d.codes])).rows
     .filter((i) => i.region !== 'ng' || ng).map((i) => { const voNg = i.code === 'virtual_office' && /^nigeria$/i.test(d.virtual_office?.country ?? ''); const p = voNg ? priceFor(i, true) : i.code === 'virtual_office' && d.virtual_office ? priceFor(i, false) : priceFor(i, ng); return { ...i, price: p.price == null ? null : String(p.price), currency: p.currency } })
@@ -78,5 +81,18 @@ export async function placeServiceOrder(clientId: string, actor: { name: string;
   }
   await filingsOrdered(clientId, items.map((i) => i.code), { vo_term: d.vo_term, ra_free: forming, start: opts.issue_date }).catch((e) => console.error('[order] compliance', e))
   if (!opts.admin) sendJobClientActivity(null, job.id, c.name, title, actor.name + ' placed an order in Finvry', desc).catch((e) => console.error('[order] alert failed', e))
+  if (!opts.admin) slack('finvry.job', c.name + ' ordered ' + items.map((i) => i.name).join(', ').slice(0, 150), [['By', actor.name], ...(priced.length ? [['To pay now', priced.map((i) => (i.currency === 'NGN' ? '₦' : '$') + Number(i.price).toLocaleString('en-US')).join(' + ')] as [string, string]] : []), ...(quoted.length ? [['To quote', quoted.map((i) => i.name).join(', ')] as [string, string]] : [])], { label: 'Open the job', path: '/services/' + job.id, brand: 'aidi' })
   return { job_id: job.id, pay_url: invoice, invoice_id: invoiceId, quoted: quoted.map((i) => i.name) }
+}
+
+// New client orders this calendar month against the cap (0 = no cap).
+export async function checkServicesCap(): Promise<void> {
+  const cap = (await accessSettings()).services_month_cap
+  if (!cap) return
+  const n = (await asPlatform(() => db().query<{ n: number }>("SELECT count(*)::int AS n FROM services.jobs WHERE created_at >= date_trunc('month', now()) AND title LIKE 'Order:%' AND description LIKE 'Ordered in Finvry%'"))).rows[0]!.n
+  if (n >= cap) {
+    slack('critical.capacity', 'Services cap reached: ' + n + ' client orders this month (cap ' + cap + '); new orders are being turned away')
+    const next = new Date(); next.setUTCMonth(next.getUTCMonth() + 1, 1)
+    throw apiError('services_full', 'Our services team has taken on all the work it can this month. You can order again from ' + next.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) + ', or message us if it is urgent.', 409)
+  }
 }

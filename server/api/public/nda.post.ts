@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
   const r = await asPlatform(() => db().query<{ id: string }>('INSERT INTO fundraise.nda_signatures (organization_id, scope, name, email, company, signature, nda_text, ip_hash, user_agent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
     [orgId, d.kind, d.name, d.email, d.company || null, d.signature, br.nda_text, sha256(clientIp(event) + ':nda'), (getRequestHeader(event, 'user-agent') ?? '').slice(0, 300)]))
   await crmContact(orgId, d.email, d.name)
+  if (await isAidiOrg(orgId)) slack('aidi.engagement', d.name + (d.company ? ' (' + d.company + ')' : '') + ' signed the NDA for the ' + (d.kind === 'room' ? 'data room' : d.kind === 'page' ? 'investor page' : 'investor update'), [['Email', d.email]], { label: 'Fundraising', path: '/fundraising?t=nda' })
   setOrgContext(orgId); for (const e of await orgNotifyEmails()) sendShareViewedEmail(e, 'NDA signed by ' + d.name + (d.company ? ' (' + d.company + ')' : ''), brands().finvry.url + '/fundraising?t=nda').catch(() => {})
   return { ok: true, id: r.rows[0]!.id }
 })

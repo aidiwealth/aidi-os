@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
   const p = (await db().query<{ company: string }>("SELECT company FROM deals.pitches WHERE id = $1 AND lp_share <> 'hide'", [b.data.pitch_id])).rows[0]
   if (!p) throw apiError('not_found', 'Not found', 404)
   await db().query('INSERT INTO deals.lp_interest (organization_id, pitch_id, lp_id, note) VALUES ($1,$2,$3,$4) ON CONFLICT (pitch_id, lp_id) DO UPDATE SET note = EXCLUDED.note', [lp.organization_id, b.data.pitch_id, lp.id, b.data.note || null])
+  slack('aidi.engagement', lp.name + ' (LP) is interested in ' + p.company, b.data.note ? [['Note', b.data.note]] : [], { label: 'Open pitches', path: '/pitches' })
   for (const to of await orgNotifyEmails()) { try { await sendEmail({ to, subject: lp.name + ' is interested in ' + p.company, text: lp.name + ' registered interest in ' + p.company + ' from the LP portal.' + (b.data.note ? '\n\nNote: ' + b.data.note : '') + '\n\n' + brands().aidi.url + '/deals/' + b.data.pitch_id, html: '<p><b>' + lp.name.replace(/</g, '&lt;') + '</b> registered interest in <b>' + p.company.replace(/</g, '&lt;') + '</b> from the LP portal.</p>' + (b.data.note ? '<p>Note: ' + b.data.note.replace(/</g, '&lt;') + '</p>' : '') + '<p><a href="' + brands().aidi.url + '/deals/' + b.data.pitch_id + '">Open the deal</a></p>' }) } catch (err) { console.error('[lp interest] email', err) } }
   return { ok: true }
 })

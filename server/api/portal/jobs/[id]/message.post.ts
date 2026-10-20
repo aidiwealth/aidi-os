@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   if (!j) throw apiError('not_found', 'Not found', 404)
   await db().query("INSERT INTO services.job_events (job_id, kind, body, visible_to_client) VALUES ($1, 'client_message', $2, true)", [id.data, b.data.body])
   await db().query('UPDATE services.jobs SET updated_at = now() WHERE id = $1', [id.data])
+  slack('finvry.message', u.client + ' replied on ' + j.title.replace(/^Order: /, ''), [['From', u.name], ['Message', b.data.body.slice(0, 160)]], { label: 'Open the job', path: '/services/' + id.data, brand: 'aidi' })
   sendJobClientActivity(j.owner_email, id.data, u.client, j.title, u.name + ' wrote', b.data.body).catch((e) => console.error('[portal] alert failed', e))
   return { ok: true }
 })

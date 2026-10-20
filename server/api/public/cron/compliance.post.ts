@@ -6,6 +6,8 @@ export default defineEventHandler(async (event) => {
   const given = getRequestHeader(event, 'x-cron-secret') ?? ''
   if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) throw apiError('forbidden', 'Forbidden', 403)
   let obligations = 0, sent = 0
+  const aidiDue: string[] = [], coOverdue: string[] = []
+  const kinds = new Map((await asPlatform(() => db().query<{ id: string; kind: string }>('SELECT id, kind FROM core.organizations'))).rows.map((r) => [r.id, r.kind]))
   for (const org of await liveOrgs()) {
     setOrgContext(org.id)
     if (!(await enabledModules()).has('compliance')) continue
@@ -24,6 +26,11 @@ export default defineEventHandler(async (event) => {
     }
     for (const r of due.rows) await db().query('INSERT INTO compliance.reminders_sent (obligation_id, due_date, kind) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [r.id, r.next_due, r.kind])
     obligations += due.rows.length
+    // Slack: the group's own filings due within a week or overdue; for Finvry companies, only which have one overdue.
+    if (kinds.get(org.id) === 'company') { if (due.rows.some((r) => r.kind === 'overdue')) coOverdue.push(org.name) }
+    else for (const r of due.rows.filter((x) => x.kind === 'overdue' || x.days_left <= 7)) aidiDue.push((r.kind === 'overdue' ? 'Overdue: ' : 'Due ' + r.next_due + ': ') + r.title + ' (' + r.entity + ')')
   }
+  if (aidiDue.length) slack('aidi.compliance', aidiDue.length + ' filing' + (aidiDue.length === 1 ? '' : 's') + ' to act on', aidiDue.slice(0, 10).map((x, i) => [String(i + 1), x] as [string, string]), { label: 'Open compliance', path: '/compliance' })
+  if (coOverdue.length) slack('finvry.compliance', coOverdue.length + ' Finvry compan' + (coOverdue.length === 1 ? 'y has' : 'ies have') + ' a filing that just became overdue', [['Companies', coOverdue.slice(0, 20).join(', ')]], { label: 'Services tracker', path: '/services/tracker', brand: 'aidi' })
   return { ok: true, obligations, emails: sent }
 })

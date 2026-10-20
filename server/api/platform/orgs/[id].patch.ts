@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
     if (d.status === 'suspended' || d.status === 'closed') await db().query("UPDATE core.sessions SET revoked_at = now(), revoked_reason = 'workspace ' || $2 WHERE organization_id = $1 AND revoked_at IS NULL", [id.data, d.status])
   })
   clearModuleCache()
+  if (d.plan_code) await syncPlanSubscription(id.data).catch((e) => console.error('[platform] plan subscription', e))
   await platformAudit(event, staff.userId, 'workspace_update', id.data, d)
   return { ok: true }
 })

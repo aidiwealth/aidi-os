@@ -11,5 +11,6 @@ export default defineEventHandler(async (event) => {
     [d.name, d.kind, d.country, d.model, await wmEntityFor(d.country), d.tag || null, d.contact_name || null, d.email.toLowerCase() || null, d.phone || null, d.notes || null, user.userId])
   if (d.risk_profile) await db().query("UPDATE wm.clients SET risk_profile = $2, risk_set_by = 'adviser', risk_set_at = now() WHERE id = $1", [c.id, d.risk_profile])
   await audit({ event, actorUserId: user.userId, action: 'wm.client_create', objectType: 'wm_client', objectId: c.id })
+  slack('aidi.wealth_client', 'New Aidi Wealth client: ' + d.name, [['Country', d.country], ['Service', d.model.replace('_', ' ')], ['Added by', user.email]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + c.id })
   return { ok: true, id: c.id }
 })

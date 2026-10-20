@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
     if (!(await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'wealth_client'", [uid])).rowCount) await db().query("INSERT INTO core.user_roles (user_id, role_code, scope_entity_id, granted_by) VALUES ($1,'wealth_client',$2,$3)", [uid, c.entity_id, user.userId])
     await db().query('UPDATE wm.clients SET user_id = $2, updated_at = now() WHERE id = $1', [id, uid])
     try { await sendInviteEmail(email, name, user.email) } catch (err) { console.error('[wm] invite email', err) }
+    slack('aidi.wealth_client', c.name + ' was invited to the Aidi Wealth portal', [['By', user.email]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + id })
   } else if (a === 'account') {
     if (body.delete && s('account_id')) await db().query('DELETE FROM wm.accounts WHERE id = $1 AND client_id = $2', [s('account_id'), id])
     else {

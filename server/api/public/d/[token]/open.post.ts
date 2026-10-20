@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const v = await one<{ id: string }>('INSERT INTO fundraise.views (organization_id, link_id, file_id, viewer_email) VALUES ($1,$2,$3,$4) RETURNING id', [l.organization_id, l.id, d.file_id, email || null])
   await db().query('UPDATE fundraise.links SET views = views + 1, last_viewed_at = now() WHERE id = $1', [l.id])
   await logActivity(l.organization_id, email, f.is_deck ? 'deck_viewed' : 'file_viewed', 'Viewed ' + f.title, d.file_id)
+  if (await isAidiOrg(l.organization_id)) slack('aidi.engagement', (email || 'Someone') + ' opened ' + f.title + ' in the data room', [['Link', l.name]], { label: 'Fundraising', path: '/fundraising' })
   if (l.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, 'Data room: ' + l.name + (email ? ' (' + email + ')' : ''), brands().finvry.url + '/fundraising').catch(() => {}) }
   const mime = (await db().query<{ mime_type: string }>('SELECT d.mime_type FROM fundraise.files f JOIN core.documents d ON d.id = f.document_id WHERE f.id = $1', [d.file_id])).rows[0]?.mime_type ?? ''
   const mark = (email || 'Confidential') + ' · ' + new Date().toISOString().slice(0, 10)

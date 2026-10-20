@@ -71,6 +71,7 @@ export default defineEventHandler(async (event) => {
     [b.founder_name, email, b.company, b.website, b.deck_url, b.country, b.stage, b.sector, b.raising_usd ?? null,
      b.one_liner, b.description, b.traction, b.team, b.female_founder ?? null, ip === 'unknown' ? null : ip])
   await audit({ event, actorUserId: null, action: 'deal.pitch_received', objectType: 'pitch', objectId: row.id, detail: { company: b.company, funding: b.funding_type } })
+  slack('aidi.pitch', 'New ' + (loan ? 'loan application' : 'pitch') + ': ' + b.company + (b.one_liner ? ' — ' + b.one_liner : ''), [['Founder', b.founder_name], ['Country', b.country ?? ''], ['Stage', b.stage ?? ''], ['Sector', b.sector ?? ''], ...(loan ? [['Amount', (b.loan_currency ?? '') + ' ' + (b.loan_amount ?? '')] as [string, string]] : b.raising_usd ? [['Raising', '$' + Number(b.raising_usd).toLocaleString('en-US')] as [string, string]] : [])], { label: 'Open pitches', path: '/pitches' })
   if (loan) {
     await db().query("UPDATE deals.pitches SET funding_type = 'loan' WHERE id = $1", [row.id])
     const appId = await createApplication(row.id, { company: b.company, founder_name: b.founder_name, email, phone: b.phone, country: b.country, sector: b.sector, amount: b.loan_amount!, currency: b.loan_currency ?? (/nigeria/i.test(b.country ?? '') ? 'NGN' : 'USD'), tenor_months: b.loan_tenor_months ?? null, purpose: b.loan_purpose, monthly_revenue: b.monthly_revenue ?? null, rc_number: b.rc_number, bvn: b.bvn || null, nin: b.nin || null, dob: b.dob || null })

@@ -8,7 +8,7 @@ const adding = ref(route.query.new === '1')
 const q = ref('')
 const status = ref('')
 const rows = computed(() => (data.value ?? []).filter((o) => (!status.value || o.status === status.value) && (!q.value || o.name.toLowerCase().includes(q.value.toLowerCase()))))
-const f = reactive({ name: '', slug: '', kind: 'company', plan_code: 'company_free', status: 'trial', trial_days: 14, admin_name: '', admin_email: '' })
+const f = reactive({ name: '', slug: '', kind: 'company', plan_code: 'company_startup', status: 'trial', trial_days: 14, admin_name: '', admin_email: '' })
 watch(() => f.name, (n) => { if (!slugTouched.value) f.slug = n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) })
 const slugTouched = ref(false)
 const msg = ref('')
@@ -19,7 +19,7 @@ async function create() {
 }
 const { data: me } = await useFetch<{ platform: boolean }>('/api/auth/me', { key: 'me' })
 const KIND: Record<string, string> = { company: 'Company', family_office: 'Internal' }
-watch(() => f.kind, () => { f.plan_code = 'company_free' })
+watch(() => f.kind, () => { f.plan_code = 'company_startup' })
 const ago = (s: string | null) => { if (!s) return 'never'; const d = Math.floor((Date.now() - Date.parse(s)) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago' }
 void refresh
 </script>

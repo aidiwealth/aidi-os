@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { PLAN_FEATS } from '~/shared/plans'
 import { currencyForCountry, isNigeria } from '~/shared/countries'
 // Company settings with a side menu: Company, Notifications, Plan & billing, Team.
 interface P { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null; ai_s?: number | null; ai_w?: number | null }
-interface D { reporting_currency?: string; name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
+interface D { reporting_currency?: string; name: string; website: string; country: string; currency: string; entity_type: string; state: string; notify_emails: string[]; plan: string; price?: { list: number; interval: string; free: boolean; override: unknown } | null; status: string; trial_ends_at: string | null; trial_used: boolean; plans: P[]; members: number; types: Record<string, string>; states: string[] }
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
@@ -27,7 +28,7 @@ async function choose(code: string) { busy.value = true; msg.value = ''; ok.valu
 const ngn = computed(() => data.value?.currency === 'NGN')
 const currentPlan = computed(() => { const d = data.value; return d ? (d.plans.find((p) => p.code === d.plan)?.name ?? d.plan) : '' })
 const price = (p: P) => { const v = ngn.value ? p.ngn : p.usd; return v == null ? 'Contact us' : v === 0 ? 'Free' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') }
-const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financials', 'Live bank balances', 'Annual financial report (PDF and Excel) with your logo', 'Burn and runway checked three ways', 'Public investor page and data room', 'Finvry AI analyst', 'Compliance calendar', 'Order services', '1 team member'], company_startup: ['Everything in Free', 'AI investor updates with open tracking', 'Fundraising pipeline, investor and grant finder', 'Cap table, SAFEs and round modelling', 'E-sign SAFEs, grants and share purchases', 'Board consents and electronic certificates', 'Import from Pulley or Carta', 'Up to 5 team members', 'More AI and storage'], company_scale: ['Everything in Startup', 'Revenue retention, churn and cohorts', 'Customer analysis: top customers, sectors, lifetime value', 'Customer revenue from a live Google Sheet', 'Subsidiaries with a group view', 'Forecasts from your books, bank or accountant\'s model', 'Up to 20 team members', 'Most AI and storage', 'Priority service'] }
+const FEAT = PLAN_FEATS
 </script>
 <template>
   <section v-if="data" class="cs">
@@ -60,14 +61,14 @@ const FEAT: Record<string, string[]> = { company_free: ['Dashboard and Financial
         </div>
         <div v-else-if="sec === 'plan'">
           <StorageCard class="stor" />
-          <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><span class="muted">Prices in {{ ngn ? 'naira' : 'US dollars' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span></div>
+          <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><span class="muted">{{ data.price?.free ? 'Free of charge' : data.price?.override ? 'You pay ' + (ngn ? '₦' : '$') + data.price.list.toLocaleString('en-US') + (data.price.interval === 'month' ? ' a month' : ' a year') : 'Prices in ' + (ngn ? 'naira' : 'US dollars') + ', billed yearly' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span></div>
           <div class="card pcard"><div class="pch"><b>Partner discount</b><span v-if="pd?.discount" class="pon">{{ pd.discount.pct }}% off · {{ pd.discount.name }}{{ pd.discount.until ? ' · until ' + pd.discount.until : '' }}</span></div>
             <p class="muted">Backed by or part of a VC, incubator, accelerator or startup community on our <a href="/partners" target="_blank">partner list</a>? Enter the code they gave you.</p>
             <form class="prow" @submit.prevent="redeem"><input v-model="pcode" maxlength="40" placeholder="Partner code" aria-label="Partner code"><button class="btn secondary" :disabled="pbusy || pcode.trim().length < 4">{{ pbusy ? 'Applying…' : 'Apply code' }}</button></form>
             <p v-if="pok" class="ok">{{ pok }}</p><p v-if="pmsg" class="error">{{ pmsg }}</p></div>
-          <div class="plans"><div v-for="p in data.plans" :key="p.code" class="card pl" :class="{ on: p.code === data.plan }"><b>{{ p.name }}</b><span class="pr">{{ price(p) }}<em v-if="(ngn ? p.ngn : p.usd)"> / month</em></span>
+          <div class="plans"><div v-for="p in data.plans" :key="p.code" class="card pl" :class="{ on: p.code === data.plan }"><b>{{ p.name }}</b><span class="pr">{{ price(p) }}<em v-if="(ngn ? p.ngn : p.usd)"> / month, billed yearly</em></span>
             <ul><li v-for="x in FEAT[p.code] ?? []" :key="x">{{ x }}</li><li v-if="p.ai_w">AI: {{ Math.round((p.ai_w ?? 0) / 1000) }}K tokens a week</li></ul>
-            <button v-if="p.code !== data.plan" type="button" class="btn" :class="{ secondary: p.code === 'company_free' }" :disabled="busy" @click="choose(p.code)">{{ p.code === 'company_free' ? 'Move to Free' : !data.trial_used ? 'Start 14-day free trial' : 'Switch to ' + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
+            <button v-if="p.code !== data.plan" type="button" class="btn" :disabled="busy" @click="choose(p.code)">{{ !data.trial_used ? 'Start 14-day free trial' : 'Switch to ' + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
           <p class="muted">Card billing (Stripe, or Paystack in naira) at the end of a trial is being switched on; until then we will email you before anything is charged.</p>
         </div>
         <div v-else class="card frm"><h2>Team</h2><p class="muted wide">Invite co-founders, your accountant or advisers. You have {{ data.members }} member{{ data.members === 1 ? '' : 's' }}.</p><div class="wide"><NuxtLink to="/team" class="btn">Manage team</NuxtLink></div></div>

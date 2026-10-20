@@ -384,3 +384,23 @@ export async function sendSignedCopyEmail(to: string, company: string, title: st
   const html = shell(h1('Signed: ' + esc(title)) + para('Everyone has signed <b>' + esc(title) + '</b> for ' + esc(company) + '. The signed copy, with its signature certificate, is attached.'), 'Signed: ' + title)
   await sendEmail({ to, subject: 'Signed: ' + title, text: 'Everyone has signed "' + title + '" for ' + company + '. The signed copy is attached.', html, brand: 'finvry', attachments: [{ filename: title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 120) + '.pdf', content: pdf }] })
 }
+
+// Finvry access (invite-only sign-up): the request received, the invitation, and (if the team sends it) a not-right-now.
+export async function sendAccessReceived(to: string, name: string): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const html = shell(h1('Thanks, ' + first) + para('We have your request to join Finvry. We open new accounts in small groups so every company gets set up properly, and we will email you as soon as yours is ready.') +
+    para('You do not need to do anything else for now.'), 'We have your request')
+  await sendEmail({ brand: 'finvry', to, subject: 'We have your request to join Finvry', text: 'Thanks, ' + first + '. We have your request to join Finvry. We open new accounts in small groups and will email you as soon as yours is ready.', html })
+}
+export async function sendAccessInvite(to: string, name: string, link: string, days: number, demoUrl: string | null): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const html = shell(h1('Your Finvry account is ready, ' + first) + para('Create your account with the link below; your details are filled in. Every plan starts with a 14-day free trial.') +
+    button('Create your account →', link) + para('The link works once and is valid for ' + days + ' days.') +
+    (demoUrl ? divider() + para('You asked for a walkthrough. <a href="' + esc(demoUrl) + '" style="color:' + BRAND.blue + ';">Book a time that suits you</a>.') : ''), 'Your Finvry account is ready')
+  await sendEmail({ brand: 'finvry', to, subject: 'Your Finvry account is ready', text: 'Your Finvry account is ready, ' + first + '. Create it here (valid for ' + days + ' days, works once): ' + link + (demoUrl ? '\nBook a walkthrough: ' + demoUrl : ''), html })
+}
+export async function sendAccessDeclined(to: string, name: string): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name)
+  const html = shell(h1('Thank you, ' + first) + para('We are opening Finvry to a small number of companies at a time and cannot offer you an account just now. We will keep your request and get in touch when we can.'), 'About your Finvry request')
+  await sendEmail({ brand: 'finvry', to, subject: 'About your Finvry request', text: 'Thank you, ' + first + '. We cannot offer you a Finvry account just now; we will keep your request and get in touch when we can.', html })
+}

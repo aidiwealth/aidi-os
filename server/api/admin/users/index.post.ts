@@ -51,6 +51,7 @@ export default defineEventHandler(async (event) => {
   } finally {
     client.release()
   }
+  if (b.data.role === 'admin' && admin.orgId && (await isAidiOrg(admin.orgId))) slack('critical.security', email + ' was added as an admin of ' + (await orgName(admin.orgId)), [['By', admin.email]])
   let emailed = false
   if (b.data.send_email) {
     try { await sendInviteEmail(email, b.data.full_name, admin.email); emailed = true }

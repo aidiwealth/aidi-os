@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const notify = async (orgId: string, subject: string, heading: string, body: string, cta: string, link: string) => { setOrgContext(orgId); for (const to of await orgNotifyEmails()) await sendWalletNotice(to, subject, heading, body, cta, link).catch((e) => console.error('[wallet cron] email failed', e)); setOrgContext(null) }
   const money = (minor: number, c: string) => (c === 'NGN' ? '₦' : '$') + (minor / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })
   // Owed for an earlier period of a virtual office or registered agent: pause the next renewal before charging it.
-  try { const a = await asPlatform(() => pauseForArrears()); out.arrears_paused = a.paused; out.arrears_resumed = a.resumed } catch (e) { console.error('[cron] arrears', e) }
+  try { const a = await asPlatform(() => pauseForArrears()); out.arrears_paused = a.paused; out.arrears_resumed = a.resumed } catch (e) { console.error('[cron] arrears', e); slack('critical.cron', 'Wallet job: arrears step failed', [['Error', String((e as Error).message).slice(0, 200)]]) }
   // reminders
   const soon = (await asPlatform(() => db().query<Sub>("SELECT id, organization_id, kind, code, name, client_id, amount_minor::text, currency, interval, to_char(next_charge_at, 'YYYY-MM-DD') AS next_charge_at, failures, to_char(reminded_for, 'YYYY-MM-DD') AS reminded_for FROM wallet.subscriptions WHERE status = 'active' AND next_charge_at BETWEEN current_date + 1 AND current_date + 3 AND (reminded_for IS NULL OR reminded_for <> next_charge_at)"))).rows
   for (const s of soon) {
@@ -44,11 +44,13 @@ export default defineEventHandler(async (event) => {
         await db().query("UPDATE wallet.subscriptions SET next_charge_at = coalesce(overdue_since, next_charge_at) + CASE WHEN interval = 'month' THEN interval '1 month' ELSE interval '1 year' END, failures = 0, last_error = NULL, overdue_since = NULL, updated_at = now() WHERE id = $1", [s.id])
         if (s.kind === 'plan') await db().query("UPDATE core.organizations SET status = 'active', trial_ends_at = NULL WHERE id = $1 AND status IN ('trial','past_due')", [s.organization_id])
       })
+      slack('finvry.renewal', (await orgName(s.organization_id)) + ' paid ' + money(amt, s.currency) + ' for ' + s.name, [['Billed', s.interval === 'month' ? 'Monthly' : 'Yearly'], ['From', out.carded && w.balance_minor < amt ? 'Card on file' : 'Wallet']], { label: 'Subscriptions', path: '/platform/billing', brand: 'aidi' })
       continue
     }
     if (s.failures < 1) {
       await asPlatform(() => db().query("UPDATE wallet.subscriptions SET failures = failures + 1, last_error = $2, overdue_since = coalesce(overdue_since, next_charge_at), next_charge_at = current_date + 3, updated_at = now() WHERE id = $1", [s.id, why.slice(0, 300)]))
       await notify(s.organization_id, 'We could not charge ' + s.name, 'Payment for ' + s.name + ' did not go through', 'We tried to collect ' + money(amt, s.currency) + ' from your wallet and card on file (' + why + '). We will try again in 3 days. Top up your wallet or update your card to avoid ' + (s.kind === 'plan' ? 'moving to the Free plan.' : 'the service being paused.'), 'Top up your wallet', url + '/wallet')
+      slack('critical.charge_failed', 'Could not charge ' + (await orgName(s.organization_id)) + ' ' + money(amt, s.currency) + ' for ' + s.name + '; retrying in 3 days', [['Why', why]], { label: 'Subscriptions', path: '/platform/billing', brand: 'aidi' })
       out.retry++; continue
     }
     await asPlatform(async () => {
@@ -59,10 +61,11 @@ export default defineEventHandler(async (event) => {
     await notify(s.organization_id, s.kind === 'plan' ? 'Your plan moved to Free' : s.name + ' is paused', s.kind === 'plan' ? 'Your workspace is now on the Free plan' : s.name + ' has been paused',
       (s.kind === 'plan' ? 'We could not collect ' + money(amt, s.currency) + ' for your ' + s.name + ', so your workspace moved to the Free plan. Your data is safe. Top up and choose your plan again in Settings to restore everything.' : 'We could not collect ' + money(amt, s.currency) + ' for ' + s.name + ', so it is paused. Top up your wallet and reorder it under Services to restart it.'),
       s.kind === 'plan' ? 'Choose a plan' : 'Top up your wallet', url + (s.kind === 'plan' ? '/settings?s=plan' : '/wallet'))
+    slack('critical.charge_failed', (await orgName(s.organization_id)) + ': ' + (s.kind === 'plan' ? 'moved to Free after two failed charges for ' : 'paused after two failed charges: ') + s.name, [['Amount', money(amt, s.currency)], ['Why', why]], { label: 'Subscriptions', path: '/platform/billing', brand: 'aidi' })
     out.suspended++
   }
   // Registered agent: resume a paused renewal once the wallet covers it; formal notice when 30 days overdue.
-  try { out.ra_resumed = await asPlatform(() => resumeRaRenewals()) } catch (e) { console.error('[cron] ra resume', e) }
-  try { out.ra_notices = await asPlatform(() => runRaNotices()) } catch (e) { console.error('[cron] ra notices', e) }
+  try { out.ra_resumed = await asPlatform(() => resumeRaRenewals()) } catch (e) { console.error('[cron] ra resume', e); slack('critical.cron', 'Wallet job: ra resume step failed', [['Error', String((e as Error).message).slice(0, 200)]]) }
+  try { out.ra_notices = await asPlatform(() => runRaNotices()) } catch (e) { console.error('[cron] ra notices', e); slack('critical.cron', 'Wallet job: ra notices step failed', [['Error', String((e as Error).message).slice(0, 200)]]) }
   return { ok: true, ...out }
 })

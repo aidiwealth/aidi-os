@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   await db().query('UPDATE funds.call_lines SET paid_amount = $2, paid_on = $3 WHERE id = $1', [b.data.line_id, b.data.paid_amount, b.data.paid_on])
   const open = (await one<{ n: number }>('SELECT count(*)::int AS n FROM funds.call_lines WHERE call_id = $1 AND paid_amount < amount', [id.data])).n
   await db().query("UPDATE funds.calls SET status = CASE WHEN $2 = 0 THEN 'completed' ELSE 'sent' END WHERE id = $1", [id.data, open])
+  if (open === 0 && c.status === 'sent') slack('aidi.fund', 'A capital call or distribution is fully paid', [['Last payment', b.data.paid_amount.toLocaleString('en-US') + ' on ' + b.data.paid_on]], { label: 'Open funds', path: '/funds' })
   await audit({ event, actorUserId: user.userId, action: 'funds.payment', objectType: 'fund_call', objectId: id.data, detail: { line: b.data.line_id, amount: b.data.paid_amount } })
   return { ok: true, completed: open === 0 }
 })

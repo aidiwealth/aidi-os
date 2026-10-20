@@ -113,7 +113,7 @@ interface NavI { to: string; label: string; icon: string; exact?: boolean; tab?:
 interface NavG { label: string; icon: string; items: NavI[] }
 const PLATFORM_GROUPS: NavG[] = [
   { label: 'Overview', icon: 'gauge', items: [{ to: '/platform', label: 'Overview', icon: 'gauge', exact: true }] },
-  { label: 'Customers', icon: 'customers', items: [{ to: '/platform/customers', label: 'Customers', icon: 'customers' }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel' }] },
+  { label: 'Customers', icon: 'customers', items: [{ to: '/platform/customers', label: 'Customers', icon: 'customers' }, { to: '/platform/access', label: 'Access requests', icon: 'customers' }, { to: '/platform/pipeline', label: 'Pipeline', icon: 'funnel' }] },
   { label: 'Billing', icon: 'billing', items: [{ to: '/platform/billing', label: 'Subscriptions & renewals', icon: 'billing', tab: 'subs' }, { to: '/platform/billing', label: 'Invoices', icon: 'documents', tab: 'inv' }, { to: '/platform/payments', label: 'Payments', icon: 'banking' }, { to: '/platform/finance', label: 'Wallets', icon: 'wallet' }] },
   { label: 'Plans & pricing', icon: 'plans', items: [{ to: '/platform/plans', label: 'Plans & pricing', icon: 'plans' }, { to: '/platform/partners', label: 'Partners & discounts', icon: 'customers' }, { to: '/platform/perks', label: 'Perks', icon: 'perks' }] },
   { label: 'Investors & grants', icon: 'fundraising', items: [{ to: '/platform/prospects', label: 'Investors & grants', icon: 'fundraising' }] },
@@ -148,7 +148,7 @@ provide('inConsole', platformMode)
 // Financials sub-menu (company workspaces): the figures, revenue retention and churn, and customer analysis.
 const FIN_SUBS: [string, string][] = [['/financials', 'Statements & overview'], ['/financials/retention', 'Revenue retention'], ['/financials/customers', 'Customers']]
 const custLocked = computed(() => !!(mods.value ?? []).find((x) => x.code === 'fin_customers' && x.locked))
-const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_scale: 'Scale', internal: 'Internal' }
+const PLAN: Record<string, string> = { company_free: 'Free', company_startup: 'Startup', company_medium: 'Medium', company_scale: 'Scale', internal: 'Internal' }
 const collapsed = useState('sb-collapsed', () => false)
 const sbScrolled = ref(false)
 const mobileOpen = ref(false)

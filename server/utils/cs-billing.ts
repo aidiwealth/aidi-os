@@ -58,6 +58,7 @@ export async function csPaymentSucceeded(reference: string): Promise<void> {
   setOrgContext(row.organization_id)
   const inv = await loadCsInvoice(row.invoice_id)
   if (inv) { try { await sendClientReceiptEmail(inv) } catch (err) { console.error('[cs] receipt failed', err) } }
+  if (inv) slack('finvry.payment', inv.bill_to.name + ' paid service invoice ' + inv.number, [['Amount', inv.currency + ' ' + inv.amount], ['By', row.provider]], { label: 'Service invoices', path: '/services/invoices', brand: 'aidi' })
   setOrgContext(null)
 }
 

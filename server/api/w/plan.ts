@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
 
   const body = getMethod(event) === 'GET' ? null : (getRequestHeader(event, 'content-type') ?? '').includes('multipart') ? null : await readBody<Record<string, unknown>>(event)
   if (getMethod(event) === 'GET') return planGet(id)
-  if ((getRequestHeader(event, 'content-type') ?? '').includes('multipart')) return { ok: true, uploaded: await planUpload(id, (await readMultipartFormData(event)) ?? []) }
+  if ((getRequestHeader(event, 'content-type') ?? '').includes('multipart')) { const n = await planUpload(id, (await readMultipartFormData(event)) ?? []); if (n) wmAlert(id, 'uploaded ' + n + ' document' + (n === 1 ? '' : 's') + ' for their plan'); return { ok: true, uploaded: n } }
   const a = String(body?.action ?? '')
   if (a === 'save') { try { await planSave(id, body?.profile ?? {}) } catch { throw apiError('invalid', 'Check the figures (amounts must be numbers).') } return { ok: true } }
   if (a === 'generate') { try { return { ok: true, report: await planGenerate(id, user.userId) } } catch (err) { console.error('[wm-plan] generate failed', err); throw apiError('ai_failed', 'Could not prepare the review just now. Please try again in a minute.', 502) } }
