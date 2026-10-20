@@ -20,6 +20,13 @@ async function merge(d: Dup) {
     if (ids.length >= 2 && keep) { await $fetch('/api/financials/customers/merge', { query: custQ(), method: 'POST', body: { ids, keep } }); msg.value = 'Merged into ' + d.to + '; kept merged on every read.'; await sync() }
   } catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
+// Not duplicates: remembered, so the same names are not suggested again (uploads and every read of the sheet).
+async function notSame(d: Dup) {
+  busy.value = 'ns:' + d.names.join(); msg.value = ''
+  try { await $fetch('/api/financials/customers/not-same', { query: custQ(), method: 'POST', body: { names: d.names } }); msg.value = d.names.join(', ') + ': kept as different customers. We will not suggest them again.'; await refresh() }
+  catch (e) { msg.value = err(e) } finally { busy.value = '' }
+}
+const allDupes = ref(false)
 const dupes = computed(() => data.value?.result?.possible ?? [])
 </script>
 <template>
@@ -30,7 +37,8 @@ const dupes = computed(() => data.value?.result?.possible ?? [])
       <a :href="data.url" target="_blank" rel="noopener" class="lk">Open sheet</a>
       <template v-if="props.canEdit"><button type="button" class="lk" :disabled="!!busy" @click="sync">{{ busy === 'sync' ? 'Reading…' : 'Read now' }}</button><button type="button" class="lk mu" :disabled="!!busy" @click="unlink">Unlink</button></template></div>
     <div v-if="dupes.length && props.canEdit" class="dp"><b>{{ dupes.length }} possible duplicate{{ dupes.length === 1 ? '' : 's' }}</b>
-      <div v-for="d in dupes.slice(0, 6)" :key="d.names.join()" class="di"><span>{{ d.names.join('  ·  ') }}</span><button type="button" class="lk" :disabled="!!busy" @click="merge(d)">Merge as {{ d.to }}</button></div></div>
+      <div v-for="d in (allDupes ? dupes : dupes.slice(0, 6))" :key="d.names.join()" class="di"><span>{{ d.names.join('  ·  ') }}<em v-if="d.reason">{{ d.reason }}</em></span><span class="da"><button type="button" class="lk" :disabled="!!busy" @click="merge(d)">Merge as {{ d.to }}</button><button type="button" class="lk mut" :disabled="!!busy" :title="'These are different customers: keep them apart and stop suggesting them'" @click="notSame(d)">{{ busy === 'ns:' + d.names.join() ? 'Saving…' : 'Not the same' }}</button></span></div>
+      <button v-if="dupes.length > 6" type="button" class="lk more" @click="allDupes = !allDupes">{{ allDupes ? 'Show fewer' : 'Show all ' + dupes.length }}</button></div>
     <p v-if="msg" class="ms">{{ msg }}</p>
   </div>
 </template>
@@ -41,4 +49,5 @@ const dupes = computed(() => data.value?.result?.possible ?? [])
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .lk.mu { color: var(--c-muted); } .er { color: var(--c-danger); font-size: 12.5px; }
 .dp { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 6px; } .di { display: flex; justify-content: space-between; gap: 12px; } .di span { color: var(--c-ink-soft); }
 .ms { margin: 8px 0 0; color: var(--c-ink-soft); }
+.di span em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .da { display: flex; gap: 16px; flex: none; } .lk.mut { color: var(--c-muted); } .lk.mut:hover { color: var(--c-ink); } .more { margin-top: 6px; align-self: flex-start; }
 </style>

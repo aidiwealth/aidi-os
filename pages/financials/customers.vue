@@ -40,9 +40,15 @@ const S = computed(() => st.value.summary)
 const groups = computed(() => byGroup(cs.value, st.value.rows, asOf.value, by.value, t.value))
 const ranked = computed(() => [...st.value.rows].filter((r) => r.ttm > 0).sort((a, b) => b.ttm - a.ttm))
 const movers = computed(() => st.value.rows.filter((r) => r.prior_ttm > 0 || r.ttm > 0))
-const growing = computed(() => [...movers.value].filter((r) => r.ttm - r.prior_ttm > 0).sort((a, b) => (b.ttm - b.prior_ttm) - (a.ttm - a.prior_ttm)).slice(0, 6))
-const falling = computed(() => [...movers.value].filter((r) => r.ttm - r.prior_ttm < 0 && r.active).sort((a, b) => (a.ttm - a.prior_ttm) - (b.ttm - b.prior_ttm)).slice(0, 6))
-const lost = computed(() => st.value.rows.filter((r) => !r.active && r.last && r.last > addMonths(asOf.value, -12) && r.last <= asOf.value).sort((a, b) => b.lifetime - a.lifetime).slice(0, 6))
+// Growing fastest and Slipping and lost: 6 each at first; "Show more" adds 10 at a time.
+const gN = ref(6), sN = ref(6)
+const growingAll = computed(() => [...movers.value].filter((r) => r.ttm - r.prior_ttm > 0).sort((a, b) => (b.ttm - b.prior_ttm) - (a.ttm - a.prior_ttm)))
+const growing = computed(() => growingAll.value.slice(0, gN.value))
+const fallingAll = computed(() => [...movers.value].filter((r) => r.ttm - r.prior_ttm < 0 && r.active).sort((a, b) => (a.ttm - a.prior_ttm) - (b.ttm - b.prior_ttm)))
+const falling = computed(() => fallingAll.value.slice(0, sN.value))
+const lostAll = computed(() => st.value.rows.filter((r) => !r.active && r.last && r.last > addMonths(asOf.value, -12) && r.last <= asOf.value).sort((a, b) => b.lifetime - a.lifetime))
+const lost = computed(() => lostAll.value.slice(0, sN.value))
+watch(asOf, () => { gN.value = 6; sN.value = 6 })
 function addMonths(m: string, k: number) { const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + k, 1)); return d.toISOString().slice(0, 7) }
 const hasSector = computed(() => cs.value.some((c) => c.sector)); const hasCac = computed(() => cs.value.some((c) => c.acquisition_cost))
 const GB: [GroupBy, string][] = [['sector', 'Sector'], ['segment', 'Segment'], ['size', 'Size'], ['plan', 'Plan'], ['country', 'Country']]
@@ -119,10 +125,10 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 
       <div class="three n2">
         <div class="card flat"><div class="ch"><h3>Growing fastest</h3><span class="mut">Last 12 months vs the 12 before</span></div>
-          <ol class="lst"><li v-for="r in growing" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.prior_ttm ? '' : 'New this year' }}</em></span><span class="v up">+{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : '+' + cPct(r.growth) }}</em></span></li><li v-if="!growing.length" class="none">No customer grew over the period.</li></ol></div>
+          <ol class="lst"><li v-for="r in growing" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.prior_ttm ? '' : 'New this year' }}</em></span><span class="v up">+{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : '+' + cPct(r.growth) }}</em></span></li><li v-if="!growing.length" class="none">No customer grew over the period.</li></ol><div v-if="growingAll.length > 6" class="smr"><span class="mut">{{ growing.length }} of {{ growingAll.length }}</span><button v-if="growing.length < growingAll.length" type="button" class="lk" @click="gN += 10">Show more</button><button v-if="gN > 6" type="button" class="lk" @click="gN = 6">Show fewer</button></div></div>
         <div class="card flat"><div class="ch"><h3>Slipping and lost</h3><span class="mut">Paying less, or stopped in the last year</span></div>
           <ol class="lst"><li v-for="r in falling" :key="r.id"><span class="nm">{{ r.name }}<em>Paying less</em></span><span class="v dn">{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : cPct(r.growth) }}</em></span></li>
-            <li v-for="r in lost" :key="'l' + r.id"><span class="nm">{{ r.name }}<em>Last paid {{ cMon(r.last!) }}</em></span><span class="v dn">Lost<em>{{ cMoney(r.lifetime, cur, true) }} lifetime</em></span></li><li v-if="!falling.length && !lost.length" class="none">No customer is paying less.</li></ol></div>
+            <li v-for="r in lost" :key="'l' + r.id"><span class="nm">{{ r.name }}<em>Last paid {{ cMon(r.last!) }}</em></span><span class="v dn">Lost<em>{{ cMoney(r.lifetime, cur, true) }} lifetime</em></span></li><li v-if="!falling.length && !lost.length" class="none">No customer is paying less.</li></ol><div v-if="fallingAll.length > 6 || lostAll.length > 6" class="smr"><span class="mut">{{ falling.length + lost.length }} of {{ fallingAll.length + lostAll.length }}</span><button v-if="falling.length < fallingAll.length || lost.length < lostAll.length" type="button" class="lk" @click="sN += 10">Show more</button><button v-if="sN > 6" type="button" class="lk" @click="sN = 6">Show fewer</button></div></div>
       </div>
 
       <details class="card flat tbl"><summary>Table: by {{ GB.find(([k]) => k === by)?.[1].toLowerCase() }}</summary>
@@ -194,4 +200,5 @@ td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .gbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; } .gbar .mut { font-size: 13px; }
 .three.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } @media (max-width: 800px) { .three.n2 { grid-template-columns: 1fr; } }
 .charts { align-items: stretch; }
+.smr { display: flex; align-items: center; gap: 16px; padding-top: 10px; font-size: 13px; } .smr .mut { font-size: 12.5px; margin-right: auto; }
 </style>

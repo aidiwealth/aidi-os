@@ -217,5 +217,12 @@ export async function findDuplicates(incoming: string[], existing: string[], ref
       out.push({ names, to: names.find((n) => exSet.has(n)) ?? names.slice().sort((x, y) => y.length - x.length)[0]!, reason: 'Very similar spelling', sure: false, existing: names.some((n) => exSet.has(n)) }); names.forEach((n) => inGroup.add(n))
     }
   }
-  return out.slice(0, 300)
+  // Names the founder said are different customers are not suggested again.
+  const ns = await notSameGroups()
+  return out.filter((g) => g.sure || !ns.some((set) => g.names.every((n) => set.has(sameKey(n))))).slice(0, 300)
+}
+const sameKey = (n: string) => n.trim().toLowerCase()
+export async function notSameGroups(): Promise<Set<string>[]> {
+  const r = (await db().query<{ not_same: string[][] | null }>('SELECT not_same FROM financials.customer_config LIMIT 1').catch(() => ({ rows: [] as { not_same: string[][] | null }[] }))).rows[0]
+  return (Array.isArray(r?.not_same) ? r!.not_same : []).filter(Array.isArray).map((g) => new Set(g.map((n) => sameKey(String(n)))))
 }

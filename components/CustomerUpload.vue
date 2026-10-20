@@ -28,6 +28,8 @@ async function save() {
   try {
     const merges = st.prev.dupes.filter((_, i) => st.pick[i]).map((d) => ({ names: d.names, to: d.to }))
     const r = await $fetch<{ customers: number; months: number; merged: number }>('/api/financials/customers/import', { query: custQ(), method: 'POST', body: { id: st.prev.id, merges, keep_repeats: st.keepRepeats, mode: st.mode, link: st.linked ? { url: st.url, name: st.linked } : undefined } })
+    // Suggested duplicates left unmerged are different customers: remembered, so they are not suggested again.
+    for (const d of st.prev.dupes.filter((x, i) => !st.pick[i] && !x.sure)) await $fetch('/api/financials/customers/not-same', { query: custQ(), method: 'POST', body: { names: d.names } }).catch(() => {})
     emit('done', (st.linked ? 'Linked: ' : '') + r.customers + ' customers saved (' + r.months.toLocaleString('en-US') + ' customer-months)' + (r.merged ? ', ' + r.merged + ' duplicate' + (r.merged === 1 ? '' : 's') + ' merged' : '') + '.')
   } catch (e) { st.msg = err(e) } finally { st.busy = false }
 }
@@ -65,7 +67,7 @@ const mon = (m: string) => (m ? new Date(m + '-01T00:00:00Z').toLocaleDateString
       <ul v-if="st.prev.summary.notes.length" class="notes"><li v-for="(n, i) in st.prev.summary.notes" :key="i">{{ n }}</li></ul>
       <label v-if="st.prev.summary.repeated && st.prev.summary.layout === 'long'" class="ck"><input v-model="st.keepRepeats" type="checkbox"> Keep the {{ st.prev.summary.repeated }} repeated row{{ st.prev.summary.repeated === 1 ? '' : 's' }} (only if they are real, separate charges)</label>
       <div class="dup"><h4>{{ st.prev.dupes.length ? 'Possible duplicate customers (' + st.prev.dupes.length + ')' : 'No duplicate customers found' }}</h4>
-        <p v-if="st.prev.dupes.length" class="mut">Merging puts their revenue under one name. Merge only the same paying customer; branches or subsidiaries you bill separately should stay apart.</p>
+        <p v-if="st.prev.dupes.length" class="mut">Merging puts their revenue under one name. Merge only the same paying customer; branches or subsidiaries you bill separately should stay apart. Names you leave unticked are kept as different customers and not suggested again.</p>
         <div v-if="st.prev.dupes.length" class="dl"><div v-for="(d, i) in st.prev.dupes" :key="i" class="di"><label class="ck"><input v-model="st.pick[i]" type="checkbox"> Merge</label>
           <div class="dn"><span class="nm">{{ d.names.join('  ·  ') }}</span><span class="why">{{ d.sure ? 'Same name' : 'Suggested by AI' }}: {{ d.reason }}{{ d.existing ? ' (includes a saved customer)' : '' }}</span></div>
           <label class="keep">Keep<select v-model="d.to"><option v-for="n in d.names" :key="n" :value="n">{{ n }}</option></select></label></div></div>
