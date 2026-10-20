@@ -155,7 +155,7 @@ const money0 = (v: number | null) => (v === null ? '—' : Math.round(v).toLocal
 watch(() => f.sheet, () => { if (step.value === 2) { keep.value = null; applyMap() } })
 // Categories suggested for rows (from the sheet's sections) that are not in the chart of accounts yet.
 const fresh = computed(() => [...new Set(Object.values(map.value).filter((v) => v.startsWith('cat:')))].filter((v) => !accts.value.some((a) => 'cat:' + a.parent + ':' + a.name === v)).map((to) => { const [, parent = '', ...n] = to.split(':'); return { to, parent, name: n.join(':') } }))
-const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi'))
+const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi' && !v.startsWith('part:')))
 const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && !k.startsWith('part:') && used.value.filter((v) => v === k).length > 1
 const summed = computed(() => props.target === 'financials' && used.value.some((v, i, a) => !v.startsWith('cat:') && a.indexOf(v) !== i))
 const chosen = computed(() => Object.values(map.value).filter(Boolean).length)
