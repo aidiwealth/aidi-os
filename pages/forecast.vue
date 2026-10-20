@@ -29,7 +29,8 @@ if (one.value?.forecasts.length) await pick(one.value!.forecasts.find((f) => f.i
 watch(() => (one.value ? one.value.company?.id ?? '-' : 'group'), async (k, was) => { if (k === was || !one.value) return; const l = one.value.forecasts; await pick(l.find((f) => f.is_main)?.id ?? l[0]?.id ?? '') })
 const { canPath } = useModuleAccess(), hasRoom = computed(() => canPath('/fundraising'))
 const build = ref(false)
-async function built(v: { name: string; assumptions: Assumptions }) { build.value = false; sel.value = ''; name.value = v.name; a.value = v.assumptions; await nextTick(); dirty.value = true; ok.value = ''; msg.value = '' }
+// Built from the numbers: saved straight away, like an upload, so there is no separate save step.
+async function built(v: { name: string; assumptions: Assumptions }) { build.value = false; await imported(v); if (!msg.value) ok.value = 'Built and saved as "' + v.name + '". Change any assumption below and save.' }
 // The bank against this forecast: what actually left the bank each month lately, and what the forecast spends.
 const bankCheck = computed(() => { const b = one.value?.bank; if (!b?.connected || !b.full_months) return null; const f = res.value.months.slice(0, 3); if (!f.length) return null; const fOut = f.reduce((s, x) => s + x.cogs + x.opex + Math.max(0, -x.items), 0) / f.length; const diff = fOut - b.avg_out; return { bankOut: b.avg_out, fOut, diff, off: Math.abs(diff) > Math.max(1000, b.avg_out * 0.15) } })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
@@ -41,7 +42,11 @@ async function useForGroup() { msg.value = ''; ok.value = ''; try { await $fetch
 const tplHref = computed(() => '/api/forecast/template' + (fq.value.cust ? '?cust=' + encodeURIComponent(fq.value.cust) : ''))
 const canLink = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 // A linked sheet updated a forecast: reload it unless there are unsaved changes.
-async function linked() { await refresh(); if (sel.value && !dirty.value) await pick(sel.value) }
+async function linked(fid?: string) { await refresh(); if (fid) { await pick(fid); ok.value = 'Linked and saved as "' + name.value + '". It stays in step with the sheet.' } else if (sel.value && !dirty.value) await pick(sel.value) }
+// A company with no forecast yet sees three ways to add one (like Customers), not an empty editor to save.
+const scratch = ref(false), slRef = ref<{ start: () => void } | null>(null)
+const empty = computed(() => !!one.value && !one.value.forecasts.length && !scratch.value && !sel.value && !dirty.value)
+watch(() => one.value?.company?.id, () => { scratch.value = false })
 const imp = ref(false), shareOpen = ref(route.query.share === '1' && !!sel.value)
 const cur0 = computed(() => one.value?.forecasts.find((f) => f.id === sel.value))
 watch(sel, (id) => { if (grp.value) return; useRouter().replace({ query: { ...route.query, f: id || undefined } }) })
@@ -93,13 +98,26 @@ function csv() {
     <template v-else><p class="label">Investor relations</p><InvestorTabs /></template>
     <ForecastGroup v-if="grp" :data="grp" :can-edit="canEdit" @open="(id: string) => { fs.s.value = 'entity:' + id }" @refresh="refresh()" />
     <template v-if="one">
-    <div class="hd"><div><h1 v-if="!scoped">Forecast</h1><p class="lead">Revenue, costs, profit and cash by month{{ scoped && one.company?.name ? ' for ' + one.company.name + ', in ' + one.currency : '' }}, starting from the latest actuals. Keep as many forecasts as you need, import one from the Finvry forecast template (read exactly, with no AI), and share any of them with a private link.</p></div>
+    <div v-if="empty" class="start">
+      <h2>Add {{ one.company?.name ? one.company.name + '\'s' : 'your' }} forecast</h2><p class="lead">Revenue, costs, profit and cash by month{{ scoped ? ', in ' + one.currency : '' }}. Pick one way to start; it is saved straight away and you can change anything later.</p>
+      <div class="opts">
+        <div class="opt"><b>Upload a forecast</b><p>The Finvry forecast template (Excel or CSV), read exactly with no AI, or your accountant's PDF. You check the lines, then it is saved.</p><div class="oa"><button class="btn" @click="imp = true">Upload a file</button><a class="lk" :href="tplHref">Download the template</a></div></div>
+        <div class="opt"><b>Link a Google Sheet</b><p>Paste the share link of a sheet in the template layout. Its months become the forecast, kept in step automatically, like Customers.</p><div class="oa"><button class="btn" :disabled="!canLink" @click="slRef?.start()">Link a sheet</button></div></div>
+        <div class="opt"><b>Build from my numbers</b><p>From {{ one.has_actuals ? 'your statements' : 'your cash, revenue and costs' }}{{ one.bank?.connected ? ' and your bank' : '' }}: growth, costs and cash worked out for you to adjust.</p><div class="oa"><button class="btn" @click="build = true">Build it</button></div></div>
+      </div>
+      <button class="lk" @click="scratch = true; pick('')">Or start from a blank forecast</button>
+      <p v-if="msg" class="error">{{ msg }}</p>
+    </div>
+    <template v-else>
+    <div class="hd"><div><h1 v-if="!scoped">Forecast</h1><p class="lead">Revenue, costs, profit and cash by month{{ scoped && one.company?.name ? ' for ' + one.company.name + ', in ' + one.currency : '' }}. Upload or link the forecast template, or build one from your numbers; share any forecast with a private link.</p></div>
       <div class="tb"><button class="btn" @click="build = true">Build from my numbers</button><button class="btn secondary" @click="imp = true">Import from a file</button><a class="btn secondary" :href="tplHref">Forecast template</a><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
     <nav class="ft"><button v-for="f in one.forecasts" :key="f.id" :class="{ on: sel === f.id }" @click="pick(f.id)">{{ f.name }}<span v-if="f.views" class="vw">{{ f.views }} view{{ f.views === 1 ? '' : 's' }}</span></button><button v-if="!sel" class="on">{{ name || 'New forecast' }} <span class="vw">not saved</span></button></nav>
     <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><span v-if="inGroup && sel && isMain" class="gm">Used for the group</span><button v-else-if="inGroup && sel && canEdit" class="lk" @click="useForGroup">Use for the group forecast</button><button v-if="sel" class="lk red" @click="del">Delete</button></div>
     <p v-if="a.fixed && Object.keys(a.fixed).length" class="note">{{ mon(Object.keys(a.fixed).sort()[0]!) }} to {{ mon(Object.keys(a.fixed).sort().pop()!) }} use the figures imported from {{ a.source?.file || 'your accountant' }}; the assumptions below apply after that. <button class="lk" @click="dropFixed">Use assumptions for every month instead</button></p>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok && !dirty" class="ok">{{ ok }}</p>
-    <ClientOnly><SheetLinks target="forecast" :forecasts="one.forecasts" :forecast-id="sel" :currency="one.currency" :can-edit="canLink" @synced="linked" /></ClientOnly>
+    </template>
+    <ClientOnly><SheetLinks ref="slRef" :class="{ hid: empty }" target="forecast" :forecasts="one.forecasts" :forecast-id="sel" :currency="one.currency" :can-edit="canLink" :scope-query="fq" @synced="linked" /></ClientOnly>
+    <template v-if="!empty">
     <p v-if="!one.has_actuals && !a.fixed && !one.bank?.connected" class="note">No monthly figures yet, so the starting point is blank. Add your statements under Financials{{ one.ng_bank ? '' : ' or connect your bank' }}, then use <button class="lk" @click="build = true">Build from my numbers</button>. Or type your current cash, revenue and costs below.</p>
     <p v-if="bankCheck" class="note">Bank check: over the last {{ one.bank!.full_months }} months <b>{{ m(bankCheck.bankOut) }}</b> a month left your bank; this forecast spends <b>{{ m(bankCheck.fOut) }}</b> a month at the start{{ bankCheck.off ? (bankCheck.diff < 0 ? ', which looks low.' : ', which looks high.') : ', in line.' }} <button v-if="bankCheck.off" class="lk" @click="build = true">Rebuild matched to the bank</button> · Cash in the bank now <b>{{ m(one.bank!.cash) }}</b> <button v-if="Math.abs(a.opening.cash - one.bank!.cash) > 1" class="lk" @click="a.opening.cash = one.bank!.cash">Use as opening cash</button></p>
     <div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div>
@@ -146,6 +164,7 @@ function csv() {
         <p class="fine">A forecast is an estimate from the assumptions you enter, not a promise of results. Figures in {{ cur }}.</p>
       </div>
     </div>
+    </template>
     <ForecastBuild :open="build" :seed="one.seed" :fin="one.fin" :bank="one.bank" :currency="one.currency" :ng-bank="one.ng_bank" @close="build = false" @done="built" @refresh="refresh()" />
     <ForecastImport :open="imp" :seed="one.seed" :q="fq" @close="imp = false" @done="imported" />
     <ShareLinks :open="shareOpen" kind="forecast" :object-id="sel" :title="name" @close="shareOpen = false" @changed="refresh()" />
@@ -176,4 +195,8 @@ function csv() {
 .t.sm { width: 100%; } .t.sm th, .t.sm td { text-align: left; } h3 { margin: 0 0 10px; font-size: 15px; } .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .as { position: static; max-height: none; } }
 .gm { font-size: 12.5px; color: var(--c-muted); margin-right: 12px; } .rmc { background: none; border: 0; color: var(--c-muted); font-size: 16px; cursor: pointer; padding: 0 4px; } .addc { display: flex; gap: 8px; margin: 6px 0 10px; } .addc input { flex: 1; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); }
+.start { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 8px; } .start h2 { margin: 0; font-size: 22px; } .start .lead { margin: 0; }
+.opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .opt { background: #fff; border: 1px solid var(--c-rule); padding: 18px; display: flex; flex-direction: column; gap: 8px; } .opt b { font-size: 15px; color: var(--c-ink); } .opt p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); flex: 1; }
+.oa { display: flex; gap: 14px; align-items: center; margin-top: 6px; } .start > .lk { align-self: flex-start; } .hid :deep(.sl), .hid { display: none; }
+@media (max-width: 900px) { .opts { grid-template-columns: 1fr; } }
 </style>

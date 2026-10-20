@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const live = !!bank?.connected && bank.accounts.some((a) => !a.debt && a.balance !== null)
   // With a live balance the forecast starts this month from today's cash; otherwise the month after the last statement.
   const start = live ? (last && addMonths(last.month, 1) > thisMonth ? addMonths(last.month, 1) : thisMonth) : last ? addMonths(last.month, 1) : thisMonth
-  const revenue = last?.revenue ?? 0, cogsPct = revenue && last?.cogs ? Math.round(last.cogs / revenue * 100) : 30
+  const revenue = last?.revenue ?? 0, cogsPct = revenue > 0 && last?.cogs ? Math.min(100, Math.max(0, Math.round(last.cogs / revenue * 100))) : 30
   const seed = defaults(start, { cash: last?.cash ?? 0, revenue, customers: kv(/customer|client|paying/i), headcount: kv(/headcount|employee|staff/i), payroll: avg('payroll') }, { marketing: avg('marketing'), rnd: avg('rnd'), ga: avg('ga'), other: avg('other') || (actuals.length && !avg('marketing') && !avg('ga') ? Math.max(0, avg('opex') - avg('payroll')) : 0) }, currency)
   seed.cogs_pct = cogsPct
   // Connected accounts are US accounts only: when they are part of the company's cash (a group, or accounts abroad),

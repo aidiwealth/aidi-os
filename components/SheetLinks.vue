@@ -7,8 +7,8 @@ interface AiBlock { sheet: string; title: string; label_col: string; scale: numb
 interface AiM { company: { name: string; description: string; website: string }; reporting_currency: string; fiscal_year_end: string; tabs: { sheet: string; what: string; used: boolean }[]; blocks: AiBlock[]; facts: { sheet: string; label: string; value: string; goes_to: string }[]; suggestions: { metric: string; why: string }[]; notes: string }
 interface AiRes { template?: boolean; document_id?: string | null; file?: string | null; provider: string; tabs: string[]; map: AiM; preview: { months: number; quarters: number; years: number; projected: number; missing: string[]; found: number; periods: { period_type: string; period_end: string; lines: number; kpis: number; revenue: number | null; net_income: number | null; cash: number | null; total_assets?: number | null; total_liabilities?: number | null; equity?: number | null }[] } }
 interface Prev { provider: string; document_id?: string | null; file?: string | null; keys: { key: string; label: string }[]; sheets: { sheet: string; months: string[]; rows: { label: string; last_month: string; last_value: number; months: number }[]; suggestion: { label: string; to: string }[] }[] }
-const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
-const emit = defineEmits<{ synced: [] }>()
+const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean; scopeQuery?: Record<string, string> }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
+const emit = defineEmits<{ synced: [forecastId?: string] }>()
 const links = ref<Link[]>([])
 // A forecast's links: only those of the forecasts on this page (in a group, the company's own).
 // Rolled up to one line once sheets are linked, if the person chose so (remembered per browser, per kind).
@@ -47,7 +47,7 @@ const recent = computed(() => (ai.value?.preview.periods ?? []).filter((p) => p.
 const prev = ref<Prev | null>(null), map = ref<Record<string, string>>({}), keep = ref<{ label: string; to: string }[] | null>(null)
 const tab = computed(() => prev.value?.sheets.find((s) => s.sheet === f.sheet) ?? prev.value?.sheets[0] ?? null)
 function start(l?: Link) {
-  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? props.forecasts[0]?.id ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: 'rows' })
+  Object.assign(f, { id: l?.id ?? '', name: l?.name ?? '', url: l?.url ?? '', sheet: l?.sheet ?? '', forecast_id: l?.forecast_id ?? props.forecastId ?? '', currency: l?.currency ?? props.currency, auto: l?.auto ?? true, mode: 'rows' })
   keep.value = l?.mapping ?? null; prev.value = null; ai.value = null; confirmed.value = !!l; fail.value = null; upFile.value = null; openB.value = null; map.value = {}; msg.value = ''; step.value = 1; open.value = true
   // A link first read with AI opens here as rows to choose: figures come only from rows the founder picked.
   if (l) read()
@@ -160,7 +160,6 @@ const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && us
 const summed = computed(() => props.target === 'financials' && used.value.some((v, i, a) => !v.startsWith('cat:') && a.indexOf(v) !== i))
 const chosen = computed(() => Object.values(map.value).filter(Boolean).length)
 async function save() {
-  if (props.target === 'forecast' && !f.forecast_id) { msg.value = 'Save a forecast first, then link the sheet to it.'; return }
   busy.value = true; msg.value = ''
   const mapping = Object.entries(map.value).filter(([, to]) => to).map(([label, to]) => ({ label, to }))
   if (prev.value?.document_id) {
@@ -173,13 +172,14 @@ async function save() {
     return
   }
   try {
-    const r = await $fetch<{ months?: number; skipped?: string[]; error?: string }>('/api/sheet-links', { method: 'POST', body: { id: f.id || undefined, name: f.name, url: f.url, target: props.target, subject: props.target === 'financials' ? props.subject : undefined, forecast_id: props.target === 'forecast' ? f.forecast_id : undefined, currency: f.currency, sheet: tab.value?.sheet ?? '', auto: f.auto, mapping: Object.entries(map.value).map(([label, to]) => ({ label, to })) } })
+    const r = await $fetch<{ months?: number; skipped?: string[]; error?: string; forecast_id?: string }>('/api/sheet-links', { method: 'POST', query: props.scopeQuery, body: { id: f.id || undefined, name: f.name, url: f.url, target: props.target, subject: props.target === 'financials' ? props.subject : undefined, forecast_id: props.target === 'forecast' ? f.forecast_id : undefined, currency: f.currency, sheet: tab.value?.sheet ?? '', auto: f.auto, mapping: Object.entries(map.value).map(([label, to]) => ({ label, to })) } })
     open.value = false; noteErr.value = !!r.error
     note.value = r.error ? 'Linked, but the first read failed: ' + r.error : 'Linked. ' + (r.months ?? 0) + ' month' + (r.months === 1 ? '' : 's') + ' brought in' + (r.skipped?.length ? '; skipped ' + r.skipped.join(', ') : '') + '.'
-    await load(); emit('synced')
+    await load(); emit('synced', r.forecast_id)
   } catch (e) { msg.value = err(e, 'Could not save the link.') } finally { busy.value = false }
 }
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+defineExpose({ start })
 </script>
 <template>
   <!-- With sheets linked, the section can be rolled up to one line (remembered on this browser). -->
@@ -199,7 +199,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
     <AppModal :open="open" :title="f.id ? 'Edit linked sheet' : 'Link a sheet'" wide @close="open = false">
       <div v-if="step === 1" class="slf">
         <div v-if="target === 'financials' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry template</b><span class="sub">Months across, our line names down the side, totals worked out for you. Finvry reads it exactly, with no AI, so nothing can land in the wrong line. Fill it in, open it in Google Sheets, and link it here (or drop the file below).</span></div><a class="btn secondary sm" href="/api/financials/template">Download template</a></div>
-        <div v-if="target === 'forecast' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry forecast template</b><span class="sub">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Each row is matched by its name, with no AI. Fill it in, open it in Google Sheets, and link it here.</span></div><a class="btn secondary sm" href="/api/forecast/template">Download template</a></div>
+        <div v-if="target === 'forecast' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry forecast template</b><span class="sub">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Each row is matched by its name, with no AI. Fill it in, open it in Google Sheets, and link it here.</span></div><a class="btn secondary sm" :href="'/api/forecast/template' + (scopeQuery?.cust ? '?cust=' + encodeURIComponent(scopeQuery.cust) : '')">Download template</a></div>
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
         <DropZone v-if="target === 'financials' && !f.id" accept=".xlsx,.csv" no-tip :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv · you choose the rows the same way, brought in once · or click to choose'" @change="pickFile" />
         <p class="sub">One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column. You choose where each row goes; figures are read straight from your cells, with no AI.</p>
@@ -239,7 +239,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
         <div class="g3">
           <label v-if="!prev.document_id" class="fl">Name<input v-model="f.name" maxlength="120"></label>
           <label v-if="prev.sheets.length > 1" class="fl">Tab<select v-model="f.sheet"><option v-for="s in prev.sheets" :key="s.sheet" :value="s.sheet">{{ s.sheet }}</option></select></label>
-          <label v-if="target === 'forecast'" class="fl">Forecast<select v-model="f.forecast_id"><option v-for="x in forecasts" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
+          <label v-if="target === 'forecast'" class="fl">Into<select v-model="f.forecast_id"><option value="">A new forecast named "{{ f.name || 'Linked sheet' }}"</option><option v-for="x in forecasts" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
           <label v-else class="fl">Currency<input v-model="f.currency" maxlength="3" pattern="[A-Z]{3}"></label>
         </div>
         <p class="sub">{{ prev.provider }} · {{ tab.months.length }} months, {{ mon(tab.months[0]!) }} to {{ mon(tab.months[tab.months.length - 1]!) }}{{ target === 'financials' ? ' (months after this one are left out)' : '' }} · into {{ target === 'forecast' ? 'the forecast as given months' : subjectLabel || 'this company' }}</p>

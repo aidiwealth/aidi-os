@@ -291,6 +291,8 @@ export async function syncLink(l: LinkRow, userId: string | null, src?: { buf: B
         if (any) { fixed[m] = fm; months++ }
       }
       a.fixed = fixed
+      const given = Object.keys(fixed).sort()
+      if (a.linked_new && given.length) { a.start = given[0]; a.months = Math.min(60, Math.max(12, Math.ceil((given.length + 6) / 6) * 6)); delete a.linked_new }
       a.source = { file: 'Linked sheet: ' + l.name, imported_at: new Date().toISOString(), lines: chosen.map((c) => ({ label: c.label, maps_to: c.to })) }
       await db().query('UPDATE financials.forecasts SET assumptions = $2, updated_at = now() WHERE id = $1', [l.forecast_id, JSON.stringify(a)])
     }

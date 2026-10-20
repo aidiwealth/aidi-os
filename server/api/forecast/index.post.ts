@@ -2,13 +2,15 @@
 import { z } from 'zod'
 const ym = z.string().regex(/^\d{4}-\d{2}$/)
 const num = (min: number, max: number) => z.coerce.number().min(min).max(max)
+// A percentage outside its range (e.g. cost of revenue above revenue in the latest month) is held at the nearest limit.
+const pct = (min: number, max: number) => z.preprocess((v) => { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : 0 }, z.number())
 const OneOff = z.object({ label: z.string().trim().max(80).default(''), month: ym, amount: num(-1e12, 1e12) })
 const A = z.object({ start: ym, months: z.coerce.number().int().min(3).max(60), currency: z.string().regex(/^[A-Z]{3}$/),
   opening: z.object({ cash: num(-1e12, 1e12), revenue: num(0, 1e12), customers: num(0, 1e9), headcount: num(0, 1e6), payroll: num(0, 1e12) }),
-  revenue: z.object({ mode: z.enum(['growth', 'customers']), growth_pct: num(-100, 1000), new_customers: num(0, 1e9), new_growth_pct: num(-100, 1000), churn_pct: num(0, 100), arpu: num(0, 1e9), arpu_growth_pct: num(-100, 1000) }),
-  cogs_pct: num(0, 100), costs: z.array(z.object({ key: z.string().regex(/^[a-z_]{2,30}$/), label: z.string().max(80), amount: num(0, 1e12), growth_pct: num(-100, 1000) })).max(12),
-  payroll_raise_pct: num(-100, 100), hires: z.array(z.object({ role: z.string().trim().max(80).default(''), start: ym, monthly_cost: num(0, 1e10) })).max(200),
-  items: z.array(OneOff).max(100), funding: z.array(OneOff).max(50), tax_pct: num(0, 100),
+  revenue: z.object({ mode: z.enum(['growth', 'customers']), growth_pct: pct(-100, 1000), new_customers: num(0, 1e9), new_growth_pct: pct(-100, 1000), churn_pct: pct(0, 100), arpu: num(0, 1e9), arpu_growth_pct: pct(-100, 1000) }),
+  cogs_pct: pct(0, 100), costs: z.array(z.object({ key: z.string().regex(/^[a-z_]{2,30}$/), label: z.string().max(80), amount: num(0, 1e12), growth_pct: pct(-100, 1000) })).max(12),
+  payroll_raise_pct: pct(-100, 100), hires: z.array(z.object({ role: z.string().trim().max(80).default(''), start: ym, monthly_cost: num(0, 1e10) })).max(200),
+  items: z.array(OneOff).max(100), funding: z.array(OneOff).max(50), tax_pct: pct(0, 100),
   scenarios: z.object({ best: z.object({ growth: num(-100, 100), costs: num(-100, 100) }), worst: z.object({ growth: num(-100, 100), costs: num(-100, 100) }) }),
   fixed: z.record(ym, z.object({ revenue: num(-1e12, 1e12), cogs: num(-1e12, 1e12), payroll: num(-1e12, 1e12), costs: z.record(z.string().regex(/^[a-z_]{2,30}$/), num(-1e12, 1e12)), tax: num(-1e12, 1e12), items: num(-1e12, 1e12), funding: num(-1e12, 1e12), customers: num(0, 1e10), headcount: num(0, 1e7) }).partial()).refine((r) => Object.keys(r).length <= 72, 'Up to 72 months').optional(),
   source: z.object({ file: z.string().max(200), imported_at: z.string().max(40), lines: z.array(z.object({ label: z.string().max(200), maps_to: z.string().max(30) })).max(200) }).optional() })
