@@ -42,7 +42,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 
 <template>
   <section class="fh" :class="{ brief, open }">
-    <header class="hd"><div><span class="eb">What your numbers say</span><h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2></div>
+    <header class="hd"><div><span class="eb">What your numbers say</span><h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2><p v-if="$slots.extra" class="xt"><slot name="extra" /></p></div>
       <span class="meta">{{ data ? periodText(data.period) + (data.ai ? '' : ' · from your figures') : '' }}<template v-if="brief && data"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}</button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template><button v-if="data && shown" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
         <label v-if="data && shown" class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span></header>
 
@@ -133,4 +133,5 @@ dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } dl d
 .bm.unset select { border-color: var(--c-navy); }
 .nts { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: var(--c-ink-soft); display: flex; flex-direction: column; gap: 4px; }
 .it p.full { display: block; -webkit-line-clamp: unset; overflow: visible; } .more { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; margin-top: 2px; }
+.xt { margin: 6px 0 0; font-size: 13px; color: var(--c-ink-soft); max-width: 80ch; } .xt :deep(b) { font-weight: 500; } .xt :deep(a) { color: var(--c-blue-deep); text-decoration: none; }
 </style>
