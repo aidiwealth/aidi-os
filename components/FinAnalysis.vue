@@ -44,11 +44,11 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
   <section class="fh" :class="{ brief, open }">
     <header class="hd">
       <div class="top"><span class="eb">What your numbers say</span><span class="pr">{{ data ? periodText(data.period) + (data.ai ? '' : ' · from your figures') : '' }}</span></div>
-      <h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2>
+      <h2 v-if="data" class="hl">{{ data.headline }}</h2><AiThinking v-else-if="pending" compact :steps="['Reading your figures…', 'Checking burn and runway…', 'Writing the headline…']" />
       <div v-if="$slots.extra" class="xt"><slot name="extra" /></div>
       <div v-if="data && (brief || shown)" class="acts">
         <template v-if="brief"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cv" :class="{ up: open }"><path d="M6 9l6 6 6-6" /></svg></button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template>
-        <span v-if="shown" class="rt"><button class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
+        <span v-if="shown" class="rt"><button class="lk" :disabled="pending" @click="again"><AiSpark v-if="pending" :size="14" /> {{ pending ? 'Reading…' : 'Refresh' }}</button>
           <label class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span>
       </div>
     </header>
@@ -79,7 +79,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
       <!-- Four key points -->
       <div class="box kp">
         <span class="bl">Four key points</span>
-        <p v-if="pending && !data" class="mutd">Reading…</p>
+        <AiThinking v-if="pending && !data" compact :steps="['Reading…']" />
         <ol v-else-if="data">
           <li v-for="(i, n) in data.insights.slice(0, 4)" :key="n" :class="{ open: openI === n }">
             <button type="button" @click="openI = openI === n ? null : n"><span class="tn" :class="i.tone"><i>{{ i.tone === 'good' ? '↑' : i.tone === 'risk' ? '✕' : '!' }}</i>{{ TONE[i.tone] }}</span><b>{{ i.title }}</b><svg class="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg></button>

@@ -172,7 +172,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     <ClientOnly><CustomerUpload :open="up" :existing="cs.length" extra="retention" @close="up = false" @done="uploaded" /></ClientOnly>
     <ClientOnly><MgmtReport v-if="rpt" :open="rpt" :subject="fs.s.value" :cust="custScope" :company="''" :only="['retention', 'customers']" title="Retention and customer report" @close="rpt = false" @done="(m) => { rpt = false; ok = m }" /></ClientOnly>
     <AppModal :open="sg.open" title="Suggested customer groups" wide @close="sg.open = false">
-      <p v-if="sg.busy && !sg.s" class="mut">Looking at your customers…</p>
+      <AiThinking v-if="sg.busy && !sg.s" compact :steps="['Looking at your customers…', 'Finding groups that behave alike…', 'Writing the suggestion…']" />
       <div v-else-if="sg.s" class="sgb"><h3>{{ sg.s.name }}</h3><p>{{ sg.s.why }}</p>
         <table class="table"><tbody><tr v-for="s in sg.s.segments" :key="s.name"><td><b>{{ s.name }}</b></td><td>{{ s.rule }}</td><td v-if="sg.s.kind === 'custom'" class="n">{{ sugCounts.get(s.name) ?? 0 }} customers</td></tr></tbody></table>
         <p v-if="sg.s.alternatives.length" class="mut">Other ways to group: {{ sg.s.alternatives.join('; ') }}.</p>

@@ -197,7 +197,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
         <label class="lb">Supporting document<select v-model="rf.document_id"><option value="">None</option><option v-for="d in docs ?? []" :key="d.id" :value="d.id">{{ d.title }}</option></select></label>
         <div class="aib full"><b>✦ Write with AI</b><span>Say what it should cover; AI drafts it from this entity's register{{ rf.kind === 'distribution' ? ', the beneficiary and amount' : rf.kind === 'minutes' ? ' and the meeting date' : '' }}. Gaps show as [brackets].</span>
           <textarea v-model="ai.brief" rows="2" maxlength="4000" :placeholder="BRIEF[rf.kind]" />
-          <div class="aia"><button class="btn secondary sm" type="button" :disabled="ai.busy || (!ai.brief.trim() && !rf.body.trim() && !rf.title.trim())" @click="aiDraft">{{ ai.busy ? 'Writing…' : rf.body.trim() ? 'Improve with AI' : 'Draft with AI' }}</button><span v-if="ai.err" class="error">{{ ai.err }}</span></div></div>
+          <div class="aia"><button class="btn secondary sm" type="button" :disabled="ai.busy || (!ai.brief.trim() && !rf.body.trim() && !rf.title.trim())" @click="aiDraft"><AiSpark v-if="ai.busy" /> {{ ai.busy ? 'Writing…' : rf.body.trim() ? 'Improve with AI' : 'Draft with AI' }}</button><span v-if="ai.err" class="error">{{ ai.err }}</span></div></div>
         <label class="lb full">Text<textarea v-model="rf.body" rows="12" required maxlength="20000" placeholder="RESOLVED, that…" /></label>
         <p class="mut sm full">This saves a draft. You circulate it to {{ signers.length ? 'the ' + signers.length + ' signator' + (signers.length === 1 ? 'y' : 'ies') : 'the signatories' }} from the next page.</p>
         <p v-if="msg" class="error full">{{ msg }}</p>

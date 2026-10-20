@@ -62,7 +62,7 @@ const { data: loanApp } = await useFetch<{ id: string; status: string; amount: n
 
       <div class="col">
         <div class="card">
-          <div class="row"><h2>AI screening</h2><button class="btn secondary sm" :disabled="busy" @click="rescreen">{{ busy ? 'Working…' : (latest ? 'Re-screen' : 'Screen now') }}</button></div>
+          <div class="row"><h2>AI screening</h2><button class="btn secondary sm" :disabled="busy" @click="rescreen"><AiSpark v-if="busy" /> {{ busy ? 'Screening…' : (latest ? 'Re-screen' : 'Screen now') }}</button></div>
           <p class="advice">Advice only. A partner makes every decision.</p>
           <template v-if="latest">
             <p class="big" :data-rec="latest.recommendation">{{ latest.score }}<span>/100</span> · {{ REC[latest.recommendation] }}</p>

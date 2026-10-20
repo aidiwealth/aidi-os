@@ -72,7 +72,7 @@ function done() { if (built.value) emit('done', { name: name.value.trim() || 'Ac
       <p class="lead">Upload the filled template (or a sheet laid out the same way: months across one heading row, the line names down the first column). You check every line and the totals before it is saved. A PDF from your accountant can still be read, with AI; check it carefully.</p>
       <DropZone multiple accept=".xlsx,.xlsm,.csv,.pdf" :disabled="busy" hint="The template (Excel or CSV), or a PDF · up to 3 files" @change="add" />
       <ul v-if="files.length" class="fl"><li v-for="(f, i) in files" :key="f.name"><b>{{ f.name }}</b><button class="lk red" @click="files.splice(i, 1)">Remove</button></li></ul>
-      <p v-if="busy" class="mut">Reading… larger models can take a minute.</p><p v-if="msg" class="error">{{ msg }}</p>
+      <AiThinking v-if="busy" compact :steps="['Reading the model…', 'Matching rows to forecast lines…', 'Larger models can take a minute…']" /><p v-if="msg" class="error">{{ msg }}</p>
     </div>
     <div v-else class="fi">
       <div class="nr"><label class="label">Name<input v-model="name" maxlength="120"></label><p class="mut">{{ fnames.join(', ') }} · {{ months.length }} months from {{ months[0] ? mon(months[0]) : '—' }} to {{ months.length ? mon(months[months.length - 1]!) : '—' }} · {{ sheet.currency }}</p></div>

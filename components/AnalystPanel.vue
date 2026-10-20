@@ -64,7 +64,7 @@ function md(s: string) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').sp
         <div v-for="(m, i) in msgs" :key="i" class="m" :class="m.role"><div v-if="m.role === 'assistant'" class="md" v-html="md(m.content)" /><template v-else>{{ m.content }}</template>
           <div v-if="m.actions?.length" class="acts"><template v-for="(a, j) in m.actions" :key="j"><NuxtLink v-if="a.type === 'open' && inApp(a.path)" :to="a.path!" class="act">{{ a.label }} →</NuxtLink>
             <span v-else-if="a.type === 'do'" class="doa"><button type="button" class="act do" :disabled="a.done || actBusy === akey(i, j)" :title="a.summary" @click="doAct(i, j, a)">{{ a.done ? '✓ ' : '' }}{{ actBusy === akey(i, j) ? 'Working…' : a.label }}</button><em v-if="actMsg[akey(i, j)]">{{ actMsg[akey(i, j)] }}</em><em v-else-if="a.summary && !a.done">{{ a.summary }}. Nothing happens until you click.</em></span></template></div></div>
-        <div v-if="busy" class="m assistant typing"><span /><span /><span /></div>
+        <div v-if="busy" class="m assistant thinking"><AiThinking compact :steps="['Thinking…', 'Looking at your data…', 'Checking the numbers…', 'Writing the answer…']" /></div>
         <p v-if="err" class="err">{{ err }}</p>
       </div>
       <footer v-if="view === 'chat'"><textarea ref="ta" v-model="input" rows="1" placeholder="Ask the analyst…" @keydown="key" /><button type="button" :disabled="busy || !input.trim()" aria-label="Send" @click="send()"><svg viewBox="0 0 24 24"><path d="M4 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></footer>
@@ -96,4 +96,5 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 footer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--c-rule); } textarea { flex: 1; resize: none; font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); max-height: 120px; } footer button { width: 40px; border: 0; background: var(--c-navy); color: #fff; cursor: pointer; display: grid; place-items: center; } footer button:disabled { opacity: .4; } footer svg { width: 18px; height: 18px; }
 .fine { margin: 0; padding: 0 12px 10px; font-size: 11px; color: var(--c-muted); }
 @media print { .an { display: none; } }
+.thinking :deep(.ait) { margin: 0; }
 </style>

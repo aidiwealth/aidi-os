@@ -7,7 +7,10 @@ interface Res { subject: string; name: string; advice: { as_of: string | null; c
 const refreshQ = ref<string | undefined>(undefined)
 // For the company (or the group) chosen at the top of Financials.
 const fs = await useFinScope()
-const { data, pending, refresh } = await useLazyFetch<Res>('/api/financials/advice', { query: { subject: fs.s, refresh: refreshQ }, watch: [fs.s], server: false })
+const { data: fresh, pending, refresh } = await useLazyFetch<Res>('/api/financials/advice', { query: { subject: fs.s, refresh: refreshQ }, watch: [fs.s], server: false })
+// The advice saved last time shows at once while the fresh one is worked out (which can take a while with AI).
+const { data: last } = await useLazyFetch<Res>('/api/financials/advice', { query: { subject: fs.s, cached: '1' }, watch: [fs.s], server: false })
+const data = computed(() => fresh.value ?? (last.value?.advice && last.value.subject === fs.s.value ? last.value : null))
 async function again() { refreshQ.value = '1'; await refresh(); refreshQ.value = undefined }
 const team = ref('')
 const items = computed(() => (data.value?.advice?.items ?? []).filter((i) => !team.value || i.team === team.value))
@@ -28,11 +31,12 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
   <section>
     <FinHeader />
     <div class="head"><div><p class="sub">{{ data?.advice?.as_of ? 'From your figures to ' + mon(data.advice.as_of) : '' }}</p></div>
-      <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again">{{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
+      <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again"><AiSpark v-if="pending" :size="14" /> {{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
 
 
     <p class="disc1" role="note"><b>Guidance, not professional advice.</b> Worked out from your figures; check anything financial, legal, tax or about people with your advisers.</p>
-    <p v-if="pending && !data" class="mut">Looking at your figures…</p>
+    <AiThinking v-if="pending && data" compact :steps="['Checking your latest figures…', 'Updating the advice…']" />
+    <AiThinking v-if="pending && !data" :steps="['Reading your figures…', 'Checking revenue, costs and cash…', 'Looking at customers and retention…', 'Working out what each team should do…', 'Writing it up…']" :skeleton="3" />
     <EmptyState v-else-if="data && !data.advice" card icon="chart" title="Add your figures first" text="Advice needs at least three months of figures in Financials, or your customer revenue." />
     <template v-else-if="data?.advice">
       <div class="top">

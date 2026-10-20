@@ -18,7 +18,7 @@ function undo() { if (prev.value === null) return; emit('update:modelValue', pre
 <template>
   <span class="aiw">
     <span class="aib"><button type="button" class="ail" :disabled="busy" @click="open = !open">✨ {{ has ? 'Improve with AI' : 'Write with AI' }}</button><button v-if="prev !== null && !busy" type="button" class="ail mut" @click="undo">Undo</button></span>
-    <span v-if="open" class="aip"><input v-model="note" maxlength="600" :placeholder="has ? 'Optional: what to change, e.g. shorter, lead with revenue' : 'Optional: anything to include, e.g. 3 enterprise pilots'" @keydown.enter.prevent="run"><button type="button" class="btn sm" :disabled="busy" @click="run">{{ busy ? 'Writing…' : has ? 'Improve' : 'Write' }}</button><button type="button" class="ail mut" @click="open = false">Cancel</button></span>
+    <span v-if="open" class="aip"><input v-model="note" maxlength="600" :placeholder="has ? 'Optional: what to change, e.g. shorter, lead with revenue' : 'Optional: anything to include, e.g. 3 enterprise pilots'" @keydown.enter.prevent="run"><button type="button" class="btn sm" :disabled="busy" @click="run"><AiSpark v-if="busy" /> {{ busy ? 'Writing…' : has ? 'Improve' : 'Write' }}</button><button type="button" class="ail mut" @click="open = false">Cancel</button></span>
     <span v-if="err" class="aie">{{ err }}</span>
   </span>
 </template>

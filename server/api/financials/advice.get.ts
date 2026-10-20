@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   const subject = String(q.subject || '') || (ent ? 'entity:' + ent : '')
   if (subject !== 'group' && !/^(entity|company):[0-9a-f-]{36}$/.test(subject)) throw apiError('invalid', 'Choose a company.')
   await subjectName(subject)
+  if (q.cached === '1') return { subject, name: await subjectName(subject), advice: await lastAdvice(subject), cached: true }
   if (q.refresh === '1') await rateLimit('fin_advice', user.userId, 10, 60 * 60 * 1000)
   void org
   return { subject, name: await subjectName(subject), advice: await adviseCompany(subject, q.refresh === '1') }

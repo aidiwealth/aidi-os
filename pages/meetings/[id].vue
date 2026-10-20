@@ -68,7 +68,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
         </div>
         <div class="card ai2"><div class="aih"><div><h2>✨ Write the minutes with AI</h2><p class="mut">Paste or type rough notes — bullets, half-sentences, anything. AI writes a summary, minutes by topic, decisions and action items from what you wrote. It never adds facts.</p></div></div>
           <textarea v-model="rough" rows="7" maxlength="60000" placeholder="e.g. Reviewed Kiza Q3 numbers, revenue 120k up 18%. Agreed to extend runway, hire 2 engineers. Tolu to send board pack by Friday 18 Oct. Next call w/ Northgate re bridge…" />
-          <div class="row"><button type="button" class="btn" :disabled="busy === 'ai' || (rough + f.notes).replace(/\s/g, '').length < 20" @click="write">{{ busy === 'ai' ? 'Writing…' : 'Write minutes' }}</button><span class="mut sm">Counts towards your AI allowance.</span></div></div>
+          <div class="row"><button type="button" class="btn" :disabled="busy === 'ai' || (rough + f.notes).replace(/\s/g, '').length < 20" @click="write"><AiSpark v-if="busy === 'ai'" /> {{ busy === 'ai' ? 'Writing…' : 'Write minutes' }}</button><span class="mut sm">Counts towards your AI allowance.</span></div></div>
         <div class="card"><h2>Summary</h2><textarea v-model="f.summary" rows="3" maxlength="4000" placeholder="Two or three sentences" /></div>
         <div class="card"><h2>Minutes</h2><ClientOnly><RichEditor v-model="f.notes" :min-height="260" :max-length="60000" placeholder="What was discussed, by topic" /></ClientOnly></div>
         <div class="card"><h2>Decisions</h2><ClientOnly><RichEditor v-model="f.decisions" :min-height="120" :max-length="20000" placeholder="One line per decision" /></ClientOnly></div>

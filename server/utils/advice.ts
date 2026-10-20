@@ -58,6 +58,11 @@ function rules(fin: F | null, cust: F | null, cur: string): AdviceItem[] {
 
 const Out = z.object({ items: z.array(z.object({ kind: z.enum(['urgent', 'next', 'working']), team: z.enum(TEAMS as [Team, ...Team[]]), title: z.string().max(140), why: z.string().max(400), steps: z.array(z.string().max(260)).min(1).max(4), watch: z.string().max(80), target: z.string().max(60), when: z.string().max(40) })).max(14) })
 
+// The advice saved last time for this company or group, without working anything out: shown at once while the
+// page checks whether the figures changed.
+export async function lastAdvice(subject: string): Promise<Advice | null> {
+  return (await db().query<{ analysis: Advice }>('SELECT analysis FROM financials.analyses WHERE subject = $1', ['advice:' + subject])).rows[0]?.analysis ?? null
+}
 export async function adviseCompany(subject: string, force = false): Promise<Advice | null> {
   const org = (await currentOrg())!
   const cur = await subjectCurrency(subject), sec = await cashPolicy()
