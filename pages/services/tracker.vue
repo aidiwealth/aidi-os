@@ -20,7 +20,7 @@ const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((
 const mon = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short' }); const dd = (d: string) => new Date(d + 'T12:00:00').getDate()
 const day = (d: string | null) => (d ? new Date(d.length === 10 ? d + 'T00:00:00Z' : d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const msg = ref(''); const ok = ref(''); const busy = ref('')
-async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'done' && !confirm('Mark "' + o.title + '" for ' + o.company + ' as filed?')) return; busy.value = o.id + action; msg.value = ''; ok.value = ''
+async function act(o: O, action: 'remind' | 'job' | 'done') { if (action === 'done' && !await askConfirm('Mark "' + o.title + '" for ' + o.company + ' as filed?')) return; busy.value = o.id + action; msg.value = ''; ok.value = ''
   try { const r = await $fetch<{ sent?: number; job_id?: string }>('/api/services/tracker/action', { method: 'POST', body: { obligation_id: o.id, action } }); ok.value = action === 'remind' ? 'Reminder sent to ' + (r.sent ?? 0) + ' people at ' + o.company + '.' : action === 'job' ? 'Job opened.' : 'Marked filed; the next deadline is set.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = '' } }
 // Add a filing or renewal to a client's calendar (tied to a service), or edit / remove one.
@@ -33,7 +33,7 @@ watch(() => cal.service_code, (c) => { if (cal.id) return; const s = data.value?
 const calPast = computed(() => !!cal.next_due && cal.next_due < todayIso)
 const calClient = computed(() => data.value?.clients.find((c) => c.id === cal.client_id))
 async function saveCal(remove = false) {
-  if (remove && !confirm('Remove "' + cal.title + '" from this client\'s calendar?')) return
+  if (remove && !await askConfirm('Remove "' + cal.title + '" from this client\'s calendar?')) return
   busy.value = 'cal'; msg.value = ''; ok.value = ''
   try {
     const r = await $fetch<{ job_id?: string | null; workspace_created?: boolean }>('/api/services/tracker/obligation', { method: 'POST', body: { id: cal.id || undefined, remove, client_id: cal.client_id || undefined, service_code: cal.service_code, title: cal.title, recurrence: cal.recurrence, next_due: cal.next_due, reminder_days: cal.reminder_days, notes: cal.notes, filed_on: !cal.id && calPast.value && cal.state === 'filed' ? cal.filed_on : undefined, create_job: !cal.id && cal.create_job && !(calPast.value && cal.state === 'filed') } })

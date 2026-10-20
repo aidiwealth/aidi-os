@@ -70,14 +70,14 @@ const { data: ags, refresh: rags } = await useFetch<Ag[]>('/api/services/' + id 
 const ag = reactive({ open: false, effective_date: '', scope: '', notes: '', email: true })
 function openAgSend() { Object.assign(ag, { open: true, effective_date: (job.value.created_at ?? new Date().toISOString()).slice(0, 10), scope: '', notes: '', email: true }) }
 const sendAg = () => run(async () => { const r = await $fetch<{ emailed: boolean }>('/api/services/' + id + '/agreements', { method: 'POST', body: { effective_date: ag.effective_date, scope: ag.scope, notes: ag.notes, email: ag.email } }); ag.open = false; ok.value = 'Agreement sent' + (r.emailed ? ' and emailed to the client.' : '. The client sees it on the request.'); await rags() })
-const withdrawAg = (a: Ag) => { if (window.confirm('Withdraw this unsigned agreement?')) run(async () => { await $fetch('/api/services/agreements/' + a.id, { method: 'DELETE' }); await rags() }) }
+const withdrawAg = async (a: Ag) => { if (await askConfirm('Withdraw this unsigned agreement?')) run(async () => { await $fetch('/api/services/agreements/' + a.id, { method: 'DELETE' }); await rags() }) }
 async function openAg(aid: string) { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/services/agreements/' + aid + '/pdf'); if (w) w.location.href = r.url } catch { w?.close() } }
 const toggleEmails = () => run(async () => { const m = !muted.value; await $fetch('/api/services/clients/' + job.value.client_id + '/emails', { method: 'POST', body: { muted: m } }); ok.value = m ? 'Emails to ' + (job.value.contact_name || job.value.client) + ' are off. Updates still appear on their job page.' : 'Emails to the client are back on.' })
 const quiet = ' Saved to their job page — emails to this client are off.'
 // Share a file with the client or make it team-only.
 const setShared = (e: Ev, visible: boolean) => run(async () => { const r = await $fetch<{ emailed: boolean; muted: boolean }>('/api/services/' + id + '/files/' + e.id, { method: 'POST', body: { visible } }); ok.value = visible ? (r.muted ? '"' + e.document_title + '" is now visible to the client.' + quiet : r.emailed ? '"' + e.document_title + '" shared and the client emailed.' : '"' + e.document_title + '" shared; the email did not send.') : '"' + e.document_title + '" is now team only.' })
 const setStatus = (s: string) => run(async () => {
-  const note = s === 'waiting_client' ? prompt('What do you need from the client? (sent to them)') ?? '' : ''
+  const note = s === 'waiting_client' ? await askPrompt('What do you need from the client? (sent to them)') ?? '' : ''
   const r = await $fetch<{ emailed: boolean }>('/api/services/' + id + '/events', { method: 'POST', body: { kind: 'status', status: s, body: note || undefined, visible_to_client: tellClient.value } })
   if (tellClient.value) ok.value = muted.value ? 'Status changed.' + quiet : r.emailed ? 'Status changed. Client emailed.' : 'Status changed; the client email did not send.'
 })
@@ -136,7 +136,7 @@ const ext = (e: Ev) => (e.document_mime?.includes('pdf') ? 'PDF' : e.document_mi
 
 // Charge an unpaid invoice to the client's Finvry wallet.
 const canCharge = (i: Inv) => !!data.value?.wallet && data.value.wallet.currency === i.currency && data.value.wallet.balance_minor >= Math.round(Number(i.amount) * 100)
-const charge = (i: Inv) => { if (!confirm('Charge ' + fmtMoney(i.amount, i.currency) + ' for ' + i.number + ' to the client wallet? The client gets a receipt.')) return; return run(async () => { await $fetch('/api/services/invoices/' + i.id + '/action', { method: 'POST', body: { action: 'charge_wallet' } }); ok.value = i.number + ' paid from the client wallet. Receipt emailed.' }) }
+const charge = async (i: Inv) => { if (!await askConfirm('Charge ' + fmtMoney(i.amount, i.currency) + ' for ' + i.number + ' to the client wallet? The client gets a receipt.')) return; return run(async () => { await $fetch('/api/services/invoices/' + i.id + '/action', { method: 'POST', body: { action: 'charge_wallet' } }); ok.value = i.number + ' paid from the client wallet. Receipt emailed.' }) }
 const link = ref('')
 const sendLink = () => run(async () => { const r = await $fetch<{ link: string; emailed: boolean }>('/api/services/' + id + '/link', { method: 'POST' }); link.value = r.link; ok.value = r.emailed ? 'Link emailed to ' + job.value.email + '.' : 'Link created; copy it below.' })
 

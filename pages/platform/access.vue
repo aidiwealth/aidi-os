@@ -23,7 +23,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function act(action: 'approve' | 'reject' | 'demo' | 'reopen', ids = sel.value) {
   if (!ids.length) return
   let email = false
-  if (action === 'reject') { if (!confirm('Reject ' + ids.length + ' request' + (ids.length === 1 ? '' : 's') + '?')) return; email = confirm('Also email them a polite "not right now"? (Cancel = no email)') }
+  if (action === 'reject') { if (!await askConfirm('Reject ' + ids.length + ' request' + (ids.length === 1 ? '' : 's') + '?')) return; email = await askConfirm('Also email them a polite "not right now"?', { ok: 'Email them', cancel: 'No email' }) }
   busy.value = true; msg.value = ''; ok.value = ''
   try { const r = await $fetch<{ sent?: number; failed?: number }>('/api/platform/access/action', { method: 'POST', body: { ids, action, email } }); ok.value = action === 'approve' ? (r.sent ?? 0) + ' invitation' + (r.sent === 1 ? '' : 's') + ' sent.' + (r.failed ? ' ' + r.failed + ' could not be emailed: approved, so use Resend.' : '') : 'Done.'; sel.value = []; await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }

@@ -14,7 +14,7 @@ const dirty = computed(() => !!cur.value && (ed.title !== cur.value.title || ed.
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function save(reset = false) {
-  if (reset && !window.confirm('Reset the wording of "' + cur.value?.label + '" to the Finvry default? This saves a new version.')) return
+  if (reset && !await askConfirm('Reset the wording of "' + cur.value?.label + '" to the Finvry default? This saves a new version.')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try { await $fetch('/api/services/agreements/template', { method: 'POST', body: reset ? { code: code.value, reset: true } : { code: code.value, title: ed.title, body: ed.body } }); await refresh(); ok.value = (reset ? 'Reset to the default' : 'Saved') + ' — version ' + cur.value?.version + ' is used from now on. Signed agreements keep the wording they were signed with.' }
   catch (e) { msg.value = err(e) } finally { busy.value = false }

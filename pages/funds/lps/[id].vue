@@ -26,7 +26,7 @@ const portal = () => run(() => $fetch('/api/funds/lps/' + id + '/portal', { meth
 const KIND: Record<string, string> = { individual: 'Individual', entity: 'Company or trust', institution: 'Institution', gp: 'GP commitment' }
 const KYC: Record<string, string> = { pending: 'KYC pending', approved: 'KYC approved', expired: 'KYC expired' }
 const DS: Record<string, string> = { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off' }
-async function viewPortal() { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/funds/lps/' + id + '/preview', { method: 'POST' }); if (w) w.location.href = r.url; else window.location.href = r.url } catch { w?.close(); alert('Could not open the portal preview.') } }
+async function viewPortal() { const w = window.open('', '_blank'); try { const r = await $fetch<{ url: string }>('/api/funds/lps/' + id + '/preview', { method: 'POST' }); if (w) w.location.href = r.url; else window.location.href = r.url } catch { w?.close(); notify('Could not open the portal preview.') } }
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]!.toUpperCase()).join('')
 
 // Headline figures across everything this LP holds (in the first fund's currency; mixed currencies are rare).

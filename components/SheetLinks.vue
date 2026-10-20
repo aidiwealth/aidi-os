@@ -32,7 +32,7 @@ async function syncNow(l: Link) {
   try { const r = await $fetch<{ months: number; skipped: string[] }>('/api/sheet-links/' + l.id + '/sync', { method: 'POST' }); note.value = l.name + ': ' + r.months + ' month' + (r.months === 1 ? '' : 's') + ' updated' + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '.'; noteErr.value = false; emit('synced') }
   catch (e) { note.value = err(e, 'Could not read the sheet.'); noteErr.value = true } finally { busyId.value = ''; await load() }
 }
-async function unlink(l: Link) { if (!confirm('Unlink "' + l.name + '"? Figures already brought in stay.')) return; await $fetch('/api/sheet-links/' + l.id, { method: 'DELETE' }).catch(() => {}); await load() }
+async function unlink(l: Link) { if (!await askConfirm('Unlink "' + l.name + '"? Figures already brought in stay.')) return; await $fetch('/api/sheet-links/' + l.id, { method: 'DELETE' }).catch(() => {}); await load() }
 const ago = (t: string | null) => { if (!t) return 'never'; const m = Math.round((Date.now() - new Date(t).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago' }
 const mon = (ym: string) => new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 
@@ -156,7 +156,7 @@ watch(() => f.sheet, () => { if (step.value === 2) { keep.value = null; applyMap
 // Categories suggested for rows (from the sheet's sections) that are not in the chart of accounts yet.
 const fresh = computed(() => [...new Set(Object.values(map.value).filter((v) => v.startsWith('cat:')))].filter((v) => !accts.value.some((a) => 'cat:' + a.parent + ':' + a.name === v)).map((to) => { const [, parent = '', ...n] = to.split(':'); return { to, parent, name: n.join(':') } }))
 const used = computed(() => Object.values(map.value).filter((v) => v && v !== 'kpi'))
-const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && used.value.filter((v) => v === k).length > 1
+const dup = (k: string) => props.target === 'forecast' && k && k !== 'kpi' && !k.startsWith('part:') && used.value.filter((v) => v === k).length > 1
 const summed = computed(() => props.target === 'financials' && used.value.some((v, i, a) => !v.startsWith('cat:') && a.indexOf(v) !== i))
 const chosen = computed(() => Object.values(map.value).filter(Boolean).length)
 async function save() {
@@ -245,7 +245,7 @@ defineExpose({ start })
         <p class="sub">{{ prev.provider }} · {{ tab.months.length }} months, {{ mon(tab.months[0]!) }} to {{ mon(tab.months[tab.months.length - 1]!) }}{{ target === 'financials' ? ' (months after this one are left out)' : '' }} · into {{ target === 'forecast' ? 'the forecast as given months' : subjectLabel || 'this company' }}</p>
         <div class="tw"><table class="mt" data-nosearch><thead><tr><th>Row in your sheet</th><th class="n">Latest</th><th>Use as</th></tr></thead>
           <tbody><tr v-for="r in tab.rows" :key="r.label" :class="{ off: !map[r.label] }"><td>{{ r.label }}</td><td class="n">{{ fmt(r.last_value) }} <span class="sub">{{ mon(r.last_month) }}</span></td>
-            <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'" @change="pick(r.label, ($event.target as HTMLSelectElement).value)"><option value="">Don't use</option><optgroup label="Standard lines"><option v-for="k in prev.keys" :key="k.key" :value="k.key">{{ k.label }}</option></optgroup>
+            <td><select v-model="map[r.label]" :class="{ bad: dup(map[r.label] ?? '') }" :aria-label="'Use ' + r.label + ' as'" @change="pick(r.label, ($event.target as HTMLSelectElement).value)"><option value="">Don't use</option><optgroup label="Standard lines"><option v-for="k in prev.keys.filter((x) => !x.key.startsWith('part:'))" :key="k.key" :value="k.key">{{ k.label }}</option></optgroup><optgroup v-if="target === 'forecast'" label="Your own line, shown under"><option v-for="k in prev.keys.filter((x) => x.key.startsWith('part:'))" :key="k.key" :value="k.key">{{ k.label.replace('Its own line under ', 'Under ') }}</option></optgroup>
               <optgroup v-if="target === 'financials' && accts.length" label="Your categories"><option v-for="a in accts" :key="a.id" :value="'cat:' + a.parent + ':' + a.name">{{ catLabel(a) }}</option></optgroup>
               <optgroup v-if="target === 'financials' && fresh.length" label="New categories (added when you save)"><option v-for="c in fresh" :key="c.to" :value="c.to">{{ catLabel(c) }}</option></optgroup>
               <option v-if="target === 'financials'" value="__new">+ New category…</option></select>

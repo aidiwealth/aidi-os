@@ -7,7 +7,7 @@ const sel = ref(String(useRoute().query.thread ?? ''))
 const { data, refresh } = await useFetch<{ thread: T | null; threads: T[]; messages: { id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }[] }>('/api/portal/messages', { query: { thread: sel } })
 const busy = ref(false); const msg = ref('')
 async function send(body: string, documentId: string | null) { busy.value = true; msg.value = ''; try { const r = await $fetch<{ thread: string }>('/api/portal/messages', { method: 'POST', body: { body, document_id: documentId ?? undefined, thread_id: data.value?.thread?.status === 'open' ? data.value.thread.id : undefined } }); sel.value = r.thread; await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } finally { busy.value = false } }
-async function resolve() { if (!data.value?.thread || !confirm('Mark this conversation as resolved?')) return; await $fetch('/api/portal/threads/' + data.value.thread.id + '/close', { method: 'POST' }); await refresh() }
+async function resolve() { if (!data.value?.thread || !await askConfirm('Mark this conversation as resolved?')) return; await $fetch('/api/portal/threads/' + data.value.thread.id + '/close', { method: 'POST' }); await refresh() }
 function fresh() { sel.value = ''; if (data.value) { data.value.thread = null; data.value.messages = [] } }
 const plain = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/(\*\*|__|\*|`)/g, '').replace(/^\s*(#{1,6}|>)\s+/gm, '').replace(/\s+/g, ' ').trim()
 const when = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })

@@ -11,7 +11,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function save() { busy.value = true; msg.value = ''; ok.value = ''
   const max: Record<string, number> = {}; if (maxNgn.value !== '') max.NGN = Number(maxNgn.value); if (maxUsd.value !== '') max.USD = Number(maxUsd.value)
   try { await $fetch('/api/credit/settings', { method: 'POST', body: { config: { ...c, countries: countriesText.value.split(',').map((x) => x.trim()).filter(Boolean), max_amount: max }, creditchek_key: key.value || undefined } }); key.value = ''; await refresh(); ok.value = 'Saved.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-async function clearKey() { if (!confirm('Remove the stored CreditChek key? Automatic checks stop unless a key is set in the server settings.')) return; await $fetch('/api/credit/settings', { method: 'POST', body: { clear_key: true } }); await refresh() }
+async function clearKey() { if (!await askConfirm('Remove the stored CreditChek key? Automatic checks stop unless a key is set in the server settings.')) return; await $fetch('/api/credit/settings', { method: 'POST', body: { clear_key: true } }); await refresh() }
 </script>
 <template>
   <section>

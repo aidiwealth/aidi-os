@@ -18,7 +18,7 @@ const cm = reactive({ open: false, mode: 'create' as 'create' | 'copy' | 'rename
 const curCt = computed(() => data.value?.captables.find((c) => c.id === data.value?.captable))
 function ctForm(mode: typeof cm.mode) { cm.mode = mode; cm.name = mode === 'rename' ? curCt.value?.name ?? '' : mode === 'copy' ? (curCt.value?.name ?? 'Cap table') + ' (what-if)' : 'Pro forma'; cm.note = mode === 'rename' ? curCt.value?.note ?? '' : ''; cm.open = true; msg.value = '' }
 async function ctAct(action: 'create' | 'copy' | 'rename' | 'main' | 'delete') {
-  if (action === 'delete' && !confirm('Delete "' + curCt.value?.name + '" and everything on it? Its share links stop working.')) return
+  if (action === 'delete' && !await askConfirm('Delete "' + curCt.value?.name + '" and everything on it? Its share links stop working.')) return
   busy.value = true; msg.value = ''
   try { const r = await $fetch<{ id: string }>('/api/equity/captables', { method: 'POST', body: { action, id: action === 'create' ? undefined : ct.value || data.value?.captable, name: cm.name || undefined, note: cm.note } }); cm.open = false; if (action === 'create' || action === 'copy') ct.value = r.id; else if (action === 'delete') ct.value = ''; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
@@ -50,7 +50,7 @@ async function addRoom() { roomMsg.value = 'Adding to the data room…'; try { c
 const TITLE: Record<Ty, string> = { class: 'Share class', holder: 'Holder', issuance: 'Issue shares', plan: 'Option plan', grant: 'Grant options', convertible: 'SAFE or note' }
 function edit(type: Ty, row?: Record<string, any>) { f.type = type; f.id = row?.id ?? ''; f.d = { ...BLANK[type](), ...(row ? Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v ?? ''])) : {}) }; msg.value = ''; f.open = true }
 async function save(del = false) {
-  if (del && !confirm('Delete this record?')) return
+  if (del && !await askConfirm('Delete this record?')) return
   busy.value = true; msg.value = ''
   try { await $fetch('/api/equity', { method: 'POST', body: del ? { type: f.type, id: f.id, delete: true, ct: ct.value || data.value?.captable } : { type: f.type, id: f.id || undefined, data: f.d, ct: ct.value || data.value?.captable } }); f.open = false; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
@@ -83,7 +83,7 @@ const { data: rights, refresh: refreshRights } = await useFetch<Right[]>('/api/e
 const pos = computed(() => (data.value ? positions(data.value, today, rights.value ?? [], hdocs.value ?? []) : null))
 const flagsOf = (hid: string) => pos.value?.rows.find((r) => r.holder.id === hid)
 const docsFor = (k: 'holder_id' | 'convertible_id' | 'issuance_id', id: string) => (hdocs.value ?? []).filter((d) => d[k] === id)
-async function detach(d: HD) { if (!confirm('Detach "' + d.title + '"? It stays in Documents.')) return; await $fetch('/api/equity/docs/' + d.id, { method: 'DELETE' }).catch(() => {}); await refreshDocs() }
+async function detach(d: HD) { if (!await askConfirm('Detach "' + d.title + '"? It stays in Documents.')) return; await $fetch('/api/equity/docs/' + d.id, { method: 'DELETE' }).catch(() => {}); await refreshDocs() }
 async function openDoc(id: string) { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') }
 // Signed documents reach the cap table on their own; check now and then while some are out.
 let esTimer: ReturnType<typeof setInterval> | undefined

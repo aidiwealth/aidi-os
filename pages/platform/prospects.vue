@@ -10,7 +10,7 @@ const f = reactive({ open: false, ...blank() }); const msg = ref(''); const busy
 function edit(p?: P) { Object.assign(f, blank(), p ? { ...p, regions: p.regions.join(', '), min_usd: p.min_usd ?? '', max_usd: p.max_usd ?? '', website: p.website ?? '', description: p.description ?? '', how_to_apply: p.how_to_apply ?? '', deadline: p.deadline ?? '', stages: [...p.stages], sectors: [...p.sectors] } : {}, { open: true }); msg.value = '' }
 const tog = (arr: string[], v: string) => (arr.includes(v) ? arr.splice(arr.indexOf(v), 1) : arr.push(v))
 async function save(del = false) {
-  if (del && !window.confirm('Remove ' + f.name + ' from the list?')) return
+  if (del && !await askConfirm('Remove ' + f.name + ' from the list?')) return
   busy.value = true; msg.value = ''
   try { const { open, ...b } = f; void open; await $fetch('/api/platform/prospects', { method: 'POST', body: del ? { id: f.id, delete: true } : { ...b, id: b.id || undefined, regions: b.regions.split(',').map((x) => x.trim()).filter(Boolean) } }); f.open = false; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }

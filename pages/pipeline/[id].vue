@@ -20,9 +20,9 @@ const msg = ref('')
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
 async function run(fn: () => Promise<unknown>) { busy.value = true; msg.value = ''; try { await fn(); await refresh() } catch (e) { msg.value = errText(e) } finally { busy.value = false } }
 
-const move = (stage: string) => {
+const move = async (stage: string) => {
   let note: string | undefined
-  if (stage === 'passed') { const r = prompt('Why are we passing? (required)'); if (!r) return; note = r }
+  if (stage === 'passed') { const r = await askPrompt('Why are we passing?', '', { required: true, ok: 'Pass' }); if (!r) return; note = r }
   return run(() => $fetch('/api/pipeline/' + id + '/stage', { method: 'POST', body: { stage, note } }))
 }
 const fields = reactive({ owner_id: '', round: '', raise_usd: '', check_usd: '', valuation_usd: '', vehicle_entity_id: '' })

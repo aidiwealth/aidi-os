@@ -28,8 +28,8 @@ const go = (t: string) => router.replace({ query: { ...route.query, t } })
 // ---- deleting data, so it can be added again ----
 const dMsg = ref('')
 const errD = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.'
-async function delPeriod(period: string, label: string) { if (!confirm('Delete every figure for ' + label + '? Team corrections for it go too.')) return; try { await $fetch('/api/portfolio/' + id + '/figures/delete', { method: 'POST', body: { period } }); await refresh() } catch (e) { dMsg.value = errD(e) } }
-async function delNotes(period: string) { if (!confirm('Delete the notes for ' + nameOf(period) + '?')) return; try { await $fetch('/api/portfolio/' + id + '/notes/' + period.slice(0, 10), { method: 'DELETE' }); await refresh() } catch (e) { dMsg.value = errD(e) } }
+async function delPeriod(period: string, label: string) { if (!await askConfirm('Delete every figure for ' + label + '? Team corrections for it go too.')) return; try { await $fetch('/api/portfolio/' + id + '/figures/delete', { method: 'POST', body: { period } }); await refresh() } catch (e) { dMsg.value = errD(e) } }
+async function delNotes(period: string) { if (!await askConfirm('Delete the notes for ' + nameOf(period) + '?')) return; try { await $fetch('/api/portfolio/' + id + '/notes/' + period.slice(0, 10), { method: 'DELETE' }); await refresh() } catch (e) { dMsg.value = errD(e) } }
 const clr = reactive({ open: false, confirm: '', notes: false, busy: false, msg: '' })
 async function clearAll() { clr.busy = true; clr.msg = ''; try { await $fetch('/api/portfolio/' + id + '/figures/delete', { method: 'POST', body: { all: true, notes: clr.notes, confirm: clr.confirm } }); clr.open = false; await refresh() } catch (e) { clr.msg = errD(e) } finally { clr.busy = false } }
 

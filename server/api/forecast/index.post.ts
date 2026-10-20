@@ -12,7 +12,8 @@ const A = z.object({ start: ym, months: z.coerce.number().int().min(3).max(60), 
   payroll_raise_pct: pct(-100, 100), hires: z.array(z.object({ role: z.string().trim().max(80).default(''), start: ym, monthly_cost: num(0, 1e10) })).max(200),
   items: z.array(OneOff).max(100), funding: z.array(OneOff).max(50), tax_pct: pct(0, 100),
   scenarios: z.object({ best: z.object({ growth: num(-100, 100), costs: num(-100, 100) }), worst: z.object({ growth: num(-100, 100), costs: num(-100, 100) }) }),
-  fixed: z.record(ym, z.object({ revenue: num(-1e12, 1e12), cogs: num(-1e12, 1e12), payroll: num(-1e12, 1e12), costs: z.record(z.string().regex(/^[a-z_]{2,30}$/), num(-1e12, 1e12)), tax: num(-1e12, 1e12), items: num(-1e12, 1e12), funding: num(-1e12, 1e12), customers: num(0, 1e10), headcount: num(0, 1e7) }).partial()).refine((r) => Object.keys(r).length <= 72, 'Up to 72 months').optional(),
+  fixed: z.record(ym, z.object({ revenue: num(-1e12, 1e12), cogs: num(-1e12, 1e12), payroll: num(-1e12, 1e12), costs: z.record(z.string().regex(/^[a-z_]{2,30}$/), num(-1e12, 1e12)), tax: num(-1e12, 1e12), items: num(-1e12, 1e12), funding: num(-1e12, 1e12), customers: num(0, 1e10), headcount: num(0, 1e7), parts: z.record(z.string().regex(/^p_[a-z0-9_]{1,60}$/), num(-1e12, 1e12)) }).partial()).refine((r) => Object.keys(r).length <= 72, 'Up to 72 months').optional(),
+  parts: z.array(z.object({ key: z.string().regex(/^p_[a-z0-9_]{1,60}$/), label: z.string().trim().min(1).max(80), parent: z.string().regex(/^[a-z_]{2,30}$/), share_pct: pct(-1000, 1000) })).max(60).optional(),
   source: z.object({ file: z.string().max(200), imported_at: z.string().max(40), lines: z.array(z.object({ label: z.string().max(200), maps_to: z.string().max(30) })).max(200) }).optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')

@@ -59,7 +59,7 @@ const STATUS: Record<string, string> = { idea: 'Idea', shortlist: 'Shortlist', c
 const filter = ref('all')
 const shown = computed(() => (plan.value?.buyers ?? []).filter((b) => filter.value === 'all' || b.status === filter.value || (filter.value === 'active' && b.status !== 'passed')).slice().sort((x, y) => y.fit - x.fit))
 function setBuyer(b: Buyer, k: 'status' | 'notes', v: string) { b[k] = v; save(plan.value!.buyers) }
-function remove(b: Buyer) { if (!confirm('Remove ' + b.name + ' from the list?')) return; plan.value!.buyers = plan.value!.buyers.filter((x) => x !== b); save(plan.value!.buyers) }
+async function remove(b: Buyer) { if (!await askConfirm('Remove ' + b.name + ' from the list?')) return; plan.value!.buyers = plan.value!.buyers.filter((x) => x !== b); save(plan.value!.buyers) }
 const nb = reactive({ open: false, name: '', website: '', why: '' })
 function addBuyer() { if (!nb.name.trim()) return; plan.value!.buyers.push({ name: nb.name.trim(), website: nb.website.trim(), type: 'strategic', why: nb.why.trim(), fit: 3, deals: '', price_note: '', contact: { name: '', title: '', email: '', linkedin: '', url: '' }, sources: [], status: 'shortlist', notes: '', found_at: new Date().toISOString() }); save(plan.value!.buyers); Object.assign(nb, { open: false, name: '', website: '', why: '' }) }
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }

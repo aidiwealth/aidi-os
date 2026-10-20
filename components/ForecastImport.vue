@@ -2,13 +2,15 @@
 // Upload a forecast: the Finvry forecast template (or any sheet with months across and line names down a column) is
 // read by fixed rules with no AI; a PDF is read with AI. The founder checks the mapping and the totals (and the closing
 // cash against the file's own cash line) before it becomes a forecast.
-import { run, defaults, addMonths, COST_LINES, type Assumptions, type FixedMonth } from '~/shared/forecast'
+import { run, defaults, COST_LINES, partKey, partLabel, partShares, type Assumptions, type FixedMonth, type Part } from '~/shared/forecast'
 const props = defineProps<{ open: boolean; seed: Assumptions; q?: Record<string, string> }>()
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }] }>()
 type MapTo = 'revenue' | 'cogs' | 'payroll' | 'marketing' | 'rnd' | 'ga' | 'other' | 'tax' | 'items' | 'funding' | 'customers' | 'headcount' | 'cash_balance' | 'new' | 'ignore'
-interface Line { label: string; maps_to: MapTo; values: { month: string; value: number }[] }
+interface Line { label: string; maps_to: MapTo; part_of?: string | null; values: { month: string; value: number }[] }
 interface Sheet { currency: string; start: string; opening_cash: number | null; lines: Line[]; notes: string[] }
 const MAP: [MapTo, string][] = [['revenue', 'Revenue'], ['cogs', 'Cost of revenue'], ['payroll', 'Payroll'], ...COST_LINES.map((c) => [c.key as MapTo, c.label] as [MapTo, string]), ['tax', 'Tax'], ['items', 'One-off item (+ in / − out)'], ['funding', 'Funding raised'], ['customers', 'Customers'], ['headcount', 'Headcount'], ['cash_balance', 'Closing cash (check only)'], ['new', 'Its own cost line (new)'], ['ignore', 'Leave out (subtotal / non-cash)']]
+// A line left out of the totals can still be shown under one (a product under Revenue): the company's own line.
+const UNDER: [string, string][] = [['revenue', 'Revenue'], ['cogs', 'Cost of revenue'], ['payroll', 'Payroll'], ...COST_LINES.map((c) => [c.key, c.label] as [string, string]), ['tax', 'Tax'], ['items', 'One-off items'], ['funding', 'Funding raised']]
 const how = ref<'rules' | 'ai'>('rules'), files = ref<File[]>([]), busy = ref(false), msg = ref(''), sheet = ref<Sheet | null>(null), fnames = ref<string[]>([]), name = ref('')
 watch(() => props.open, (o) => { if (o) { files.value = []; sheet.value = null; msg.value = '' } })
 function add(ev: Event) { for (const f of Array.from(((ev.target as HTMLInputElement).files ?? []) as ArrayLike<File>)) if (files.value.length < 3 && !files.value.some((x) => x.name === f.name)) files.value.push(f) }
@@ -33,8 +35,20 @@ const built = computed<Assumptions | null>(() => {
       const F = (fixed[v.month] ??= {})
       if (l.maps_to === 'new') { const k = own.get(l)!.key; F.costs ??= {}; F.costs[k] = (F.costs[k] ?? 0) + Math.abs(v.value) }
       else if (COSTS.has(l.maps_to)) { F.costs ??= {}; F.costs[l.maps_to] = (F.costs[l.maps_to] ?? 0) + v.value }
-      else { const k = l.maps_to as Exclude<keyof FixedMonth, 'costs'>; F[k] = (F[k] ?? 0) + v.value }
+      else { const k = l.maps_to as Exclude<keyof FixedMonth, 'costs' | 'parts'>; F[k] = (F[k] ?? 0) + v.value }
     }
+  }
+  // Lines shown under a total (products under Revenue, carriers under Cost of revenue): the company's own lines.
+  const parts: Part[] = []
+  for (const l of s.lines.filter((x) => x.part_of && x.maps_to === 'ignore').slice(0, 60)) {
+    const key = partKey(l.label, parts.map((p) => p.key)); parts.push({ key, label: partLabel(l.label), parent: l.part_of!, share_pct: 0 })
+    for (const v of l.values) { if (v.month < s.start) continue; const F = (fixed[v.month] ??= {}); (F.parts ??= {})[key] = v.value }
+  }
+  // A total the file does not give for a month is its lines added up.
+  for (const F of Object.values(fixed)) for (const par of new Set(parts.map((p) => p.parent))) {
+    const sum = parts.filter((p) => p.parent === par).reduce((t, p) => t + (F.parts?.[p.key] ?? 0), 0)
+    if (!parts.some((p) => p.parent === par && F.parts?.[p.key] !== undefined)) continue
+    if (COSTS.has(par)) { F.costs ??= {}; F.costs[par] ??= sum } else { const k = par as 'revenue' | 'cogs' | 'payroll' | 'tax' | 'items' | 'funding'; if (F[k] === undefined) F[k] = sum }
   }
   const ms = Object.keys(fixed).sort(); if (!ms.length) return null
   const first = fixed[ms[0]!]!, last = fixed[ms[ms.length - 1]!]!
@@ -45,7 +59,7 @@ const built = computed<Assumptions | null>(() => {
   a.months = Math.min(60, Math.max(span, 24)); a.revenue.growth_pct = Math.max(-20, Math.min(50, growth))
   a.cogs_pct = last.revenue && last.cogs !== undefined ? Math.round(last.cogs / last.revenue * 1000) / 10 : props.seed.cogs_pct
   a.costs = [...a.costs.map((c) => ({ ...c, growth_pct: 1 })), ...[...own.values()].map((o) => ({ key: o.key, label: o.label, amount: first.costs?.[o.key] ?? 0, growth_pct: 1 }))]; a.payroll_raise_pct = 0
-  a.fixed = fixed; a.source = { file: fnames.value.join(', ').slice(0, 200), imported_at: new Date().toISOString(), lines: s.lines.map((l) => ({ label: l.label.slice(0, 200), maps_to: l.maps_to })) }
+  a.fixed = fixed; if (parts.length) { a.parts = parts; partShares(a) } a.source = { file: fnames.value.join(', ').slice(0, 200), imported_at: new Date().toISOString(), lines: s.lines.map((l) => ({ label: l.label.slice(0, 200), maps_to: l.maps_to })) }
   return a
 })
 const res = computed(() => (built.value ? run(built.value) : null))
@@ -79,8 +93,8 @@ function done() { if (built.value) emit('done', { name: name.value.trim() || 'Ac
       <div class="fx-stats"><StatTile label="Revenue" :value="money(sum('revenue'))" :note="'Over ' + months.length + ' months'" /><StatTile label="Costs" :value="money(sum('cogs') + sum('payroll') + sum('marketing') + sum('rnd') + sum('ga') + sum('other') + sum('new'))" note="Cost of revenue, payroll and operating" /><StatTile label="Funding" :value="money(sum('funding'))" /><StatTile label="Opening cash" :value="money(built?.opening.cash ?? 0)" :note="sheet.opening_cash === null ? 'Not in the file: from your figures' : 'From the file'" /></div>
       <div v-if="cashCheck" class="ck"><span class="dot" :class="cashCheck.ok ? 'ok' : 'red'" /><span v-if="cashCheck.ok">Closing cash matches the file (<b>{{ money(cashCheck.last.theirs) }}</b> in {{ mon(cashCheck.last.m) }}).</span><span v-else>Closing cash differs from the file: <b>{{ money(cashCheck.worst.ours) }}</b> here against <b>{{ money(cashCheck.worst.theirs) }}</b> in {{ mon(cashCheck.worst.m) }}. Check that no line is counted twice or left out, and the opening cash.</span></div>
       <div v-if="sheet.notes.length" class="nt"><p class="bh">Notes</p><ul><li v-for="(x, i) in sheet.notes" :key="i">{{ x }}</li></ul></div>
-      <div class="tw"><table class="t" data-nosearch><thead><tr><th>Line in the file</th><th>Goes to</th><th class="r">Total</th><th class="r">Months</th></tr></thead>
-        <tbody><tr v-for="(l, i) in sheet.lines" :key="i" :class="{ off: l.maps_to === 'ignore' }"><td>{{ l.label }}</td><td><select v-model="l.maps_to"><option v-for="[k, lab] in MAP" :key="k" :value="k">{{ lab }}</option></select></td><td class="r">{{ ['customers', 'headcount'].includes(l.maps_to) ? Math.round(l.values[l.values.length - 1]?.value ?? 0).toLocaleString('en-US') + ' at end' : money(total(l)) }}</td><td class="r">{{ l.values.length }}</td></tr></tbody></table></div>
+      <div class="tw"><table class="t" data-nosearch><thead><tr><th>Line in the file</th><th>Goes to</th><th>Shown under</th><th class="r">Total</th><th class="r">Months</th></tr></thead>
+        <tbody><tr v-for="(l, i) in sheet.lines" :key="i" :class="{ off: l.maps_to === 'ignore' }"><td>{{ l.label }}</td><td><select v-model="l.maps_to"><option v-for="[k, lab] in MAP" :key="k" :value="k">{{ lab }}</option></select></td><td><select v-if="l.maps_to === 'ignore'" :value="l.part_of ?? ''" :aria-label="'Show ' + l.label + ' under'" @change="l.part_of = ($event.target as HTMLSelectElement).value || null"><option value="">Not shown</option><option v-for="[k, lab] in UNDER" :key="k" :value="k">{{ lab }}</option></select></td><td class="r">{{ ['customers', 'headcount'].includes(l.maps_to) ? Math.round(l.values[l.values.length - 1]?.value ?? 0).toLocaleString('en-US') + ' at end' : money(total(l)) }}</td><td class="r">{{ l.values.length }}</td></tr></tbody></table></div>
       <p class="mut sm2">After {{ months.length ? mon(months[months.length - 1]!) : 'the file' }} the forecast continues with assumptions you can change ({{ built?.revenue.growth_pct }}% monthly revenue growth, from the file's trend).{{ how === 'ai' ? ' Read with AI from a PDF: check the totals against the original.' : ' Read from your cells by line name, with no AI.' }}</p>
     </div>
     <template #foot><span class="sp" /><template v-if="!sheet"><button class="btn secondary" @click="emit('close')">Cancel</button><button class="btn" :disabled="busy || !files.length" @click="read">{{ busy ? 'Reading…' : 'Read forecast' }}</button></template>

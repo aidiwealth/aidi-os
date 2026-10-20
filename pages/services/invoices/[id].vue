@@ -4,8 +4,8 @@ const { data, refresh } = await useFetch<{ invoice: any; online: string[]; link:
 useHead({ title: () => 'Invoice ' + (data.value?.invoice.number ?? '') })
 const msg = ref(''); const ok = ref(''); const busy = ref(false); const paidOn = ref(new Date().toISOString().slice(0, 10))
 async function act(action: string) {
-  if (action === 'void' && !confirm('Void this invoice?')) return
-  if (action === 'charge_wallet' && !confirm('Charge ' + money(data.value!.invoice.amount, data.value!.invoice.currency) + ' to the client wallet now? The client gets a receipt.')) return
+  if (action === 'void' && !await askConfirm('Void this invoice?')) return
+  if (action === 'charge_wallet' && !await askConfirm('Charge ' + money(data.value!.invoice.amount, data.value!.invoice.currency) + ' to the client wallet now? The client gets a receipt.')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try { await $fetch('/api/services/invoices/' + id + '/action', { method: 'POST', body: { action, paid_on: action === 'mark_paid' ? paidOn.value : undefined } }); ok.value = action === 'send' ? 'Sent to ' + data.value?.invoice.bill_to.email + '.' : action === 'mark_paid' ? 'Marked as paid.' : action === 'charge_wallet' ? 'Paid from the client wallet. Receipt emailed.' : 'Voided.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' } finally { busy.value = false }

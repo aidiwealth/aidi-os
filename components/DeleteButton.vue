@@ -4,14 +4,14 @@ const props = withDefaults(defineProps<{ type: string; id: string; name: string;
 const emit = defineEmits<{ deleted: [] }>()
 const busy = ref(false)
 async function run() {
-  if (!confirm('Delete ' + props.name + '? This cannot be undone.')) return
+  if (!await askConfirm('Delete ' + props.name + '? This cannot be undone.')) return
   busy.value = true
   try {
     await $fetch(props.url || '/api/records/' + props.type + '/' + props.id, { method: 'DELETE' })
     emit('deleted')
     if (props.to) await navigateTo(props.to)
   } catch (e) {
-    alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.')
+    notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.')
   } finally { busy.value = false }
 }
 </script>

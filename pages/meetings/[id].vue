@@ -30,7 +30,7 @@ async function write() {
     Object.assign(f, { summary: r.summary, notes: r.minutes, decisions: r.decisions, actions: [...f.actions.filter((a) => a.text.trim()), ...r.actions] }); ok.value = 'Minutes written from your notes. Review and edit before saving as final.'
   } catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
-async function del() { if (!window.confirm('Delete these minutes?')) return; try { await $fetch('/api/meetings/' + id, { method: 'DELETE' }); await navigateTo('/meetings') } catch (e) { msg.value = err(e) } }
+async function del() { if (!await askConfirm('Delete these minutes?')) return; try { await $fetch('/api/meetings/' + id, { method: 'DELETE' }); await navigateTo('/meetings') } catch (e) { msg.value = err(e) } }
 const addAction = () => f.actions.push({ text: '', owner_id: null, owner: null, due: null, done: false })
 const toggleDone = async (a: Act) => { a.done = !a.done; if (!isNew) await save() }
 const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))

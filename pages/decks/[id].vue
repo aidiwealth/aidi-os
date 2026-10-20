@@ -17,9 +17,9 @@ const { data: meK } = await useFetch<{ org: { kind: string } | null }>('/api/aut
 const { data: ents } = await useFetch<{ id: string; name: string }[]>('/api/entities', { immediate: meK.value?.org?.kind !== 'company', default: () => [] })
 async function patch(body: Record<string, unknown>) { await $fetch('/api/documents/decks/' + id.value, { method: 'POST', body }); await refresh() }
 async function copy() { if (det.value) { await navigator.clipboard.writeText(det.value.deck.url); copied.value = true; setTimeout(() => (copied.value = false), 1500) } }
-async function newLink() { if (confirm('Make a new link? The old link stops working.')) await patch({ new_link: true }) }
-async function archive() { if (confirm('Archive this deck? Its link stops working.')) { await patch({ archive: true }); await navigateTo('/decks') } }
-async function delDeck() { if (!confirm('Delete this deck, its versions history and all viewer analytics? Its link stops working. The PDF files stay in Documents.')) return; await $fetch('/api/documents/decks/' + id.value, { method: 'POST', body: { delete: true } }); await navigateTo('/decks') }
+async function newLink() { if (await askConfirm('Make a new link? The old link stops working.')) await patch({ new_link: true }) }
+async function archive() { if (await askConfirm('Archive this deck? Its link stops working.')) { await patch({ archive: true }); await navigateTo('/decks') } }
+async function delDeck() { if (!await askConfirm('Delete this deck, its versions history and all viewer analytics? Its link stops working. The PDF files stay in Documents.')) return; await $fetch('/api/documents/decks/' + id.value, { method: 'POST', body: { delete: true } }); await navigateTo('/decks') }
 const editing = ref(false); const ed = reactive({ title: '', description: '' })
 function startEdit() { if (!det.value) return; ed.title = det.value.deck.title; ed.description = det.value.deck.description ?? ''; editing.value = true }
 async function saveEdit() { if (!ed.title.trim()) return; await patch({ title: ed.title.trim(), description: ed.description.trim() }); editing.value = false }

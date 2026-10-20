@@ -14,7 +14,7 @@ const AIDI_ROLES = [
 const CO_ROLES = [{ v: 'admin', label: 'Admin · billing, plan and team' }, { v: 'gp', label: 'Founder · every company feature' }, { v: 'team', label: 'Team member · day-to-day work' }]
 const CO_LABEL: Record<string, string> = { admin: 'Admin', gp: 'Founder', team: 'Team member' }
 const ROLES = computed(() => (isCo.value ? CO_ROLES : AIDI_ROLES).filter((r) => isAdmin.value || r.v !== 'admin'))
-async function removeUser(u: { id: string; email: string }) { if (!confirm('Remove ' + u.email + ' from this workspace? They lose access immediately.')) return; try { await $fetch('/api/admin/users/' + u.id, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove.') } }
+async function removeUser(u: { id: string; email: string }) { if (!await askConfirm('Remove ' + u.email + ' from this workspace? They lose access immediately.')) return; try { await $fetch('/api/admin/users/' + u.id, { method: 'DELETE' }); await refresh() } catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not remove.') } }
 const label = (r: string) => (isCo.value ? CO_LABEL[r] ?? r : AIDI_ROLES.find((x) => x.v === r)?.label ?? r)
 const form = reactive({ full_name: '', email: '', role: 'team', entity_id: '', include_subsidiaries: false, send_email: true })
 const busy = ref(false)
@@ -40,8 +40,8 @@ async function addRoles(u: TeamUser) { const a = adding[u.id]; if (!a?.role) ret
 // Edit a member's name (admins).
 const nameEd = reactive({ id: '', value: '' })
 const saveName = (u: TeamUser) => run(async () => { await $fetch('/api/admin/users/' + u.id + '/name', { method: 'POST', body: { full_name: nameEd.value } }); nameEd.id = '' }, 'Name updated.')
-const setStatus = (u: TeamUser, status: 'active' | 'disabled') => {
-  if (status === 'disabled' && !confirm('Disable ' + u.email + '? They are signed out immediately.')) return
+const setStatus = async (u: TeamUser, status: 'active' | 'disabled') => {
+  if (status === 'disabled' && !await askConfirm('Disable ' + u.email + '? They are signed out immediately.')) return
   return run(() => $fetch('/api/admin/users/' + u.id + '/status', { method: 'POST', body: { status } }))
 }
 const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never')

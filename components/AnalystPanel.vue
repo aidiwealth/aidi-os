@@ -17,7 +17,7 @@ async function resume(id: string) {
 }
 function newChat() { chatId.value = null; msgs.value = []; err.value = ''; input.value = ''; remember(null); view.value = 'chat'; nextTick(() => ta.value?.focus()) }
 async function showList() { view.value = 'list'; listBusy.value = true; try { chats.value = await $fetch<Chat[]>('/api/ai/chats') } catch { chats.value = [] } finally { listBusy.value = false } }
-async function delChat(c: Chat) { if (!confirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
+async function delChat(c: Chat) { if (!await askConfirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
 const when = (s: string) => { const d = new Date(s), n = Date.now() - d.getTime(); return n < 6e4 ? 'just now' : n < 36e5 ? Math.round(n / 6e4) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 // The hint shows once, for a few seconds, then never again: it must not sit over the page.
 onMounted(() => { try { if (!localStorage.getItem('analyst_hint')) { setTimeout(() => { hint.value = true; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } setTimeout(() => (hint.value = false), 7000) }, 1800) } } catch { /* storage off */ } })

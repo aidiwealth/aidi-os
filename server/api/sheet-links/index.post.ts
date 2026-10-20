@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   if (d.mode === 'ai') { if (d.target !== 'financials' || !d.ai_map || !d.ai_map.blocks.some((x) => x.use !== false)) throw apiError('invalid', 'Read the workbook with AI and keep at least one table.') }
   else if (!mapping.length) throw apiError('invalid', 'Choose at least one row to use.')
   // Several rows to the same line are added together (no error); forecasts still take one row per item.
-  const dupe = d.target === 'forecast' ? mapping.filter((m) => m.to !== 'kpi').map((m) => m.to).find((k, i, a) => a.indexOf(k) !== i) : undefined
+  const dupe = d.target === 'forecast' ? mapping.filter((m) => m.to !== 'kpi' && !m.to.startsWith('part:')).map((m) => m.to).find((k, i, a) => a.indexOf(k) !== i) : undefined
   if (dupe) throw apiError('invalid', 'Two rows go to the same forecast item (' + (TARGET_KEYS[d.target]().find((k) => k.key === dupe)?.label ?? dupe) + '). Choose one.')
   if (d.target === 'financials') { if (!d.subject || d.subject === 'group') throw apiError('invalid', 'Choose the company or entity.'); await subjectName(d.subject) }
   else if (!d.forecast_id) {

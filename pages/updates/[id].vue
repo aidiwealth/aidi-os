@@ -58,7 +58,7 @@ function fit() { const d = frame.value?.contentDocument; if (d) { frameH.value =
 async function preview() { try { emailHtml.value = (await $fetch<{ html: string }>('/api/updates/' + id + '/render', { method: 'POST', body: { blocks: f.blocks, title: f.title, cover_id: f.cover_id, from_name: f.from_name, full: true, as_name: asName.value } })).html } catch (e) { msg.value = err(e) } }
 watch([step, asName], () => { if (step.value === 3) preview() })
 const sending = ref(''); const pubMenu = ref(false)
-async function send(mode: string) { pubMenu.value = false; if (mode !== 'test' && mode !== 'publish' && !confirm('Send "' + f.title + '" to ' + (count.value?.count ?? 0) + ' people now?')) return; sending.value = mode; msg.value = ''; ok.value = ''
+async function send(mode: string) { pubMenu.value = false; if (mode !== 'test' && mode !== 'publish' && !await askConfirm('Send "' + f.title + '" to ' + (count.value?.count ?? 0) + ' people now?')) return; sending.value = mode; msg.value = ''; ok.value = ''
   try { await save(); const r = await $fetch<{ sent: number }>('/api/updates/' + id + '/send', { method: 'POST', body: { mode } }); ok.value = mode === 'test' ? 'Test sent to ' + data.value?.me + '.' : mode === 'publish' ? 'Published on your investor page.' : 'Sent to ' + r.sent + ' people.'; await refresh() } catch (e) { msg.value = err(e) } finally { sending.value = '' } }
 const coverUrl = computed(() => (f.cover_id ? '/api/public/media/' + f.cover_id : ''))
 const mlabel = (k: string) => data.value?.metrics.find((m) => m.key === k)?.label ?? k

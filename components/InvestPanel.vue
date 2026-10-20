@@ -13,14 +13,14 @@ const op = reactive({ given_name: '', family_name: '', date_of_birth: '', tax_id
 const ord = reactive({ symbol: '', side: 'buy', notional: '' as string | number })
 const bk = reactive({ account_owner_name: '', bank_account_type: 'CHECKING', bank_account_number: '', bank_routing_number: '' })
 const tr = reactive({ relationship_id: '', amount: '' as string | number, direction: 'INCOMING' })
-async function placeOrder() { if (!confirm('Place a market ' + ord.side + ' order for ' + money(Number(ord.notional)) + ' of ' + ord.symbol.toUpperCase() + '? You are making this decision yourself; Aidi does not recommend investments.')) return; const r = await act('alpaca_order', { ...ord, notional: Number(ord.notional) }); if (r) { ok.value = 'Order placed (' + r.order.status + ').'; ord.notional = '' } }
+async function placeOrder() { if (!await askConfirm('Place a market ' + ord.side + ' order for ' + money(Number(ord.notional)) + ' of ' + ord.symbol.toUpperCase() + '? You are making this decision yourself; Aidi does not recommend investments.')) return; const r = await act('alpaca_order', { ...ord, notional: Number(ord.notional) }); if (r) { ok.value = 'Order placed (' + r.order.status + ').'; ord.notional = '' } }
 // Fincra
 const us = reactive({ first_name: '', last_name: '', birth_date: '', phone: '', nationality: 'NG', occupation: '', employment_status: 'employed', source_of_income: 'salary', income_lower: '', income_upper: '', number: '', street: '', city: '', state: '', zip: '', country: 'NG', doc_number: '', doc_issued: '', doc_expiry: '', tax_country: 'NG', tax_number: '' })
 const wd = reactive({ currency: 'NGN', amount: '' as string | number, bank_details: '' })
 // Busha
 const bu = reactive({ asset: 'BTC', side: 'buy', amount: '' as string | number }); const quote = ref<Record<string, any> | null>(null)
 async function getQuote() { const r = await act('busha_quote', { ...bu, amount: Number(bu.amount) }); quote.value = r?.quote ?? null }
-async function trade() { if (!confirm('Confirm this crypto ' + bu.side + '? You are making this decision yourself.')) return; const r = await act('busha_trade', { ...bu, amount: Number(bu.amount) }); if (r) { ok.value = 'Done.'; quote.value = null } }
+async function trade() { if (!await askConfirm('Confirm this crypto ' + bu.side + '? You are making this decision yourself.')) return; const r = await act('busha_trade', { ...bu, amount: Number(bu.amount) }); if (r) { ok.value = 'Done.'; quote.value = null } }
 // Savings
 const sr = reactive({ plan_id: '', kind: 'deposit', amount: '' as string | number })
 const np = reactive({ open: false, name: 'USD savings plan', currency: 'USD', target: '' as string | number, monthly: '' as string | number, matures_on: '' })

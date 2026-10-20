@@ -7,7 +7,7 @@ const { data, refresh } = await useFetch<{ id: string; kind: string; answers: Re
 const { data: blank } = await useFetch<{ kind: string | null; form?: { title: string; intro: string; fields: IntakeField[] } }>(() => '/api/services/' + props.jobId + '/intake-form', { server: false, lazy: true })
 const form = computed(() => data.value?.form ?? blank.value?.form ?? null)
 const ssn = ref('')
-async function reveal() { if (!data.value || !confirm('Show the full SSN? This is recorded.')) return; ssn.value = (await $fetch<{ ssn: string }>('/api/services/intakes/' + data.value.id + '/reveal', { method: 'POST' })).ssn }
+async function reveal() { if (!data.value || !await askConfirm('Show the full SSN? This is recorded.')) return; ssn.value = (await $fetch<{ ssn: string }>('/api/services/intakes/' + data.value.id + '/reveal', { method: 'POST' })).ssn }
 // Edit
 const editing = ref(false), busy = ref(false), msg = ref(''), ok = ref('')
 const a = reactive<Record<string, unknown>>({}); const picked = reactive<Record<string, File[]>>({})

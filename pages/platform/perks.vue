@@ -8,7 +8,7 @@ const blank = () => ({ id: '', partner: '', logo_url: '', website: '', category:
 const f = reactive({ open: false, ...blank() }); const msg = ref(''); const ok = ref(''); const busy = ref(false); const up = ref(false)
 function edit(p?: Pk) { Object.assign(f, blank(), p ? { ...p, logo_url: p.logo_url ?? '', website: p.website ?? '', details: p.details ?? '', redeem: p.redeem ?? '', code: p.code ?? '', claim_url: p.claim_url ?? '', value_usd: p.value_usd ?? '', expires_on: p.expires_on ?? '' } : {}, { open: true }); msg.value = '' }
 async function save(del = false) {
-  if (del && !confirm('Remove the ' + f.partner + ' perk? Companies that claimed it keep what they were given.')) return
+  if (del && !await askConfirm('Remove the ' + f.partner + ' perk? Companies that claimed it keep what they were given.')) return
   busy.value = true; msg.value = ''
   try { const { open, ...b } = f; void open; await $fetch('/api/platform/perks', { method: 'POST', body: del ? { id: f.id, delete: true } : { ...b, id: b.id || undefined, sort: Number(b.sort) || 0 } }); f.open = false; ok.value = del ? 'Removed.' : 'Saved.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }

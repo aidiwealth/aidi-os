@@ -250,7 +250,18 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   const f3 = FT.forecastFromGrids(await S.readGrids(Buffer.from(await wb3.xlsx.writeBuffer()), 'xlsx'), 'NGN')
   const counted = (f3?.lines ?? []).filter((l) => !['ignore', 'cash_balance', 'customers', 'headcount'].includes(l.maps_to)).map((l) => l.maps_to + ':' + l.values[0].value).join(',')
   check('forecast: detail lines counted once', counted === 'revenue:100,cogs:40,payroll:30,marketing:7,ga:4,items:-9' && f3.currency === 'NGN' && f3.opening_cash === 500, counted)
+  // ...and kept as the company's own lines under their totals (products under Revenue), so investors see the breakdown.
+  const po = (f3?.lines ?? []).filter((l) => l.part_of).map((l) => l.part_of + ':' + l.label).join(',')
+  check('forecast: detail lines kept as own lines under their totals', po === 'revenue:Core (in Revenue),revenue:New product (in Revenue),payroll:Staff costs (in Payroll),marketing:Ads,marketing:Events,ga:Rent (in General & admin),items:Intercompany settlement (in One-off items)', po)
+  const FC = await jiti.import(join(root, 'shared/forecast.ts'))
+  const fa = { ...FC.defaults('2027-01'), months: 4, revenue: { ...FC.defaults('2027-01').revenue, growth_pct: 10 }, fixed: { '2027-01': { revenue: 100, parts: { p_core: 100, p_new: 0 } }, '2027-02': { revenue: 115, parts: { p_core: 110, p_new: 5 } } },
+    parts: [{ key: 'p_core', label: 'Core', parent: 'revenue', share_pct: 0 }, { key: 'p_new', label: 'New product', parent: 'revenue', share_pct: 0 }] }
+  FC.partShares(fa); const fr = FC.run(fa), best = FC.run(fa, 'best')
+  check('forecast: own lines take the given figures, then their share of the line', fa.parts[1].share_pct === 4.3 && fr.months[1].parts.p_new === 5 && fr.months[2].parts.p_core === Math.round(126.5 * 0.957 * 100) / 100 && Math.abs(best.months[1].parts.p_core - 110 * best.months[1].revenue / 115) < 0.01, JSON.stringify(fr.months.map((m) => m.parts)))
+  const fb = { ...fa, parts: [{ ...fa.parts[0], share_pct: 80 }, fa.parts[1]] }, rows = FC.forecastRows(fb, FC.run(fb).months).map((r) => r.label)
+  check('forecast table: own lines under Revenue, with what is left as Other', rows.slice(0, 4).join('|') === 'Revenue|Core|New product|Other revenue' && FC.partParentOf('Hosting (in Product & engineering)') === 'rnd' && FC.partParentOf('Credit line (in One-off items)') === 'items', rows.slice(0, 5).join('|'))
   const lay = S.layouts(grids)[0], sug = S.suggestMapping(lay.rows, 'forecast')
+  check('forecast: a linked "(in Revenue)" row is suggested as its own line under Revenue', S.suggestMapping([{ label: 'Subscriptions (in Revenue)', values: {} }, { label: 'Revenue', values: {} }], 'forecast').map((m) => m.to).join(',') === 'part:revenue,revenue')
   check('forecast template rows link by name', ['revenue', 'cogs', 'payroll', 'items', 'customers'].every((k) => sug.some((m) => m.to === k)) && !sug.some((m) => /Gross profit|Net income/.test(m.label) && m.to), sug.filter((m) => m.to).map((m) => m.label + '→' + m.to).join(', '))
 }
 

@@ -12,7 +12,7 @@ const busy = ref(false); const msg = ref(''); const ok = ref('')
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function run(fn: () => Promise<unknown>, done = '') { busy.value = true; msg.value = ''; ok.value = ''; try { await fn(); ok.value = done; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 const setStage = (s: string) => run(async () => {
-  const body = s === 'lost' ? prompt('Why was it lost?') : ''
+  const body = s === 'lost' ? await askPrompt('Why was it lost?') : ''
   if (s === 'lost' && !body) return
   await $fetch('/api/platform/leads/' + id + '/events', { method: 'POST', body: { kind: 'stage', stage: s, body: body || undefined } })
 })

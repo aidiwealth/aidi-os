@@ -31,13 +31,13 @@ async function discard() { if (prev.value) await $fetch('/api/rentals/imports/' 
 const mt = reactive({ open: false, ref: '', amount: 0, arrive: '', rows: [] as { id: string; txn_date: string; description: string; amount: number; account: string }[], pick: '', note: '' })
 async function openMatch(p: Payout) { Object.assign(mt, { open: true, ref: p.payout_ref, amount: p.paid_out, arrive: p.expected_arrival, rows: [], pick: '', note: '' }); try { const r = await $fetch<{ rows: typeof mt.rows }>('/api/rentals/bank-candidates', { query: { payout_ref: p.payout_ref } }); mt.rows = r.rows } catch (x) { msg.value = err(x) } }
 async function saveMatch() { busy.value = true; try { await $fetch('/api/rentals/match', { method: 'POST', body: { payout_ref: mt.ref, bank_txn_id: mt.pick || null, note: mt.note || null } }); mt.open = false; await refresh() } catch (x) { msg.value = err(x) } finally { busy.value = false } }
-async function unmatch(p: Payout) { if (!window.confirm('Undo the match for ' + p.payout_ref + '?')) return; try { await $fetch('/api/rentals/match', { method: 'POST', body: { payout_ref: p.payout_ref, clear: true } }); await refresh() } catch (x) { msg.value = err(x) } }
+async function unmatch(p: Payout) { if (!await askConfirm('Undo the match for ' + p.payout_ref + '?')) return; try { await $fetch('/api/rentals/match', { method: 'POST', body: { payout_ref: p.payout_ref, clear: true } }); await refresh() } catch (x) { msg.value = err(x) } }
 // Rent
 const rp = reactive({ open: false, id: '', who: '', amount: '' as string | number, paid_on: new Date().toISOString().slice(0, 10), method: 'Bank transfer', note: '' })
 function openRent(r: Rent) { Object.assign(rp, { open: true, id: r.id, who: r.tenant_name + ' · ' + r.unit, amount: r.paid_amount ?? r.amount, paid_on: r.paid_on ?? new Date().toISOString().slice(0, 10), method: r.method ?? 'Bank transfer', note: r.note ?? '' }) }
 async function saveRent() { busy.value = true; try { await $fetch('/api/rentals/rent/' + rp.id + '/pay', { method: 'POST', body: rp }); rp.open = false; await refresh() } catch (x) { msg.value = err(x) } finally { busy.value = false } }
 // Lock
-async function lock(v: boolean) { if (!data.value || !window.confirm((v ? 'Lock ' : 'Unlock ') + data.value.label + '? ' + (v ? 'Its Airbnb rows, rent and expenses can no longer change.' : ''))) return; try { await $fetch('/api/rentals/lock', { method: 'POST', body: { period: data.value.period, locked: v } }); await refresh() } catch (x) { msg.value = err(x) } }
+async function lock(v: boolean) { if (!data.value || !await askConfirm((v ? 'Lock ' : 'Unlock ') + data.value.label + '? ' + (v ? 'Its Airbnb rows, rent and expenses can no longer change.' : ''))) return; try { await $fetch('/api/rentals/lock', { method: 'POST', body: { period: data.value.period, locked: v } }); await refresh() } catch (x) { msg.value = err(x) } }
 async function openDoc(id: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') } catch (x) { msg.value = err(x) } }
 </script>
 <template>

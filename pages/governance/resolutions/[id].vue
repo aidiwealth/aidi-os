@@ -9,7 +9,7 @@ const note = ref('')
 const busy = ref(false); const msg = ref(''); const ok = ref('')
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
 async function act(action: 'circulate' | 'withdraw' | 'approve' | 'reject') {
-  if (action === 'withdraw' && !confirm('Withdraw this? It will no longer be open for approval.')) return
+  if (action === 'withdraw' && !await askConfirm('Withdraw this? It will no longer be open for approval.')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try {
     const r = await $fetch<{ status?: string }>('/api/governance/resolutions/' + id + '/action', { method: 'POST', body: { action, note: note.value || undefined } })

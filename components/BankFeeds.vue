@@ -18,7 +18,7 @@ async function connect() {
     P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); emit('changed'); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
   } catch (e) { const x = e as { data?: { data?: { error?: { message?: string } } }; statusCode?: number }; msg.value = x.data?.data?.error?.message ?? (x.statusCode ? 'Could not start the bank connection (error ' + x.statusCode + '). Please try again in a minute.' : 'Could not load the bank connection window. Check your internet connection or ad blocker and try again.') } finally { busy.value = false }
 }
-async function disconnect(id: string, name: string | null) { if (!confirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
+async function disconnect(id: string, name: string | null) { if (!await askConfirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
 const manage = ref(false)
 const cash = computed(() => (data.value?.accounts ?? []).filter((a) => !['credit', 'loan'].includes(a.subtype ?? '')))
 const newest = computed(() => (data.value?.accounts ?? []).reduce((m, a) => (a.updated_at > m ? a.updated_at : m), ''))

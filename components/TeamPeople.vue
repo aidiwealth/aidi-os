@@ -31,7 +31,7 @@ function addPerson() { pf.d = blank(); cur.value = null; view.value = 'profile';
 function openP(p: P, v: typeof view.value = 'profile') { cur.value = p; pf.d = Object.fromEntries(Object.entries(p).map(([k, x]) => [k, x ?? ''])) as Partial<P>; view.value = v; pf.open = true; msg.value = ''; dr.kind = ''; pay.open = false }
 function fromTeam(id: string) { const u = data.value?.team.find((x) => x.id === id); if (u) { pf.d.user_id = u.id; if (!pf.d.name) pf.d.name = u.name; if (!pf.d.email) pf.d.email = u.email } }
 async function savePerson(del = false) {
-  if (del && !confirm('Remove ' + pf.d.name + ' and their agreements and payment log?')) return
+  if (del && !await askConfirm('Remove ' + pf.d.name + ' and their agreements and payment log?')) return
   busy.value = true; msg.value = ''
   try { const r = await $fetch<{ id: string }>('/api/hr/people', { method: 'POST', body: del ? { id: cur.value?.id, delete: true } : { ...pf.d, id: cur.value?.id } }); await refresh(); if (del) { pf.open = false; cur.value = null } else { cur.value = data.value?.people.find((x) => x.id === r.id) ?? null; ok.value = 'Saved.' } }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
@@ -47,7 +47,7 @@ function startDraft(k: string) {
 }
 async function draft() { busy.value = true; msg.value = ''; try { await $fetch('/api/hr/agreements', { method: 'POST', body: { person_id: cur.value!.id, kind: dr.kind, answers: dr.a } }); dr.kind = ''; ok.value = 'Drafted and saved as a PDF in Documents. Open it, check it, then send it for signing.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function setAg(a: Ag, status: string, extra: Record<string, string> = {}) { try { await $fetch('/api/hr/agreements', { method: 'POST', body: { id: a.id, status, ...extra } }); await refresh() } catch (e) { msg.value = err(e) } }
-async function delAg(a: Ag) { if (!confirm('Remove "' + a.title + '"? The PDF stays in Documents.')) return; await $fetch('/api/hr/agreements', { method: 'POST', body: { id: a.id, delete: true } }); await refresh() }
+async function delAg(a: Ag) { if (!await askConfirm('Remove "' + a.title + '"? The PDF stays in Documents.')) return; await $fetch('/api/hr/agreements', { method: 'POST', body: { id: a.id, delete: true } }); await refresh() }
 const up = reactive({ kind: 'employment', signed_on: new Date().toISOString().slice(0, 10), ends_on: '' })
 async function upload(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; busy.value = true; msg.value = ''; const fd = new FormData(); fd.append('file', file); fd.append('person_id', cur.value!.id); fd.append('kind', up.kind); fd.append('signed_on', up.signed_on); fd.append('ends_on', up.ends_on); try { await $fetch('/api/hr/agreements', { method: 'POST', body: fd }); ok.value = 'Signed agreement added.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function openDoc(id: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') } catch (e) { msg.value = err(e) } }
@@ -55,7 +55,7 @@ async function openDoc(id: string) { try { const r = await $fetch<{ url: string 
 const pay = reactive({ bank_txn_id: '' as string, open: false, person_id: '', period: '', amount: '' as string | number, currency: 'USD', paid_on: new Date().toISOString().slice(0, 10), method: 'Bank transfer', reference: '', notes: '', record_payment: true, category: 'Salaries & contractors' })
 function logPay(p: P | undefined, d?: Due) { if (!p) return; if (cur.value?.id !== p.id || !pf.open) openP(p, 'pay'); Object.assign(pay, { open: true, person_id: p.id, period: d?.period ?? new Date().toISOString().slice(0, 7), amount: d?.amount ?? p.pay_amount ?? '', currency: p.currency, paid_on: new Date().toISOString().slice(0, 10), reference: '', notes: '' }); view.value = 'pay' }
 async function savePay() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ expense_id: string | null }>('/api/hr/payments', { method: 'POST', body: { ...pay, amount: Number(pay.amount), bank_txn_id: pay.bank_txn_id || undefined } }); pay.bank_txn_id = ''; if (hist.value) void refreshHist(); pay.open = false; ok.value = r.expense_id ? 'Payment logged, with a voucher under Payments.' : 'Payment logged.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-async function delPay(x: Pay) { if (!confirm('Remove this payment from the log? (The entry under Payments stays.)')) return; await $fetch('/api/hr/payments', { method: 'POST', body: { id: x.id, delete: true } }); await refresh() }
+async function delPay(x: Pay) { if (!await askConfirm('Remove this payment from the log? (The entry under Payments stays.)')) return; await $fetch('/api/hr/payments', { method: 'POST', body: { id: x.id, delete: true } }); await refresh() }
 const pOf = (id: string) => data.value?.people.find((p) => p.id === id)
 // Pay history: every payment for a period, checked against the bank, with filters and export.
 const section = ref<'people' | 'history'>('people')

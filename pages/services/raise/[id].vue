@@ -22,16 +22,16 @@ function fillI(g: import('~/shared/investor').InvestorGuess) {
 }
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 async function saveI() { const { open, deal_id, ...rest } = ie; void open; const pipeline = !deal_id && pl.to ? (pl.to === 'new' ? { id: 'new' as const, new_name: pl.new_name } : { id: pl.to }) : undefined; if (await post({ investor: { ...rest, id: rest.id || undefined, pipeline } })) { ie.open = false; await rpls() } }
-async function delI() { if (ie.id && confirm('Remove ' + ie.name + ' from the list?')) { await post({ investor: { id: ie.id, delete: true } }); ie.open = false } }
+async function delI() { if (ie.id && await askConfirm('Remove ' + ie.name + ' from the list?')) { await post({ investor: { id: ie.id, delete: true } }); ie.open = false } }
 const me = reactive({ open: false, investor_id: '', title: '', date: '', time: '10:00', minutes: 30, location: '', agenda: '' })
 function newM() { Object.assign(me, { open: true, investor_id: '', title: 'Investor meeting', date: new Date(Date.now() + 3 * 86400e3).toISOString().slice(0, 10), time: '10:00', minutes: 30, location: '', agenda: '' }) }
 async function saveM() { const at = new Date(me.date + 'T' + me.time); if (await post({ meeting: { investor_id: me.investor_id || null, title: me.title, starts_at: at.toISOString(), minutes: me.minutes, location: me.location, agenda: me.agenda } })) me.open = false }
-async function delM(mid: string) { if (confirm('Cancel this meeting?')) await post({ meeting: { id: mid, delete: true } }) }
+async function delM(mid: string) { if (await askConfirm('Cancel this meeting?')) await post({ meeting: { id: mid, delete: true } }) }
 const money = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.program.currency ?? 'USD', maximumFractionDigits: 0 }).format(v)
 const when = (s: string) => new Date(s).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 const pstatus = ref('active'); watchEffect(() => { if (data.value) pstatus.value = data.value.program.status })
-async function delProgram() { if (!confirm('Delete this fundraising program, its investor list and meetings? The client job stays.')) return; if (await post({ program: { delete: true } })) await navigateTo('/services/raise') }
+async function delProgram() { if (!await askConfirm('Delete this fundraising program, its investor list and meetings? The client job stays.')) return; if (await post({ program: { delete: true } })) await navigateTo('/services/raise') }
 </script>
 <template>
   <section v-if="data">

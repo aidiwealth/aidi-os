@@ -47,7 +47,7 @@ async function pickReceipt(ev: Event) {
 function add() { Object.assign(x, blank(), { open: true }); receipt.value = null; msg.value = ''; resetScan() }
 function edit(r: E) { Object.assign(x, { open: true, bank_txn_id: '', id: r.id, spent_on: r.spent_on, amount: r.amount, category: r.category, property_id: r.property_id, unit_id: r.unit_id ?? '', item: r.item ?? '', quantity: r.quantity ?? '', vendor: r.vendor ?? '', recurring: r.recurring, notes: r.notes ?? '', split: r.split ?? '' }); receipt.value = null; msg.value = ''; resetScan() }
 async function save(del = false) {
-  if (del && !window.confirm('Delete this expense?')) return
+  if (del && !await askConfirm('Delete this expense?')) return
   busy.value = true; msg.value = ''
   const fd = new FormData()
   if (del) { fd.append('id', x.id); fd.append('delete', 'true') } else { for (const [k, v] of Object.entries(x)) if (k !== 'open' && v !== '' && v !== null) fd.append(k, String(v)); if (receipt.value) fd.append('receipt', receipt.value) }

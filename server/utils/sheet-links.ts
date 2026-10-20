@@ -5,7 +5,7 @@
 // rows can move in the sheet without breaking the link.
 import type ExcelJS from 'exceljs'
 import type { Cat } from './accounts'
-import { FIXED_KEYS } from '~/shared/forecast'
+import { FIXED_KEYS, PART_PARENT_KEYS, partParentOf, partKey, partLabel, partShares, type Assumptions } from '~/shared/forecast'
 import { AiMap, blankPeriod, holdBadBalanceSheet, readWithMap, repairMap, summariseSkipped, writePeriods, previewOf } from './sheet-ai'
 
 export type Cell = string | number | null
@@ -186,7 +186,8 @@ export function layouts(grids: Grid[]): Layout[] { return grids.map(layoutOf).fi
 // Where each row goes: line keys for Financials, given-month keys for a forecast.
 export const TARGET_KEYS = {
   financials: () => [...LINES.map((l) => ({ key: l.key, label: l.label })), { key: 'kpi', label: 'Custom metric (KPI)' }],
-  forecast: () => FIXED_KEYS.map((k) => ({ key: k.key, label: k.label })) }
+  // part:<line>: the company's own line shown under a forecast line (a product under Revenue), by the row's name.
+  forecast: () => [...FIXED_KEYS.map((k) => ({ key: k.key, label: k.label })), ...PART_PARENT_KEYS.map((k) => ({ key: 'part:' + k, label: 'Its own line under ' + (FIXED_KEYS.find((x) => x.key === k)?.label ?? k) }))] }
 const SYN: Record<string, string[]> = {
   revenue: ['revenue', 'total revenue', 'net revenue', 'sales', 'net sales', 'turnover', 'total income', 'income'],
   cogs: ['cost of revenue', 'cost of sales', 'cogs', 'cost of goods sold', 'direct costs'],
@@ -222,6 +223,8 @@ export function suggestMapping(rows: Layout['rows'], target: 'financials' | 'for
     const n = norm(r.label); let to = ''
     // A forecast row named exactly like a forecast line (the Finvry forecast template) goes there.
     if (target === 'forecast') { const k = FIXED_KEYS.find((x) => norm(x.label) === n)?.key; if (k && !taken.has(k)) { taken.add(k); return { label: r.label, to: k } } }
+    // "Subscriptions (in Revenue)": a line of the company's own under Revenue, shown with it.
+    if (target === 'forecast') { const p = partParentOf(r.label); if (p) return { label: r.label, to: 'part:' + p } }
     for (const [key, words] of Object.entries(SYN)) { const k = target === 'forecast' ? FC_FROM_LINE[key] : key; if (k && !taken.has(k) && words.includes(n)) { to = k; break } }
     if (!to && target === 'forecast') for (const [key, words] of Object.entries(FC_SYN)) if (!taken.has(key) && words.includes(n)) { to = key; break }
     if (target === 'financials' && /^kpi\s*:/i.test(r.label.trim())) return { label: r.label, to: 'kpi' }
@@ -285,12 +288,36 @@ export async function syncLink(l: LinkRow, userId: string | null, src?: { buf: B
       const f = (await db().query<{ assumptions: Record<string, any> }>('SELECT assumptions FROM financials.forecasts WHERE id = $1', [l.forecast_id])).rows[0]
       if (!f) throw apiError('not_found', 'That forecast was deleted.', 404)
       const a = f.assumptions, fixed: Record<string, Record<string, any>> = a.fixed ?? {}, COSTS = ['marketing', 'rnd', 'ga', 'other']
+      // The company's own lines (part:<line>): kept by name, so each sync updates the same line.
+      const parts: { key: string; label: string; parent: string; share_pct: number }[] = a.parts ?? []
+      const partOf = new Map<string, string>()
+      for (const c of chosen.filter((x) => x.to.startsWith('part:'))) {
+        const parent = c.to.slice(5), label = partLabel(c.label)
+        let p = parts.find((x) => x.parent === parent && x.label === label)
+        if (!p && parts.length < 60) { p = { key: partKey(label, parts.map((x) => x.key)), label, parent, share_pct: 0 }; parts.push(p) }
+        if (p) partOf.set(c.label, p.key)
+      }
+      // A cost line shown as negative figures is kept positive; its own lines follow it, so a credit stays a credit.
+      const neg = (k: string) => chosen.filter((c) => c.to === k).reduce((t, c) => t + Object.values(c.row!.values).reduce((x, v) => x + v, 0), 0) < 0
+      const ALLK = ['revenue', 'cogs', 'payroll', 'tax', 'items', 'funding']
       for (const m of lay.months) {
         const fm: Record<string, any> = { ...(fixed[m] ?? {}) }; let any = false
-        for (const c of chosen) { const v = c.row!.values[m]; if (v === undefined) continue; any = true; if (COSTS.includes(c.to)) fm.costs = { ...(fm.costs ?? {}), [c.to]: Math.abs(v) }; else fm[c.to] = ['revenue', 'customers', 'headcount', 'items', 'funding'].includes(c.to) ? v : Math.abs(v) }
+        if (partOf.size) fm.parts = {}
+        for (const c of chosen) {
+          const v = c.row!.values[m]; if (v === undefined) continue; any = true
+          if (c.to.startsWith('part:')) { const k = partOf.get(c.label), par = c.to.slice(5); if (k) fm.parts[k] = (fm.parts[k] ?? 0) + (par !== 'revenue' && par !== 'items' && par !== 'funding' && neg(par) ? -v : v); continue }
+          if (COSTS.includes(c.to)) fm.costs = { ...(fm.costs ?? {}), [c.to]: Math.abs(v) }; else fm[c.to] = ['revenue', 'customers', 'headcount', 'items', 'funding'].includes(c.to) ? v : Math.abs(v)
+        }
+        // A line given only by its parts is its parts added up.
+        for (const par of new Set(parts.filter((p) => [...partOf.values()].includes(p.key)).map((p) => p.parent))) {
+          if (chosen.some((c) => c.to === par)) continue
+          const sum = parts.filter((p) => p.parent === par).reduce((t, p) => t + (fm.parts?.[p.key] ?? 0), 0)
+          if (ALLK.includes(par)) fm[par] = sum; else fm.costs = { ...(fm.costs ?? {}), [par]: sum }
+        }
         if (any) { fixed[m] = fm; months++ }
       }
       a.fixed = fixed
+      if (parts.length) { a.parts = parts; partShares(a as Assumptions) }
       const given = Object.keys(fixed).sort()
       if (a.linked_new && given.length) { a.start = given[0]; a.months = Math.min(60, Math.max(12, Math.ceil((given.length + 6) / 6) * 6)); delete a.linked_new }
       a.source = { file: 'Linked sheet: ' + l.name, imported_at: new Date().toISOString(), lines: chosen.map((c) => ({ label: c.label, maps_to: c.to })) }

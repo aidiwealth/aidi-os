@@ -11,7 +11,7 @@ watchEffect(() => { if (data.value && !f.entity_id) f.entity_id = data.value.ent
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not do that.'
 async function draft() { msg.value = ''; if (f.kind === 'other') { Object.assign(f, { title: '', body_md: '', requires_signature: false }); return } busy.value = 'd'; try { const t = await $fetch<{ title: string; md: string; requires_signature: boolean }>(api, { method: 'POST', body: { action: 'draft', kind: f.kind, holding_id: f.holding_id || null, entity_id: f.entity_id || null } }); Object.assign(f, { title: t.title, body_md: t.md, requires_signature: t.requires_signature }) } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function send() { busy.value = 's'; msg.value = ''; try { await $fetch(api, { method: 'POST', body: { action: 'send', kind: f.kind, title: f.title, body_md: f.body_md, requires_signature: f.requires_signature, holding_id: f.holding_id || null, entity_id: f.entity_id || null } }); f.open = false; ok.value = 'Sent to the client' + (f.requires_signature ? ' for signature.' : '.'); await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
-async function del(id: string) { if (!confirm('Withdraw this document?')) return; await $fetch(api, { method: 'POST', body: { action: 'delete', doc_id: id } }); await refresh() }
+async function del(id: string) { if (!await askConfirm('Withdraw this document?')) return; await $fetch(api, { method: 'POST', body: { action: 'delete', doc_id: id } }); await refresh() }
 const ST: Record<string, string> = { sent: 'Waiting for signature', signed: 'Signed', declined: 'Declined', info: 'Shared' }
 </script>
 <template>

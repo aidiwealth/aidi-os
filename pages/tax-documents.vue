@@ -7,7 +7,7 @@ const files = ref<File[]>([]); const msg = ref(''); const ok = ref(''); const bu
 const recips = computed(() => (f.kind === 'lp' ? data.value?.lps ?? [] : data.value?.clients ?? []))
 async function upload() { busy.value = true; msg.value = ''; ok.value = ''; const fd = new FormData(); for (const [k, v] of Object.entries(f)) fd.append(k, k === 'notify' ? (v ? '1' : '0') : String(v)); for (const x of files.value) fd.append('file', x)
   try { const r = await $fetch<{ uploaded: number }>('/api/tax-docs', { method: 'POST', body: fd }); ok.value = r.uploaded + ' document' + (r.uploaded === 1 ? '' : 's') + ' uploaded' + (f.notify && f.kind !== 'internal' ? ' and the recipient emailed.' : '.'); files.value = []; await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } finally { busy.value = false } }
-async function del(id: string) { if (!confirm('Delete this tax document?')) return; await $fetch('/api/tax-docs/' + id, { method: 'DELETE' }); await refresh() }
+async function del(id: string) { if (!await askConfirm('Delete this tax document?')) return; await $fetch('/api/tax-docs/' + id, { method: 'DELETE' }); await refresh() }
 const rows = computed(() => (data.value?.rows ?? []).filter((r) => !q.value || (r.recipient + ' ' + r.form_type + ' ' + r.tax_year).toLowerCase().includes(q.value.toLowerCase())))
 </script>
 <template>

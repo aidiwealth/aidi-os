@@ -36,7 +36,7 @@ async function saveEd() {
   try { await $fetch('/api/funds/prospects', { method: 'POST', body: { id: d.id, name: d.name, kind: d.kind, capital: d.capital, country: d.country ?? '', regions: list(d.regions), sectors: list(d.sectors), aum_usd: nz(d.aum_usd), ticket_min_usd: nz(d.ticket_min_usd), ticket_max_usd: nz(d.ticket_max_usd), mandate: d.mandate ?? '', backs_emerging: d.backs_emerging, website: d.website ?? '', contact_name: d.contact_name ?? '', contact_title: d.contact_title ?? '', email: d.email ?? '', linkedin: d.linkedin ?? '', phone: d.phone ?? '', notes: d.notes ?? '' } }); ed.open = false; await refresh() }
   catch (e) { ed.msg = err(e) } finally { ed.busy = false }
 }
-async function del() { if (!confirm('Remove ' + ed.d.name + ' from the LP list and every pipeline?')) return; try { await $fetch('/api/funds/prospects/' + ed.d.id, { method: 'DELETE' }); ed.open = false; await refresh() } catch (e) { ed.msg = err(e) } }
+async function del() { if (!await askConfirm('Remove ' + ed.d.name + ' from the LP list and every pipeline?')) return; try { await $fetch('/api/funds/prospects/' + ed.d.id, { method: 'DELETE' }); ed.open = false; await refresh() } catch (e) { ed.msg = err(e) } }
 const STK: Record<string, string> = { committed: 'c', won: 'w', lost: 'l' }
 function created(id: string) { plOpen.value = false; navigateTo('/funds/pipelines/' + id) }
 </script>

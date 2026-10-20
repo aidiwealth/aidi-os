@@ -17,7 +17,7 @@ const { data: con, refresh: refreshCon } = await useFetch<{ rows: { id: string; 
 async function setConsole(id: string, role: string) { msg.value = ''; try { await $fetch('/api/platform/staff', { method: 'POST', body: { user_id: id, role: role || null } }); await refreshCon() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
 async function toggle(m: Mod) {
   msg.value = ''
-  if (m.enabled && !confirm('Switch off ' + m.label + '? Its pages, links and data become unavailable to everyone until switched back on. Nothing is deleted.')) return
+  if (m.enabled && !await askConfirm('Switch off ' + m.label + '? Its pages, links and data become unavailable to everyone until switched back on. Nothing is deleted.')) return
   try { await $fetch('/api/admin/modules', { method: 'POST', body: { code: m.code, enabled: !m.enabled } }); await refresh(); await refreshNuxtData() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not change the module.' }
 }

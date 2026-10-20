@@ -35,7 +35,7 @@ watch(() => sf.method, (m) => { if (m === 'stripe') sf.currency = 'USD' })
 function newSub() { sf.organization_id = org.value; const o = customers.value.find((c) => c.id === org.value); if (o) sf.plan_code = o.plan_code; form.value = 'sub' }
 const saveSub = () => run(async () => { await $fetch('/api/platform/subscriptions', { method: 'POST', body: sf }); form.value = '' }, 'Subscription saved; the workspace is on the plan and active.')
 const endSub = (s: Sub) => run(async () => {
-  const reason = prompt('End ' + s.customer + "'s subscription. Type cancelled or churned:", 'cancelled')
+  const reason = await askPrompt('End ' + s.customer + "'s subscription. Type cancelled or churned:", 'cancelled')
   if (reason !== 'cancelled' && reason !== 'churned') throw new Error('cancel')
   await $fetch('/api/platform/subscriptions/' + s.id + '/end', { method: 'POST', body: { end_date: today(), reason } })
 }, 'Subscription ended. Change the workspace status on the customer page if access should stop.').catch(() => {})
@@ -56,7 +56,7 @@ const { data: rates } = await useFetch<{ country: string; label: string; rate: n
 const vat = computed(() => { const r = (rates.value ?? []).find((x) => x.country === (inf.currency === 'NGN' ? 'NG' : 'US') && x.applies_to.includes('platform')); return r && r.rate > 0 ? { label: r.label + ' (' + r.rate + '%)', amount: Math.round(total.value * r.rate) / 100 } : null })
 const saveInv = () => run(async () => { const r = await $fetch<{ number: string; emailed: boolean }>('/api/platform/invoices', { method: 'POST', body: inf }); form.value = ''; tab.value = 'inv'; ok.value = r.number + (inf.send ? (r.emailed ? ' created and emailed.' : ' created; the email did not send.') : ' saved as a draft.') }, '')
 const act = (i: Inv, action: 'send' | 'mark_paid' | 'void') => run(async () => {
-  if (action === 'void' && !confirm('Void invoice ' + i.number + '?')) throw new Error('cancel')
+  if (action === 'void' && !await askConfirm('Void invoice ' + i.number + '?')) throw new Error('cancel')
   await $fetch('/api/platform/invoices/' + i.id + '/action', { method: 'POST', body: { action } })
 }, action === 'send' ? 'Invoice emailed.' : action === 'mark_paid' ? 'Marked paid.' : 'Invoice voided.').catch(() => {})
 const usd = (v: number | string) => '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -65,7 +65,7 @@ async function copyLink(i: Inv) {
   try { const r = await $fetch<{ url: string; providers: string[] }>('/api/platform/invoices/' + i.id + '/link'); await navigator.clipboard.writeText(r.url); ok.value = 'Pay link for ' + i.number + ' copied' + (r.providers.length ? '.' : '. No payment provider is switched on for ' + i.currency + ' yet.') }
   catch (e) { msg.value = err(e) }
 }
-const charge = (i: Inv) => run(async () => { if (!confirm('Charge the saved card ' + cur(i.amount, i.currency) + ' for ' + i.number + '?')) throw new Error('cancel'); await $fetch('/api/platform/invoices/' + i.id + '/charge', { method: 'POST' }) }, 'Card charged; the invoice is paid.').catch(() => {})
+const charge = (i: Inv) => run(async () => { if (!await askConfirm('Charge the saved card ' + cur(i.amount, i.currency) + ' for ' + i.number + '?')) throw new Error('cancel'); await $fetch('/api/platform/invoices/' + i.id + '/charge', { method: 'POST' }) }, 'Card charged; the invoice is paid.').catch(() => {})
 const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 </script>
 

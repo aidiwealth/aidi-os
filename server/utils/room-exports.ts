@@ -1,6 +1,6 @@
 // A forecast or cap table as a document for the data room: a PDF (summary and tables) or, for a forecast, an Excel
 // model with the monthly P&L and cash flow and the assumptions.
-import { run, defaults, COST_LINES, type Assumptions } from '~/shared/forecast'
+import { run, defaults, forecastRows, type Assumptions } from '~/shared/forecast'
 import { table, exitByHolder, type Data } from '~/shared/captable'
 import { orderRows, commonHolders, RIGHT_LABEL } from '~/shared/positions'
 const n0 = (v: number) => (Math.round(v) === 0 ? '-' : v < 0 ? '(' + Math.abs(Math.round(v)).toLocaleString('en-US') + ')' : Math.round(v).toLocaleString('en-US'))
@@ -30,10 +30,12 @@ export function forecastMd(name: string, a0: Assumptions): string {
     const gs = groups.slice(k, k + 8)
     out.push('## Profit and loss and cash, ' + (per === 12 ? 'by year' : 'by quarter') + (groups.length > 8 ? ' (' + (k / 8 + 1) + ')' : ''), '', '| ' + c + ' | ' + gs.map(lab).join(' | ') + ' |', '|---|' + gs.map(() => '---').join('|') + '|')
     const row = (l: string, f: (g: typeof base.months) => number) => out.push('| ' + l + ' | ' + gs.map((g) => n0(f(g))).join(' | ') + ' |')
-    row('Revenue', (g) => sum(g, (m) => m.revenue)); row('Cost of revenue', (g) => -sum(g, (m) => m.cogs)); row('**Gross profit**', (g) => sum(g, (m) => m.gross_profit))
-    row('Payroll', (g) => -sum(g, (m) => m.payroll)); for (const cl of COST_LINES) row(cl.label, (g) => -sum(g, (m) => m.costs[cl.key] ?? 0))
-    row('**EBITDA**', (g) => sum(g, (m) => m.ebitda)); row('Tax', (g) => -sum(g, (m) => m.tax)); row('**Net income**', (g) => sum(g, (m) => m.net_income))
-    row('One-off items', (g) => sum(g, (m) => m.items)); row('Funding', (g) => sum(g, (m) => m.funding)); row('**Cash at period end**', (g) => g[g.length - 1]!.cash)
+    // Every line, with the company's own lines (products, carriers, costs) under theirs.
+    for (const r of forecastRows(a, base.months)) {
+      if (r.kind === 'p' || r.kind === 'n' || r.label === 'ARR' || r.label === 'Operating costs' || r.label === 'Net cash flow') continue
+      if (r.kind === 'h') { row('**Cash at period end**', (g) => g[g.length - 1]!.cash); continue }
+      row(r.kind === 'b' ? '**' + r.label + '**' : r.kind === 's' ? '&nbsp;&nbsp;' + r.label : r.label, (g) => sum(g, (m) => r.get(m) ?? 0))
+    }
     out.push('')
   }
   out.push('## Main assumptions', '', '- Opening cash: ' + money(a.opening.cash, c), '- Revenue: ' + (a.revenue.mode === 'growth' ? a.revenue.growth_pct + '% growth a month' : a.revenue.new_customers + ' new customers a month, ' + a.revenue.churn_pct + '% monthly churn, ' + money(a.revenue.arpu, c) + ' per customer a month'),
@@ -52,15 +54,17 @@ export async function forecastXlsx(name: string, company: string, a0: Assumption
     const r = run(a, s), ws = wb.addWorksheet(s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case', { views: [{ state: 'frozen', xSplit: 1, ySplit: 3 }] })
     ws.addRow([company + ' · ' + name + ' (' + a.currency + ')']).font = { bold: true, size: 13 }; ws.addRow([])
     const head = ws.addRow(['', ...r.months.map((m) => mon(m.month))]); head.font = { bold: true }
-    const rows: [string, (m: (typeof r.months)[number]) => number | null, boolean?][] = [['Revenue', (m) => m.revenue, true], ['Cost of revenue', (m) => -m.cogs], ['Gross profit', (m) => m.gross_profit, true], ['Gross margin %', (m) => m.gross_margin],
-      ['Payroll', (m) => -m.payroll], ...COST_LINES.map((cl) => [cl.label, (m: (typeof r.months)[number]) => -(m.costs[cl.key] ?? 0)] as [string, (m: (typeof r.months)[number]) => number]), ['Operating costs', (m) => -m.opex, true], ['EBITDA', (m) => m.ebitda, true], ['Tax', (m) => -m.tax], ['Net income', (m) => m.net_income, true],
-      ['One-off items', (m) => m.items], ['Funding', (m) => m.funding], ['Net cash flow', (m) => m.cash_flow, true], ['Cash at month end', (m) => m.cash, true], ['Headcount', (m) => m.headcount], ['ARR', (m) => m.arr]]
-    for (const [l, f, b] of rows) { const row = ws.addRow([l, ...r.months.map((m) => f(m))]); if (b) row.font = { bold: true }; row.eachCell((cell, i) => { if (i > 1) cell.numFmt = l.endsWith('%') ? '0.0' : fmt }) }
+    for (const x of forecastRows(a, r.months)) {
+      const row = ws.addRow([x.label, ...r.months.map((m) => x.get(m))])
+      if (x.kind === 'b' || x.kind === 'h') row.font = { bold: true }
+      if (x.kind === 's') { row.getCell(1).alignment = { indent: 2 }; row.font = { color: { argb: 'FF555B66' } } }
+      row.eachCell((cell, i) => { if (i > 1) cell.numFmt = x.kind === 'p' ? '0.0' : x.kind === 'n' ? '#,##0' : fmt })
+    }
     ws.getColumn(1).width = 34; for (let i = 2; i <= r.months.length + 1; i++) ws.getColumn(i).width = 12
   }
   const as = wb.addWorksheet('Assumptions'); as.getColumn(1).width = 40; as.getColumn(2).width = 22
   const kv: [string, string | number][] = [['Start month', a.start], ['Months', a.months], ['Currency', a.currency], ['Opening cash', a.opening.cash], ['Revenue this month', a.opening.revenue], ['Revenue model', a.revenue.mode === 'growth' ? 'Growth rate' : 'Customers × price'], ['Monthly growth %', a.revenue.growth_pct], ['Cost of revenue %', a.cogs_pct], ['Payroll today (a month)', a.opening.payroll], ['Yearly raise %', a.payroll_raise_pct], ['Tax on profit %', a.tax_pct],
-    ...a.costs.map((x) => [x.label + ' (a month)', x.amount] as [string, number]), ...a.hires.map((h) => ['Hire: ' + (h.role || 'role') + ' from ' + h.start, h.monthly_cost] as [string, number]), ...a.funding.map((f) => ['Funding: ' + (f.label || '') + ' ' + f.month, f.amount] as [string, number]), ...(a.source?.file ? [['Imported from', a.source.file] as [string, string]] : [])]
+    ...a.costs.map((x) => [x.label + ' (a month)', x.amount] as [string, number]), ...(a.parts ?? []).filter((x) => x.parent !== 'items' && x.parent !== 'funding').map((x) => [x.label + ' (share of its line after the given months, %)', x.share_pct] as [string, number]), ...a.hires.map((h) => ['Hire: ' + (h.role || 'role') + ' from ' + h.start, h.monthly_cost] as [string, number]), ...a.funding.map((f) => ['Funding: ' + (f.label || '') + ' ' + f.month, f.amount] as [string, number]), ...(a.source?.file ? [['Imported from', a.source.file] as [string, string]] : [])]
   for (const r of kv) as.addRow(r)
   return Buffer.from(await wb.xlsx.writeBuffer())
 }

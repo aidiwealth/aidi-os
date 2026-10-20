@@ -40,13 +40,13 @@ const rd = reactive<Record<string, { started_on: string; next_date: string; coun
 watch(ren, (v) => { for (const r of v?.items ?? []) rd[r.code] = { started_on: r.sub?.started_on ?? '', next_date: r.sub?.next_charge_at ?? r.obligation?.next_due ?? '', country: r.sub?.details?.country ?? 'United States', state: r.sub?.details?.state ?? '', address: r.sub?.details?.address ?? '' } }, { immediate: true })
 const todayIso = new Date().toISOString().slice(0, 10)
 const saveRen = (code: string, extra: Record<string, unknown> = {}) => run(async () => { const x = rd[code]!; const r = await $fetch<{ next: string | null }>('/api/services/clients/' + id + '/renewals', { method: 'POST', body: { code, ...extra, ...(extra.status ? {} : { started_on: x.started_on || undefined, next_date: x.next_date || undefined, ...(code === 'virtual_office' ? { details: { country: x.country, state: x.country === 'Nigeria' ? 'Lagos' : x.state, address: x.address } } : {}) }) } }); await rren(); return r }, extra.status === 'cancelled' ? 'Renewal cancelled.' : extra.status === 'suspended' ? 'Renewal paused.' : extra.status === 'active' ? 'Renewal resumed.' : 'Saved. The wallet renewal and the compliance calendar now match.')
-function confirmCancel(r: Rn) { return window.confirm('Cancel ' + r.name + ' for this client? It stops renewing and leaves their calendar.') }
+async function confirmCancel(r: Rn) { return await askConfirm('Cancel ' + r.name + ' for this client? It stops renewing and leaves their calendar.') }
 const saveRen2 = (r: Rn, v: { started_on: string; next_date: string; country: string; state: string; address: string }) => { rd[r.code] = { ...v }; return saveRen(r.code) }
-function cancelRen(r: Rn) { if (window.confirm('Cancel ' + r.name + ' renewals for this client?')) saveRen(r.code, { status: 'cancelled' }) }
+async function cancelRen(r: Rn) { if (await askConfirm('Cancel ' + r.name + ' renewals for this client?')) saveRen(r.code, { status: 'cancelled' }) }
 function fromStart(r: Rn) { const x = rd[r.code]!; if (!x.started_on) return; const m = (r.sub ? r.sub.interval === 'month' : r.obligation?.recurrence === 'monthly') ? 1 : 12; const b = new Date(x.started_on + 'T00:00:00Z'); for (let k = 1; k < 1200; k++) { const d = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + m * k, Math.min(b.getUTCDate(), 28))); const iso = d.toISOString().slice(0, 10); if (iso >= todayIso) { x.next_date = iso; break } } }
 const signing = ref(false)
 async function signInAs() {
-  if (!confirm('Sign in to ' + (data.value?.client.name ?? 'this client') + '\'s Finvry account as the owner? Their account is set up if needed, without emailing them. You act as them until you return to the console. This is recorded.')) return
+  if (!await askConfirm('Sign in to ' + (data.value?.client.name ?? 'this client') + '\'s Finvry account as the owner? Their account is set up if needed, without emailing them. You act as them until you return to the console. This is recorded.')) return
   signing.value = true
   try { const r = await $fetch<{ redirect?: string }>('/api/services/clients/' + id + '/signin', { method: 'POST' }); window.location.href = r.redirect || '/' } catch (e) { msg.value = err(e); signing.value = false }
 }
@@ -54,7 +54,7 @@ const invite = (p: Pe, send: boolean) => run(() => $fetch('/api/services/clients
 const { data: msgs, refresh: rmsgs } = await useFetch<{ id: string; from_team: boolean; body: string | null; created_at: string; author: string | null; read_by_client: string | null; doc_id: string | null; doc_name: string | null; doc_size: number | null }[]>('/api/services/clients/' + id + '/messages')
 const reply = ref('')
 const msgKey = ref(0)
-async function delMsgs() { if (!window.confirm('Delete every conversation with ' + (data.value?.client.name ?? 'this client') + '? Every message and file shared in it is removed for you and the client. This cannot be undone.')) return; msg.value = ''; ok.value = ''; try { await $fetch('/api/services/clients/' + id + '/messages', { method: 'DELETE' }); ok.value = 'Conversations deleted.'; msgKey.value++; await rmsgs() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.' } }
+async function delMsgs() { if (!await askConfirm('Delete every conversation with ' + (data.value?.client.name ?? 'this client') + '? Every message and file shared in it is removed for you and the client. This cannot be undone.')) return; msg.value = ''; ok.value = ''; try { await $fetch('/api/services/clients/' + id + '/messages', { method: 'DELETE' }); ok.value = 'Conversations deleted.'; msgKey.value++; await rmsgs() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.' } }
 const toggleEmails = () => run(async () => { await $fetch('/api/services/clients/' + id + '/emails', { method: 'POST', body: { muted: !data.value?.client.emails_muted } }) }, data.value?.client.emails_muted ? 'Emails to the client are back on.' : 'Emails to this client are off. Messages and updates still appear in their account.')
 const unpaid = computed(() => (data.value?.invoices ?? []).filter((i: { status: string }) => i.status === 'sent').length)
 const openJobs = computed(() => (data.value?.jobs ?? []).filter((j: { status: string }) => !['completed', 'cancelled'].includes(j.status)).length)
@@ -149,7 +149,7 @@ const inits = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) 
       <p v-if="ren && !ren.workspace" class="muted">This client has no Finvry account yet, so there are no renewals. Use "Sign in as owner" to set one up quietly.</p>
       <div v-else-if="ren?.items.length" class="rens">
         <RenewalCard v-for="r in ren.items" :key="r.code" editable :r="{ code: r.code, name: r.name, amount_minor: r.sub?.amount_minor, currency: r.sub?.currency, interval: r.sub?.interval ?? (r.obligation?.recurrence === 'monthly' ? 'month' : 'year'), status: r.sub?.status ?? null, next: r.sub?.next_charge_at ?? r.obligation?.next_due ?? null, started: r.sub?.started_on ?? null, details: r.sub?.details ?? null, calendarOnly: !r.sub }"
-          @save="(v) => saveRen2(r, v)" @status="(st) => (st !== 'cancelled' || confirmCancel(r)) && saveRen(r.code, { status: st })" />
+          @save="(v) => saveRen2(r, v)" @status="async (st) => { if (st !== 'cancelled' || await confirmCancel(r)) saveRen(r.code, { status: st }) }" />
       </div>
       <EmptyState v-else-if="ren" compact icon="services" title="No recurring services yet" />
     </template>

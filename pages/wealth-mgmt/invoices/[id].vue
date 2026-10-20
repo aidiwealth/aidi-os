@@ -8,8 +8,8 @@ const today = new Date().toISOString().slice(0, 10)
 const paid = reactive({ on: today, method: 'transfer' })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function act(action: string, done: string, extra: Record<string, unknown> = {}) {
-  if (action === 'waive' && !confirm('Waive this invoice? The client will not be asked to pay it.')) return
-  if (action === 'delete' && !confirm('Delete this draft invoice?')) return
+  if (action === 'waive' && !await askConfirm('Waive this invoice? The client will not be asked to pay it.')) return
+  if (action === 'delete' && !await askConfirm('Delete this draft invoice?')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try { await $fetch('/api/wm/fees/' + id, { method: 'POST', body: { action, ...extra } }); if (action === 'delete') return navigateTo(data.value?.client_id ? '/wealth-mgmt/clients/' + data.value.client_id : '/wealth-mgmt'); ok.value = done; await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }

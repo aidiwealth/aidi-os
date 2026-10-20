@@ -32,7 +32,7 @@ const bulkTo = ref(''); watch(bulkTo, async (v) => { if (v && sel.value.length) 
 const ed = reactive({ open: false, t: null as T | null, stage_id: '', amount: '' as string | number, likelihood: '' as string | number, next_step: '', next_date: '', notes: '', busy: false })
 function open(t: T) { Object.assign(ed, { open: true, t, stage_id: t.stage_id, amount: t.amount ?? '', likelihood: t.likelihood ?? '', next_step: t.next_step ?? '', next_date: t.next_date ?? '', notes: t.notes ?? '' }) }
 async function saveEd() { ed.busy = true; await act({ edit: { id: ed.t!.id, stage_id: ed.stage_id, amount: ed.amount === '' ? null : Number(ed.amount), likelihood: ed.likelihood === '' ? null : Number(ed.likelihood), next_step: ed.next_step, next_date: ed.next_date, notes: ed.notes } }); ed.busy = false; if (!msg.value) ed.open = false }
-async function removeOne() { if (!confirm('Take ' + ed.t!.name + ' out of this pipeline? They stay on the LP list.')) return; await act({ remove: [ed.t!.id] }); ed.open = false }
+async function removeOne() { if (!await askConfirm('Take ' + ed.t!.name + ' out of this pipeline? They stay on the LP list.')) return; await act({ remove: [ed.t!.id] }); ed.open = false }
 // Add LPs: from the list, an import, or an AI search.
 const add = reactive({ open: false, mode: 'import' as 'import' | 'find' })
 const pick = reactive({ open: false, q: '', ids: [] as string[] })
@@ -48,8 +48,8 @@ async function register(ids: string[]) {
   catch (e) { msg.value = err(e) }
 }
 const pf = ref(false)
-async function removeSel() { if (!confirm('Take ' + sel.value.length + ' out of this pipeline? They stay on the LP list.')) return; await act({ remove: sel.value }); sel.value = [] }
-async function delPipeline() { if (!confirm('Delete the pipeline "' + data.value?.pipeline.name + '"? The LPs stay on the list and the register.')) return; await $fetch('/api/funds/pipelines/' + id, { method: 'DELETE' }); navigateTo('/funds') }
+async function removeSel() { if (!await askConfirm('Take ' + sel.value.length + ' out of this pipeline? They stay on the LP list.')) return; await act({ remove: sel.value }); sel.value = [] }
+async function delPipeline() { if (!await askConfirm('Delete the pipeline "' + data.value?.pipeline.name + '"? The LPs stay on the list and the register.')) return; await $fetch('/api/funds/pipelines/' + id, { method: 'DELETE' }); navigateTo('/funds') }
 const lk = (v: number | null) => (v == null ? '' : v >= 70 ? 'hi' : v >= 45 ? 'md' : 'lo')
 const due = (d: string | null) => !!d && d <= new Date().toISOString().slice(0, 10)
 const COL: Record<string, string> = { open: '#7d8aa5', committed: '#b07a12', won: '#1f3a6b', lost: '#b0b0b0' }

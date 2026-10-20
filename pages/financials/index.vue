@@ -50,7 +50,7 @@ async function saveRename() {
   catch (e) { ren.msg = errOf(e, 'Could not rename.') } finally { ren.busy = false }
 }
 async function removeSub() {
-  if (!curPage.value || curPage.value.main || !confirm('Remove ' + curPage.value.name + ' and all its figures? This cannot be undone.')) return
+  if (!curPage.value || curPage.value.main || !await askConfirm('Remove ' + curPage.value.name + ' and all its figures? This cannot be undone.')) return
   try { await $fetch('/api/financials/subsidiaries/' + curPage.value.id, { method: 'DELETE' }); ren.open = false; subject.value = baseCo.value!.subject; await refreshNuxtData() } catch (e) { ren.msg = errOf(e, 'Could not remove it.') }
 }
 watchEffect(() => { if (!co.value && subject.value === 'group' && subj.value?.currencies.length && !subj.value.currencies.includes(currency.value)) currency.value = subj.value.currencies[0]! })
@@ -187,7 +187,7 @@ const errOf = (e: unknown, d: string) => (e as { data?: { data?: { error?: { mes
 async function fromGoogle() { src.busy = 'gs'; msg.value = ''; try { const gr = await $fetch<Parameters<typeof applyProposal>[0] & { more_periods?: MorePeriod[] }>('/api/financials/gsheet', { method: 'POST', body: { url: src.gs, subject: form.subject, wanted: periodEnd.value || 'latest period' } }); more.value = gr.more_periods ?? []; applyProposal(gr) } catch (e) { msg.value = errOf(e, 'Could not read the Google Sheet.') } finally { src.busy = '' } }
 const qbWall = ref(false)
 async function fromQuickBooks() { if (!periodEnd.value) { msg.value = 'Choose the period first.'; return } src.busy = 'qb'; msg.value = ''; try { applyProposal(await $fetch('/api/integrations/quickbooks/pull', { method: 'POST', body: { subject: form.subject, period_type: form.period_type, period_end: periodEnd.value } })) } catch (e) { msg.value = errOf(e, 'Could not pull from QuickBooks.'); if ((e as { data?: { data?: { error?: { code?: string } } } }).data?.data?.error?.code === 'quickbooks_reconnect') await loadSources() } finally { src.busy = '' } }
-async function qbDisconnect() { if (!confirm('Disconnect QuickBooks for this entity or company?')) return; await $fetch('/api/integrations/quickbooks/disconnect', { method: 'POST', body: { subject: form.subject } }); await loadSources() }
+async function qbDisconnect() { if (!await askConfirm('Disconnect QuickBooks for this entity or company?')) return; await $fetch('/api/integrations/quickbooks/disconnect', { method: 'POST', body: { subject: form.subject } }); await loadSources() }
 onMounted(() => { const q = useRoute().query; if (q.qb === 'upgrade') qbWall.value = true; if (q.qb === 'connected') { ok.value = 'QuickBooks connected. Open "Add a statement" and choose Pull from QuickBooks.' } else if (q.qb === 'failed' || q.qb === 'cancelled') msg.value = q.qb === 'failed' ? 'QuickBooks connection failed. Please try again.' : 'QuickBooks connection cancelled.' })
 async function fromSheet(ev: Event) {
   const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return

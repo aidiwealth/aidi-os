@@ -48,7 +48,7 @@ const KIND: Record<string, string> = { public: 'Listed', private: 'Private round
 const shown = computed(() => [...peers.value].sort((p, q) => (p.kind === q.kind ? (q.ev_revenue ?? 0) - (p.ev_revenue ?? 0) : p.kind === 'public' ? -1 : q.kind === 'public' ? 1 : 0)))
 function setNum(p: Peer, k: 'ev_revenue' | 'ev_ebitda' | 'growth_pct' | 'gross_margin_pct', val: string) { const n = val.trim() === '' ? null : Number(val); p[k] = n !== null && Number.isFinite(n) ? n : null; save(true) }
 function toggle(p: Peer) { p.use = !p.use; save(true) }
-function remove(p: Peer) { if (!confirm('Remove ' + p.name + '?')) return; peers.value = peers.value.filter((y) => y !== p); save(true) }
+async function remove(p: Peer) { if (!await askConfirm('Remove ' + p.name + '?')) return; peers.value = peers.value.filter((y) => y !== p); save(true) }
 const np = reactive({ open: false, name: '', kind: 'public' as Peer['kind'], ev_revenue: '', gross_margin_pct: '', growth_pct: '' })
 function addPeer() {
   if (!np.name.trim()) return

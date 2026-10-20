@@ -6,7 +6,7 @@ const gb = (b: number) => (b / 1024 ** 3 >= 0.1 ? (b / 1024 ** 3).toFixed(2) + '
 const pct = computed(() => (data.value?.limit_gb ? Math.min(100, (data.value.used / (data.value.limit_gb * 1024 ** 3)) * 100) : 0))
 const price = computed(() => data.value ? new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value.pack.currency, maximumFractionDigits: 0 }).format(data.value.pack.price) : '')
 const msg = ref(''); const busy = ref(false)
-async function buy() { if (!confirm('Add ' + data.value!.pack.gb + ' GB of storage for ' + price.value + ' a month, paid from your wallet? It renews automatically; you can turn that off.')) return; busy.value = true; msg.value = ''; try { await $fetch('/api/storage/buy', { method: 'POST' }); await refresh(); msg.value = 'Storage added.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add storage.' } finally { busy.value = false } }
+async function buy() { if (!await askConfirm('Add ' + data.value!.pack.gb + ' GB of storage for ' + price.value + ' a month, paid from your wallet? It renews automatically; you can turn that off.')) return; busy.value = true; msg.value = ''; try { await $fetch('/api/storage/buy', { method: 'POST' }); await refresh(); msg.value = 'Storage added.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add storage.' } finally { busy.value = false } }
 async function renew(id: string, on: boolean) { await $fetch('/api/storage/addons/' + id, { method: 'POST', body: { auto_renew: on } }); await refresh() }
 </script>
 <template>

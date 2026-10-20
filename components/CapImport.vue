@@ -50,9 +50,9 @@ function dropHolder(i: number) { const name = p.value!.holders[i]!.name; const x
 function rename(i: number, v: string) { const x = p.value!, old = x.holders[i]!.name; v = v.trim(); if (!v || v === old) return; for (const r of [...x.issuances, ...x.grants, ...x.convertibles]) if (r.holder === old) r.holder = v; x.holders[i]!.name = v }
 const sec = ref<'holders' | 'issuances' | 'grants' | 'convertibles' | 'classes'>('holders')
 async function save() {
-  if (mode.value === 'replace' && props.hasData && !confirm('Replace your current cap table with this one? Everything entered so far will be removed.')) return
+  if (mode.value === 'replace' && props.hasData && !await askConfirm('Replace your current cap table with this one? Everything entered so far will be removed.')) return
   busy.value = true; msg.value = ''
-  try { const r = await $fetch<{ ct: string; issuances: number; grants: number; convertibles: number; skipped: number }>('/api/equity/import-apply', { method: 'POST', body: { proposal: p.value, mode: mode.value, ct: props.ct, name: newName.value, attach: attachDocs.value && keptDocs.value.length ? { docs: keptDocs.value, room: attachRoom.value } : undefined } }); emit('saved', r.ct); emit('close'); if (r.skipped) alert(r.skipped + ' rows were already on your cap table and were skipped.') }
+  try { const r = await $fetch<{ ct: string; issuances: number; grants: number; convertibles: number; skipped: number }>('/api/equity/import-apply', { method: 'POST', body: { proposal: p.value, mode: mode.value, ct: props.ct, name: newName.value, attach: attachDocs.value && keptDocs.value.length ? { docs: keptDocs.value, room: attachRoom.value } : undefined } }); emit('saved', r.ct); emit('close'); if (r.skipped) notify(r.skipped + ' rows were already on your cap table and were skipped.') }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 </script>

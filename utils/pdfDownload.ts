@@ -1,7 +1,7 @@
 // Download a server-built PDF (documents and invoices) instead of printing the screen.
 export async function downloadPdf(body: Record<string, unknown>, publicPage = false): Promise<void> {
   const res = await fetch(publicPage ? '/api/public/pdf' : '/api/pdf', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' })
-  if (!res.ok) { alert('Could not create the PDF. Please try again.'); return }
+  if (!res.ok) { notify('Could not create the PDF. Please try again.'); return }
   const blob = await res.blob(); const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'document.pdf'
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
 }

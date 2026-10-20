@@ -11,7 +11,7 @@ const blank = () => ({ id: '', name: '', kind: 'vc', website: '', logo_url: '', 
 const f = reactive({ open: false, ...blank() }); const msg = ref(''); const ok = ref(''); const busy = ref(false)
 function edit(p?: Pt) { Object.assign(f, blank(), p ? { ...p, website: p.website ?? '', logo_url: p.logo_url ?? '', contact_name: p.contact_name ?? '', contact_email: p.contact_email ?? '', note: p.note ?? '', code: p.code ?? '', months: p.months ?? '', max_redemptions: p.max_redemptions ?? '', expires_on: p.expires_on ?? '', status: p.status === 'pending' ? 'approved' : p.status } : {}, { open: true }); msg.value = '' }
 async function save(del = false) {
-  if (del && !window.confirm('Remove ' + f.name + '? Workspaces keep any discount they already redeemed.')) return
+  if (del && !await askConfirm('Remove ' + f.name + '? Workspaces keep any discount they already redeemed.')) return
   busy.value = true; msg.value = ''
   try { const { open, ...b } = f; void open; const r = await $fetch<{ code: string | null }>('/api/platform/partners', { method: 'POST', body: del ? { id: f.id, delete: true } : { ...b, id: b.id || undefined } }); f.open = false; ok.value = del ? 'Removed.' : 'Saved' + (r.code ? ' — code ' + r.code : '') + '.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }

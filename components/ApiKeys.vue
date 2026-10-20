@@ -3,11 +3,11 @@
 interface K { id: string; name: string; prefix: string; scopes: string[]; created_at: string; last_used_at: string | null; revoked_at: string | null }
 const { data: res, refresh } = await useFetch<{ company: boolean; enabled: boolean; keys: K[] }>('/api/api-keys')
 const data = computed(() => res.value?.keys ?? [])
-async function setEnabled(v: boolean) { if (!v && !confirm('Switch off API access? Every key is revoked.')) return; try { await $fetch('/api/api-keys', { method: 'POST', body: { enabled: v } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not change API access.' } }
+async function setEnabled(v: boolean) { if (!v && !await askConfirm('Switch off API access? Every key is revoked.')) return; try { await $fetch('/api/api-keys', { method: 'POST', body: { enabled: v } }); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not change API access.' } }
 const f = reactive({ name: '', write: false }); const fresh = ref(''); const msg = ref(''); const copied = ref(false)
 const base = useRequestURL().origin + '/api/v1'
 async function create() { msg.value = ''; try { const r = await $fetch<{ key: string }>('/api/api-keys', { method: 'POST', body: f }); fresh.value = r.key; f.name = ''; f.write = false; await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not create the key.' } }
-async function revoke(k: K) { if (!confirm('Revoke ' + k.name + '? Anything using it stops working.')) return; await $fetch('/api/api-keys', { method: 'POST', body: { revoke: k.id } }); await refresh() }
+async function revoke(k: K) { if (!await askConfirm('Revoke ' + k.name + '? Anything using it stops working.')) return; await $fetch('/api/api-keys', { method: 'POST', body: { revoke: k.id } }); await refresh() }
 async function copy() { await navigator.clipboard.writeText(fresh.value); copied.value = true; setTimeout(() => (copied.value = false), 1500) }
 const day = (d: string | null) => (d ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never')
 </script>

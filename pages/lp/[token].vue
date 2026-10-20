@@ -34,7 +34,7 @@ const tot = computed(() => {
   return { inv, val, dist, mult: inv ? (val + dist) / inv : null, deals: parts.value.reduce((s, p) => s + p.deals.length, 0) }
 })
 const DS: Record<string, string> = { active: 'Active', at_cost: 'At cost', realized: 'Exited', written_off: 'Written off' }
-async function interested(d: Deal) { iErr.value = ''; const note = prompt('Anything to add for the fund team? (optional)') ?? ''; try { await $fetch('/api/public/lp/' + token + '/interest', { method: 'POST', body: { pitch_id: d.id, note } }); sent.value.push(d.id) } catch (e) { iErr.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } }
+async function interested(d: Deal) { iErr.value = ''; const note = await askPrompt('Anything to add for the fund team? (optional)') ?? ''; try { await $fetch('/api/public/lp/' + token + '/interest', { method: 'POST', body: { pitch_id: d.id, note } }); sent.value.push(d.id) } catch (e) { iErr.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send.' } }
 </script>
 
 <template>

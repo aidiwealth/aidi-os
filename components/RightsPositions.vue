@@ -49,8 +49,8 @@ async function saveEd() {
   try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: false, rows: [{ id: ed.id || undefined, holder_id: ed.holder_id || null, party: ed.party || hName(ed.holder_id), kind: ed.kind, summary: ed.summary || RIGHT_LABEL[ed.kind], impact: ed.impact, clause: ed.clause, document_id: ed.document_id, terms }] } }); ed.open = false; emit('changed') }
   catch (e) { ed.msg = err(e) }
 }
-async function del(r: Right) { if (!confirm('Remove this right? The letter stays in Documents.')) return; await $fetch('/api/equity/rights/' + r.id, { method: 'DELETE' }).catch(() => {}); emit('changed') }
-async function remap(r: Right, holder: string) { try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: true, rows: [{ id: r.id, holder_id: holder || null, party: r.party ?? '', kind: r.kind, summary: r.summary, impact: r.impact ?? '', clause: r.clause ?? '', document_id: r.document_id, terms: r.terms }] } }); emit('changed') } catch (e) { alert(err(e)) } }
+async function del(r: Right) { if (!await askConfirm('Remove this right? The letter stays in Documents.')) return; await $fetch('/api/equity/rights/' + r.id, { method: 'DELETE' }).catch(() => {}); emit('changed') }
+async function remap(r: Right, holder: string) { try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: true, rows: [{ id: r.id, holder_id: holder || null, party: r.party ?? '', kind: r.kind, summary: r.summary, impact: r.impact ?? '', clause: r.clause ?? '', document_id: r.document_id, terms: r.terms }] } }); emit('changed') } catch (e) { notify(err(e)) } }
 const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.multiple ? t.multiple + '×' : '', t.seats ? t.seats + ' seat' + (Number(t.seats) === 1 ? '' : 's') : '', t.threshold, t.applies_to, t.expires ? 'until ' + t.expires : ''].filter(Boolean).join(' · ')
 </script>
 <template>

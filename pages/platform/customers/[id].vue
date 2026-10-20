@@ -17,7 +17,7 @@ async function savePrice() { prMsg.value = ''; try { await $fetch('/api/platform
 watchEffect(() => { const o = data.value?.org; if (o) Object.assign(f, { name: o.name, plan_code: o.plan_code, status: o.status, trial_ends_at: o.trial_ends ?? '' }) })
 const busy = ref(false); const msg = ref(''); const ok = ref(invited ? 'Workspace created and the admin has been invited.' : '')
 async function save() {
-  if ((f.status === 'suspended' || f.status === 'closed') && f.status !== data.value?.org.status && !confirm('This signs everyone in ' + f.name + ' out and blocks access until reactivated. Continue?')) return
+  if ((f.status === 'suspended' || f.status === 'closed') && f.status !== data.value?.org.status && !await askConfirm('This signs everyone in ' + f.name + ' out and blocks access until reactivated. Continue?')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try { await $fetch('/api/platform/orgs/' + id, { method: 'PATCH', body: { name: f.name, plan_code: f.plan_code, status: f.status, trial_ends_at: f.status === 'trial' ? (f.trial_ends_at || null) : undefined } }); ok.value = 'Saved.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
@@ -26,7 +26,7 @@ const gb = (b: number) => (b / 1024 ** 3).toFixed(2)
 const pct = (v: number, max: number | null) => (max ? Math.min(100, (v / max) * 100) : 0)
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'never')
 const ACT: Record<string, string> = { 'platform.workspace_create': 'Workspace created', 'platform.workspace_update': 'Workspace updated', 'platform.plan_save': 'Plan saved', 'platform.support_signin': 'Logged in as a user (support access)' }
-async function delOrg() { const n = data.value?.org.name ?? ''; const typed = prompt('This permanently deletes ' + n + ' and all its data. Type the workspace name to confirm:'); if (typed === null) return; try { await $fetch('/api/platform/orgs/' + id, { method: 'DELETE', body: { confirm: typed } }); await navigateTo('/platform/customers') } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
+async function delOrg() { const n = data.value?.org.name ?? ''; const typed = await askPrompt('This permanently deletes ' + n + ' and all its data. Type the workspace name to confirm.', '', { ok: 'Delete', required: true, placeholder: n }); if (typed === null) return; try { await $fetch('/api/platform/orgs/' + id, { method: 'DELETE', body: { confirm: typed } }); await navigateTo('/platform/customers') } catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 const inv = reactive({ open: false, full_name: '', email: '', subject: '', message: '', send: true, busy: false, msg: '', ok: false })
 function openInvite() {
   const n = data.value?.org.name ?? 'your company'

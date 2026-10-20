@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Finvry forecast: revenue, costs, profit, cash and runway by month, from your actuals and a few assumptions.
-import { run, defaults, addMonths, COST_LINES, type Assumptions, type Scenario, type FinSource, type BankSource, type GroupCo } from '~/shared/forecast'
+import { run, defaults, addMonths, COST_LINES, forecastRows, partParents, partKey, type Part, type Assumptions, type Scenario, type FinSource, type BankSource, type GroupCo } from '~/shared/forecast'
 useHead({ title: 'Forecast' })
 interface Act { month: string; revenue: number | null; cogs: number | null; opex: number | null; net_income: number | null; cash: number | null }
 // On Finvry the forecast sits under Financials and follows the company (or the group) chosen at the top: each company
@@ -55,7 +55,7 @@ async function imported(v: { name: string; assumptions: Assumptions }) {
   try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', query: fq.value, body: { name: v.name, assumptions: v.assumptions } }); await refresh(); await pick(r.id); ok.value = 'Imported and saved as "' + v.name + '".' }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save the imported forecast.' }
 }
-function dropFixed() { if (!confirm('Stop using the imported figures? Every month will follow the assumptions. (Save to keep this change.)')) return; const x = { ...a.value }; delete x.fixed; delete x.source; a.value = x }
+async function dropFixed() { if (!await askConfirm('Stop using the imported figures? Every month will follow the assumptions. (Save to keep this change.)')) return; const x = { ...a.value }; delete x.fixed; delete x.source; a.value = x }
 const res = computed(() => run(a.value, sc.value))
 const cur = computed(() => a.value.currency)
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, cur.value))
@@ -66,28 +66,38 @@ async function save(asNew = false) {
   try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', query: fq.value, body: { id: asNew ? undefined : sel.value || undefined, name: name.value, assumptions: a.value } }); sel.value = r.id; dirty.value = false; ok.value = 'Saved.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
-async function del() { if (!sel.value || !confirm('Delete "' + name.value + '"?')) return; await $fetch('/api/forecast', { method: 'POST', query: fq.value, body: { id: sel.value, delete: true } }); await refresh(); await pick(one.value?.forecasts[0]?.id ?? '') }
-function reseed() { if (!confirm('Reset the starting point to your latest actuals?')) return; const s = one.value!.seed; a.value.opening = { ...s.opening }; a.value.start = s.start; a.value.cogs_pct = s.cogs_pct; a.value.costs = structuredClone(toRaw(s.costs)) }
+async function del() { if (!sel.value || !await askConfirm('Delete "' + name.value + '"?')) return; await $fetch('/api/forecast', { method: 'POST', query: fq.value, body: { id: sel.value, delete: true } }); await refresh(); await pick(one.value?.forecasts[0]?.id ?? '') }
+async function reseed() { if (!await askConfirm('Reset the starting point to your latest actuals?')) return; const s = one.value!.seed; a.value.opening = { ...s.opening }; a.value.start = s.start; a.value.cogs_pct = s.cogs_pct; a.value.costs = structuredClone(toRaw(s.costs)) }
 const addHire = () => a.value.hires.push({ role: '', start: addMonths(a.value.start, 1), monthly_cost: 0 })
 const addFund = () => a.value.funding.push({ label: 'Seed round', month: addMonths(a.value.start, 3), amount: 0 })
 const addItem = () => a.value.items.push({ label: '', month: addMonths(a.value.start, 1), amount: 0 })
 // The company's own cost lines (beyond the four standard ones), up to 12 lines in all.
 const newCost = ref('')
 function addCost() { const label = newCost.value.trim().slice(0, 80); if (!label) return; let k = 'x_' + (label.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'cost'); while (a.value.costs.some((c) => c.key === k)) k = k.slice(0, 27) + '_a'; a.value.costs.push({ key: k, label, amount: 0, growth_pct: 1 }); newCost.value = '' }
-const open = reactive<Record<string, boolean>>({ start: true, revenue: true, costs: true, people: false, money: false, scen: false })
+const open = reactive<Record<string, boolean>>({ parts: false, start: true, revenue: true, costs: true, people: false, money: false, scen: false })
 // Chart: last 12 actual months then the forecast.
 const chart = computed(() => ({ actual: (one.value?.actuals ?? []).filter((x) => x.month < a.value.start).map((x) => ({ month: x.month, revenue: x.revenue ?? 0, costs: (x.cogs ?? 0) + (x.opex ?? 0), cash: x.cash })), forecast: res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })) }))
 // Actuals against this forecast, for months that have both.
 const vs = computed(() => (one.value?.actuals ?? []).map((x) => ({ x, f: res.value.months.find((y) => y.month === x.month) })).filter((p) => p.f && p.x.revenue !== null))
-const ROWS = computed<[string, (x: (typeof res.value.months)[number]) => number | null, string?][]>(() => [
-  ['Revenue', (x) => x.revenue, 'b'], ['Cost of revenue', (x) => -x.cogs], ['Gross profit', (x) => x.gross_profit, 'b'], ['Gross margin %', (x) => x.gross_margin, 'p'],
-  ['Payroll', (x) => -x.payroll], ...a.value.costs.map((c) => [c.label, (x: (typeof res.value.months)[number]) => -(x.costs[c.key] ?? 0)] as [string, (x: (typeof res.value.months)[number]) => number]),
-  ['Operating costs', (x) => -x.opex, 'b'], ['EBITDA', (x) => x.ebitda, 'b'], ['Tax', (x) => -x.tax], ['Net income', (x) => x.net_income, 'b'],
-  ['One-off items', (x) => x.items], ['Funding', (x) => x.funding], ['Net cash flow', (x) => x.cash_flow, 'b'], ['Cash at month end', (x) => x.cash, 'h'],
-  ['Customers', (x) => x.customers, 'n'], ['Headcount', (x) => x.headcount, 'n'], ['ARR', (x) => x.arr]])
+const ROWS = computed(() => forecastRows(a.value, res.value.months))
+// The company's own lines (products, carriers, cost items) under a forecast line: in given months the figures given,
+// after that their share of the line.
+const PARENTS = computed(() => partParents(a.value))
+const partGroups = computed(() => PARENTS.value.map((p) => ({ ...p, parts: (a.value.parts ?? []).filter((x) => x.parent === p.key), sum: (a.value.parts ?? []).filter((x) => x.parent === p.key).reduce((t, x) => t + (Number(x.share_pct) || 0), 0) })).filter((g) => g.parts.length))
+const np = reactive({ label: '', parent: 'revenue', share: 0 as number | '' })
+const noShare = (k: string) => k === 'items' || k === 'funding'
+function addPart() {
+  const label = np.label.trim().slice(0, 80); if (!label || (a.value.parts?.length ?? 0) >= 60) return
+  const list = a.value.parts ?? []; list.push({ key: partKey(label, list.map((x) => x.key)), label, parent: np.parent, share_pct: Number(np.share) || 0 }); a.value.parts = list
+  np.label = ''; np.share = 0
+}
+function removePart(p: Part) {
+  a.value.parts = (a.value.parts ?? []).filter((x) => x !== p)
+  for (const f of Object.values(a.value.fixed ?? {})) if (f.parts) delete f.parts[p.key]
+}
 function csv() {
   const head = ['Line', ...res.value.months.map((x) => x.month)]
-  const lines = [head, ...ROWS.value.map(([l, f]) => [l, ...res.value.months.map((x) => { const v = f(x); return v === null ? '' : String(Math.round(v * 100) / 100) })])]
+  const lines = [head, ...ROWS.value.map((r) => [(r.kind === 's' ? '  ' : '') + r.label, ...res.value.months.map((x) => { const v = r.get(x); return v === null ? '' : String(Math.round(v * 100) / 100) })])]
   const blob = new Blob([lines.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n')], { type: 'text/csv' })
   const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = (name.value || 'forecast') + ' (' + sc.value + ').csv'; l.click(); URL.revokeObjectURL(u)
 }
@@ -141,6 +151,11 @@ function csv() {
             <div v-else class="g2"><label>New customers a month<input v-model.number="a.revenue.new_customers" type="number" min="0"></label><label>Growth in new customers %<input v-model.number="a.revenue.new_growth_pct" type="number" step="0.5"></label>
               <label>Monthly churn %<input v-model.number="a.revenue.churn_pct" type="number" min="0" step="0.5"></label><label>Revenue per customer / month<input v-model.number="a.revenue.arpu" type="number" min="0"></label><label>Price growth % a month<input v-model.number="a.revenue.arpu_growth_pct" type="number" step="0.5"></label></div>
             <div class="g2"><label>Cost of revenue (% of revenue)<input v-model.number="a.cogs_pct" type="number" min="0" max="100"></label></div></div></div>
+        <div class="sec"><button class="sh" @click="open.parts = !open.parts"><b>Products and your own lines</b><span>{{ a.parts?.length ? a.parts.length + ' line' + (a.parts.length === 1 ? '' : 's') : 'Break lines down' }}</span></button>
+          <div v-if="open.parts" class="sb"><p class="hint">Show each line the way you report it: products under Revenue, carriers under Cost of revenue, Rent under General &amp; admin. Months given by a file or sheet use its figures; after that each line takes its share.</p>
+            <div v-for="g in partGroups" :key="g.key" class="pg"><p class="kl">{{ g.label }}<em v-if="!noShare(g.key) && Math.abs(g.sum - 100) > 0.05" :class="{ over: g.sum > 100.05 }"> · shares add to {{ Math.round(g.sum * 10) / 10 }}%{{ g.sum < 100 ? ', the rest shows as Other' : '' }}</em></p>
+              <div v-for="p in g.parts" :key="p.key" class="pl"><input v-model="p.label" maxlength="80" :aria-label="'Name of ' + p.label"><template v-if="!noShare(g.key)"><input v-model.number="p.share_pct" type="number" step="0.5" class="pc" :aria-label="p.label + ' share %'"><em>%</em></template><span v-else /><button class="x" :aria-label="'Remove ' + p.label" @click="removePart(p)">×</button></div></div>
+            <form class="addp" @submit.prevent="addPart"><input v-model="np.label" maxlength="80" placeholder="Add a line, e.g. Subscriptions or Rent"><select v-model="np.parent" aria-label="Under"><option v-for="x in PARENTS" :key="x.key" :value="x.key">Under {{ x.label }}</option></select><input v-if="!noShare(np.parent)" v-model.number="np.share" type="number" step="0.5" placeholder="%" aria-label="Share %" class="pc"><button class="btn secondary sm" type="submit" :disabled="!np.label.trim()">Add</button></form></div></div>
         <div class="sec"><button class="sh" @click="open.costs = !open.costs"><b>Operating costs</b><span>{{ m(a.costs.reduce((s, c) => s + c.amount, 0)) }} a month</span></button>
           <div v-if="open.costs" class="sb"><div v-for="c in a.costs" :key="c.key" class="cl"><span>{{ c.label }}</span><input v-model.number="c.amount" type="number" min="0" :aria-label="c.label + ' per month'"><input v-model.number="c.growth_pct" type="number" step="0.5" :aria-label="c.label + ' growth % a month'" class="pc"><em>% / mo</em><button v-if="!COST_LINES.some((b) => b.key === c.key)" type="button" class="rmc" :aria-label="'Remove ' + c.label" @click="a.costs = a.costs.filter((x) => x !== c)">×</button></div>
             <form v-if="a.costs.length < 12" class="addc" @submit.prevent="addCost"><input v-model="newCost" maxlength="60" placeholder="Add your own cost line (e.g. Consultants, Rent)"><button class="btn secondary sm" type="submit" :disabled="!newCost.trim()">Add</button></form>
@@ -158,7 +173,7 @@ function csv() {
       </aside>
       <div class="rs">
         <div class="card pad0"><div class="tw"><table class="t" data-nosearch><thead><tr><th class="st">{{ cur }}</th><th v-for="x in res.months" :key="x.month">{{ mon(x.month) }}</th></tr></thead>
-          <tbody><tr v-for="[l, f, k] in ROWS" :key="l" :class="k"><td class="st">{{ l }}</td><td v-for="x in res.months" :key="x.month" :class="{ neg: (f(x) ?? 0) < 0 }">{{ k === 'p' ? (f(x) === null ? '—' : f(x) + '%') : k === 'n' ? (f(x) ?? '—') : full(f(x)) }}</td></tr></tbody></table></div></div>
+          <tbody><tr v-for="(r, i) in ROWS" :key="i" :class="r.kind"><td class="st">{{ r.label }}</td><td v-for="x in res.months" :key="x.month" :class="{ neg: (r.get(x) ?? 0) < 0 }">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr></tbody></table></div></div>
         <div v-if="vs.length" class="card"><h3>Actual against this forecast</h3><table class="t sm" data-nosearch><thead><tr><th>Month</th><th>Revenue (actual)</th><th>Revenue (forecast)</th><th>Difference</th><th>Cash (actual)</th><th>Cash (forecast)</th></tr></thead>
           <tbody><tr v-for="p in vs" :key="p.x.month"><td>{{ mon(p.x.month) }}</td><td>{{ full(p.x.revenue) }}</td><td>{{ full(p.f!.revenue) }}</td><td :class="{ neg: (p.x.revenue ?? 0) < p.f!.revenue }">{{ p.f!.revenue ? Math.round(((p.x.revenue ?? 0) / p.f!.revenue - 1) * 1000) / 10 + '%' : '—' }}</td><td>{{ full(p.x.cash) }}</td><td>{{ full(p.f!.cash) }}</td></tr></tbody></table></div>
         <p class="fine">A forecast is an estimate from the assumptions you enter, not a promise of results. Figures in {{ cur }}.</p>
@@ -199,4 +214,7 @@ function csv() {
 .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .opt { background: #fff; border: 1px solid var(--c-rule); padding: 18px; display: flex; flex-direction: column; gap: 8px; } .opt b { font-size: 15px; color: var(--c-ink); } .opt p { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); flex: 1; }
 .oa { display: flex; gap: 14px; align-items: center; margin-top: 6px; } .start > .lk { align-self: flex-start; } .hid :deep(.sl), .hid { display: none; }
 @media (max-width: 900px) { .opts { grid-template-columns: 1fr; } }
+.t tr.s td { color: var(--c-muted); font-size: 12px; } .t tr.s td.st { padding-left: 24px; color: var(--c-ink-soft); }
+.pl { display: grid; grid-template-columns: minmax(0, 1fr) 76px 14px 18px; gap: 6px; align-items: center; margin-top: 6px; } .pl em { font-style: normal; font-size: 11px; color: var(--c-muted); } .pg + .pg { margin-top: 6px; } .kl em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; } .kl em.over { color: var(--c-danger); }
+.addp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; } .addp input:first-child { grid-column: 1 / -1; } .addp .btn { justify-self: start; }
 </style>

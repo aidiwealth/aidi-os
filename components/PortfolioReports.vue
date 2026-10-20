@@ -12,8 +12,8 @@ const items = ref<Item[]>([]); const open = ref<string>('')
 let running = false
 // Delete an imported report and the figures it brought in (figures sent or corrected since stay).
 async function delReport(r: Imp) {
-  if (!confirm('Delete "' + r.title + '" and the ' + r.values_saved + ' figure' + (r.values_saved === 1 ? '' : 's') + ' it brought in? Figures changed since stay. The file stays in Documents.')) return
-  try { await $fetch('/api/portfolio/' + props.companyId + '/reports/' + r.id, { method: 'DELETE' }); await refresh(); emit('imported') } catch (e) { alert(err(e)) }
+  if (!await askConfirm('Delete "' + r.title + '" and the ' + r.values_saved + ' figure' + (r.values_saved === 1 ? '' : 's') + ' it brought in? Figures changed since stay. The file stays in Documents.')) return
+  try { await $fetch('/api/portfolio/' + props.companyId + '/reports/' + r.id, { method: 'DELETE' }); await refresh(); emit('imported') } catch (e) { notify(err(e)) }
 }
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.' }
 const files = new Map<string, File>()

@@ -47,7 +47,7 @@ const nl = reactive({ open: false, name: '' })
 async function addList() { try { const r = await $fetch<{ id: string }>('/api/crm/lists', { method: 'POST', body: { name: nl.name } }); nl.open = false; nl.name = ''; await refresh(); if (sel.value.length) await bulk('add_list', r.id) } catch (e) { msg.value = err(e) } }
 async function bulk(action: string, list_id?: string) {
   msg.value = ''; ok.value = ''
-  if (action === 'delete' && !confirm('Delete ' + selCount.value + ' contact' + (selCount.value === 1 ? '' : 's') + '? This cannot be undone.')) return
+  if (action === 'delete' && !await askConfirm('Delete ' + selCount.value + ' contact' + (selCount.value === 1 ? '' : 's') + '? This cannot be undone.')) return
   try {
     const r = await $fetch<{ count: number }>('/api/crm/contacts/bulk', { method: 'POST', body: selAll.value ? { match: { q: qq.value, list: list.value }, action, list_id } : { ids: sel.value, action, list_id } })
     const names: Record<string, string> = { add_list: 'added to the list', remove_list: 'removed from this list', subscribe: 'subscribed', unsubscribe: 'unsubscribed', delete: 'deleted' }

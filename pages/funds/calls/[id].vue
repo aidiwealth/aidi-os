@@ -9,8 +9,8 @@ useHead({ title: () => title.value || 'Notice' })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.' }
 async function act(action: string) {
-  if (action === 'send' && !confirm('Mark ' + title.value + ' as sent? LPs get a Finvry update if that is switched on for this fund.')) return
-  if (action === 'cancel' && !confirm('Cancel ' + title.value + '?')) return
+  if (action === 'send' && !await askConfirm('Mark ' + title.value + ' as sent? LPs get a Finvry update if that is switched on for this fund.')) return
+  if (action === 'cancel' && !await askConfirm('Cancel ' + title.value + '?')) return
   busy.value = true; msg.value = ''; ok.value = ''
   try { const r = await $fetch<{ notices?: number; lps?: number }>('/api/funds/calls/' + id + '/action', { method: 'POST', body: { action } }); ok.value = action === 'send' ? 'Marked as sent. ' + r.notices + ' of ' + r.lps + ' LPs were emailed a Finvry update.' : 'Done.'; await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }

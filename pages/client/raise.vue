@@ -18,7 +18,7 @@ watch(() => editing.value, (on) => { if (on && !f.id && !f.deck_url && decks.val
 const msg = ref(''); const busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.'
 async function submit() { busy.value = true; msg.value = ''; try { const r = await $fetch<{ id: string }>('/api/portal/raise/intake', { method: 'POST', body: { ...f, id: f.id || undefined } }); editing.value = false; await refresh(); sel.value = r.id } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-async function del() { if (!cur.value || !confirm('Delete this raise? Our team stops work on it.')) return; msg.value = ''; try { await $fetch('/api/portal/raise/' + cur.value.program.id, { method: 'DELETE' }); sel.value = ''; await refresh() } catch (e) { msg.value = err(e) } }
+async function del() { if (!cur.value || !await askConfirm('Delete this raise? Our team stops work on it.')) return; msg.value = ''; try { await $fetch('/api/portal/raise/' + cur.value.program.id, { method: 'DELETE' }); sel.value = ''; await refresh() } catch (e) { msg.value = err(e) } }
 const money = (v: number | string | null | undefined, c?: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c ?? cur.value?.program.currency ?? 'USD', maximumFractionDigits: 0 }).format(Number(v ?? 0))
 const upcoming = computed(() => (cur.value?.meetings ?? []).filter((m) => new Date(m.starts_at) > new Date()))
 const past = computed(() => (cur.value?.meetings ?? []).filter((m) => new Date(m.starts_at) <= new Date()).reverse())
