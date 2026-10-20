@@ -11,6 +11,10 @@ const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subj
 const emit = defineEmits<{ synced: [] }>()
 const links = ref<Link[]>([])
 // A forecast's links: only those of the forecasts on this page (in a group, the company's own).
+// Rolled up to one line once sheets are linked, if the person chose so (remembered per browser, per kind).
+const rolled = ref(false)
+onMounted(() => { try { rolled.value = localStorage.getItem('sheets-rolled:' + props.target) === '1' } catch { /* no storage */ } })
+watch(rolled, (v) => { try { localStorage.setItem('sheets-rolled:' + props.target, v ? '1' : '0') } catch { /* no storage */ } })
 const shown = computed(() => links.value.filter((l) => (props.target === 'forecast' ? !props.forecasts || !l.forecast_id || props.forecasts.some((f) => f.id === l.forecast_id) : !props.subject || l.subject === props.subject)))
 const err = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as { data?: { error?: { message?: string } } }).data?.error?.message ?? d
 async function showSource(l: Link, v: boolean) { try { await $fetch('/api/financials/visibility', { method: 'POST', body: { link_id: l.id, show_source: v } }); l.show_source = v } catch { /* left as it was */ } }
@@ -178,9 +182,11 @@ async function save() {
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 </script>
 <template>
-  <div class="sl">
+  <!-- With sheets linked, the section can be rolled up to one line (remembered on this browser). -->
+  <div v-if="rolled && shown.length && !note" class="sl rl"><button type="button" class="rlb" :aria-expanded="false" @click="rolled = false"><b>Linked sheets</b><span class="sub">{{ shown.map((l) => l.name).join(', ') }} · synced {{ ago(shown.reduce((m, l) => (l.last_synced_at && (!m || l.last_synced_at > m) ? l.last_synced_at : m), '' as string) || null) }}</span><span v-if="shown.some((l) => l.last_error)" class="rle">Needs attention</span><span class="rls">Show<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg></span></button></div>
+  <div v-else class="sl">
     <div class="slh"><div><b>Linked sheets</b><span class="sub">{{ target === 'forecast' ? 'Months from your sheet become figures in a forecast' : 'Rows from your sheet fill these statements' }}, kept in step automatically.</span></div>
-      <button v-if="canEdit && (target === 'forecast' || (subject && subject !== 'group'))" class="btn secondary sm" type="button" @click="start()">Link a sheet</button></div>
+      <div class="slr"><button v-if="shown.length" type="button" class="link rlh" :aria-expanded="true" @click="rolled = true">Hide<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15l6-6 6 6" /></svg></button><button v-if="canEdit && (target === 'forecast' || (subject && subject !== 'group'))" class="btn secondary sm" type="button" @click="start()">Link a sheet</button></div></div>
     <p v-if="note" :class="noteErr ? 'error' : 'okm'">{{ note }}</p>
     <ul v-if="shown.length" class="sll">
       <li v-for="l in shown" :key="l.id">
@@ -297,4 +303,8 @@ td.n, th.n { text-align: right; white-space: nowrap }
 .nc { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; margin-top: 6px; align-items: center; } .nc input, .nc select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-rule-strong); min-width: 0; } .nc .lnk { background: none; border: 0; color: var(--c-muted); cursor: pointer; font: inherit; font-size: 12.5px; } .nc .error { grid-column: 1 / -1; }
 .tpl { display: flex; gap: 14px; align-items: center; justify-content: space-between; border: 1px solid #d9e2ef; background: #f5f7fb; padding: 12px 14px; } .tpl b { display: block; font-weight: 500; margin-bottom: 2px; } .tpl .btn { white-space: nowrap; text-decoration: none; }
 .cfm { border: 1px solid var(--c-rule-strong); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; } .cfm h4 { margin: 0; } .cf { font-weight: 500; }
+.slr { display: flex; align-items: center; gap: 14px; } .rlh, .rls { display: inline-flex; align-items: center; gap: 4px; } .rlh svg, .rls svg { width: 14px; height: 14px; }
+.sl.rl { padding: 0; } .rlb { width: 100%; display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; background: none; border: 0; font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.rlb b { font-size: 14px; white-space: nowrap; } .rlb .sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rle { font-size: 12px; color: var(--c-danger); white-space: nowrap; }
+.rls { margin-left: auto; font-size: 13px; color: var(--c-blue-deep); white-space: nowrap; align-self: center; }
 </style>

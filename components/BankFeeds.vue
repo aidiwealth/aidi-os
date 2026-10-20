@@ -63,7 +63,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
 .ic { width: 30px; height: 30px; display: grid; place-items: center; background: none; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 15px; height: 15px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); margin-left: auto; }
 .cards { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
-.bc { position: relative; flex: 0 0 216px; height: 104px; padding: 11px 13px; display: flex; flex-direction: column; color: #fff; overflow: hidden;
+.bc { position: relative; flex: 0 0 216px; height: 128px; padding: 8px 13px; display: flex; flex-direction: column; color: #fff; overflow: hidden;
   background: linear-gradient(135deg, #0c1a2e 0%, #183456 100%); }
 .bc::after { content: ''; position: absolute; right: -36px; top: -46px; width: 120px; height: 120px; border-radius: 50%; background: rgba(120,170,230,.16); pointer-events: none; }
 .bc.debt { background: linear-gradient(135deg, #2b3340 0%, #444e5e 100%); }

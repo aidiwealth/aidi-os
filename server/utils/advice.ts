@@ -66,7 +66,7 @@ export async function lastAdvice(subject: string): Promise<Advice | null> {
 export async function adviseCompany(subject: string, force = false): Promise<Advice | null> {
   const org = (await currentOrg())!
   const cur = await subjectCurrency(subject), sec = await cashPolicy()
-  const model = ((org.settings.business_models as Record<string, string> | undefined) ?? {})[subject] ?? null
+  const model = await businessModelOf(subject)
   let rows = await loadStatements(subject, 'month', cur)
   if (rows.length < 3) rows = await loadStatements(subject, 'quarter', cur)
   const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, r.period_type === 'quarter' ? 3 : r.period_type === 'year' ? 12 : 1), sec) }))

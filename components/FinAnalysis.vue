@@ -52,7 +52,8 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
       <div v-if="data && (brief || shown)" class="acts">
         <template v-if="brief"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cv" :class="{ up: open }"><path d="M6 9l6 6 6-6" /></svg></button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template>
         <span v-if="shown" class="rt"><button class="lk" :disabled="pending" @click="again"><AiSpark v-if="pending" :size="14" /> {{ pending ? 'Reading…' : 'Refresh' }}</button>
-          <label class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span>
+          <!-- The group takes the main company's business type, so it is chosen on the company, not here. -->
+          <label v-if="subject !== 'group'" class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span>
       </div>
     </header>
 

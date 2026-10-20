@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
   if (!rows.length) throw apiError('empty', 'Add your monthly figures first.')
   const name = await subjectName(d.subject)
   const month = d.month ?? rows.filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)).pop()?.period_end ?? rows[rows.length - 1]!.period_end
-  const model = ((org.settings.business_models as Record<string, string> | undefined) ?? {})[d.subject] ?? null
+  const model = await businessModelOf(d.subject)
   // The analysis (key points and what to raise) is for the latest month; for an earlier month the rule-based points
   // from the figures up to that month are used.
   const upTo = rows.filter((r) => r.period_end.slice(0, 7) <= month.slice(0, 7))

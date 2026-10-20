@@ -13,6 +13,6 @@ export default defineEventHandler(async (event) => {
   if (rows.length < 3) rows = await loadStatements(subject, 'quarter', cur)
   const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, r.period_type === 'quarter' ? 3 : r.period_type === 'year' ? 12 : 1), sec) }))
   if (!fr.length) return null
-  const model = ((org.settings.business_models as Record<string, string> | undefined) ?? {})[subject] ?? null
+  const model = await businessModelOf(subject)
   return { ...(await analyseFinancials(subject, fr, fr[fr.length - 1]!.currency, await subjectName(subject), q.refresh === '1', model)), business_model: model }
 })
