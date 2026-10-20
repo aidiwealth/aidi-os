@@ -42,9 +42,16 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 
 <template>
   <section class="fh" :class="{ brief, open }">
-    <header class="hd"><div><span class="eb">What your numbers say</span><h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2><p v-if="$slots.extra" class="xt"><slot name="extra" /></p></div>
-      <span class="meta">{{ data ? periodText(data.period) + (data.ai ? '' : ' · from your figures') : '' }}<template v-if="brief && data"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}</button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template><button v-if="data && shown" class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
-        <label v-if="data && shown" class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span></header>
+    <header class="hd">
+      <div class="top"><span class="eb">What your numbers say</span><span class="pr">{{ data ? periodText(data.period) + (data.ai ? '' : ' · from your figures') : '' }}</span></div>
+      <h2 v-if="data" class="hl">{{ data.headline }}</h2><h2 v-else-if="pending" class="hl mutd">Reading your figures…</h2>
+      <div v-if="$slots.extra" class="xt"><slot name="extra" /></div>
+      <div v-if="data && (brief || shown)" class="acts">
+        <template v-if="brief"><button class="lk" type="button" :aria-expanded="open" @click="open = !open">{{ open ? 'Hide the detail' : 'Runway, spending and key points' }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cv" :class="{ up: open }"><path d="M6 9l6 6 6-6" /></svg></button><NuxtLink v-if="nextTo" :to="nextTo" class="lk">What to do next →</NuxtLink></template>
+        <span v-if="shown" class="rt"><button class="lk" :disabled="pending" @click="again">{{ pending ? 'Reading…' : 'Refresh' }}</button>
+          <label class="bm" :class="{ unset: !data.business_model }">Business type<select :value="data.business_model ?? ''" :disabled="bmBusy || pending" @change="setModel(($event.target as HTMLSelectElement).value)"><option value="">Choose…</option><option v-for="m in BUSINESS_MODELS" :key="m.key" :value="m.key">{{ m.label }}</option></select></label></span>
+      </div>
+    </header>
 
     <template v-if="shown">
     <div class="grid">
@@ -101,9 +108,12 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
 
 <style scoped>
 .fh { background: #fff; border: 1px solid var(--c-rule); padding: 20px 22px; margin: 0 0 12px; }
-.hd { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; } .fh.brief:not(.open) .hd { margin-bottom: 0; } a.lk { text-decoration: none; }
+.hd { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; } .fh.brief:not(.open) .hd { margin-bottom: 0; } a.lk { text-decoration: none; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; } .pr { font-size: 12px; color: var(--c-muted); }
+.acts { display: flex; align-items: center; gap: 8px 22px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--c-rule); } .acts .lk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; } .acts .rt { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--c-muted); }
+.cv { width: 14px; height: 14px; transition: transform .15s; } .cv.up { transform: rotate(180deg); }
 .eb, .bl { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--c-muted); } .bl small { text-transform: none; letter-spacing: 0; margin-left: 4px; }
-.hl { font-family: var(--font-heading); font-weight: 500; font-size: 16px; line-height: 1.5; color: var(--c-navy); margin: 6px 0 0; max-width: 72ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
+.hl { font-family: var(--font-heading); font-weight: 500; font-size: 17px; line-height: 1.45; color: var(--c-navy); margin: 0; max-width: 80ch; } .mutd { color: var(--c-muted); font-size: 13px; margin: 0; }
 .meta { font-size: 12px; color: var(--c-muted); display: flex; gap: 12px; align-items: center; white-space: nowrap; flex-wrap: wrap; justify-content: flex-end; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.7fr); gap: 12px; }
 .box { background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -133,5 +143,7 @@ dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } dl d
 .bm.unset select { border-color: var(--c-navy); }
 .nts { margin: 0 0 10px; padding: 0 0 0 18px; font-size: 13px; color: var(--c-ink-soft); display: flex; flex-direction: column; gap: 4px; }
 .it p.full { display: block; -webkit-line-clamp: unset; overflow: visible; } .more { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--c-blue-deep); cursor: pointer; margin-top: 2px; }
-.xt { margin: 6px 0 0; font-size: 13px; color: var(--c-ink-soft); max-width: 80ch; } .xt :deep(b) { font-weight: 500; } .xt :deep(a) { color: var(--c-blue-deep); text-decoration: none; }
+.xt { display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap; background: var(--c-paper-3); border: 1px solid var(--c-rule); padding: 10px 14px; font-size: 13px; color: var(--c-ink-soft); }
+.xt :deep(.xl) { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); } .xt :deep(.xv) { display: flex; gap: 6px 18px; flex-wrap: wrap; } .xt :deep(b) { font-weight: 500; color: var(--c-ink); } .xt :deep(.xd b) { color: #9b3b32; }
+.xt :deep(a) { margin-left: auto; color: var(--c-blue-deep); text-decoration: none; white-space: nowrap; }
 </style>
