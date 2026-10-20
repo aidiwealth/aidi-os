@@ -1,4 +1,4 @@
-// What one company pays for its plan: the plan's list price (billed yearly), a price of its own (yearly or monthly, in
+// What one company pays for its plan: the plan's list price (monthly or yearly, as the Finvry team and the company choose), a price of its own (yearly or monthly, in
 // its wallet currency), or free. The plan subscription is updated at once; logged in the company's audit trail.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {

@@ -1,10 +1,11 @@
+import { cycleFor } from '~/shared/plan-billing'
 // A founder creates their company's Finvry workspace: Startup, Medium or Scale, each starting with a 14-day free trial.
 // While sign-up is by invitation (access.ts), it needs the invitation from an approved request, or a partner or
 // community code (which skips the queue, within the weekly cap).
 // Nigeria is billed in naira, everywhere else in US dollars. We then email a sign-in code to prove the address.
 import { z } from 'zod'
 const Body = z.object({ website: z.string().max(0).optional(), name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254),
-  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_startup', 'company_medium', 'company_scale']), invite: z.string().trim().max(80).optional(), turnstile_token: z.string().max(4000).optional(), agree: SignBody, partner_code: z.string().trim().max(40).optional() })
+  company: z.string().trim().min(1).max(200), country: z.string().trim().min(2).max(60), entity_type: z.enum(['us_llc', 'us_corp', 'ng_ltd', 'other']).optional(), state: z.string().max(40).default(''), plan: z.enum(['company_startup', 'company_medium', 'company_scale']), invite: z.string().trim().max(80).optional(), cycle: z.enum(['month', 'year']).optional(), turnstile_token: z.string().max(4000).optional(), agree: SignBody, partner_code: z.string().trim().max(40).optional() })
 export default defineEventHandler(async (event) => {
   await rateLimit('signup_ip', clientIp(event), 5, 60 * 60 * 1000)
   const b = Body.safeParse(await readBody(event))
@@ -35,7 +36,7 @@ export default defineEventHandler(async (event) => {
   const nigeria = /^nigeria$/i.test(d.country)
   if (!nigeria && d.entity_type === 'ng_ltd') throw apiError('invalid', 'A Nigerian limited company needs Nigeria as the country.')
   const ws = await createWorkspace(event, null, { name: d.company, slug, kind: 'company', plan_code: d.plan, status: 'trial', trial_days: 14, admin_name: d.name, admin_email: email },
-    { invite: false, settings: { country: d.country, currency: nigeria ? 'NGN' : 'USD', public_name: d.company, entity_type: d.entity_type ?? '', state: d.state, trial_used: 'true', signup_via: via } })
+    { invite: false, settings: { country: d.country, currency: nigeria ? 'NGN' : 'USD', public_name: d.company, entity_type: d.entity_type ?? '', state: d.state, trial_used: 'true', signup_via: via, billing_cycle: cycleFor(await planBilling(), d.cycle) } })
   if (d.entity_type && d.entity_type !== 'other') { setOrgContext(ws.id); try { await seedCompanyCompliance(d.entity_type, d.state) } catch (err) { console.error('[signup] compliance seed failed', err) } finally { setOrgContext(null) } }
   await syncPlanSubscription(ws.id).catch((e) => console.error('[signup] plan charge setup failed', e))
   if (d.partner_code) { try { await redeemPartnerCode(ws.id, d.partner_code) } catch (err) { console.error('[signup] partner code', err) } }

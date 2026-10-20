@@ -20,6 +20,12 @@ const groups = computed(() => { const g: Record<string, { code: string; label: s
 const lim = (v: number | null, unit = '') => (v === null ? 'Unlimited' : v.toLocaleString() + unit)
 async function toggle(p: { code: string; name: string; active: boolean }) { try { await $fetch('/api/platform/plans/' + p.code, { method: 'POST', body: { active: !p.active } }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not update.') } }
 async function removePlan(p: { code: string; name: string }) { if (!confirm('Delete the plan ' + p.name + '? This cannot be undone.')) return; try { await $fetch('/api/platform/plans/' + p.code, { method: 'DELETE' }); await refresh() } catch (e) { alert((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
+// Plan billing: monthly, yearly or the company's choice, and the discount for paying yearly.
+const { data: pb, refresh: refPb } = await useFetch<{ cycles: 'monthly' | 'annual' | 'both'; annual_discount_pct: number; owner: boolean }>('/api/platform/plan-billing')
+const bf = reactive({ cycles: 'both' as 'monthly' | 'annual' | 'both', annual_discount_pct: 5 }), bmsg = ref('')
+watch(pb, (v) => { if (v) Object.assign(bf, { cycles: v.cycles, annual_discount_pct: v.annual_discount_pct }) }, { immediate: true })
+async function saveBilling() { bmsg.value = ''; try { const r = await $fetch<{ repriced: number }>('/api/platform/plan-billing', { method: 'POST', body: bf }); bmsg.value = 'Saved. ' + r.repriced + ' plan charge' + (r.repriced === 1 ? '' : 's') + ' re-priced; finvry.com and the app show the new terms.'; await refPb() } catch (e) { bmsg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
+const ex = computed(() => { const m = 29.99, y = Math.round(m * 12 * (100 - (bf.annual_discount_pct || 0))) / 100; return '$' + m + ' a month, or $' + y.toLocaleString('en-US') + ' a year (' + (bf.annual_discount_pct || 0) + '% off twelve months)' })
 </script>
 
 <template>
@@ -27,6 +33,14 @@ async function removePlan(p: { code: string; name: string }) { if (!confirm('Del
     <p class="label">Finvry platform</p>
     <div class="head"><h1>Plans &amp; pricing</h1><button class="btn" type="button" @click="edit()">New plan</button></div>
     <p class="lead">Each plan sets the modules a workspace gets and its limits. Changes apply straight away to every workspace on the plan.</p>
+    <form v-if="pb" class="card bil" @submit.prevent="saveBilling">
+      <div class="bh"><b>How plans are billed</b><span class="hint">Shown on finvry.com, sign-up, Settings → Plan and every renewal. Changing it re-prices current plan charges from their next charge.</span></div>
+      <div class="bo"><label><input v-model="bf.cycles" type="radio" value="both" :disabled="!pb.owner"> <b>Monthly or yearly</b><em>— the company chooses at sign-up and can switch in Settings</em></label>
+        <label><input v-model="bf.cycles" type="radio" value="monthly" :disabled="!pb.owner"> <b>Monthly only</b><em>— no yearly option</em></label>
+        <label><input v-model="bf.cycles" type="radio" value="annual" :disabled="!pb.owner"> <b>Yearly only</b><em>— one charge a year, with the discount below</em></label></div>
+      <label class="dc">Discount for paying yearly (%)<input v-model.number="bf.annual_discount_pct" type="number" min="0" max="90" step="0.5" :disabled="!pb.owner || bf.cycles === 'monthly'"><span class="hint">Startup: {{ ex }}</span></label>
+      <div class="row"><button v-if="pb.owner" class="btn" type="submit">Save</button><span v-if="bmsg" class="hint">{{ bmsg }}</span></div>
+    </form>
     <form v-if="editing" class="card frm" @submit.prevent="save">
       <label class="label">Code<input v-model="f.code" required pattern="[a-z][a-z0-9_]{1,30}" :readonly="editing !== 'new'"></label>
       <label class="label">Name<input v-model="f.name" required maxlength="80"></label>
@@ -79,4 +93,6 @@ input { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: 
 .muted { color: var(--c-muted); font-size: 13px; } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .frm, .mods { grid-template-columns: 1fr; } }
 .pa { display: flex; gap: 12px; } .del { color: var(--c-danger) !important; }
+.bil { display: flex; flex-direction: column; gap: 12px; margin: 0 0 18px; } .bh { display: flex; flex-direction: column; gap: 3px; } .bo { display: flex; flex-direction: column; gap: 10px; } .bo label { display: flex; gap: 8px; align-items: baseline; font-size: 14px; cursor: pointer; } .bo em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
+.dc { display: flex; flex-direction: column; gap: 5px; font-size: 13px; max-width: 420px; } .dc input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); width: 120px; } .bil .row { display: flex; gap: 12px; align-items: center; } .bil .hint { font-size: 12.5px; color: var(--c-muted); }
 </style>

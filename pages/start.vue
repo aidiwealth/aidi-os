@@ -9,7 +9,7 @@ useHead({ title: 'Create your Finvry account' })
 const brand = useBrand()
 interface Plan { code: string; name: string; description: string; seat_limit: number | null; usd: number | null; ngn: number | null; usd_year: number | null; ngn_year: number | null }
 const inviteTok = String(useRoute().query.invite ?? '')
-const { data } = await useFetch<{ plans: Plan[]; mode?: 'invite_only' | 'open' | 'closed'; invite?: { name: string; email: string; company: string; country: string } | false | null }>('/api/public/signup', { query: inviteTok ? { invite: inviteTok } : {} })
+const { data } = await useFetch<{ plans: Plan[]; billing?: { cycles: 'monthly' | 'annual' | 'both'; annual_discount_pct: number }; mode?: 'invite_only' | 'open' | 'closed'; invite?: { name: string; email: string; company: string; country: string } | false | null }>('/api/public/signup', { query: inviteTok ? { invite: inviteTok } : {} })
 const step = ref(1)
 const f = reactive({ website: '', name: '', email: '', company: '', country: 'United States', entity_type: '', state: 'Delaware', plan: 'company_startup', code: '' })
 const inv = computed(() => data.value?.invite || null)
@@ -27,8 +27,14 @@ const setup = computed(() => isNigeria(f.country)
 const STEPS = [{ t: 'About you', d: 'Your name and work email' }, { t: 'Your company', d: 'Name, country and type' }, { t: 'Choose a plan', d: '14-day free trial on every plan' }, { t: 'Verify your email', d: 'Enter the 6-digit code' }]
 const FEATS = PLAN_FEATS
 const ngn = computed(() => isNigeria(f.country))
-const amount = (p: Plan) => { const v = ngn.value ? p.ngn : p.usd; return v === null ? 'Contact us' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US', { maximumFractionDigits: 2 }) }
-const yearly = (p: Plan) => { const v = ngn.value ? p.ngn_year : p.usd_year; return v ? (ngn.value ? '₦' : '$') + v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' billed yearly' : '' }
+// Monthly or yearly, as the Finvry team offers it; paying yearly takes the discount off twelve months.
+const billing = computed(() => data.value?.billing ?? { cycles: 'both' as const, annual_discount_pct: 5 })
+const cycle = ref<'month' | 'year'>('month')
+watch(billing, (b) => { if (b.cycles === 'annual') cycle.value = 'year'; if (b.cycles === 'monthly') cycle.value = 'month' }, { immediate: true })
+const off = computed(() => billing.value.annual_discount_pct)
+const cur = (v: number) => (ngn.value ? '₦' : '$') + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+const shown = (p: Plan) => { const m = ngn.value ? p.ngn : p.usd, y = ngn.value ? p.ngn_year : p.usd_year; return m == null ? 'Contact us' : cycle.value === 'year' && y ? cur(Math.round(y / 12 * 100) / 100) : cur(m) }
+const yearly = (p: Plan) => { const y = ngn.value ? p.ngn_year : p.usd_year; return cycle.value === 'year' ? (y ? cur(y) + ' billed yearly' + (off.value ? ' · ' + off.value + '% off' : '') : '') : 'Billed monthly' }
 const msg = ref(''); const busy = ref(false)
 const hc = ref<{ fresh: () => Promise<string> } | null>(null), human = ref(''), humanReady = ref(false)
 function err(e: unknown) { return (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' }
@@ -45,7 +51,7 @@ const pc = reactive({ code: String(useRoute().query.partner ?? useRoute().query.
 if (pc.code) pc.open = true
 async function checkCode() { pc.busy = true; pc.err = ''; pc.ok = null; try { pc.ok = await $fetch('/api/public/partners/check', { method: 'POST', body: { code: pc.code } }); gateCode.value = pc.code } catch (e) { pc.err = err(e) } finally { pc.busy = false } }
 onMounted(() => { if (pc.code) checkCode() })
-async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { invite: inv.value ? inviteTok : undefined, turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type === 'local' ? 'other' : f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan, agree: agree.value, partner_code: pc.ok ? pc.code : undefined } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function create() { busy.value = true; msg.value = ''; try { const tt = await hc.value?.fresh(); await $fetch<{ emailed: boolean }>('/api/public/signup', { method: 'POST', body: { cycle: cycle.value, invite: inv.value ? inviteTok : undefined, turnstile_token: tt || undefined, website: f.website, name: f.name, email: f.email, company: f.company, country: f.country, entity_type: f.entity_type === 'local' ? 'other' : f.entity_type || undefined, state: f.entity_type === 'us_llc' || f.entity_type === 'us_corp' ? f.state : undefined, plan: f.plan, agree: agree.value, partner_code: pc.ok ? pc.code : undefined } }); step.value = 4; startCooldown(); await nextTick(); boxes.value[0]?.focus() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // six code boxes: type, paste, backspace
 const digits = ref<string[]>(['', '', '', '', '', '']); const boxes = ref<HTMLInputElement[]>([])
 function onDigit(i: number, e: Event) { const v = (e.target as HTMLInputElement).value.replace(/\D/g, ''); if (v.length > 1) { fill(v); return } digits.value[i] = v; if (v && i < 5) boxes.value[i + 1]?.focus(); sync() }
@@ -61,23 +67,15 @@ onBeforeUnmount(() => { if (t) clearInterval(t) })
 const pct = computed(() => Math.round(((step.value - 1) / 3) * 100))
 // Invite-only: the request form, unless there is an invitation or a partner code (which skips the queue).
 const gateCode = ref('')
+// A good partner or community code from the request page opens the sign-up, with the code applied.
+function onPartner(v: { code: string; ok: { partner: string; pct: number; months: number | null } }) { pc.code = v.code; pc.ok = v.ok; pc.open = true; gateCode.value = v.code; step.value = 1 }
 const gated = computed(() => (data.value?.mode ?? 'open') !== 'open' && !inv.value && !(data.value?.mode === 'invite_only' && pc.ok && gateCode.value))
-const NEEDS: [string, string][] = [['reporting', 'Financial reporting'], ['investors', 'Investor updates and relations'], ['fundraising', 'Fundraising and data room'], ['cap_table', 'Cap table and SAFEs'], ['forecast', 'Forecasts'], ['customers', 'Customer and revenue analysis'], ['group', 'A group with subsidiaries'], ['compliance', 'Compliance and filings'], ['services', 'Company services (formation, bookkeeping)']]
-const SOURCES = ['A startup community', 'My VC, accelerator or incubator', 'Search', 'LinkedIn or X', 'A friend or colleague', 'An event', 'Other']
-const ra = reactive({ name: '', email: '', company: '', website: '', country: 'United States', stage: '', team_size: '', needs: [] as string[], needs_note: '', source: '', community: '', want_demo: false, hp: '' })
-const raDone = ref<'' | 'sent' | 'already' | 'open'>(''), raBusy = ref(false), codeOpen = ref(false)
-async function requestAccess() {
-  msg.value = ''
-  if (!ra.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ra.email) || !ra.company.trim() || !ra.country || !ra.stage || !ra.team_size || !ra.needs.length) { msg.value = 'Fill in your name, work email, company, country, stage, team size and at least one thing you need.'; return }
-  raBusy.value = true
-  try { const tt = await hc.value?.fresh(); const r = await $fetch<{ open?: boolean; already?: boolean }>('/api/public/access-request', { method: 'POST', body: { turnstile_token: tt || undefined, website_hp: ra.hp, name: ra.name, email: ra.email, company: ra.company, website: ra.website, country: ra.country, stage: ra.stage, team_size: ra.team_size, needs: ra.needs, needs_note: ra.needs_note, source: ra.source, community: ra.community, want_demo: ra.want_demo } })
-    raDone.value = r.open ? 'open' : r.already ? 'already' : 'sent'; if (r.open) await refreshNuxtData() }
-  catch (e) { msg.value = err(e) } finally { raBusy.value = false }
-}
+
 </script>
 
 <template>
-  <div class="su">
+  <RequestAccess v-if="brand.key === 'finvry' && gated" :mode="data?.mode === 'closed' ? 'closed' : 'invite_only'" :invite-failed="data?.invite === false" @partner="onPartner" />
+  <div v-else class="su">
     <aside class="side">
       <a class="mk" href="https://finvry.com"><BrandMark light /></a>
       <div class="pitch"><h2>The OS for every founder.</h2><p>Investor metrics, fundraising, requirements and engagement in one place. Set up in minutes.</p></div>
@@ -87,30 +85,6 @@ async function requestAccess() {
     </aside>
     <main class="pane">
       <div v-if="brand.key !== 'finvry'" class="form"><h1>Create an account</h1><p class="hint">Sign-up is on Finvry. <a href="https://app.finvry.com/start">Go to app.finvry.com/start →</a></p></div>
-      <div v-else-if="gated" class="form">
-        <div v-if="raDone" class="done"><h1>{{ raDone === 'open' ? 'Sign-up is open' : 'Thank you' }}</h1>
-          <p class="hint">{{ raDone === 'sent' ? 'We have your request and sent a confirmation to ' + ra.email + '. We open new accounts in small groups so every company gets set up properly; we will email you as soon as yours is ready.' : raDone === 'already' ? 'We already have a request from ' + ra.email + '. We will email you as soon as your account is ready.' : 'You can create your account now.' }}</p>
-          <a class="go lnkbtn" href="https://finvry.com">Back to finvry.com</a></div>
-        <form v-else @submit.prevent="requestAccess"><h1>Request access</h1>
-          <p class="hint">{{ data?.invite === false ? 'That invitation has expired or was already used. Ask again below and we will send a new one.' : data?.mode === 'closed' ? 'We are not opening new accounts just now. Leave your details and we will email you when we do.' : 'Finvry opens to new companies in small groups. Tell us about yours and we will email you an invitation.' }}</p>
-          <div class="two"><label class="fl">Full name<input v-model="ra.name" required maxlength="120" autocomplete="name"></label><label class="fl">Work email<input v-model="ra.email" type="email" required maxlength="254" autocomplete="email"></label></div>
-          <div class="two"><label class="fl">Company<input v-model="ra.company" required maxlength="200" autocomplete="organization"></label><label class="fl">Website<input v-model="ra.website" maxlength="300" placeholder="yourcompany.com"></label></div>
-          <div class="two"><label class="fl">Country<CountrySelect v-model="ra.country" required /></label>
-            <label class="fl">Company stage<select v-model="ra.stage" required><option value="" disabled>Choose</option><option value="idea">Idea</option><option value="pre_seed">Pre-seed</option><option value="seed">Seed</option><option value="series_a">Series A or later</option><option value="established">Established business</option></select></label></div>
-          <label class="fl">Team size<select v-model="ra.team_size" required><option value="" disabled>Choose</option><option v-for="t in ['1', '2-5', '6-20', '21-50', '51+']" :key="t" :value="t">{{ t === '1' ? 'Just me' : t + ' people' }}</option></select></label>
-          <div class="fl">What do you need Finvry for?<div class="needs"><label v-for="[k, l] in NEEDS" :key="k" class="nd" :class="{ on: ra.needs.includes(k) }"><input v-model="ra.needs" type="checkbox" :value="k" class="sr">{{ l }}</label></div>
-            <textarea v-model="ra.needs_note" rows="2" maxlength="1000" placeholder="Anything else we should know (optional)" /></div>
-          <div class="two"><label class="fl">How did you hear about us? <small>optional</small><select v-model="ra.source"><option value="">Choose</option><option v-for="x in SOURCES" :key="x">{{ x }}</option></select></label>
-            <label v-if="ra.source === 'A startup community' || ra.source === 'My VC, accelerator or incubator' || ra.source === 'An event'" class="fl">Which one?<input v-model="ra.community" maxlength="120"></label></div>
-          <label class="ck"><input v-model="ra.want_demo" type="checkbox"> I would like a short walkthrough</label>
-          <input v-model="ra.hp" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-          <button class="go" type="submit" :disabled="raBusy">{{ raBusy ? 'Sending…' : 'Request access' }}</button>
-          <div v-if="data?.mode === 'invite_only'" class="pcb"><button v-if="!codeOpen" type="button" class="lnk" @click="codeOpen = true">Have a partner or community code? Skip the queue</button>
-            <template v-else><label class="fl">Partner or community code<span class="pcr"><input v-model="pc.code" maxlength="40" placeholder="e.g. ACME-7KQ2" @input="pc.ok = null; pc.err = ''"><button type="button" class="pcbtn" :disabled="pc.busy || pc.code.trim().length < 4" @click="checkCode().then(() => { if (pc.ok) pc.open = true })">{{ pc.busy ? 'Checking…' : 'Continue' }}</button></span></label><p v-if="pc.err" class="error">{{ pc.err }}</p></template></div></form>
-        <HumanCheck v-if="!raDone" ref="hc" v-model="human" v-model:ready="humanReady" />
-        <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-        <p class="foot">Already have an account? <NuxtLink to="/login">Sign in</NuxtLink></p>
-      </div>
       <div v-else class="form">
         <div class="prog"><span>Step {{ step }} of 4</span><i><b :style="{ width: Math.max(6, pct) + '%' }" /></i></div>
         <form v-if="step === 1" :class="{ gate: !humanReady }" @submit.prevent="next"><h1>Create your account</h1><p class="hint">{{ inv ? 'Welcome, ' + inv.name.split(' ')[0] + '. Your details are filled in from your request.' : 'Every plan starts with a 14-day free trial.' }}</p>
@@ -129,9 +103,10 @@ async function requestAccess() {
           <p class="note">{{ f.entity_type && f.entity_type !== 'other' ? 'We will add your usual filing deadlines to your compliance calendar, with reminders. ' : '' }}</p>
           <input v-model="f.website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
           <button class="go" type="submit">Continue</button><button class="back" type="button" @click="step--">← Back</button></form>
-        <form v-else-if="step === 3" @submit.prevent="create"><h1>Choose a plan</h1><p class="hint">Every plan starts with a 14-day free trial and is billed yearly after it. Change plan any time.</p><p v-if="cardNote" class="note card">{{ LOCAL_CARD_NOTE }}</p>
+        <form v-else-if="step === 3" @submit.prevent="create"><h1>Choose a plan</h1><p class="hint">Every plan starts with a 14-day free trial, then is billed {{ billing.cycles === 'both' ? 'monthly or yearly, as you choose' : billing.cycles === 'annual' ? 'yearly' : 'monthly' }}. Change plan any time.</p>
+          <div v-if="billing.cycles === 'both'" class="cyc" role="group" aria-label="Billing"><button type="button" :class="{ on: cycle === 'month' }" @click="cycle = 'month'">Monthly</button><button type="button" :class="{ on: cycle === 'year' }" @click="cycle = 'year'">Yearly<i v-if="off">Save {{ off }}%</i></button></div><p v-if="cardNote" class="note card">{{ LOCAL_CARD_NOTE }}</p>
           <div class="plans"><label v-for="p in data?.plans ?? []" :key="p.code" class="pc" :class="{ on: f.plan === p.code, pop: p.code === 'company_startup' }"><input v-model="f.plan" type="radio" :value="p.code" class="sr">
-            <span class="ph"><b>{{ p.name }}</b><i v-if="p.code === 'company_startup'">Most popular</i></span><span class="pp"><strong>{{ amount(p) }}</strong><em>/ month</em><small>{{ yearly(p) }}</small></span>
+            <span class="ph"><b>{{ p.name }}</b><i v-if="p.code === 'company_startup'">Most popular</i></span><span class="pp"><strong>{{ shown(p) }}</strong><em>/ month</em><small>{{ yearly(p) }}</small></span>
             <ul><li v-for="x in FEATS[p.code] ?? [p.description]" :key="x">{{ x }}</li></ul></label></div>
           <div class="pcb"><button v-if="!pc.open" type="button" class="lnk" @click="pc.open = true">Have a partner code from your VC, incubator or accelerator?</button>
             <template v-else><label class="fl">Partner code<span class="pcr"><input v-model="pc.code" maxlength="40" placeholder="e.g. ACME-7KQ2" @input="pc.ok = null; pc.err = ''"><button type="button" class="pcbtn" :disabled="pc.busy || pc.code.trim().length < 4" @click="checkCode">{{ pc.busy ? 'Checking…' : 'Apply' }}</button></span></label>
@@ -189,7 +164,5 @@ input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 1
 .agb { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 4px; padding-top: 16px; border-top: 1px solid #dfe3e9; } .agb > b { font-size: 15px; }
 .pcb { margin: 14px 0 0; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .pp small { display: block; font-size: 11.5px; color: var(--c-muted); }
-.needs { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; } .nd { border: 1px solid #dfe3e9; padding: 7px 10px; font-size: 13px; font-weight: 400; cursor: pointer; color: #3b4658; } .nd.on { border-color: #0c1a2e; box-shadow: inset 0 0 0 1px #0c1a2e; background: #f7f9fb; color: #0c1a2e; }
-textarea { font: inherit; font-size: 14.5px; padding: 10px 12px; border: 1px solid #cfd5dd; width: 100%; } .ck { display: flex; gap: 8px; align-items: center; font-size: 14px; color: #3b4658; } .ck input { width: auto; }
-.done .lnkbtn { display: inline-grid; place-items: center; padding: 0 22px; text-decoration: none; } @media (max-width: 600px) { .two { grid-template-columns: 1fr; } } .pcr { display: flex; gap: 8px; } .pcr input { flex: 1; text-transform: uppercase; } .pcbtn { font: inherit; font-size: 14px; padding: 0 16px; background: #fff; border: 1px solid #c9ced6; cursor: pointer; } .pcok { color: #1d5a86; font-size: 13.5px; margin: 6px 0 0; }
+.cyc { display: flex; border: 1px solid #cfd5dd; width: fit-content; margin: -8px 0 4px; } .cyc button { font: inherit; font-size: 14px; padding: 9px 18px; background: #fff; border: 0; cursor: pointer; color: #3b4658; display: flex; gap: 8px; align-items: center; } .cyc button + button { border-left: 1px solid #cfd5dd; } .cyc button.on { background: #0c1a2e; color: #fff; } .cyc i { font-style: normal; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; background: #5fa8d3; color: #0c1a2e; padding: 1px 6px; }
 </style>

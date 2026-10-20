@@ -1,5 +1,5 @@
 // What each Finvry plan includes, for the sign-up, Settings → Plan and the upgrade pages. Prices come from the plans
-// table (a monthly price, billed yearly). Every plan starts with a 14-day free trial.
+// table (a monthly price; billed monthly or yearly per platform.settings plan_billing). Every plan starts with a 14-day free trial.
 export const PLAN_FEATS: Record<string, string[]> = {
   company_free: ['Dashboard and Financials', 'Live bank balances', 'Annual financial report (PDF and Excel)', 'Public investor page and data room', 'Finvry AI analyst', '1 team member'],
   company_startup: ['Financials, live bank balances and the annual financial report', 'Burn and runway checked three ways, and the AI analyst', 'AI investor updates with open tracking', 'Fundraising pipeline, data room, investor and grant finder', 'Cap table, SAFEs, e-signing, board consents and certificates', 'Compliance calendar and services', 'Up to 5 team members'],

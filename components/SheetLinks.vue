@@ -172,7 +172,7 @@ async function save() {
     return
   }
   try {
-    const r = await $fetch<{ months?: number; skipped?: string[]; error?: string; forecast_id?: string }>('/api/sheet-links', { method: 'POST', query: props.scopeQuery, body: { id: f.id || undefined, name: f.name, url: f.url, target: props.target, subject: props.target === 'financials' ? props.subject : undefined, forecast_id: props.target === 'forecast' ? f.forecast_id : undefined, currency: f.currency, sheet: tab.value?.sheet ?? '', auto: f.auto, mapping: Object.entries(map.value).map(([label, to]) => ({ label, to })) } })
+    const r = await $fetch<{ months?: number; skipped?: string[]; error?: string; forecast_id?: string }>('/api/sheet-links', { method: 'POST', query: props.scopeQuery, body: { id: f.id || undefined, name: f.name, url: f.url, target: props.target, subject: props.target === 'financials' ? props.subject : undefined, forecast_id: props.target === 'forecast' ? f.forecast_id || undefined : undefined, currency: f.currency, sheet: tab.value?.sheet ?? '', auto: f.auto, mapping: Object.entries(map.value).filter(([, to]) => to).map(([label, to]) => ({ label, to })) } })
     open.value = false; noteErr.value = !!r.error
     note.value = r.error ? 'Linked, but the first read failed: ' + r.error : 'Linked. ' + (r.months ?? 0) + ' month' + (r.months === 1 ? '' : 's') + ' brought in' + (r.skipped?.length ? '; skipped ' + r.skipped.join(', ') : '') + '.'
     await load(); emit('synced', r.forecast_id)

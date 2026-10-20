@@ -1,3 +1,4 @@
+import { cycleFor, yearOf } from '~/shared/plan-billing'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 // Company wallets. Every change is one atomic statement that moves the balance and writes the ledger line together;
 // a debit never takes the balance below zero. Amounts are in minor units (cents, kobo).
@@ -129,21 +130,23 @@ export async function planDiscount(orgId: string): Promise<{ pct: number; name: 
   if (d.until && d.until < new Date().toISOString().slice(0, 10)) return null
   return { pct: Math.min(100, d.pct), name: d.name ?? 'Partner', until: d.until ?? null }
 }
-// What a workspace pays for its plan. Plans are billed yearly (the annual price) since the October 2026 plans. The
-// Finvry team can set a price of the workspace's own (settings.price_override: an amount, yearly or monthly, in its
+// What a workspace pays for its plan: the monthly price, or twelve months less the yearly discount, on the cycle the
+// Finvry team's billing setting allows (or the company chose, when both are offered). The Finvry team can set a price
+// of the workspace's own (settings.price_override: an amount, yearly or monthly, in its
 // wallet currency) or make it free; companies on the earlier plans keep their earlier monthly price this way.
 export interface PriceOverride { free?: boolean; amount?: number; interval?: 'month' | 'year'; note?: string; set_at?: string; set_by?: string }
-export async function planPrice(orgId: string): Promise<{ code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: PriceOverride | null } | null> {
-  const o = (await db().query<{ plan_code: string; ov: PriceOverride | null }>("SELECT plan_code, settings->'price_override' AS ov FROM core.organizations WHERE id = $1", [orgId])).rows[0]
+export async function planPrice(orgId: string): Promise<{ code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: PriceOverride | null; monthly: number; discount_pct: number } | null> {
+  const o = (await db().query<{ plan_code: string; ov: PriceOverride | null; cycle: string | null }>("SELECT plan_code, settings->'price_override' AS ov, settings->>'billing_cycle' AS cycle FROM core.organizations WHERE id = $1", [orgId])).rows[0]
   if (!o) return null
   const currency = (await walletOf(orgId)).currency
   const p = (await db().query<{ name: string; usd: string | null; ngn: string | null; usd_y: string | null; ngn_y: string | null }>('SELECT name, price_monthly_usd::text AS usd, price_monthly_ngn::text AS ngn, price_annual_usd::text AS usd_y, price_annual_ngn::text AS ngn_y FROM core.plans WHERE code = $1', [o.plan_code])).rows[0]
   const ov = o.ov && typeof o.ov === 'object' ? o.ov : null
-  if (ov?.free) return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: 0, interval: 'year', free: true, override: ov }
-  if (ov?.amount && ov.amount > 0) return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: ov.amount, interval: ov.interval === 'month' ? 'month' : 'year', free: false, override: ov }
-  const year = p ? Number(currency === 'NGN' ? p.ngn_y : p.usd_y) : 0
+  const pb = await planBilling()
   const month = p ? Number(currency === 'NGN' ? p.ngn : p.usd) : 0
-  return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: year || month * 12, interval: 'year', free: false, override: null }
+  if (ov?.free) return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: 0, interval: 'year', free: true, override: ov, monthly: month, discount_pct: pb.annual_discount_pct }
+  if (ov?.amount && ov.amount > 0) return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: ov.amount, interval: ov.interval === 'month' ? 'month' : 'year', free: false, override: ov, monthly: month, discount_pct: pb.annual_discount_pct }
+  const interval = cycleFor(pb, o.cycle)
+  return { code: o.plan_code, name: p?.name ?? o.plan_code, currency, list: interval === 'year' ? yearOf(month, pb.annual_discount_pct) : month, interval, free: false, override: null, monthly: month, discount_pct: pb.annual_discount_pct }
 }
 // Re-price a workspace's plan subscription (e.g. when a discount ends) without touching its schedule or failures.
 export async function repricePlan(orgId: string): Promise<void> {

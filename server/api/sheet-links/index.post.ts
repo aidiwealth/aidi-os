@@ -3,13 +3,16 @@ import { z } from 'zod'
 import { AiMap } from '~/server/utils/sheet-ai'
 import { defaults } from '~/shared/forecast'
 const Body = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(120), url: z.string().trim().min(10).max(600), target: z.enum(['financials', 'forecast']),
-  subject: z.string().max(80).optional(), forecast_id: z.string().uuid().optional(), currency: z.string().regex(/^[A-Z]{3}$/).default('USD'), sheet: z.string().max(120).default(''),
-  mapping: z.array(z.object({ label: z.string().max(90), to: z.string().max(140) })).max(150).default([]), auto: z.boolean().default(true),
+  subject: z.string().max(80).optional(), forecast_id: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().uuid().optional()), currency: z.preprocess((v) => (typeof v === 'string' && v ? v.toUpperCase() : undefined), z.string().regex(/^[A-Z]{3}$/).default('USD')), sheet: z.string().max(120).default(''),
+  mapping: z.array(z.object({ label: z.string().max(300), to: z.string().max(140) })).max(400).default([]), auto: z.boolean().default(true),
   mode: z.enum(['rows', 'ai']).default('rows'), ai_map: AiMap.optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   const b = Body.safeParse(await readBody(event))
-  if (!b.success) throw apiError('invalid', 'Give the link a name and choose where its rows go.')
+  if (!b.success) {
+    const k = String(b.error.issues[0]?.path[0] ?? '')
+    throw apiError('invalid', k === 'name' ? 'Give the link a name.' : k === 'url' ? 'Paste the sheet\'s link.' : k === 'mapping' ? 'Check the rows you chose to use.' : 'Give the link a name and choose where its rows go.')
+  }
   const d = b.data
   await requireModule(event, d.target === 'forecast' ? 'forecast' : 'financials')
   const keys = new Set(TARGET_KEYS[d.target]().map((k) => k.key))

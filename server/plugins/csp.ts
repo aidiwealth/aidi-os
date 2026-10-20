@@ -2,7 +2,7 @@
 // they load) can run. Injected markup, inline event handlers and javascript: links are blocked even if a bug lets
 // them into a page. API responses keep the static policy in nuxt.config (no inline scripts at all).
 import { randomBytes } from 'node:crypto'
-export const CSP_BASE = "default-src 'self'; frame-src https://challenges.cloudflare.com https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-f138f42d66b748108ebf7432c7314665.r2.dev https://a0.muscache.com; font-src 'self' data:; connect-src 'self' https://*.plaid.com https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+export const CSP_BASE = "default-src 'self'; frame-src https://challenges.cloudflare.com https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-f138f42d66b748108ebf7432c7314665.r2.dev https://a0.muscache.com; font-src 'self' data:; media-src 'self' https://pub-4af29fd81be44e49861e29c7da302f4a.r2.dev; connect-src 'self' https://*.plaid.com https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
 export default defineNitroPlugin((nitro) => {
   if (import.meta.dev) return
   nitro.hooks.hook('render:html', (html, { event }) => {
