@@ -3,7 +3,7 @@
 // Financials, and cash from the connected bank accounts today, optionally with spending matched to what actually
 // left the bank over the last three months.
 import { run, type Assumptions, type FinSource as Fin, type BankSource as Bank } from '~/shared/forecast'
-const props = defineProps<{ open: boolean; seed: Assumptions; fin: Fin | null; bank: Bank | null; currency: string }>()
+const props = defineProps<{ open: boolean; seed: Assumptions; fin: Fin | null; bank: Bank | null; currency: string; ngBank?: boolean }>()
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }]; refresh: [] }>()
 const o = reactive({ bankCash: true, match: false, growth: 0, months: 24, name: '' })
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
@@ -38,7 +38,7 @@ const bankLink = computed(() => props.bank?.enabled && !props.bank.connected)
             <template v-if="bank.full_months"><div class="kv"><span>Money in a month (last {{ bank.full_months }})</span><b>{{ m(bank.avg_in) }}</b></div><div class="kv"><span>Money out a month</span><b>{{ m(bank.avg_out) }}</b></div><div class="kv"><span>Net burn a month</span><b :class="{ red: bank.burn > 0 }">{{ bank.burn > 0 ? m(bank.burn) : 'None' }}</b></div></template>
             <p v-else class="mut">Money in and out will show once a full month of activity is available.</p>
             <div v-if="bank.spend.length" class="sp"><span v-for="s in bank.spend" :key="s.label">{{ s.label }} <b>{{ m(s.amount) }}</b></span></div></template>
-          <template v-else><p class="mut">Connect your business bank for today's cash and what actually goes in and out each month. Read-only; we never move money.</p><BankFeeds v-if="bankLink" compact @changed="emit('refresh')" /></template></div>
+          <p v-else-if="ngBank" class="mut">Live connections for Nigerian banks are coming soon. Cash comes from your statements for now.</p><template v-else><p class="mut">Connect your business bank for today's cash and what actually goes in and out each month. Read-only; we never move money.</p><BankFeeds v-if="bankLink" compact @changed="emit('refresh')" /></template></div>
       </div>
       <div class="opts">
         <label class="chk"><input v-model="o.bankCash" type="checkbox" :disabled="!bank?.connected"> Start from today's bank balance <em>{{ bank?.connected ? m(bank.cash) + (bank.partial ? ': connected US accounts only' + (bank.reported ? ', against ' + m(bank.reported) + ' cash in Financials' : '') + ', so the forecast starts from Financials unless you tick this' : '') : 'connect a bank first' }}</em></label>

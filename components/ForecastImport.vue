@@ -3,7 +3,7 @@
 // read by fixed rules with no AI; a PDF is read with AI. The founder checks the mapping and the totals (and the closing
 // cash against the file's own cash line) before it becomes a forecast.
 import { run, defaults, addMonths, COST_LINES, type Assumptions, type FixedMonth } from '~/shared/forecast'
-const props = defineProps<{ open: boolean; seed: Assumptions }>()
+const props = defineProps<{ open: boolean; seed: Assumptions; q?: Record<string, string> }>()
 const emit = defineEmits<{ close: []; done: [v: { name: string; assumptions: Assumptions }] }>()
 type MapTo = 'revenue' | 'cogs' | 'payroll' | 'marketing' | 'rnd' | 'ga' | 'other' | 'tax' | 'items' | 'funding' | 'customers' | 'headcount' | 'cash_balance' | 'new' | 'ignore'
 interface Line { label: string; maps_to: MapTo; values: { month: string; value: number }[] }
@@ -16,7 +16,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function read() {
   busy.value = true; msg.value = ''
   const fd = new FormData(); for (const f of files.value) fd.append('files', f, f.name)
-  try { const r = await $fetch<{ sheet: Sheet; files: string[]; how?: 'rules' | 'ai' }>('/api/forecast/read-sheet', { method: 'POST', body: fd }); sheet.value = r.sheet; how.value = r.how ?? 'rules'; fnames.value = r.files; name.value = r.files[0]!.replace(/\.[a-z0-9]+$/i, '').slice(0, 100) }
+  try { const r = await $fetch<{ sheet: Sheet; files: string[]; how?: 'rules' | 'ai' }>('/api/forecast/read-sheet', { method: 'POST', query: props.q, body: fd }); sheet.value = r.sheet; how.value = r.how ?? 'rules'; fnames.value = r.files; name.value = r.files[0]!.replace(/\.[a-z0-9]+$/i, '').slice(0, 100) }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const COSTS = new Set(COST_LINES.map((c) => c.key))
@@ -68,7 +68,7 @@ function done() { if (built.value) emit('done', { name: name.value.trim() || 'Ac
 <template>
   <AppModal :open="open" :title="sheet ? 'Check the imported forecast' : 'Import a forecast'" wide @close="emit('close')">
     <div v-if="!sheet" class="fi">
-      <div class="tpl"><div><b>Use the Finvry forecast template</b><span class="mut">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Finvry reads it exactly, with no AI, so every figure lands where it should.</span></div><a class="btn secondary sm" href="/api/forecast/template">Download template</a></div>
+      <div class="tpl"><div><b>Use the Finvry forecast template</b><span class="mut">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Finvry reads it exactly, with no AI, so every figure lands where it should.</span></div><a class="btn secondary sm" :href="'/api/forecast/template' + (q?.cust ? '?cust=' + encodeURIComponent(q.cust) : '')">Download template</a></div>
       <p class="lead">Upload the filled template (or a sheet laid out the same way: months across one heading row, the line names down the first column). You check every line and the totals before it is saved. A PDF from your accountant can still be read, with AI; check it carefully.</p>
       <DropZone multiple accept=".xlsx,.xlsm,.csv,.pdf" :disabled="busy" hint="The template (Excel or CSV), or a PDF · up to 3 files" @change="add" />
       <ul v-if="files.length" class="fl"><li v-for="(f, i) in files" :key="f.name"><b>{{ f.name }}</b><button class="lk red" @click="files.splice(i, 1)">Remove</button></li></ul>

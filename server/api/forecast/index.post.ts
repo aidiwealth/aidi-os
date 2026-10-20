@@ -14,14 +14,34 @@ const A = z.object({ start: ym, months: z.coerce.number().int().min(3).max(60), 
   source: z.object({ file: z.string().max(200), imported_at: z.string().max(40), lines: z.array(z.object({ label: z.string().max(200), maps_to: z.string().max(30) })).max(200) }).optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
-  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), assumptions: A.optional() }).safeParse(await readBody(event))
+  const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), main: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), assumptions: A.optional(),
+    rates: z.record(z.string().regex(/^[A-Z]{3}$/), z.coerce.number().min(0).max(1e9)).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the forecast assumptions: ' + (b.error.issues[0]?.path.join('.') ?? ''))
   const d = b.data
-  if (d.delete && d.id) { await db().query('DELETE FROM financials.forecasts WHERE id = $1', [d.id]); return { ok: true } }
+  const sc = await forecastScope(event)
+  // The group forecast's plan rates (units of each company's currency for one unit of the reporting currency); 0 clears.
+  if (d.rates) {
+    if (!user.roles.some((r) => ['admin', 'gp'].includes(r))) throw apiError('forbidden', 'Only founders and admins can set the plan rates.', 403)
+    const cur = ((await currentOrg())!.settings as Record<string, unknown>).forecast_rates as Record<string, number> | undefined
+    const next = { ...(cur ?? {}) }
+    for (const [k, v] of Object.entries(d.rates)) { if (v > 0) next[k] = v; else delete next[k] }
+    await db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('forecast_rates', $1::jsonb) WHERE id = core.current_org()", [JSON.stringify(next)])
+    await audit({ event, actorUserId: user.userId, action: 'forecast.plan_rates', objectType: 'organization', detail: { rates: next } })
+    return { ok: true }
+  }
+  if (sc.group) throw apiError('choose_company', 'Choose the company: each company keeps its own forecasts, and the group adds them together.', 400)
+  const ent = sc.entity
+  if (d.delete && d.id) { await db().query('DELETE FROM financials.forecasts WHERE id = $1 AND entity_id IS NOT DISTINCT FROM $2::uuid', [d.id, ent]); return { ok: true } }
+  // The forecast this company's figures in the group forecast come from.
+  if (d.main && d.id) {
+    const n = (await db().query('UPDATE financials.forecasts SET is_main = (id = $1) WHERE entity_id IS NOT DISTINCT FROM $2::uuid AND (is_main OR id = $1)', [d.id, ent])).rowCount
+    if (!n) throw apiError('not_found', 'Not found', 404)
+    return { ok: true, id: d.id }
+  }
   if (!d.name || !d.assumptions) throw apiError('invalid', 'Name the forecast.')
   const id = d.id
-    ? ((await db().query('UPDATE financials.forecasts SET name = $2, assumptions = $3, updated_at = now() WHERE id = $1', [d.id, d.name, JSON.stringify(d.assumptions)])).rowCount ? d.id : null)
-    : (await one<{ id: string }>('INSERT INTO financials.forecasts (name, assumptions, created_by) VALUES ($1,$2,$3) RETURNING id', [d.name, JSON.stringify(d.assumptions), user.userId])).id
+    ? ((await db().query('UPDATE financials.forecasts SET name = $2, assumptions = $3, updated_at = now() WHERE id = $1 AND entity_id IS NOT DISTINCT FROM $4::uuid', [d.id, d.name, JSON.stringify(d.assumptions), ent])).rowCount ? d.id : null)
+    : (await one<{ id: string }>('INSERT INTO financials.forecasts (name, assumptions, created_by, entity_id) VALUES ($1,$2,$3,$4) RETURNING id', [d.name, JSON.stringify(d.assumptions), user.userId, ent])).id
   if (!id) throw apiError('not_found', 'Not found', 404)
   return { ok: true, id }
 })

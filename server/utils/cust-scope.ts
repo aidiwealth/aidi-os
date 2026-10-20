@@ -5,7 +5,14 @@
 import type { H3Event } from 'h3'
 export interface CustEntity { id: string; name: string; currency: string | null; main: boolean }
 export async function custEntities(): Promise<CustEntity[]> {
-  return (await db().query<CustEntity>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed' ORDER BY (parent_id IS NOT NULL), created_at").catch(() => ({ rows: [] as CustEntity[] }))).rows
+  const subs = await subsidiariesAllowed()
+  return (await db().query<CustEntity>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed'" + (subs ? '' : ' AND parent_id IS NULL') + ' ORDER BY (parent_id IS NOT NULL), created_at').catch(() => ({ rows: [] as CustEntity[] }))).rows
+}
+// Subsidiaries (their own Financials, customers and forecasts, and the group) are part of the Scale plan. On another
+// plan they are kept but not shown, and come back when the company moves to Scale. Aidi OS is not limited.
+export async function subsidiariesAllowed(): Promise<boolean> {
+  const org = await currentOrg()
+  return !org || org.kind !== 'company' || org.plan_code === 'company_scale'
 }
 export async function resolveCustEntity(event: H3Event): Promise<string> {
   const q = getQuery(event).cust

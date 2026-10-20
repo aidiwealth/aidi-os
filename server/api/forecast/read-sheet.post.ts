@@ -9,15 +9,16 @@ export default defineEventHandler(async (event) => {
   if (!files.length) throw apiError('invalid', 'Choose the forecast file.')
   if (files.length > 3) throw apiError('invalid', 'Up to 3 files for one forecast.')
   const ext = (n: string) => (n.split('.').pop() ?? '').toLowerCase()
-  const company = (await currentOrg())?.name ?? 'the company'
+  const sc = await forecastScope(event)
+  const company = sc.name || 'the company'
   let sheet: ReadSheet | null = null, how: 'rules' | 'ai' = 'rules'
   if (files.every((f) => ['xlsx', 'xlsm', 'csv'].includes(ext(f.name)))) {
     const grids = (await Promise.all(files.map((f) => readGrids(Buffer.from(f.data), ext(f.name) === 'csv' ? 'csv' : 'xlsx', { tabs: 30, rows: 400, cols: 80 })))).flat()
-    sheet = forecastFromGrids(grids, ((await currentOrg())?.settings.currency as string) || 'USD')
+    sheet = forecastFromGrids(grids, (await forecastScope(event)).currency)
     if (!sheet) throw apiError('unreadable', 'We read forecasts by their layout, with no AI: use the Finvry forecast template (Download the template), or put the months across one heading row and these line names down the first column: Revenue, Cost of revenue, Payroll, Sales & marketing, General & admin.', 422)
   } else {
     how = 'ai'
-    try { sheet = await readForecastFiles(files, company, 'forecast:' + (await companyEntityId() ?? 'org')) }
+    try { sheet = await readForecastFiles(files, company, 'forecast:' + (sc.entity ?? 'org')) }
     catch (e) { if ((e as { statusCode?: number }).statusCode) throw e; console.error('[forecast] read failed', e); throw apiError('ai_failed', 'Could not read that PDF just now. Try again, or put the forecast in the Finvry forecast template.', 502) }
   }
   if (!sheet.lines.some((l) => l.maps_to !== 'ignore' && l.values.length)) throw apiError('empty', 'No monthly figures found in that file.', 422)

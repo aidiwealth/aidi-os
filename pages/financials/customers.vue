@@ -49,6 +49,19 @@ const falling = computed(() => fallingAll.value.slice(0, sN.value))
 const lostAll = computed(() => st.value.rows.filter((r) => !r.active && r.last && r.last > addMonths(asOf.value, -12) && r.last <= asOf.value).sort((a, b) => b.lifetime - a.lifetime))
 const lost = computed(() => lostAll.value.slice(0, sN.value))
 watch(asOf, () => { gN.value = 6; sN.value = 6 })
+// The whole list (not only the rows shown) as a CSV, in the page's currency.
+function exportList(which: 'growing' | 'slipping') {
+  const n = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(Math.round(v * 100) / 100))
+  const pc = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(Math.round(v * 1000) / 10))
+  const head = ['Customer', 'Status', 'Last 12 months (' + cur.value + ')', '12 months before', 'Change', 'Change %', 'Last paid', 'Lifetime']
+  const rows = which === 'growing'
+    ? growingAll.value.map((r) => [r.name, r.prior_ttm ? 'Growing' : 'New this year', n(r.ttm), n(r.prior_ttm), n(chg(r)), pc(r.growth), r.last ?? '', n(r.lifetime)])
+    : [...fallingAll.value.map((r) => [r.name, 'Paying less', n(r.ttm), n(r.prior_ttm), n(chg(r)), pc(r.growth), r.last ?? '', n(r.lifetime)]),
+       ...lostAll.value.map((r) => [r.name, 'Lost', n(r.ttm), n(r.prior_ttm), n(chg(r)), pc(r.growth), r.last ?? '', n(r.lifetime)])]
+  const csv = [head, ...rows].map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n')
+  const u = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), a = document.createElement('a')
+  a.href = u; a.download = (which === 'growing' ? 'Customers growing fastest' : 'Customers slipping and lost') + ' to ' + asOf.value + '.csv'; a.click(); URL.revokeObjectURL(u)
+}
 function addMonths(m: string, k: number) { const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + k, 1)); return d.toISOString().slice(0, 7) }
 const hasSector = computed(() => cs.value.some((c) => c.sector)); const hasCac = computed(() => cs.value.some((c) => c.acquisition_cost))
 const GB: [GroupBy, string][] = [['sector', 'Sector'], ['segment', 'Segment'], ['size', 'Size'], ['plan', 'Plan'], ['country', 'Country']]
@@ -125,10 +138,10 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
 
       <div class="three n2">
         <div class="card flat"><div class="ch"><h3>Growing fastest</h3><span class="mut">Last 12 months vs the 12 before</span></div>
-          <ol class="lst"><li v-for="r in growing" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.prior_ttm ? '' : 'New this year' }}</em></span><span class="v up">+{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : '+' + cPct(r.growth) }}</em></span></li><li v-if="!growing.length" class="none">No customer grew over the period.</li></ol><div v-if="growingAll.length > 6" class="smr"><span class="mut">{{ growing.length }} of {{ growingAll.length }}</span><button v-if="growing.length < growingAll.length" type="button" class="lk" @click="gN += 10">Show more</button><button v-if="gN > 6" type="button" class="lk" @click="gN = 6">Show fewer</button></div></div>
+          <ol class="lst"><li v-for="r in growing" :key="r.id"><span class="nm">{{ r.name }}<em>{{ r.prior_ttm ? '' : 'New this year' }}</em></span><span class="v up">+{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : '+' + cPct(r.growth) }}</em></span></li><li v-if="!growing.length" class="none">No customer grew over the period.</li></ol><div v-if="growingAll.length" class="smr"><span class="mut">{{ growing.length }} of {{ growingAll.length }}</span><button v-if="growing.length < growingAll.length" type="button" class="lk" @click="gN += 10">Show more</button><button v-if="gN > 6" type="button" class="lk" @click="gN = 6">Show fewer</button><button type="button" class="lk" @click="exportList('growing')">Export CSV</button></div></div>
         <div class="card flat"><div class="ch"><h3>Slipping and lost</h3><span class="mut">Paying less, or stopped in the last year</span></div>
-          <ol class="lst"><li v-for="r in falling" :key="r.id"><span class="nm">{{ r.name }}<em>Paying less</em></span><span class="v dn">{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : cPct(r.growth) }}</em></span></li>
-            <li v-for="r in lost" :key="'l' + r.id"><span class="nm">{{ r.name }}<em>Last paid {{ cMon(r.last!) }}</em></span><span class="v dn">Lost<em>{{ cMoney(r.lifetime, cur, true) }} lifetime</em></span></li><li v-if="!falling.length && !lost.length" class="none">No customer is paying less.</li></ol><div v-if="fallingAll.length > 6 || lostAll.length > 6" class="smr"><span class="mut">{{ falling.length + lost.length }} of {{ fallingAll.length + lostAll.length }}</span><button v-if="falling.length < fallingAll.length || lost.length < lostAll.length" type="button" class="lk" @click="sN += 10">Show more</button><button v-if="sN > 6" type="button" class="lk" @click="sN = 6">Show fewer</button></div></div>
+          <ol class="lst"><li v-for="r in falling" :key="r.id"><span class="nm">{{ r.name }}<em>Paying less</em></span><span class="v down">{{ cMoney(chg(r), cur, true) }}<em>{{ r.growth === null ? '' : cPct(r.growth) }}</em></span></li>
+            <li v-for="r in lost" :key="'l' + r.id"><span class="nm">{{ r.name }}<em>Last paid {{ cMon(r.last!) }}</em></span><span class="v down">Lost<em>{{ cMoney(r.lifetime, cur, true) }} lifetime</em></span></li><li v-if="!falling.length && !lost.length" class="none">No customer is paying less.</li></ol><div v-if="fallingAll.length || lostAll.length" class="smr"><span class="mut">{{ falling.length + lost.length }} of {{ fallingAll.length + lostAll.length }}</span><button v-if="falling.length < fallingAll.length || lost.length < lostAll.length" type="button" class="lk" @click="sN += 10">Show more</button><button v-if="sN > 6" type="button" class="lk" @click="sN = 6">Show fewer</button><button type="button" class="lk" @click="exportList('slipping')">Export CSV</button></div></div>
       </div>
 
       <details class="card flat tbl"><summary>Table: by {{ GB.find(([k]) => k === by)?.[1].toLowerCase() }}</summary>
@@ -183,7 +196,7 @@ select, input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px s
 .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; } .three .card { margin: 0; }
 .card.flat { padding: 0; overflow: hidden; margin-bottom: 12px; } .ch { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; padding: 16px 18px 12px; flex-wrap: wrap; } .ch h3 { margin: 0; font-size: 16px; }
 .lst { list-style: none; margin: 0; padding: 0 18px 12px; } .lst li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .lst .nm { display: flex; flex-direction: column; min-width: 0; } .lst .nm, .lst .v { overflow-wrap: anywhere; }
-.lst em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .lst .v { text-align: right; display: flex; flex-direction: column; font-weight: 500; } .lst .v.up { color: var(--c-navy); } .lst .v.dn { color: var(--c-danger); } .lst .bar { grid-column: 1 / -1; width: 100%; } .lst .none { color: var(--c-muted); display: block; }
+.lst em { font-style: normal; font-size: 11.5px; color: var(--c-muted); } .lst .v { text-align: right; display: flex; flex-direction: column; font-weight: 500; } .lst .v.up { color: var(--c-navy); } .lst .v.down { color: var(--c-danger); } .lst .bar { grid-column: 1 / -1; width: 100%; } .lst .none { color: var(--c-muted); display: block; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .lk.red { color: var(--c-danger); }
 .scroll { overflow-x: auto; } .table { width: 100%; border-collapse: collapse; } th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); border-top: 1px solid var(--c-rule); background: #fbfaf7; white-space: nowrap; } th.s { cursor: pointer; } th.s:hover { color: var(--c-ink); }
 td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .n { text-align: right; white-space: nowrap; } th.n { text-align: right; } .sub { display: block; font-size: 11.5px; color: var(--c-muted); } td.r { color: var(--c-danger); } tr.off td { color: var(--c-muted); }
@@ -200,5 +213,6 @@ td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .gbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; } .gbar .mut { font-size: 13px; }
 .three.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } @media (max-width: 800px) { .three.n2 { grid-template-columns: 1fr; } }
 .charts { align-items: stretch; }
-.smr { display: flex; align-items: center; gap: 16px; padding-top: 10px; font-size: 13px; } .smr .mut { font-size: 12.5px; margin-right: auto; }
+.three.n2 > .card.flat { display: flex; flex-direction: column; } .three.n2 > .card.flat > .smr { margin-top: auto; }
+.smr { display: flex; align-items: center; gap: 18px; padding: 10px 18px 14px; border-top: 1px solid var(--c-rule); margin-top: -1px; font-size: 13px; } .smr .mut { font-size: 12.5px; margin-right: auto; } .smr .lk { font-size: 13px; }
 </style>

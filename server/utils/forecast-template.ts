@@ -105,7 +105,18 @@ export function forecastFromGrids(grids: Grid[], currency = 'USD'): ReadSheet | 
   const taken = new Set<string>(), lines: ReadSheet['lines'] = [], notes: string[] = []
   let opening: number | null = null, inCosts = false
   const COSTKEYS = new Set(['payroll', 'marketing', 'rnd', 'ga', 'other'])
+  // "Staff costs (in Payroll)": a line of detail inside a template line. The template line carries the total, so the
+  // detail is shown but not counted again.
+  const inOf = (label: string): string | null => {
+    const m = /\(in ([^)]+)\)\s*$/i.exec(label); if (!m) return null
+    const n = nm(m[1]!)
+    for (const [l, k] of BY_LABEL) if (k !== 'ignore' && (l === n || l.startsWith(n + ' '))) return k
+    for (const [k, ws] of Object.entries(ALSO)) if (k !== 'ignore' && ws.includes(n)) return k
+    return null
+  }
+  let detail = 0, unknown = 0
   for (const r of pick.l.rows) {
+    if (inOf(r.label)) { detail++; lines.push({ label: r.label, maps_to: 'ignore', values: Object.entries(r.values).sort(([a], [b]) => (a < b ? -1 : 1)).map(([month, value]) => ({ month, value })) }); continue }
     let k = keyOf(r.label, taken)
     // A row of the company's own among the operating costs (Consultants, Rent…) becomes its own cost line.
     if (k && COSTKEYS.has(k)) inCosts = true
@@ -113,16 +124,28 @@ export function forecastFromGrids(grids: Grid[], currency = 'USD'): ReadSheet | 
     else if (!k && inCosts && Object.values(r.values).some((v) => v !== 0)) k = 'new'
     const vals = Object.entries(r.values).sort(([a], [b]) => (a < b ? -1 : 1))
     if (k === 'opening') { opening = vals[0]?.[1] ?? null; continue }
+    if (!k && Object.values(r.values).some((v) => v !== 0)) unknown++
     const to = (k ?? 'ignore') as ReadSheet['lines'][number]['maps_to']
     if (to !== 'ignore' && to !== 'cash_balance' && to !== 'items' && to !== 'funding' && to !== 'customers' && to !== 'headcount') taken.add(to)
     lines.push({ label: r.label, maps_to: to, values: vals.map(([month, v]) => ({ month, value: COSTS.has(to) || to === 'new' ? Math.abs(v) : v })) })
+  }
+  // Lines of the company's own that add up to the template line right after them are its detail, not more costs.
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i]!
+    if (!COSTKEYS.has(t.maps_to) || !t.values.length) continue
+    let j = i - 1; while (j >= 0 && lines[j]!.maps_to === 'new') j--
+    const run = lines.slice(j + 1, i)
+    if (!run.length) continue
+    const sum = (m: string) => run.reduce((a, l) => a + (l.values.find((v) => v.month === m)?.value ?? 0), 0)
+    if (t.values.every((v) => Math.abs(sum(v.month) - v.value) <= Math.max(1, Math.abs(v.value) * 0.001))) { for (const l of run) l.maps_to = 'ignore'; detail += run.length }
   }
   const used = lines.filter((l) => l.maps_to !== 'ignore' && l.maps_to !== 'cash_balance' && l.values.length)
   if (!used.length) return null
   const start = used.flatMap((l) => l.values.map((v) => v.month)).sort()[0]!
   const own = lines.filter((l) => l.maps_to === 'new').map((l) => l.label)
   if (own.length) notes.push('Your own cost lines, kept as their own lines in the forecast: ' + own.join(', ') + '. Change any of them to an existing line if you prefer.')
-  notes.push((pick.t ? 'Read from the Finvry forecast template' : 'Read from "' + pick.l.sheet + '" by line names') + ', with no AI.' + (pick.t ? '' : ' Lines with other names are left out: check each line below.'))
+  if (detail) notes.push(detail + ' line' + (detail === 1 ? '' : 's') + ' of detail (such as "Staff costs (in Payroll)") are counted in their totals, not again.')
+  notes.push((pick.t ? 'Read from the Finvry forecast template' : 'Read from "' + pick.l.sheet + '" by line names') + ', with no AI.' + (pick.t || !unknown ? '' : ' Lines with other names are left out: check each line below.'))
   if (opening === null) notes.push('No opening cash in the file: the cash at the start is taken from your figures; change it on the forecast if needed.')
   return { currency, start, opening_cash: opening, lines, notes }
 }

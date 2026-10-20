@@ -1,36 +1,53 @@
 <script setup lang="ts">
 // Finvry forecast: revenue, costs, profit, cash and runway by month, from your actuals and a few assumptions.
-import { run, defaults, addMonths, COST_LINES, type Assumptions, type Scenario, type FinSource, type BankSource } from '~/shared/forecast'
+import { run, defaults, addMonths, COST_LINES, type Assumptions, type Scenario, type FinSource, type BankSource, type GroupCo } from '~/shared/forecast'
 useHead({ title: 'Forecast' })
 interface Act { month: string; revenue: number | null; cogs: number | null; opex: number | null; net_income: number | null; cash: number | null }
-const { data, refresh } = await useFetch<{ fin: FinSource | null; bank: BankSource | null; live: boolean; currency: string; actuals: Act[]; seed: Assumptions; forecasts: { id: string; name: string; updated_at: string; start: string; months: number; views: number; links: number }[]; has_actuals: boolean }>('/api/forecast')
+// On Finvry the forecast sits under Financials and follows the company (or the group) chosen at the top: each company
+// keeps its own forecasts in its own currency; the group adds each company's forecast together (ForecastGroup).
+const fs = await useFinScope()
+const scoped = computed(() => !!fs.co.value)
+const fq = computed<Record<string, string>>(() => (scoped.value ? { cust: fs.isGroup.value ? 'group' : fs.entityId.value ?? '' } : {} as Record<string, string>))
+interface One { ng_bank?: boolean; group?: false; company?: { id: string | null; name: string; currency: string; main: boolean; companies: number }; fin: FinSource | null; bank: BankSource | null; live: boolean; currency: string; actuals: Act[]; seed: Assumptions; forecasts: { id: string; name: string; updated_at: string; start: string; months: number; views: number; links: number; is_main?: boolean }[]; has_actuals: boolean }
+interface Grp { group: true; currency: string; name: string; companies: GroupCo[] }
+const { data, refresh } = await useFetch<One | Grp>('/api/forecast', { query: fq })
+const one = computed(() => (data.value && !data.value.group ? data.value as One : null))
+const grp = computed(() => (data.value?.group ? data.value as Grp : null))
 const rfetch = useRequestFetch() // forwards the sign-in cookie when the page renders on the server
-const sel = ref(''), name = ref('Base plan'), a = ref<Assumptions>(structuredClone(toRaw(data.value?.seed ?? defaults(new Date().toISOString().slice(0, 7)))))
+const sel = ref(''), name = ref('Base plan'), a = ref<Assumptions>(structuredClone(toRaw(one.value?.seed ?? defaults(new Date().toISOString().slice(0, 7)))))
 const sc = ref<Scenario>('base'), msg = ref(''), ok = ref(''), busy = ref(false), dirty = ref(false)
 watch(a, () => { dirty.value = true }, { deep: true })
 async function pick(id: string) {
   sel.value = id; msg.value = ''; ok.value = ''
-  if (!id) { a.value = structuredClone(toRaw(data.value!.seed)); name.value = 'New forecast'; await nextTick(); dirty.value = false; return }
+  if (!id) { a.value = structuredClone(toRaw(one.value!.seed)); name.value = 'New forecast'; await nextTick(); dirty.value = false; return }
   const f = await rfetch<{ name: string; assumptions: Assumptions }>('/api/forecast/' + id); name.value = f.name; a.value = { ...defaults(f.assumptions.start), ...f.assumptions }; await nextTick(); dirty.value = false
 }
 const route = useRoute()
 const want = String(route.query.f ?? '')
-if (data.value?.forecasts.length) await pick(data.value.forecasts.find((f) => f.id === want)?.id ?? data.value.forecasts[0]!.id)
+if (one.value?.forecasts.length) await pick(one.value!.forecasts.find((f) => f.id === want)?.id ?? one.value!.forecasts[0]!.id)
+// Another company chosen at the top: open its forecast (or a new one from its numbers).
+watch(() => (one.value ? one.value.company?.id ?? '-' : 'group'), async (k, was) => { if (k === was || !one.value) return; const l = one.value.forecasts; await pick(l.find((f) => f.is_main)?.id ?? l[0]?.id ?? '') })
 const { canPath } = useModuleAccess(), hasRoom = computed(() => canPath('/fundraising'))
 const build = ref(false)
 async function built(v: { name: string; assumptions: Assumptions }) { build.value = false; sel.value = ''; name.value = v.name; a.value = v.assumptions; await nextTick(); dirty.value = true; ok.value = ''; msg.value = '' }
 // The bank against this forecast: what actually left the bank each month lately, and what the forecast spends.
-const bankCheck = computed(() => { const b = data.value?.bank; if (!b?.connected || !b.full_months) return null; const f = res.value.months.slice(0, 3); if (!f.length) return null; const fOut = f.reduce((s, x) => s + x.cogs + x.opex + Math.max(0, -x.items), 0) / f.length; const diff = fOut - b.avg_out; return { bankOut: b.avg_out, fOut, diff, off: Math.abs(diff) > Math.max(1000, b.avg_out * 0.15) } })
+const bankCheck = computed(() => { const b = one.value?.bank; if (!b?.connected || !b.full_months) return null; const f = res.value.months.slice(0, 3); if (!f.length) return null; const fOut = f.reduce((s, x) => s + x.cogs + x.opex + Math.max(0, -x.items), 0) / f.length; const diff = fOut - b.avg_out; return { bankOut: b.avg_out, fOut, diff, off: Math.abs(diff) > Math.max(1000, b.avg_out * 0.15) } })
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
+// The forecast this company's figures in the group forecast come from (only when it is part of a group).
+const inGroup = computed(() => (one.value?.company?.companies ?? 0) > 1)
+const isMain = computed(() => { const l = one.value?.forecasts ?? []; return !!sel.value && (l.find((f) => f.is_main)?.id ?? l[0]?.id) === sel.value })
+async function useForGroup() { msg.value = ''; ok.value = ''; try { await $fetch('/api/forecast', { method: 'POST', query: fq.value, body: { id: sel.value, main: true } }); await refresh(); ok.value = 'The group forecast now uses "' + name.value + '" for ' + (one.value?.company?.name ?? 'this company') + '.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
+const tplHref = computed(() => '/api/forecast/template' + (fq.value.cust ? '?cust=' + encodeURIComponent(fq.value.cust) : ''))
 const canLink = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 // A linked sheet updated a forecast: reload it unless there are unsaved changes.
 async function linked() { await refresh(); if (sel.value && !dirty.value) await pick(sel.value) }
 const imp = ref(false), shareOpen = ref(route.query.share === '1' && !!sel.value)
-const cur0 = computed(() => data.value?.forecasts.find((f) => f.id === sel.value))
-watch(sel, (id) => { useRouter().replace({ query: id ? { f: id } : {} }) })
+const cur0 = computed(() => one.value?.forecasts.find((f) => f.id === sel.value))
+watch(sel, (id) => { if (grp.value) return; useRouter().replace({ query: { ...route.query, f: id || undefined } }) })
 async function imported(v: { name: string; assumptions: Assumptions }) {
   imp.value = false; msg.value = ''
-  try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', body: { name: v.name, assumptions: v.assumptions } }); await refresh(); await pick(r.id); ok.value = 'Imported and saved as "' + v.name + '".' }
+  try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', query: fq.value, body: { name: v.name, assumptions: v.assumptions } }); await refresh(); await pick(r.id); ok.value = 'Imported and saved as "' + v.name + '".' }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save the imported forecast.' }
 }
 function dropFixed() { if (!confirm('Stop using the imported figures? Every month will follow the assumptions. (Save to keep this change.)')) return; const x = { ...a.value }; delete x.fixed; delete x.source; a.value = x }
@@ -41,11 +58,11 @@ const full = (v: number | null | undefined) => (v === null || v === undefined ? 
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 async function save(asNew = false) {
   busy.value = true; msg.value = ''; ok.value = ''
-  try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', body: { id: asNew ? undefined : sel.value || undefined, name: name.value, assumptions: a.value } }); sel.value = r.id; dirty.value = false; ok.value = 'Saved.'; await refresh() }
+  try { const r = await $fetch<{ id: string }>('/api/forecast', { method: 'POST', query: fq.value, body: { id: asNew ? undefined : sel.value || undefined, name: name.value, assumptions: a.value } }); sel.value = r.id; dirty.value = false; ok.value = 'Saved.'; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } finally { busy.value = false }
 }
-async function del() { if (!sel.value || !confirm('Delete "' + name.value + '"?')) return; await $fetch('/api/forecast', { method: 'POST', body: { id: sel.value, delete: true } }); await refresh(); await pick(data.value?.forecasts[0]?.id ?? '') }
-function reseed() { if (!confirm('Reset the starting point to your latest actuals?')) return; const s = data.value!.seed; a.value.opening = { ...s.opening }; a.value.start = s.start; a.value.cogs_pct = s.cogs_pct; a.value.costs = structuredClone(toRaw(s.costs)) }
+async function del() { if (!sel.value || !confirm('Delete "' + name.value + '"?')) return; await $fetch('/api/forecast', { method: 'POST', query: fq.value, body: { id: sel.value, delete: true } }); await refresh(); await pick(one.value?.forecasts[0]?.id ?? '') }
+function reseed() { if (!confirm('Reset the starting point to your latest actuals?')) return; const s = one.value!.seed; a.value.opening = { ...s.opening }; a.value.start = s.start; a.value.cogs_pct = s.cogs_pct; a.value.costs = structuredClone(toRaw(s.costs)) }
 const addHire = () => a.value.hires.push({ role: '', start: addMonths(a.value.start, 1), monthly_cost: 0 })
 const addFund = () => a.value.funding.push({ label: 'Seed round', month: addMonths(a.value.start, 3), amount: 0 })
 const addItem = () => a.value.items.push({ label: '', month: addMonths(a.value.start, 1), amount: 0 })
@@ -54,9 +71,9 @@ const newCost = ref('')
 function addCost() { const label = newCost.value.trim().slice(0, 80); if (!label) return; let k = 'x_' + (label.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'cost'); while (a.value.costs.some((c) => c.key === k)) k = k.slice(0, 27) + '_a'; a.value.costs.push({ key: k, label, amount: 0, growth_pct: 1 }); newCost.value = '' }
 const open = reactive<Record<string, boolean>>({ start: true, revenue: true, costs: true, people: false, money: false, scen: false })
 // Chart: last 12 actual months then the forecast.
-const chart = computed(() => ({ actual: (data.value?.actuals ?? []).filter((x) => x.month < a.value.start).map((x) => ({ month: x.month, revenue: x.revenue ?? 0, costs: (x.cogs ?? 0) + (x.opex ?? 0), cash: x.cash })), forecast: res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })) }))
+const chart = computed(() => ({ actual: (one.value?.actuals ?? []).filter((x) => x.month < a.value.start).map((x) => ({ month: x.month, revenue: x.revenue ?? 0, costs: (x.cogs ?? 0) + (x.opex ?? 0), cash: x.cash })), forecast: res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })) }))
 // Actuals against this forecast, for months that have both.
-const vs = computed(() => (data.value?.actuals ?? []).map((x) => ({ x, f: res.value.months.find((y) => y.month === x.month) })).filter((p) => p.f && p.x.revenue !== null))
+const vs = computed(() => (one.value?.actuals ?? []).map((x) => ({ x, f: res.value.months.find((y) => y.month === x.month) })).filter((p) => p.f && p.x.revenue !== null))
 const ROWS = computed<[string, (x: (typeof res.value.months)[number]) => number | null, string?][]>(() => [
   ['Revenue', (x) => x.revenue, 'b'], ['Cost of revenue', (x) => -x.cogs], ['Gross profit', (x) => x.gross_profit, 'b'], ['Gross margin %', (x) => x.gross_margin, 'p'],
   ['Payroll', (x) => -x.payroll], ...a.value.costs.map((c) => [c.label, (x: (typeof res.value.months)[number]) => -(x.costs[c.key] ?? 0)] as [string, (x: (typeof res.value.months)[number]) => number]),
@@ -72,17 +89,19 @@ function csv() {
 </script>
 <template>
   <section v-if="data" class="fc">
-    <p class="label">Investor relations</p>
-    <InvestorTabs />
-    <div class="hd"><div><h1>Forecast</h1><p class="lead">Revenue, costs, profit and cash by month, starting from your latest actuals. Keep as many forecasts as you need, import one from the Finvry forecast template (read exactly, with no AI), and share any of them with a private link.</p></div>
-      <div class="tb"><button class="btn" @click="build = true">Build from my numbers</button><button class="btn secondary" @click="imp = true">Import from a file</button><a class="btn secondary" href="/api/forecast/template">Forecast template</a><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
-    <nav class="ft"><button v-for="f in data.forecasts" :key="f.id" :class="{ on: sel === f.id }" @click="pick(f.id)">{{ f.name }}<span v-if="f.views" class="vw">{{ f.views }} view{{ f.views === 1 ? '' : 's' }}</span></button><button v-if="!sel" class="on">{{ name || 'New forecast' }} <span class="vw">not saved</span></button></nav>
-    <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><button v-if="sel" class="lk red" @click="del">Delete</button></div>
+    <FinHeader v-if="scoped" />
+    <template v-else><p class="label">Investor relations</p><InvestorTabs /></template>
+    <ForecastGroup v-if="grp" :data="grp" :can-edit="canEdit" @open="(id: string) => { fs.s.value = 'entity:' + id }" @refresh="refresh()" />
+    <template v-if="one">
+    <div class="hd"><div><h1 v-if="!scoped">Forecast</h1><p class="lead">Revenue, costs, profit and cash by month{{ scoped && one.company?.name ? ' for ' + one.company.name + ', in ' + one.currency : '' }}, starting from the latest actuals. Keep as many forecasts as you need, import one from the Finvry forecast template (read exactly, with no AI), and share any of them with a private link.</p></div>
+      <div class="tb"><button class="btn" @click="build = true">Build from my numbers</button><button class="btn secondary" @click="imp = true">Import from a file</button><a class="btn secondary" :href="tplHref">Forecast template</a><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
+    <nav class="ft"><button v-for="f in one.forecasts" :key="f.id" :class="{ on: sel === f.id }" @click="pick(f.id)">{{ f.name }}<span v-if="f.views" class="vw">{{ f.views }} view{{ f.views === 1 ? '' : 's' }}</span></button><button v-if="!sel" class="on">{{ name || 'New forecast' }} <span class="vw">not saved</span></button></nav>
+    <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><span v-if="inGroup && sel && isMain" class="gm">Used for the group</span><button v-else-if="inGroup && sel && canEdit" class="lk" @click="useForGroup">Use for the group forecast</button><button v-if="sel" class="lk red" @click="del">Delete</button></div>
     <p v-if="a.fixed && Object.keys(a.fixed).length" class="note">{{ mon(Object.keys(a.fixed).sort()[0]!) }} to {{ mon(Object.keys(a.fixed).sort().pop()!) }} use the figures imported from {{ a.source?.file || 'your accountant' }}; the assumptions below apply after that. <button class="lk" @click="dropFixed">Use assumptions for every month instead</button></p>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok && !dirty" class="ok">{{ ok }}</p>
-    <ClientOnly><SheetLinks target="forecast" :forecasts="data.forecasts" :forecast-id="sel" :currency="data.currency" :can-edit="canLink" @synced="linked" /></ClientOnly>
-    <p v-if="!data.has_actuals && !a.fixed && !data.bank?.connected" class="note">No monthly figures yet, so the starting point is blank. Add your statements under Financials or connect your bank, then use <button class="lk" @click="build = true">Build from my numbers</button>. Or type your current cash, revenue and costs below.</p>
-    <p v-if="bankCheck" class="note">Bank check: over the last {{ data.bank!.full_months }} months <b>{{ m(bankCheck.bankOut) }}</b> a month left your bank; this forecast spends <b>{{ m(bankCheck.fOut) }}</b> a month at the start{{ bankCheck.off ? (bankCheck.diff < 0 ? ', which looks low.' : ', which looks high.') : ', in line.' }} <button v-if="bankCheck.off" class="lk" @click="build = true">Rebuild matched to the bank</button> · Cash in the bank now <b>{{ m(data.bank!.cash) }}</b> <button v-if="Math.abs(a.opening.cash - data.bank!.cash) > 1" class="lk" @click="a.opening.cash = data.bank!.cash">Use as opening cash</button></p>
+    <ClientOnly><SheetLinks target="forecast" :forecasts="one.forecasts" :forecast-id="sel" :currency="one.currency" :can-edit="canLink" @synced="linked" /></ClientOnly>
+    <p v-if="!one.has_actuals && !a.fixed && !one.bank?.connected" class="note">No monthly figures yet, so the starting point is blank. Add your statements under Financials{{ one.ng_bank ? '' : ' or connect your bank' }}, then use <button class="lk" @click="build = true">Build from my numbers</button>. Or type your current cash, revenue and costs below.</p>
+    <p v-if="bankCheck" class="note">Bank check: over the last {{ one.bank!.full_months }} months <b>{{ m(bankCheck.bankOut) }}</b> a month left your bank; this forecast spends <b>{{ m(bankCheck.fOut) }}</b> a month at the start{{ bankCheck.off ? (bankCheck.diff < 0 ? ', which looks low.' : ', which looks high.') : ', in line.' }} <button v-if="bankCheck.off" class="lk" @click="build = true">Rebuild matched to the bank</button> · Cash in the bank now <b>{{ m(one.bank!.cash) }}</b> <button v-if="Math.abs(a.opening.cash - one.bank!.cash) > 1" class="lk" @click="a.opening.cash = one.bank!.cash">Use as opening cash</button></p>
     <div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div>
     <div class="fx-stats">
       <StatTile label="Cash at the end" :value="m(res.summary.cash_end)" :note="mon(res.months[res.months.length - 1]?.month ?? null)" :red="res.summary.cash_end < 0" />
@@ -95,9 +114,9 @@ function csv() {
       <aside class="as">
         <div class="sec"><button class="sh" @click="open.start = !open.start"><b>Starting point</b><span>{{ mon(a.start) }} · {{ a.months }} months</span></button>
           <div v-if="open.start" class="sb"><div class="g2"><label>First month<input v-model="a.start" type="month"></label><label>Length<select v-model.number="a.months"><option v-for="n in [12, 18, 24, 36, 48, 60]" :key="n" :value="n">{{ n }} months</option></select></label>
-            <label>Cash today{{ data.bank?.connected ? ' (bank: ' + m(data.bank.cash) + ')' : '' }}<input v-model.number="a.opening.cash" type="number"></label><label>Revenue this month<input v-model.number="a.opening.revenue" type="number" min="0"></label>
+            <label>Cash today{{ one.bank?.connected ? ' (bank: ' + m(one.bank.cash) + ')' : '' }}<input v-model.number="a.opening.cash" type="number"></label><label>Revenue this month<input v-model.number="a.opening.revenue" type="number" min="0"></label>
             <label>Customers today<input v-model.number="a.opening.customers" type="number" min="0"></label><label>Headcount today<input v-model.number="a.opening.headcount" type="number" min="0"></label></div>
-            <button v-if="data.has_actuals" class="lk" @click="reseed">Reset to my latest actuals</button></div></div>
+            <button v-if="one.has_actuals" class="lk" @click="reseed">Reset to my latest actuals</button></div></div>
         <div class="sec"><button class="sh" @click="open.revenue = !open.revenue"><b>Revenue</b><span>{{ a.revenue.mode === 'growth' ? a.revenue.growth_pct + '% a month' : 'Customers × price' }}</span></button>
           <div v-if="open.revenue" class="sb"><div class="rad"><label><input v-model="a.revenue.mode" type="radio" value="growth"> Grow by a rate</label><label><input v-model="a.revenue.mode" type="radio" value="customers"> Customers × price</label></div>
             <div v-if="a.revenue.mode === 'growth'" class="g2"><label>Monthly growth %<input v-model.number="a.revenue.growth_pct" type="number" step="0.5"></label></div>
@@ -127,9 +146,10 @@ function csv() {
         <p class="fine">A forecast is an estimate from the assumptions you enter, not a promise of results. Figures in {{ cur }}.</p>
       </div>
     </div>
-    <ForecastBuild :open="build" :seed="data.seed" :fin="data.fin" :bank="data.bank" :currency="data.currency" @close="build = false" @done="built" @refresh="refresh()" />
-    <ForecastImport :open="imp" :seed="data.seed" @close="imp = false" @done="imported" />
+    <ForecastBuild :open="build" :seed="one.seed" :fin="one.fin" :bank="one.bank" :currency="one.currency" :ng-bank="one.ng_bank" @close="build = false" @done="built" @refresh="refresh()" />
+    <ForecastImport :open="imp" :seed="one.seed" :q="fq" @close="imp = false" @done="imported" />
     <ShareLinks :open="shareOpen" kind="forecast" :object-id="sel" :title="name" @close="shareOpen = false" @changed="refresh()" />
+    </template>
   </section>
 </template>
 <style scoped>
@@ -155,5 +175,5 @@ function csv() {
 .t tr.b td { font-weight: 600; color: var(--c-ink); } .t tr.h td { font-weight: 600; color: var(--c-navy); background: #f4f6f9; } .t tr.h td.st { background: #f4f6f9; } .t td.neg { color: var(--c-danger); }
 .t.sm { width: 100%; } .t.sm th, .t.sm td { text-align: left; } h3 { margin: 0 0 10px; font-size: 15px; } .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .as { position: static; max-height: none; } }
-.rmc { background: none; border: 0; color: var(--c-muted); font-size: 16px; cursor: pointer; padding: 0 4px; } .addc { display: flex; gap: 8px; margin: 6px 0 10px; } .addc input { flex: 1; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); }
+.gm { font-size: 12.5px; color: var(--c-muted); margin-right: 12px; } .rmc { background: none; border: 0; color: var(--c-muted); font-size: 16px; cursor: pointer; padding: 0 4px; } .addc { display: flex; gap: 8px; margin: 6px 0 10px; } .addc input { flex: 1; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); }
 </style>

@@ -37,7 +37,7 @@ onBeforeUnmount(() => document.removeEventListener('click', outside))
         <button v-for="o in options" :key="o.value" type="button" role="option" :aria-selected="s === o.value" :class="{ on: s === o.value }" @click="pick(o.value)">
           <span><b>{{ title(o.value, o.label) }}</b><em>{{ o.group ? 'Consolidated' : o.sub }}</em></span><svg v-if="s === o.value" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="ck"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></button>
         <template v-if="edit && co"><hr><button v-if="current && !current.group" type="button" class="act" @click="open = false; emit('rename')">Rename · settings for {{ current.label }}</button>
-          <button type="button" class="act" @click="open = false; emit('add')">+ Add a subsidiary{{ subj?.paid ? '' : ' (Scale plan)' }}</button></template>
+          <button type="button" class="act" @click="open = false; emit('add')">{{ subj?.subs_hidden ? subj.subs_hidden + ' subsidiar' + (subj.subs_hidden === 1 ? 'y needs' : 'ies need') + ' the Scale plan' : '+ Add a subsidiary' + (subj?.paid ? '' : ' (Scale plan)') }}</button></template>
       </div>
     </div>
     <FinTabs :s="s" :group="s === 'group'" :company="!!co" />

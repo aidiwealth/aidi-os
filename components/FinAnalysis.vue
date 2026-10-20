@@ -6,7 +6,10 @@ import type { BurnReview } from '~/shared/fin-view'
 import { BUSINESS_MODELS } from '~/shared/business-models'
 const props = defineProps<{ subject: string; review?: BurnReview | null; unit?: { revenue: number; cogs: number; opex: number; label: string } | null; currency: string; withSecurities?: boolean; brief?: boolean; nextTo?: string | Record<string, unknown> }>()
 // brief: one line (the headline) with the detail behind a button; What to do next has the full advice.
-const open = ref(false)
+// Open by default; someone who hides it keeps it hidden on this browser.
+const open = ref(true)
+onMounted(() => { try { if (localStorage.getItem('fin-detail') === '0') open.value = false } catch { /* no storage */ } })
+watch(open, (v) => { try { localStorage.setItem('fin-detail', v ? '1' : '0') } catch { /* no storage */ } })
 const shown = computed(() => !props.brief || open.value)
 // "2026-01-31 to 2026-09-30" → "Jan 2026 – Sep 2026"
 const periodText = (p: string) => p.replace(/(\d{4})-(\d{2})-\d{2}/g, (_m, y: string, mo: string) => new Date(Date.UTC(Number(y), Number(mo) - 1, 1)).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })).replace(' to ', ' – ')

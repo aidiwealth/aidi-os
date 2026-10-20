@@ -40,11 +40,11 @@ async function endSupport() { clearInterval(supTimer); const r = await $fetch<{ 
 // The workspace menu: a short list of items, each opening its first page; the item's other pages are the sub-menu
 // across the top of the page. Items list the modules they hold; a module the person cannot use is left out, one only a
 // higher plan unlocks shows a lock. A module no item lists gets its own item, so nothing is ever lost from the menu.
-interface WsDef { label: string; codes: string[]; extra?: WsTab[] }
+interface WsDef { label: string; codes: string[]; extra?: WsTab[]; inner?: boolean }
 interface WsTab { to: string; label: string; code: string; locked?: boolean; pages?: string[]; match?: (p: string) => boolean }
-interface WsItem { label: string; icon: string; to: string; tabs: WsTab[] }
+interface WsItem { label: string; icon: string; to: string; tabs: WsTab[]; inner?: boolean }
 const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
-  { label: 'Investors', items: [{ label: 'Financials', codes: ['financials'] }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity', 'forecast'] }, { label: 'Boards', codes: ['boards'] }] },
+  { label: 'Investors', items: [{ label: 'Financials', codes: ['financials', 'forecast'], inner: true }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity'] }, { label: 'Boards', codes: ['boards'] }] },
   { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
     { label: 'Services', codes: ['company_services', 'client_inbox', 'wallet', 'client_raise'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
   { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'] }] }]
@@ -75,7 +75,8 @@ const wsMenu = computed(() => {
     const tabs = d.codes.map((c) => by.get(c)).filter((m): m is Mod => !!m).flatMap((m) => (isCompany.value && m.code === 'company_services' ? (used.add(m.code), svcTabs(m)) : [tabOf(m)]))
     if (d.extra && tabs.length && isCompany.value) tabs.push(...d.extra)
     if (tabs.some((t) => t.code === 'company_services')) { tabs.sort((a, b) => (SVC_ORDER.indexOf(a.to) + 99) % 99 - (SVC_ORDER.indexOf(b.to) + 99) % 99); for (const t of tabs) if (t.code === 'client_inbox') t.label = 'Messages' }
-    return item(d.label, tabs) }).filter((x): x is WsItem => !!x) }))
+    const it = item(d.label, tabs); if (it && d.inner) it.inner = true
+    return it }).filter((x): x is WsItem => !!x) }))
   for (const m of all.filter((x) => !used.has(x.code))) {
     let s = out.find((x) => x.label === m.groupLabel); if (!s) { s = { label: m.groupLabel, items: [] }; out.push(s) }
     const it = item(m.label, [tabOf(m)]); if (it) s.items.push(it)
@@ -85,7 +86,8 @@ const wsMenu = computed(() => {
 const tabOn = (t: WsTab) => (t.match ? t.match(nowPath.value) : isOn(t.to) || (t.pages ?? []).some((p) => p !== t.to && isOn(p)))
 const wsItemOn = (it: WsItem) => it.tabs.some(tabOn)
 const wsCurrent = computed(() => { for (const s of wsMenu.value) for (const it of s.items) if (wsItemOn(it)) return { s, it }; return null })
-const wsTabs = computed(() => (platformMode.value ? null : (wsCurrent.value && wsCurrent.value.it.tabs.length > 1 ? wsCurrent.value.it.tabs : null)))
+// An item whose pages carry their own sub-menu (Financials: FinTabs, which includes the forecast) shows no second one.
+const wsTabs = computed(() => (platformMode.value ? null : (wsCurrent.value && wsCurrent.value.it.tabs.length > 1 && !wsCurrent.value.it.inner ? wsCurrent.value.it.tabs : null)))
 provide('wsTabs', wsTabs)
 const wsBadge = (it: WsItem) => it.tabs.reduce((t, x) => t + (badges.value[x.to] ?? 0), 0)
 // The Finvry console in two parts that never mix: Finvry Platform (the subscription business: customers, plans,

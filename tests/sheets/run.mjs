@@ -242,6 +242,14 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   ws2.spliceRows(at, 0, ['Consultants', 9000, 9000])
   const f2 = FT.forecastFromGrids(await S.readGrids(Buffer.from(await wb2.xlsx.writeBuffer()), 'xlsx'), 'USD')
   check('forecast: own cost line kept as a new line', f2?.lines.some((l) => l.label === 'Consultants' && l.maps_to === 'new' && l.values[0].value === 9000), f2?.lines.map((l) => l.label + '→' + l.maps_to).join(', '))
+  // Detail lines marked "(in Payroll)", or that add up to the template line after them, are not counted twice.
+  const wb3 = new (await import('exceljs')).default.Workbook(), ws3 = wb3.addWorksheet('Forecast')
+  ws3.addRow(['Line', new Date(Date.UTC(2027, 0, 1)), new Date(Date.UTC(2027, 1, 1))]); ws3.addRow(['Profit and loss'])
+  for (const r of [['Core (in Revenue)', 100, 110], ['New product (in Revenue)', 0, 5], ['Revenue', 100, 115], ['Cost of revenue', 40, 44], ['Staff costs (in Payroll)', 30, 30], ['Payroll', 30, 30],
+    ['Ads', 5, 5], ['Events', 2, 3], ['Sales & marketing', 7, 8], ['Rent (in General & admin)', 4, 4], ['General & admin', 4, 4], ['Opening cash', 500], ['Intercompany settlement (in One-off items)', -9, -9], ['One-off items (capex, loans…)', -9, -9]]) ws3.addRow(r)
+  const f3 = FT.forecastFromGrids(await S.readGrids(Buffer.from(await wb3.xlsx.writeBuffer()), 'xlsx'), 'NGN')
+  const counted = (f3?.lines ?? []).filter((l) => !['ignore', 'cash_balance', 'customers', 'headcount'].includes(l.maps_to)).map((l) => l.maps_to + ':' + l.values[0].value).join(',')
+  check('forecast: detail lines counted once', counted === 'revenue:100,cogs:40,payroll:30,marketing:7,ga:4,items:-9' && f3.currency === 'NGN' && f3.opening_cash === 500, counted)
   const lay = S.layouts(grids)[0], sug = S.suggestMapping(lay.rows, 'forecast')
   check('forecast template rows link by name', ['revenue', 'cogs', 'payroll', 'items', 'customers'].every((k) => sug.some((m) => m.to === k)) && !sug.some((m) => /Gross profit|Net income/.test(m.label) && m.to), sug.filter((m) => m.to).map((m) => m.label + '→' + m.to).join(', '))
 }

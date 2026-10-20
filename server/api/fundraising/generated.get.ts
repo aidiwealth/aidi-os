@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const updates = (await db().query("SELECT id, coalesce(nullif(title, ''), 'Update') AS title FROM financials.updates WHERE NOT coalesce(is_template, false) ORDER BY coalesce(sent_at, created_at) DESC LIMIT 50").catch(() => ({ rows: [] }))).rows
   const org = await currentOrg(); const b = org ? await brandingOf(org.id).catch(() => null) : null
   const on = await enabledModules()
-  const forecasts = on.has('forecast') ? (await db().query('SELECT id, name AS title FROM financials.forecasts ORDER BY updated_at DESC LIMIT 50').catch(() => ({ rows: [] }))).rows : []
+  const forecasts = on.has('forecast') ? (await db().query("SELECT f.id, CASE WHEN (SELECT count(*) FROM core.entities x WHERE x.kind = 'operating') > 1 AND e.name IS NOT NULL THEN e.name || ': ' || f.name ELSE f.name END AS title FROM financials.forecasts f LEFT JOIN core.entities e ON e.id = f.entity_id ORDER BY f.updated_at DESC LIMIT 50").catch(() => ({ rows: [] }))).rows : []
   const captables = on.has('equity') ? (await db().query('SELECT id, name AS title FROM equity.captables ORDER BY is_main DESC, created_at LIMIT 50').catch(() => ({ rows: [] }))).rows : []
   return { safes, memos, updates, forecasts, captables, nda: !!b?.nda_text }
 })

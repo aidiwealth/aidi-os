@@ -10,7 +10,8 @@ interface Prev { provider: string; document_id?: string | null; file?: string | 
 const props = withDefaults(defineProps<{ target: 'financials' | 'forecast'; subject?: string; subjectLabel?: string; currency?: string; forecasts?: { id: string; name: string }[]; forecastId?: string; canEdit?: boolean }>(), { subject: '', subjectLabel: '', currency: 'USD', forecasts: () => [], forecastId: '', canEdit: false })
 const emit = defineEmits<{ synced: [] }>()
 const links = ref<Link[]>([])
-const shown = computed(() => links.value.filter((l) => props.target === 'forecast' || !props.subject || l.subject === props.subject))
+// A forecast's links: only those of the forecasts on this page (in a group, the company's own).
+const shown = computed(() => links.value.filter((l) => (props.target === 'forecast' ? !props.forecasts || !l.forecast_id || props.forecasts.some((f) => f.id === l.forecast_id) : !props.subject || l.subject === props.subject)))
 const err = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? (e as { data?: { error?: { message?: string } } }).data?.error?.message ?? d
 async function showSource(l: Link, v: boolean) { try { await $fetch('/api/financials/visibility', { method: 'POST', body: { link_id: l.id, show_source: v } }); l.show_source = v } catch { /* left as it was */ } }
 async function load() { try { links.value = (await $fetch<{ links: Link[] }>('/api/sheet-links', { query: { target: props.target } })).links } catch { links.value = [] } }

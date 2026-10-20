@@ -4,7 +4,7 @@
 // some companies opens on their first; Aidi OS opens on the group.
 export interface FinSubjects {
   company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null } | null
-  pages: { id: string; name: string; currency: string | null; main: boolean }[]
+  pages: { id: string; name: string; currency: string | null; main: boolean }[]; subs_hidden?: number
   entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]
   currencies: string[]; paid: boolean; lines: { key: string; label: string; section: string }[]; derived: { key: string; label: string }[]
 }
