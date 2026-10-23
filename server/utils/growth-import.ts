@@ -42,7 +42,7 @@ export function tableOf(grids: Grid[]): { tab: string; headers: string[]; rows: 
   }
   return null
 }
-export interface Mapping { tab?: string; columns: Record<string, number | null>; values: { stage?: Record<string, string>; channel?: Record<string, string>; owner?: Record<string, string> }; currency?: string; account?: string }
+export interface Mapping { tab?: string; columns: Record<string, number | null>; values: { stage?: Record<string, string>; channel?: Record<string, string>; owner?: Record<string, string> }; currency?: string; account?: string; entity?: string | null }
 function byHeadings(kind: LinkKind, headers: string[]): Record<string, number | null> {
   const out: Record<string, number | null> = {}, used = new Set<number>()
   for (const f of FIELDS[kind]) {
@@ -115,8 +115,8 @@ export async function applyTable(kind: LinkKind, t: { headers: string[]; rows: C
         if (ex.stage_key !== st) await db().query('INSERT INTO growth.deal_moves (deal_id, from_stage, to_stage, by_user) VALUES ($1,$2,$3,$4)', [ex.id, ex.stage_key, st, userId])
         updated++
       } else {
-        const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, stage_key, owner_id, source_channel, expected_close, notes, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $10 THEN now() END) RETURNING id',
-          [processId, name, str(col(r, 'contact')).slice(0, 200) || null, value === null ? null : Math.abs(value), st, owner ?? userId, channel, close, str(col(r, 'notes')).slice(0, 4000) || null, closed])).id
+        const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, stage_key, owner_id, source_channel, expected_close, notes, closed_at, entity_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $10 THEN now() END, $11) RETURNING id',
+          [processId, name, str(col(r, 'contact')).slice(0, 200) || null, value === null ? null : Math.abs(value), st, owner ?? userId, channel, close, str(col(r, 'notes')).slice(0, 4000) || null, closed, map.entity ?? null])).id
         await db().query('INSERT INTO growth.deal_moves (deal_id, from_stage, to_stage, by_user) VALUES ($1, NULL, $2, $3)', [id, st, userId])
         added++
       }
@@ -146,7 +146,7 @@ export async function applyTable(kind: LinkKind, t: { headers: string[]; rows: C
       const k = date + '|' + desc + '|' + amt, i = (seen.get(k) ?? 0) + 1; seen.set(k, i)
       txns.push({ ref: createHash('sha1').update(ref + '|' + k + '|' + i).digest('hex'), date, description: desc, amount: amt, currency: cur, account })
     }
-    added = await addToLedger('upload', txns, await companyEntityId()); updated = txns.length - added
+    added = await addToLedger('upload', txns, map.entity ?? await companyEntityId()); updated = txns.length - added
   }
   return { added, updated, skipped }
 }

@@ -7,12 +7,13 @@ useHead({ title: 'Marketing' })
 type Row = ChannelMonth & { auto: string[] }
 interface Stats { channels: ChannelStat[]; totals: { spend: number; visitors: number; leads: number; mqls: number; sqls: number; customers: number; revenue: number; cpl: number | null; cac: number | null }; funnel: { name: string; value: number; conv: number | null }[]; months: number }
 interface Camp { id: string; name: string; channel_key: string | null; status: 'planned' | 'live' | 'done'; starts_on: string | null; ends_on: string | null; budget: number | null; spend: number | null; leads: number | null; customers: number | null; goal: string | null; steps: { text: string; done: boolean }[]; notes: string | null }
-interface D { processes: { id: string; name: string }[]; process: Process | null; campaigns: Camp[]; rows: Row[]; months: string[]; stats: Stats | null; stats6: Stats | null; avg_deal: number | null; vendors: { vendor_key: string; vendor: string }[] }
+interface D { processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; spend: number; leads: number; customers: number; revenue: number }[]; total: { spend: number; leads: number; customers: number; revenue: number } } | null; process: (Process & { company?: string }) | null; campaigns: Camp[]; rows: Row[]; months: string[]; stats: Stats | null; stats6: Stats | null; avg_deal: number | null; vendors: { vendor_key: string; vendor: string }[] }
 const route = useRoute(), router = useRouter()
 const pid = computed(() => (typeof route.query.p === 'string' ? route.query.p : undefined))
 const tab = computed(() => (['channels', 'campaigns', 'design'].includes(String(route.query.t)) ? String(route.query.t) : 'dashboard'))
 const go = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
-const { data, refresh } = await useFetch<D>('/api/marketing', { query: computed(() => ({ p: pid.value })) })
+const { sf, cust, isGroup } = await useCoScope()
+const { data, refresh } = await useFetch<D>('/api/marketing', { query: computed(() => ({ p: pid.value, cust: cust.value })) })
 const d = computed(() => data.value), p = computed(() => d.value?.process ?? null), st = computed(() => d.value?.stats ?? null)
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'gp'].includes(r)))
@@ -24,26 +25,26 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 const aiText = ref(''), aiBudget = ref<number | ''>(''), aiBusy = ref(false), imp = ref(false)
 async function aiCreate() {
   aiBusy.value = true; msg.value = ''
-  try { const r = await $fetch<{ stages: unknown[]; channels: { name: string; monthly_budget: number | null }[] }>('/api/growth/ai', { method: 'POST', body: { task: 'marketing_process', description: aiText.value, budget: aiBudget.value || undefined } })
-    const c = await $fetch<{ id: string }>('/api/marketing/process', { method: 'POST', body: { stages: r.stages, channels: r.channels.map((x) => ({ name: x.name, monthly_budget: x.monthly_budget, vendor_keys: [] })) } }); await go({ p: c.id, t: 'design' }); await refresh() }
+  try { const r = await sf<{ stages: unknown[]; channels: { name: string; monthly_budget: number | null }[] }>('/api/growth/ai', { method: 'POST', body: { task: 'marketing_process', description: aiText.value, budget: aiBudget.value || undefined } })
+    const c = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: { stages: r.stages, channels: r.channels.map((x) => ({ name: x.name, monthly_budget: x.monthly_budget, vendor_keys: [] })) } }); await go({ p: c.id, t: 'design' }); await refresh() }
   catch (e) { msg.value = err(e) } finally { aiBusy.value = false }
 }
 // Write a campaign's goal, checklist and brief with AI from its name, channel and notes.
 const cBusy = ref(false)
 async function aiCampaign() {
   cBusy.value = true; msg.value = ''
-  try { const r = await $fetch<{ goal: string; steps: string[]; brief: string }>('/api/growth/ai', { method: 'POST', body: { task: 'campaign', name: cf.name, channel: chName(cf.channel_key), goal: cf.goal, description: cf.notes } })
+  try { const r = await sf<{ goal: string; steps: string[]; brief: string }>('/api/growth/ai', { method: 'POST', body: { task: 'campaign', name: cf.name, channel: chName(cf.channel_key), goal: cf.goal, description: cf.notes } })
     cf.goal = r.goal.slice(0, 300); cf.steps = r.steps.map((t) => ({ text: t.slice(0, 200), done: false })); cf.notes = (r.brief + (cf.notes ? '\n\n' + cf.notes : '')).slice(0, 4000) }
   catch (e) { msg.value = err(e) } finally { cBusy.value = false }
 }
-async function create() { try { const r = await $fetch<{ id: string }>('/api/marketing/process', { method: 'POST', body: {} }); await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
+async function create() { try { const r = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: {} }); await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Plan next month: a budget per channel, defaulting to the channel's budget or its average spend.
 const plan = reactive<Record<string, number>>({})
 watch(() => st.value, (s) => { if (!s || !p.value) return; for (const c of s.channels) if (plan[c.key] === undefined) plan[c.key] = p.value.channels.find((x) => x.key === c.key)?.monthly_budget ?? Math.round(c.spend / Math.max(1, s.months)) }, { immediate: true })
 // Predictions use the last six months, so channels with little history borrow the average.
 const pred = computed(() => (d.value?.stats6 ? predictBudget(d.value.stats6.channels, plan, d.value.stats6.months, d.value.avg_deal) : null))
 async function saveBudgets() {
-  try { await $fetch('/api/marketing/process', { method: 'POST', body: { id: p.value!.id, channels: p.value!.channels.map((c) => ({ ...c, monthly_budget: plan[c.key] ?? c.monthly_budget })) } }); ok.value = 'Saved as each channel\'s monthly budget.'; await refresh() } catch (e) { msg.value = err(e) }
+  try { await sf('/api/marketing/process', { method: 'POST', body: { id: p.value!.id, channels: p.value!.channels.map((c) => ({ ...c, monthly_budget: plan[c.key] ?? c.monthly_budget })) } }); ok.value = 'Saved as each channel\'s monthly budget.'; await refresh() } catch (e) { msg.value = err(e) }
 }
 // Channels by month.
 const ch = ref(''); watch(p, (x) => { if (x && !x.channels.some((c) => c.key === ch.value)) ch.value = x.channels[0]?.key ?? '' }, { immediate: true })
@@ -53,7 +54,7 @@ async function saveRow(r: Row, k: keyof ChannelMonth, ev: Event) {
   const v = (ev.target as HTMLInputElement).value
   const body: Record<string, unknown> = { process_id: p.value!.id, channel_key: r.channel_key, month: r.month }
   for (const [f] of FIELDS) body[f] = f === k ? v : r.auto.includes(f) ? null : r[f]
-  try { await $fetch('/api/marketing/month', { method: 'POST', body }); await refresh() } catch (e) { msg.value = err(e) }
+  try { await sf('/api/marketing/month', { method: 'POST', body }); await refresh() } catch (e) { msg.value = err(e) }
 }
 // Campaigns.
 const blank = () => ({ id: '', name: '', channel_key: '' as string | null, status: 'planned' as Camp['status'], starts_on: '', ends_on: '', budget: '' as number | '', spend: '' as number | '', leads: '' as number | '', customers: '' as number | '', goal: '', steps: [] as { text: string; done: boolean }[], notes: '', newStep: '' })
@@ -61,22 +62,28 @@ const cf = reactive({ open: false, ...blank() })
 function editC(c?: Camp) { Object.assign(cf, blank(), c ? { ...c, channel_key: c.channel_key ?? '', starts_on: c.starts_on ?? '', ends_on: c.ends_on ?? '', budget: c.budget ?? '', spend: c.spend ?? '', leads: c.leads ?? '', customers: c.customers ?? '', goal: c.goal ?? '', notes: c.notes ?? '', steps: structuredClone(toRaw(c.steps)) } : { steps: [{ text: 'Brief and audience agreed', done: false }, { text: 'Creative and landing page ready', done: false }, { text: 'Tracking set up', done: false }, { text: 'Launched', done: false }, { text: 'Results reviewed', done: false }] }, { open: true }); msg.value = '' }
 async function saveC(del = false) {
   if (del && !await askConfirm('Delete the campaign "' + cf.name + '"?')) return
-  try { const { open, newStep, ...b } = cf; void open; void newStep; await $fetch('/api/marketing/campaign', { method: 'POST', body: del ? { id: cf.id, delete: true } : { ...b, id: b.id || undefined, process_id: p.value!.id, channel_key: b.channel_key || null } }); cf.open = false; await refresh() } catch (e) { msg.value = err(e) }
+  try { const { open, newStep, ...b } = cf; void open; void newStep; await sf('/api/marketing/campaign', { method: 'POST', body: del ? { id: cf.id, delete: true } : { ...b, id: b.id || undefined, process_id: p.value!.id, channel_key: b.channel_key || null } }); cf.open = false; await refresh() } catch (e) { msg.value = err(e) }
 }
 const chName = (k: string | null) => p.value?.channels.find((c) => c.key === k)?.name ?? '—'
 const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f.value)))
 </script>
 <template>
   <section class="mk">
-    <div class="hd"><div><h1>Marketing</h1><p class="lead">Design your funnel and channels, track each channel's month, run campaigns, and see what a budget should bring in. Spend comes in from Banking and customers from won deals in Sales.</p></div>
+    <div class="hd"><div><h1>Marketing</h1><ScopeSwitch /><p class="lead">Design your funnel and channels, track each channel's month, run campaigns, and see what a budget should bring in. Spend comes in from Banking and customers from won deals in Sales.</p></div>
       <div v-if="canEdit && p" class="tb"><button class="btn" @click="go({ t: 'campaigns' }); editC()">New campaign</button></div></div>
     <p v-if="msg && !cf.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>A starting funnel (visitors, leads, marketing qualified, sales qualified, customers) and six common channels, ready to rename. Add each channel's budget and the bank vendors you pay for it, and the dashboard works out cost per lead, CAC and return.</p>
       <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <button class="btn" :disabled="!canEdit" @click="create">Set up the standard funnel</button></div>
     <template v-if="p && d && st">
+      <nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ isGroup ? x.company + ' · ' + x.name : x.name }}</button></nav>
       <nav class="tabs"><button v-for="[k, l] in ([['dashboard', 'Dashboard'], ['channels', 'Channels by month'], ['campaigns', 'Campaigns'], ['design', 'Process design']] as const)" :key="k" :class="{ on: tab === k }" @click="go({ t: k === 'dashboard' ? undefined : k })">{{ l }}</button></nav>
       <template v-if="tab === 'dashboard'">
+        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Every company's marketing, last three full months, totals in {{ d.rollup.currency }}</span></div>
+          <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Spend</th><th class="r">Leads</th><th class="r">New customers</th><th class="r">Revenue from them</th></tr></thead>
+            <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ briefMoney(r.spend, r.currency) }}</td><td class="r">{{ n(r.leads) }}</td><td class="r">{{ n(r.customers) }}</td><td class="r">{{ briefMoney(r.revenue, r.currency) }}</td></tr>
+              <tr class="tot"><td>Group total</td><td /><td class="r">{{ briefMoney(d.rollup.total.spend, d.rollup.currency) }}</td><td class="r">{{ n(d.rollup.total.leads) }}</td><td class="r">{{ n(d.rollup.total.customers) }}</td><td class="r">{{ briefMoney(d.rollup.total.revenue, d.rollup.currency) }}</td></tr></tbody></table>
+          <p class="mut">Below: {{ p.company }} · {{ p.name }}.</p></div>
         <p class="mut">Last {{ st.months }} full months.</p>
         <div class="fx-stats"><StatTile label="Spend" :value="m(st.totals.spend)" /><StatTile label="Leads" :value="n(st.totals.leads)" :note="st.totals.cpl ? m(st.totals.cpl) + ' a lead' : ''" /><StatTile label="New customers" :value="n(st.totals.customers)" :note="st.totals.cac ? m(st.totals.cac) + ' to acquire each' : ''" /><StatTile label="Revenue from them" :value="m(st.totals.revenue)" /></div>
         <div class="two">
@@ -138,4 +145,5 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 .ck { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--c-rule); padding: 10px 12px; } .ck > span { font-weight: 500; font-size: 13px; } .ck label { flex-direction: row; align-items: center; gap: 8px; } .ad { display: flex; gap: 8px; } .ad input { flex: 1; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); } .sp { flex: 1; }
 .aic { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 14px; margin-bottom: 12px; } .aic b { display: flex; gap: 6px; align-items: center; font-weight: 600; } .aic textarea, .aic input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .aic .sm { display: flex; gap: 8px; align-items: center; font-size: 13px; } .aic .sm input { width: 120px; } .pt { align-items: center; }
+.t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
 </style>

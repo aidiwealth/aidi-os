@@ -36,14 +36,15 @@ async function capFacts(currency: string): Promise<CapFacts> {
 
 export async function stageMonitor(event: H3Event) {
   const org = (await currentOrg())!, s = org.settings as Record<string, unknown>
-  const ent = await companyEntityId()
+  // The company chosen at the top, or the whole group (consolidated statements, every company's bank and customers).
+  const sc = await forecastScope(event), ent = sc.group ? null : sc.entity, subject = sc.group ? 'group' : ent ? 'entity:' + ent : null
   const rules = await stageRules(), region = regionOf(s.country as string), rr = rules.regions[region]
-  const cur = (s.reporting_currency as string) || (s.currency as string) || 'USD'
+  const cur = sc.currency
   const usd = cur === 'USD' ? 1 : (await fxRate(cur, 'USD')) ?? 0
   const plan = (await db().query<{ plan_code: string }>('SELECT plan_code FROM core.organizations WHERE id = core.current_org()')).rows[0]?.plan_code
   const tier = stageTier(plan), usable = await usableModules((event.context.user as SessionUser).roles, event)
   // Statements (in the reporting currency), burn and runway on the same basis as Financials.
-  const rows = ent ? (await loadStatements('entity:' + ent, 'month', cur)).filter((r) => r.period_type === 'month').slice(-24) : []
+  const rows = subject ? (await loadStatements(subject, 'month', cur)).filter((r) => r.period_type === 'month').slice(-24) : []
   const sec = await cashPolicy()
   const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
   const burn = burnReview(fr)
@@ -54,16 +55,17 @@ export async function stageMonitor(event: H3Event) {
   // Customer revenue for this company (net revenue retention over 12 months), when the plan includes it.
   let nrr: number | null = null
   const retentionOn = usable.has('fin_customers')
-  if (retentionOn && ent) {
-    try { event.context.custEntity = ent; const cfg = await customerConfig(), cs = await loadCustomers(), sp = span(cs); if (sp) nrr = retention(cs, sp.last, 12, cfg.retention_basis ?? 'month').nrr } catch { nrr = null }
+  if (retentionOn && (ent || sc.group)) {
+    try { event.context.custEntity = ent ?? ''; const cfg = await customerConfig(), cs = await loadCustomers(), sp = span(cs); if (sp) nrr = retention(cs, sp.last, 12, cfg.retention_basis ?? 'month').nrr } catch { nrr = null }
   }
   const q = async (sql: string, p: unknown[] = []) => (await db().query<{ n: number }>(sql, p).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0
   const room = { deck: (await q('SELECT count(*)::int AS n FROM fundraise.files WHERE is_deck')) > 0, files: await q('SELECT count(*)::int AS n FROM fundraise.files'), links: await q('SELECT count(*)::int AS n FROM fundraise.links WHERE NOT revoked') }
   const bank = { connected: (await q('SELECT count(*)::int AS n FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL')) > 0,
-    months: ent ? await q("SELECT count(DISTINCT to_char(s.period_end, 'YYYY-MM'))::int AS n FROM banking.statements s JOIN banking.accounts a ON a.id = s.account_id WHERE a.entity_id = $1 AND s.period_end > now() - interval '13 months' AND s.continuity_ok IS NOT FALSE", [ent]) : 0 }
+    months: await q("SELECT count(DISTINCT to_char(txn_date, 'YYYY-MM'))::int AS n FROM banking.ledger WHERE source = 'upload' AND txn_date > now() - interval '13 months' AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, await companyEntityId()]) }
   // Payments marked to cancel in Banking: what they cost a month (last three full months), for the runway after cutting them.
-  const cutMonthly = Number((await db().query<{ v: string | null }>(`SELECT sum(l.amount_base) / 3 AS v FROM banking.ledger l JOIN banking.vendors v ON v.vendor_key = l.vendor_key AND v.status = 'to_cancel'
-    WHERE l.direction = 'out' AND l.txn_date >= date_trunc('month', now()) - interval '3 months' AND l.txn_date < date_trunc('month', now())`).catch(() => ({ rows: [{ v: null }] }))).rows[0]?.v ?? 0)
+  const cutRows = (await db().query<{ currency: string; v: string }>(`SELECT l.currency, sum(l.amount) / 3 AS v FROM banking.ledger l JOIN banking.vendors v ON v.vendor_key = l.vendor_key AND v.status = 'to_cancel'
+    WHERE l.direction = 'out' AND l.txn_date >= date_trunc('month', now()) - interval '3 months' AND l.txn_date < date_trunc('month', now()) AND ($1::uuid IS NULL OR coalesce(l.entity_id, $2::uuid) = $1) GROUP BY 1`, [ent, await companyEntityId()]).catch(() => ({ rows: [] }))).rows
+  let cutMonthly = 0; for (const r of cutRows) cutMonthly += Number(r.v) * (r.currency === cur ? 1 : (await fxRate(r.currency, cur)) ?? 0)
   const cap = await capFacts(cur)
   const i: Inputs = { months, usd, runway: burn.runway, cash: burn.cash ?? [...months].reverse().find((m) => m.cash !== null)?.cash ?? null, cash_at: burn.cash_at, cap, nrr, retention_on: retentionOn, room, bank }
   const fund = fundingStage(cap, rr), lastRev = [...months].reverse().find((m) => m.revenue !== null)?.revenue ?? 0
@@ -73,15 +75,15 @@ export async function stageMonitor(event: H3Event) {
   const cashOut = burn.runway !== null && burn.runway < 120 && burn.cash_at ? (() => { const d = new Date(burn.cash_at + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + Math.floor(burn.runway!)); return d.toISOString().slice(0, 7) })() : null
   // Keep this month's snapshot (the history), then read the last two years of them.
   const period = new Date().toISOString().slice(0, 7)
-  if (ent) await db().query(`INSERT INTO financials.stage_snapshots (entity_id, period, funding_stage, operating_stage, health, runway, cash_out, equity_score, debt_score, inputs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    ON CONFLICT (organization_id, entity_id, period) DO UPDATE SET funding_stage = EXCLUDED.funding_stage, operating_stage = EXCLUDED.operating_stage, health = EXCLUDED.health, runway = EXCLUDED.runway, cash_out = EXCLUDED.cash_out, equity_score = EXCLUDED.equity_score, debt_score = EXCLUDED.debt_score, inputs = EXCLUDED.inputs, updated_at = now()`,
+  if (subject) await db().query(`INSERT INTO financials.stage_snapshots (entity_id, period, funding_stage, operating_stage, health, runway, cash_out, equity_score, debt_score, inputs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    ON CONFLICT (organization_id, (coalesce(entity_id, '00000000-0000-0000-0000-000000000000'::uuid)), period) DO UPDATE SET funding_stage = EXCLUDED.funding_stage, operating_stage = EXCLUDED.operating_stage, health = EXCLUDED.health, runway = EXCLUDED.runway, cash_out = EXCLUDED.cash_out, equity_score = EXCLUDED.equity_score, debt_score = EXCLUDED.debt_score, inputs = EXCLUDED.inputs, updated_at = now()`,
     [ent, period, fund, op, hl, burn.runway, cashOut, eq?.total ?? null, dt?.total ?? null, JSON.stringify({ arr_usd: Math.round(arrUsd), raised_usd: cap.raised_usd, region, nrr })]).catch((e) => console.error('[stage] snapshot', e))
-  const history = ent ? (await db().query<{ period: string; funding_stage: string; operating_stage: string; health: string; runway: string | null; equity_score: number | null; debt_score: number | null }>('SELECT period, funding_stage, operating_stage, health, runway, equity_score, debt_score FROM financials.stage_snapshots WHERE entity_id = $1 ORDER BY period DESC LIMIT 24', [ent])).rows.reverse() : []
+  const history = subject ? (await db().query<{ period: string; funding_stage: string; operating_stage: string; health: string; runway: string | null; equity_score: number | null; debt_score: number | null }>('SELECT period, funding_stage, operating_stage, health, runway, equity_score, debt_score FROM financials.stage_snapshots WHERE entity_id IS NOT DISTINCT FROM $1 ORDER BY period DESC LIMIT 24', [ent])).rows.reverse() : []
   const capView = cap.has ? await (async () => { const list = await capTables(); const main = list.find((c) => c.is_main) ?? list[0]!; const d = await loadCapTable(main.id), t = capTable(d, new Date().toISOString().slice(0, 10))
     const by: Record<string, number> = {}; for (const r of t.rows) by[r.holder.kind] = (by[r.holder.kind] ?? 0) + r.pctFd
     return { name: main.name, fully_diluted: t.fd, pool_available: t.pool, by_kind: Object.entries(by).map(([kind, pct]) => ({ kind, pct: Math.round(pct * 10) / 10 })).sort((a, b) => b.pct - a.pct), safes: cap.safes, raised_usd: cap.raised_usd } })() : null
   return {
-    company: org.name, currency: cur, region, region_label: rr.label, tier, country: (s.country as string) || null, as_of: months[months.length - 1]?.month ?? null,
+    company: sc.group ? org.name + ' group' : sc.name, group: sc.group, currency: cur, region, region_label: rr.label, tier, country: (s.country as string) || null, as_of: months[months.length - 1]?.month ?? null,
     funding: { key: fund, label: FUNDING_LABEL[fund], basis: cap.priced_round ? 'Your latest priced round on the cap table' : cap.has ? 'Money raised on your cap table (SAFEs, notes and preferred shares): about $' + cap.raised_usd.toLocaleString('en-US') : 'No cap table yet' },
     operating: { key: op, label: OPERATING_LABEL[op], arr_usd: Math.round(arrUsd), basis: 'Annual run rate from the latest month of revenue, against ' + rr.label + ' benchmarks' },
     health: { key: hl, label: HEALTH_LABEL[hl], note: HEALTH_NOTE[hl] },

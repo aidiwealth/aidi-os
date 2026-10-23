@@ -11,15 +11,17 @@ export default defineEventHandler(async (event) => {
   const d = b.data
   if (d.delete && d.id) { await db().query('DELETE FROM growth.deals WHERE id = $1', [d.id]); return { ok: true } }
   const pid = d.process_id ?? (d.id ? (await db().query<{ process_id: string }>('SELECT process_id FROM growth.deals WHERE id = $1', [d.id])).rows[0]?.process_id : undefined)
-  const p = pid ? (await db().query<{ stages: { key: string; kind: string }[] }>("SELECT stages FROM growth.processes WHERE id = $1 AND kind = 'sales'", [pid])).rows[0] : undefined
+  const p = pid ? (await db().query<{ stages: { key: string; kind: string }[]; entity_id: string | null }>("SELECT stages, entity_id FROM growth.processes WHERE id = $1 AND kind = 'sales'", [pid])).rows[0] : undefined
   if (!p) throw apiError('not_found', 'That sales process was not found.', 404)
   if (d.stage_key && !p.stages.some((s) => s.key === d.stage_key)) throw apiError('invalid', 'Choose one of the process stages.')
   const closedKind = (k?: string) => p.stages.find((s) => s.key === k)?.kind
   if (!d.id) {
     if (!d.name) throw apiError('invalid', 'Name the deal.')
+    // The deal is for the process's company, or (a group-wide process) the company chosen at the top.
+    const sc = await forecastScope(event), ent = p.entity_id ?? (sc.group ? null : sc.entity)
     const stage = d.stage_key ?? p.stages.find((s) => s.kind === 'open')!.key
-    const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, recurring, stage_key, owner_id, source_channel, expected_close, notes, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CASE WHEN $11 THEN now() END) RETURNING id',
-      [pid, d.name, d.contact || null, d.value ?? null, d.recurring ?? false, stage, d.owner_id ?? user.userId, d.source_channel || null, d.expected_close ?? null, d.notes || null, closedKind(stage) !== 'open'])).id
+    const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, recurring, stage_key, owner_id, source_channel, expected_close, notes, entity_id, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12, CASE WHEN $11 THEN now() END) RETURNING id',
+      [pid, d.name, d.contact || null, d.value ?? null, d.recurring ?? false, stage, d.owner_id ?? user.userId, d.source_channel || null, d.expected_close ?? null, d.notes || null, closedKind(stage) !== 'open', ent])).id
     await db().query('INSERT INTO growth.deal_moves (deal_id, from_stage, to_stage, by_user) VALUES ($1, NULL, $2, $3)', [id, stage, user.userId])
     return { ok: true, id }
   }

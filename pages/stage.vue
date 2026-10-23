@@ -11,7 +11,8 @@ interface D { company: string; currency: string; region: string; region_label: s
   equity: Score | null; debt: Score | null; moves: { of: string; label: string; fix: string | null; to: string | null; gain: number }[]
   history: { period: string; funding_stage: string; operating_stage: string; health: string; runway: string | null; equity_score: number | null; debt_score: number | null }[]
   providers: Prov[] | null; can_pipeline: boolean }
-const { data, error, refresh } = await useFetch<D>('/api/stage')
+const { sf, cust } = await useCoScope()
+const { data, error, refresh } = await useFetch<D>('/api/stage', { query: computed(() => ({ cust: cust.value })) })
 const d = computed(() => data.value)
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, d.value?.currency ?? 'USD'))
 const usd = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, 'USD'))
@@ -29,7 +30,7 @@ const ticket = (p: Prov) => (p.ticket_min === null && p.ticket_max === null ? ''
 const busy = ref(''), msg = ref(''), ok = ref('')
 async function toPipeline(p: Prov) {
   busy.value = p.id; msg.value = ''; ok.value = ''
-  try { const r = await $fetch<{ message: string }>('/api/stage/pipeline', { method: 'POST', body: { provider_id: p.id } }); ok.value = r.message }
+  try { const r = await sf<{ message: string }>('/api/stage/pipeline', { method: 'POST', body: { provider_id: p.id } }); ok.value = r.message }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.' } finally { busy.value = '' }
 }
 const HL: Record<string, string> = { profitable: 'Profitable', default_alive: 'Default alive', fixable: 'Fixable', default_dead: 'Default dead', struggling: 'Struggling', critical: 'Critical', unknown: '—' }
@@ -38,7 +39,7 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
 </script>
 <template>
   <section class="sm">
-    <div class="hd"><div><h1>Stage monitor</h1><p class="lead">Where {{ d?.company ?? 'your company' }} stands today, worked out from your Financials, bank and cap table{{ d?.as_of ? ' (latest month ' + mon(d.as_of) + ')' : '' }}. It updates when your figures do.</p></div>
+    <div class="hd"><div><h1>Stage monitor</h1><ScopeSwitch /><p class="lead">Where {{ d?.company ?? 'your company' }} stands today, worked out from your Financials, bank and cap table{{ d?.as_of ? ' (latest month ' + mon(d.as_of) + ')' : '' }}. It updates when your figures do.</p></div>
       <button class="btn secondary" @click="refresh()">Refresh</button></div>
     <p v-if="error" class="error">Could not load the stage monitor.</p>
     <template v-if="d">

@@ -5,5 +5,6 @@ export default defineEventHandler(async (event) => {
   const added = await syncBankFeed(getQuery(event).sync === '1')
   await syncDue('bank_txns', null).catch(() => {})
   const rails = await Promise.all(RAILS.map(async (r) => ({ key: r.key, label: r.label, note: r.note, on: await r.available() })))
-  return { ...(await treasuryView()), rails, added }
+  const sc = await forecastScope(event)
+  return { ...(await treasuryView(sc)), rails, added, scope: { group: sc.group, entity: sc.entity, name: sc.group ? (await currentOrg())!.name + ' group' : sc.name, companies: sc.companies.map((c) => ({ id: c.id, name: c.name })) } }
 })

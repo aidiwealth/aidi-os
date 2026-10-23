@@ -4,12 +4,13 @@
 import type { Process, SalesStats } from '~/shared/growth'
 useHead({ title: 'Sales' })
 interface DealRow { id: string; name: string; contact: string | null; value: number | null; recurring: boolean; stage_key: string; owner_id: string | null; source_channel: string | null; expected_close: string | null; steps_done: Record<string, number[]>; notes: string | null; lost_reason: string | null; closed_at: string | null; created_at: string; updated_at: string }
-interface D { processes: { id: string; name: string }[]; process: Process | null; deals: DealRow[]; stats: SalesStats | null; people: { id: string; name: string }[]; channels: { key: string; name: string }[]; templates: { key: string; label: string }[] }
+interface D { processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; open: number; weighted: number; won_90d: number; win_rate: number | null; deals: number }[]; total: { open: number; weighted: number; won_90d: number } } | null; process: (Process & { company?: string }) | null; deals: DealRow[]; stats: SalesStats | null; people: { id: string; name: string }[]; channels: { key: string; name: string }[]; templates: { key: string; label: string }[] }
 const route = useRoute(), router = useRouter()
 const pid = computed(() => (typeof route.query.p === 'string' ? route.query.p : undefined))
 const tab = computed(() => (['pipeline', 'design'].includes(String(route.query.t)) ? String(route.query.t) : 'dashboard'))
 const go = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
-const { data, refresh } = await useFetch<D>('/api/sales', { query: computed(() => ({ p: pid.value })) })
+const { sf, cust, isGroup } = await useCoScope()
+const { data, refresh } = await useFetch<D>('/api/sales', { query: computed(() => ({ p: pid.value, cust: cust.value })) })
 const d = computed(() => data.value), p = computed(() => d.value?.process ?? null), st = computed(() => d.value?.stats ?? null)
 const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'gp'].includes(r)))
@@ -23,15 +24,15 @@ const nw = reactive({ open: false, template: 'b2b', name: '' })
 const aiText = ref(''), aiBusy = ref(false)
 async function aiCreate() {
   aiBusy.value = true; msg.value = ''
-  try { const r = await $fetch<{ name: string; stages: unknown[] }>('/api/growth/ai', { method: 'POST', body: { task: 'sales_process', description: aiText.value } }); const c = await $fetch<{ id: string }>('/api/sales/process', { method: 'POST', body: { name: r.name, stages: r.stages } }); await go({ p: c.id, t: 'design' }); await refresh() }
+  try { const r = await sf<{ name: string; stages: unknown[] }>('/api/growth/ai', { method: 'POST', body: { task: 'sales_process', description: aiText.value } }); const c = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { name: r.name, stages: r.stages } }); await go({ p: c.id, t: 'design' }); await refresh() }
   catch (e) { msg.value = err(e) } finally { aiBusy.value = false }
 }
 const imp = ref(false)
 // The next move on a deal, drafted with AI: steps and an email to the contact.
 const nx = reactive({ busy: false, steps: [] as string[], subject: '', email: '', copied: false })
-async function aiNext() { nx.busy = true; msg.value = ''; try { const r = await $fetch<{ next_steps: string[]; subject: string; email: string }>('/api/growth/ai', { method: 'POST', body: { task: 'deal_next', deal_id: f.id } }); Object.assign(nx, { steps: r.next_steps, subject: r.subject, email: r.email, copied: false }) } catch (e) { msg.value = err(e) } finally { nx.busy = false } }
+async function aiNext() { nx.busy = true; msg.value = ''; try { const r = await sf<{ next_steps: string[]; subject: string; email: string }>('/api/growth/ai', { method: 'POST', body: { task: 'deal_next', deal_id: f.id } }); Object.assign(nx, { steps: r.next_steps, subject: r.subject, email: r.email, copied: false }) } catch (e) { msg.value = err(e) } finally { nx.busy = false } }
 async function copyEmail() { try { await navigator.clipboard.writeText('Subject: ' + nx.subject + '\n\n' + nx.email); nx.copied = true } catch { /* ignore */ } }
-async function create() { try { const r = await $fetch<{ id: string }>('/api/sales/process', { method: 'POST', body: { template: nw.template, name: nw.name || undefined } }); nw.open = false; await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
+async function create() { try { const r = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { template: nw.template, name: nw.name || undefined } }); nw.open = false; await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Deals.
 const blank = () => ({ id: '', name: '', contact: '', value: '' as number | '', recurring: false, stage_key: '', owner_id: '' as string | null, source_channel: '' as string | null, expected_close: '', notes: '', lost_reason: '' })
 const f = reactive({ open: false, ...blank() }), busy = ref(false)
@@ -39,12 +40,12 @@ const cur = computed(() => d.value?.deals.find((x) => x.id === f.id) ?? null)
 function edit(x?: DealRow, stage?: string) { Object.assign(nx, { steps: [], subject: '', email: '' }); Object.assign(f, blank(), x ? { ...x, value: x.value ?? '', contact: x.contact ?? '', expected_close: x.expected_close ?? '', notes: x.notes ?? '', lost_reason: x.lost_reason ?? '', owner_id: x.owner_id ?? '', source_channel: x.source_channel ?? '' } : { stage_key: stage ?? p.value?.stages.find((s) => s.kind === 'open')?.key ?? '' }, { open: true }); msg.value = '' }
 async function saveDeal() {
   busy.value = true; msg.value = ''
-  try { await $fetch('/api/sales/deal', { method: 'POST', body: { id: f.id || undefined, process_id: p.value!.id, name: f.name, contact: f.contact, value: f.value, recurring: f.recurring, stage_key: f.stage_key, owner_id: f.owner_id || null, source_channel: f.source_channel || null, expected_close: f.expected_close || null, notes: f.notes, lost_reason: f.lost_reason } }); f.open = false; await refresh() }
+  try { await sf('/api/sales/deal', { method: 'POST', body: { id: f.id || undefined, process_id: p.value!.id, name: f.name, contact: f.contact, value: f.value, recurring: f.recurring, stage_key: f.stage_key, owner_id: f.owner_id || null, source_channel: f.source_channel || null, expected_close: f.expected_close || null, notes: f.notes, lost_reason: f.lost_reason } }); f.open = false; await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
-async function delDeal() { if (!await askConfirm('Delete the deal "' + f.name + '"?')) return; await $fetch('/api/sales/deal', { method: 'POST', body: { id: f.id, delete: true } }); f.open = false; await refresh() }
-async function moveTo(x: DealRow, stage: string) { try { await $fetch('/api/sales/deal', { method: 'POST', body: { id: x.id, stage_key: stage } }); await refresh() } catch (e) { msg.value = err(e) } }
-async function step(stage: string, i: number, done: boolean) { if (!f.id) return; await $fetch('/api/sales/deal', { method: 'POST', body: { id: f.id, step: { stage, i, done } } }); await refresh() }
+async function delDeal() { if (!await askConfirm('Delete the deal "' + f.name + '"?')) return; await sf('/api/sales/deal', { method: 'POST', body: { id: f.id, delete: true } }); f.open = false; await refresh() }
+async function moveTo(x: DealRow, stage: string) { try { await sf('/api/sales/deal', { method: 'POST', body: { id: x.id, stage_key: stage } }); await refresh() } catch (e) { msg.value = err(e) } }
+async function step(stage: string, i: number, done: boolean) { if (!f.id) return; await sf('/api/sales/deal', { method: 'POST', body: { id: f.id, step: { stage, i, done } } }); await refresh() }
 // Drag a card to another column.
 const drag = ref<string | null>(null)
 function drop(stage: string) { const x = d.value?.deals.find((y) => y.id === drag.value); drag.value = null; if (x && x.stage_key !== stage) void moveTo(x, stage) }
@@ -56,7 +57,7 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 </script>
 <template>
   <section class="sl">
-    <div class="hd"><div><h1>Sales</h1><p class="lead">Design your sales process, move deals through it, and see what it will close. Conversion, cycle and forecasts come from your own deals as they move.</p></div>
+    <div class="hd"><div><h1>Sales</h1><ScopeSwitch /><p class="lead">Design your sales process, move deals through it, and see what it will close. Conversion, cycle and forecasts come from your own deals as they move.</p></div>
       <div v-if="canEdit" class="tb"><button v-if="p" class="btn secondary" @click="imp = true">Import deals</button><button class="btn secondary" @click="nw.open = true">New process</button><button v-if="p" class="btn" @click="go({ t: 'pipeline' }); edit()">Add a deal</button></div></div>
     <p v-if="msg && !f.open" class="error">{{ msg }}</p>
     <div v-if="d && !p" class="empty"><h2>Set up your sales process</h2><p>Start from a template and make it yours: the stages a deal goes through, how many should move on at each, how long each takes, and the steps that move them on. Several processes are fine (for example SMB and Enterprise).</p>
@@ -64,10 +65,15 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
       <p class="or">Or start from a template</p>
       <div class="tpl"><button v-for="t in d.templates" :key="t.key" class="opt" :disabled="!canEdit" @click="nw.template = t.key; create()"><b>{{ t.label }}</b><span>{{ t.key === 'b2b' ? 'Lead, qualified, demo, proposal, negotiation' : t.key === 'self_serve' ? 'Sign-up, activated, trial, paying' : 'Target account, meeting, pilot, commercials, contract' }}</span></button></div></div>
     <template v-if="p && d && st">
-      <div class="bar"><nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ x.name }}</button></nav>
+      <div class="bar"><nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ isGroup ? x.company + ' · ' + x.name : x.name }}</button></nav>
         <nav class="tabs"><button v-for="[k, l] in ([['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['design', 'Process design']] as const)" :key="k" :class="{ on: tab === k }" @click="go({ t: k === 'dashboard' ? undefined : k })">{{ l }}</button></nav></div>
 
       <template v-if="tab === 'dashboard'">
+        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Every company's sales processes, totals in {{ d.rollup.currency }}</span></div>
+          <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Deals</th><th class="r">Open pipeline</th><th class="r">Weighted</th><th class="r">Won, last 90 days</th><th class="r">Win rate</th></tr></thead>
+            <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ r.deals }}</td><td class="r">{{ briefMoney(r.open, r.currency) }}</td><td class="r">{{ briefMoney(r.weighted, r.currency) }}</td><td class="r">{{ briefMoney(r.won_90d, r.currency) }}</td><td class="r">{{ r.win_rate === null ? '—' : r.win_rate + '%' }}</td></tr>
+              <tr class="tot"><td>Group total</td><td /><td /><td class="r">{{ briefMoney(d.rollup.total.open, d.rollup.currency) }}</td><td class="r">{{ briefMoney(d.rollup.total.weighted, d.rollup.currency) }}</td><td class="r">{{ briefMoney(d.rollup.total.won_90d, d.rollup.currency) }}</td><td /></tr></tbody></table>
+          <p class="mut">Below: {{ p.company }} · {{ p.name }}. Pick another process above.</p></div>
         <div class="fx-stats">
           <StatTile label="Open pipeline" :value="m(st.open_value)" :note="st.stages.filter((s) => s.kind === 'open').reduce((t, s) => t + s.now, 0) + ' open deals'" />
           <StatTile label="Expected to close" :value="m(st.weighted)" note="Each deal at its chance from its stage" />
@@ -143,4 +149,5 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 .ck { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--c-rule); padding: 10px 12px; } .ck > span { font-weight: 500; font-size: 13px; } .ck label { flex-direction: row; align-items: center; gap: 8px; } .sp { flex: 1; }
 .aic { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 14px; margin-bottom: 6px; } .aic b { display: flex; gap: 6px; align-items: center; font-weight: 600; } .aic textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 .or { margin: 8px 0; font-size: 12.5px; color: var(--c-muted); } .nx { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .nx ul { margin: 0; padding-left: 18px; font-size: 13.5px; } .em { border: 1px solid var(--c-rule); padding: 10px 12px; width: 100%; } .em p { white-space: pre-line; margin: 6px 0; font-size: 13.5px; color: var(--c-ink-soft); }
+.t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
 </style>

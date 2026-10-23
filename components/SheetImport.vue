@@ -7,26 +7,27 @@ const props = defineProps<{ open: boolean; kind: 'sales_deals' | 'marketing_mont
 const emit = defineEmits<{ close: []; done: [] }>()
 const HEAD: Record<string, string[]> = { sales_deals: ['Deal', 'Contact', 'Value', 'Stage', 'Expected close', 'Source', 'Owner', 'Notes'], marketing_months: ['Month', 'Channel', 'Spend', 'Visitors', 'Leads', 'Marketing qualified', 'Sales qualified', 'Customers', 'Revenue'], bank_txns: ['Date', 'Description', 'Money in', 'Money out', 'Balance'] }
 const WHAT: Record<string, string> = { sales_deals: 'deals', marketing_months: 'channel results', bank_txns: 'bank transactions' }
-const f = reactive({ url: '', name: '', link: true, currency: props.currency ?? 'USD', account: '' })
+const { sf, isGroup, companies } = await useCoScope()
+const f = reactive({ url: '', name: '', link: true, currency: props.currency ?? 'USD', account: '', entity: '' })
 const busy = ref(false), msg = ref(''), res = ref<{ added: number; updated: number; skipped: number; rows: number; columns: { field: string; column: string }[]; ai: boolean; link: string | null } | null>(null)
 interface L { id: string; name: string; url: string; auto: boolean; last_synced_at: string | null; last_result: { added: number; updated: number } | null; last_error: string | null }
 const links = ref<L[]>([])
-async function loadLinks() { try { links.value = await $fetch<L[]>('/api/growth/links', { query: { kind: props.kind, process_id: props.processId || undefined } }) } catch { links.value = [] } }
+async function loadLinks() { try { links.value = await sf<L[]>('/api/growth/links', { query: { kind: props.kind, process_id: props.processId || undefined } }) } catch { links.value = [] } }
 watch(() => props.open, (o) => { if (o) { res.value = null; msg.value = ''; f.url = ''; void loadLinks() } })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not read that sheet.'
 async function fromFile(ev: Event) {
   const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return
-  const fd = new FormData(); fd.append('file', file, file.name); fd.append('kind', props.kind); if (props.processId) fd.append('process_id', props.processId); fd.append('currency', f.currency); fd.append('account', f.account || file.name.replace(/\.[a-z]+$/i, ''))
+  const fd = new FormData(); fd.append('file', file, file.name); fd.append('kind', props.kind); if (props.processId) fd.append('process_id', props.processId); fd.append('currency', f.currency); fd.append('account', f.account || file.name.replace(/\.[a-z]+$/i, '')); if (f.entity) fd.append('entity_id', f.entity)
   await go(fd)
 }
-async function fromLink() { await go({ kind: props.kind, process_id: props.processId ?? '', url: f.url, link: f.link ? 'true' : 'false', name: f.name || 'Linked sheet', currency: f.currency, account: f.account || f.name || 'Linked sheet' }) }
+async function fromLink() { await go({ kind: props.kind, process_id: props.processId ?? '', url: f.url, link: f.link ? 'true' : 'false', name: f.name || 'Linked sheet', currency: f.currency, account: f.account || f.name || 'Linked sheet', entity_id: f.entity }) }
 async function go(body: FormData | Record<string, string>) {
   busy.value = true; msg.value = ''; res.value = null
-  try { res.value = await $fetch('/api/growth/import', { method: 'POST', body }); emit('done'); await loadLinks() } catch (e) { msg.value = err(e) } finally { busy.value = false }
+  try { res.value = await sf('/api/growth/import', { method: 'POST', body }); emit('done'); await loadLinks() } catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 async function act(l: L, action: 'sync' | 'auto_on' | 'auto_off' | 'delete') {
   if (action === 'delete' && !await askConfirm('Unlink "' + l.name + '"? What it brought in stays.')) return
-  try { await $fetch('/api/growth/links', { method: 'POST', body: { id: l.id, action } }); if (action === 'sync') emit('done'); await loadLinks() } catch (e) { msg.value = err(e) }
+  try { await sf('/api/growth/links', { method: 'POST', body: { id: l.id, action } }); if (action === 'sync') emit('done'); await loadLinks() } catch (e) { msg.value = err(e) }
 }
 function template() {
   const blob = new Blob([HEAD[props.kind]!.join(',') + '\n'], { type: 'text/csv' }), u = URL.createObjectURL(blob), a = document.createElement('a')
@@ -38,6 +39,7 @@ const LABEL: Record<string, string> = { name: 'Deal', contact: 'Contact', value:
   <AppModal :open="open" :title="'Bring in ' + WHAT[kind]" wide @close="emit('close')">
     <div class="si">
       <p class="lead">One row per {{ kind === 'sales_deals' ? 'deal' : kind === 'marketing_months' ? 'channel and month' : 'transaction' }}, headings in the first row. Headings are matched for you, with AI filling in what they leave open{{ kind === 'sales_deals' ? ' (including your sheet\'s stage names)' : kind === 'marketing_months' ? ' (including your channel names)' : '' }}. <button class="lk" type="button" @click="template">Download a template</button></p>
+      <label v-if="kind === 'bank_txns' && isGroup">Company<select v-model="f.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
       <div v-if="kind === 'bank_txns'" class="g2"><label>Account<input v-model="f.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label><label>Currency<select v-model="f.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></div>
       <DropZone accept=".xlsx,.csv" :disabled="busy" hint="Excel or CSV · brought in once" @change="fromFile" />
       <div class="or"><span>or link a sheet</span></div>

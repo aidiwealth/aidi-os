@@ -3,5 +3,6 @@
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'admin', 'gp', 'team')
   if ((await currentOrg())?.kind !== 'company') throw apiError('not_found', 'Not found', 404)
-  return salesView(typeof getQuery(event).p === 'string' ? String(getQuery(event).p) : undefined)
+  const sc = await forecastScope(event)
+  return { ...(await salesView(typeof getQuery(event).p === 'string' ? String(getQuery(event).p) : undefined, sc)), scope: { group: sc.group, entity: sc.entity, currency: sc.currency } }
 })

@@ -6,13 +6,13 @@ import { createHash } from 'node:crypto'
 import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
 
 // The rails: one contract, an adapter per provider, so pages never depend on which one a company uses.
-export interface RailTxn { ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
+export interface RailTxn { entity?: string | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
 export interface Rail { key: 'bank_feed' | 'upload' | 'fincra'; label: string; note: string; available: () => Promise<boolean>; pull?: (from: string) => Promise<RailTxn[]> }
 interface PTxn { transaction_id: string; account_id: string; amount: number; date: string; pending: boolean; name: string; merchant_name?: string | null; iso_currency_code: string | null; unofficial_currency_code: string | null; personal_finance_category?: { primary?: string } | null }
 export const RAILS: Rail[] = [
   { key: 'bank_feed', label: 'Bank feed', note: 'Connected bank accounts, read-only, refreshed when you open the page.', available: async () => plaidOn() && !!(await db().query("SELECT 1 FROM banking.plaid_items WHERE wm_client_id IS NULL LIMIT 1")).rowCount,
     pull: async (from) => {
-      const items = (await db().query<{ id: string; access_token_enc: string; institution: string | null }>('SELECT id, access_token_enc, institution FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL')).rows
+      const items = (await db().query<{ id: string; access_token_enc: string; institution: string | null; entity_id: string | null }>('SELECT id, access_token_enc, institution, entity_id FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL')).rows
       const out: RailTxn[] = [], to = new Date().toISOString().slice(0, 10)
       for (const it of items) {
         const accts = new Map((await db().query<{ account_id: string; name: string; mask: string | null; type: string | null; subtype: string | null }>('SELECT account_id, name, mask, type, subtype FROM banking.plaid_accounts WHERE item_id = $1', [it.id])).rows.map((a) => [a.account_id, a]))
@@ -22,7 +22,7 @@ export const RAILS: Rail[] = [
             const a = accts.get(t.account_id)
             if (t.pending || !a || ['credit', 'loan'].includes(a.type ?? '') || ['credit card', 'loan'].includes(a.subtype ?? '')) continue
             // The bank reports money out as a positive amount.
-            out.push({ ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: (it.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), bank_category: t.personal_finance_category?.primary ?? null })
+            out.push({ entity: it.entity_id, ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: (it.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), bank_category: t.personal_finance_category?.primary ?? null })
           }
           if (off + 500 >= j.total_transactions || !j.transactions.length) break
         }
@@ -75,7 +75,7 @@ export async function addToLedger(source: Rail['key'], txns: RailTxn[], entityId
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
     const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
-      [entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null])
+      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null])
     n += r.rowCount ?? 0
   }
   return n
@@ -93,9 +93,9 @@ export async function syncBankFeed(force = false): Promise<number> {
 }
 
 // Cash and burn on the same basis as Financials and the Stage Monitor, for the runway each cut gives back.
-export async function cashAndBurn(cur: string): Promise<{ cash: number | null; burn: number | null; runway: number | null }> {
+export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null }> {
   const ent = await companyEntityId(); if (!ent) return { cash: null, burn: null, runway: null }
-  const rows = (await loadStatements('entity:' + ent, 'month', cur)).filter((r) => r.period_type === 'month').slice(-12)
+  const rows = (await loadStatements(subject ?? 'entity:' + ent, 'month', cur)).filter((r) => r.period_type === 'month').slice(-12)
   const sec = await cashPolicy()
   const b = burnReview(rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) })) as FinRow[])
   return { cash: b.cash, burn: b.burn, runway: b.runway }
@@ -108,11 +108,17 @@ const SAME_JOB: [string, RegExp][] = [['Video calls', /\b(zoom|google meet|teams
 
 export interface Vendor { key: string; name: string; category: string | null; months: Record<string, number>; total: number; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null }
 // The spend view and the cut list, in the company's currency, from the last twelve months of the ledger.
-export async function treasuryView() {
-  const org = await currentOrg(), cur = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
-  const rows = (await db().query<{ m: string; vendor_key: string; vendor: string; direction: string; category: string | null; amt: string; last: string }>(
-    `SELECT to_char(txn_date, 'YYYY-MM') AS m, vendor_key, max(vendor) AS vendor, direction, category, sum(amount_base)::text AS amt, max(txn_date)::text AS last FROM banking.ledger
-     WHERE txn_date >= date_trunc('month', now()) - interval '12 months' AND coalesce(category, '') <> 'transfer' GROUP BY 1, 2, 4, 5`)).rows
+// The ledger for the company chosen at the top (transactions without a company count as the main one's), or every
+// company's for the group; amounts in that company's currency, or the group's reporting currency.
+export interface TScope { group: boolean; entity: string | null; currency: string }
+export async function rateTo(cur: string) { const m = new Map<string, number>(); return async (c: string) => { if (c === cur) return 1; if (!m.has(c)) m.set(c, (await fxRate(c, cur)) ?? 0); return m.get(c)! } }
+export async function treasuryView(sc: TScope) {
+  const cur = sc.currency, rate = await rateTo(cur), main = await companyEntityId(), ent = sc.group ? null : sc.entity
+  const raw = (await db().query<{ m: string; vendor_key: string; vendor: string; direction: string; category: string | null; currency: string; amt: string; last: string }>(
+    `SELECT to_char(txn_date, 'YYYY-MM') AS m, vendor_key, max(vendor) AS vendor, direction, category, currency, sum(amount)::text AS amt, max(txn_date)::text AS last FROM banking.ledger
+     WHERE txn_date >= date_trunc('month', now()) - interval '12 months' AND coalesce(category, '') <> 'transfer' AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1) GROUP BY 1, 2, 4, 5, 6`, [ent, main])).rows
+  const rows: { m: string; vendor_key: string; vendor: string; direction: string; category: string | null; amt: string; last: string }[] = []
+  for (const r of raw) rows.push({ ...r, amt: String(Number(r.amt) * await rate(r.currency)) })
   const thisM = new Date().toISOString().slice(0, 7), full = [...new Set(rows.map((r) => r.m))].filter((m) => m < thisM).sort()
   const last3 = full.slice(-3), lastM = full[full.length - 1] ?? null, prevM = full[full.length - 2] ?? null
   const months: Record<string, { in: number; out: number }> = {}, cats: Record<string, Record<string, number>> = {}
@@ -134,7 +140,7 @@ export async function treasuryView() {
     v.monthly = Math.round(med(last3.map((m) => v.months[m] ?? 0).filter((x) => x > 0)) * 100) / 100
     const s = st.get(v.key); if (s) { v.status = s.status; v.remind_on = s.remind_on; v.note = s.note }
   }
-  const cb = await cashAndBurn(cur)
+  const cb = await cashAndBurn(cur, sc.group ? 'group' : ent ? 'entity:' + ent : undefined)
   // Bank burn when Financials has none: money out less money in, over the last three full months.
   const bankBurn = last3.length ? Math.max(0, last3.reduce((s, m) => s + (months[m]!.out - months[m]!.in), 0) / last3.length) : null
   const burn = cb.burn ?? bankBurn, cash = cb.cash
@@ -146,13 +152,13 @@ export async function treasuryView() {
     .sort((a, b) => (typeof b.runway_gain === 'number' ? b.runway_gain : 999) - (typeof a.runway_gain === 'number' ? a.runway_gain : 999)).slice(0, 40)
   const marked = recurring.filter((v) => v.status === 'to_cancel').reduce((s, v) => s + v.monthly, 0)
   const dupes = SAME_JOB.map(([job, re]) => ({ job, vendors: recurring.filter((v) => re.test(v.key + ' ' + v.name.toLowerCase())).map((v) => ({ name: v.name, monthly: v.monthly })) })).filter((g) => g.vendors.length > 1)
-  const budgets = new Map((await db().query<{ category: string; monthly: string }>('SELECT category, monthly FROM banking.budgets')).rows.map((r) => [r.category, Number(r.monthly)]))
+  const budgets = new Map((await db().query<{ category: string; monthly: string }>('SELECT category, monthly FROM banking.budgets WHERE scope = $1', [sc.group ? 'group' : ent ?? 'group'])).rows.map((r) => [r.category, Number(r.monthly)]))
   const accts = (await listAccounts().catch(() => [])).map((a) => ({ key: 'cat:' + a.parent + ':' + a.name, label: a.name, parent: a.parent }))
   const catLabel = (k: string) => STD_CATS.find((c) => c.key === k)?.label ?? accts.find((a) => a.key === k)?.label ?? k
   const byCat = Object.entries(cats).map(([k, ms]) => ({ key: k, label: catLabel(k), last: lastM ? ms[lastM] ?? 0 : 0, prev: prevM ? ms[prevM] ?? 0 : 0, avg3: last3.reduce((s, m) => s + (ms[m] ?? 0), 0) / Math.max(1, last3.length), budget: budgets.get(k) ?? null })).sort((a, b) => b.avg3 - a.avg3)
   const topVendors = [...vend.values()].map((v) => ({ key: v.key, name: v.name, category: catLabel(v.category ?? 'opex_other'), last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0, total: v.total, recurring: v.recurring })).sort((a, b) => b.total - a.total).slice(0, 15)
   const movers = [...vend.values()].map((v) => ({ name: v.name, last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0 })).map((x) => ({ ...x, change: x.last - x.prev })).filter((x) => Math.abs(x.change) > 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 8)
-  const count = (await db().query<{ n: number; first: string | null; sources: string[] }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources FROM banking.ledger")).rows[0]!
+  const count = (await db().query<{ n: number; first: string | null; sources: string[] }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
   return { currency: cur, months: full.map((m) => ({ month: m, ...months[m]! })), last_month: lastM, prev_month: prevM,
     cash, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
     by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes,

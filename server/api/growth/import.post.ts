@@ -26,6 +26,10 @@ export default defineEventHandler(async (event) => {
   const t = tableOf(await readGrids(buf, ext)); if (!t) throw apiError('empty', 'No table with headings found. Put headings in the first row and one record per row.', 422)
   const map = await mapTable(kind.data, t, await targetsFor(kind.data, pid))
   if (kind.data === 'bank_txns') { map.currency = /^[A-Z]{3}$/.test(f.currency ?? '') ? f.currency : 'USD'; map.account = (f.account || fileName || 'Linked sheet').slice(0, 120) }
+  // The company the rows belong to: the one chosen at the top; on the group view, the one picked in the form (bank
+  // transactions) or, for deals, the main company unless the process belongs to one.
+  const sc = await forecastScope(event), picked = sc.companies.find((c) => c.id === f.entity_id)?.id
+  map.entity = sc.group ? (picked ?? null) : sc.entity
   const r = await applyTable(kind.data, t, map, pid, user.userId, url || fileName)
   let link: string | null = null
   if (url && f.link === 'true') {

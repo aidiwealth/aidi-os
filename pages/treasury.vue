@@ -12,49 +12,50 @@ interface D { currency: string; months: { month: string; in: number; out: number
 const route = useRoute(), router = useRouter()
 const tab = computed(() => (['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
-const { data, refresh, pending } = await useFetch<D>('/api/treasury')
+const { sf, cust, isGroup, companies } = await useCoScope()
+const { data, refresh, pending } = await useFetch<D>('/api/treasury', { query: computed(() => ({ cust: cust.value })) })
 const d = computed(() => data.value)
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, d.value?.currency ?? 'USD'))
 const mon = (ym: string | null | undefined) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const msg = ref(''), ok = ref(''), busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
-async function sync() { busy.value = true; msg.value = ''; try { const r = await $fetch<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function sync() { busy.value = true; msg.value = ''; try { const r = await sf<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // Upload a statement.
 const lk = ref(false)
-const up = reactive({ open: false, account: '', currency: 'NGN', file: null as File | null })
+const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null })
 async function upload() {
   if (!up.file) return; busy.value = true; msg.value = ''
-  const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency)
-  try { const r = await $fetch<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
+  const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency); if (isGroup.value && up.entity) fd.append('entity_id', up.entity)
+  try { const r = await sf<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 // Transactions.
 const f = reactive({ month: '', dir: '' as '' | 'in' | 'out', category: '', q: '', page: 0 })
 interface T { id: string; date: string; description: string; vendor: string; vendor_key: string; direction: 'in' | 'out'; amount: number; currency: string; amount_base: number; base_currency: string; category: string | null; category_by: string; account_label: string | null; source: string }
 const tx = ref<{ rows: T[]; total: number } | null>(null)
-async function loadTx() { tx.value = await $fetch('/api/treasury/transactions', { query: { month: f.month || undefined, dir: f.dir || undefined, category: f.category || undefined, q: f.q || undefined, page: f.page } }) }
+async function loadTx() { tx.value = await sf('/api/treasury/transactions', { query: { month: f.month || undefined, dir: f.dir || undefined, category: f.category || undefined, q: f.q || undefined, page: f.page } }) }
 watch(() => [tab.value, f.month, f.dir, f.category, f.page], () => { if (tab.value === 'txns') void loadTx() }, { immediate: true })
 let qt: ReturnType<typeof setTimeout> | undefined
 watch(() => f.q, () => { clearTimeout(qt); qt = setTimeout(() => { f.page = 0; void loadTx() }, 300) })
 const catLabel = (k: string | null) => d.value?.categories.find((c) => c.key === k)?.label ?? k ?? '—'
 async function setCat(t: T, category: string, always: boolean) {
-  try { const r = await $fetch<{ updated: number }>('/api/treasury/categorize', { method: 'POST', body: { id: t.id, category, always } }); ok.value = always ? 'Every payment to ' + t.vendor + ' now goes under ' + catLabel(category) + ' (' + r.updated + ' updated).' : 'Saved.'; await loadTx(); void refresh() }
+  try { const r = await sf<{ updated: number }>('/api/treasury/categorize', { method: 'POST', body: { id: t.id, category, always } }); ok.value = always ? 'Every payment to ' + t.vendor + ' now goes under ' + catLabel(category) + ' (' + r.updated + ' updated).' : 'Saved.'; await loadTx(); void refresh() }
   catch (e) { msg.value = err(e) }
 }
 const always = ref(true)
 // Cut list.
 async function mark(v: V, status: 'keep' | 'to_cancel' | 'cancelled') {
   const remind = status === 'to_cancel' ? (() => { const x = new Date(); x.setDate(x.getDate() + 7); return x.toISOString().slice(0, 10) })() : null
-  try { await $fetch('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cancel; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ' kept.'; await refresh() } catch (e) { msg.value = err(e) }
+  try { await sf('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cancel; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ' kept.'; await refresh() } catch (e) { msg.value = err(e) }
 }
-async function budget(c: { key: string; budget: number | null }, ev: Event) { const v = (ev.target as HTMLInputElement).value; try { await $fetch('/api/treasury/budget', { method: 'POST', body: { category: c.key, monthly: v } }); await refresh() } catch (e) { msg.value = err(e) } }
+async function budget(c: { key: string; budget: number | null }, ev: Event) { const v = (ev.target as HTMLInputElement).value; try { await sf('/api/treasury/budget', { method: 'POST', body: { category: c.key, monthly: v } }); await refresh() } catch (e) { msg.value = err(e) } }
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : null)
 const maxOut = computed(() => Math.max(1, ...(d.value?.months ?? []).map((x) => Math.max(x.in, x.out))))
 const today = new Date().toISOString().slice(0, 10)
 </script>
 <template>
   <section class="tr">
-    <div class="hd"><div><h1>Banking</h1><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
+    <div class="hd"><div><h1>Banking</h1><ScopeSwitch /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
       <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
@@ -116,7 +117,7 @@ const today = new Date().toISOString().slice(0, 10)
 
     <SheetImport :open="lk" kind="bank_txns" :currency="d?.currency" @close="lk = false" @done="refresh()" />
     <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
-      <div class="frm"><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
+      <div class="frm"><label v-if="isGroup">Company<select v-model="up.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
         <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label>
         <DropZone accept=".csv,.pdf" :label="up.file ? up.file.name : 'Drop the statement here'" hint="CSV (best) or PDF, up to 20 MB" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file" @click="upload">{{ busy ? 'Reading…' : 'Add to the ledger' }}</button></template>

@@ -17,7 +17,8 @@ export default defineEventHandler(async (event) => {
     const m = (err as Error).message
     throw apiError('unreadable', m === 'header' ? 'We could not find the date and amount columns in that CSV. Export it again with column headings, or upload the PDF.' : m === 'empty' ? 'No transactions were found in that file.' : 'We could not read that statement. Try the CSV export from your bank.', 422)
   }
-  const ent = await companyEntityId(), docId = randomUUID(), key = 'documents/' + docId + '.' + ext, mime = ext === 'csv' ? 'text/csv' : 'application/pdf'
+  // The company chosen at the top; on the group view, the company picked in the upload form (else the main one).
+  const sc = await forecastScope(event), pick = field('entity_id'), ent = !sc.group ? sc.entity : sc.companies.some((c) => c.id === pick) ? pick : await companyEntityId(), docId = randomUUID(), key = 'documents/' + docId + '.' + ext, mime = ext === 'csv' ? 'text/csv' : 'application/pdf'
   // The file is kept with the company's documents; if storage is down the transactions still come in.
   const kept = await putObject({ key, body: new Uint8Array(file.data), contentType: mime }).then(() => db().query("INSERT INTO core.documents (id, entity_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, uploaded_by) VALUES ($1,$2,$3,'statement','family',$4,$5,$6,$7,$8)",
     [docId, ent, account + ' statement', key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex'), user.userId])).then(() => true).catch((e) => { console.error('[treasury] keep file', (e as Error).message); return false })
