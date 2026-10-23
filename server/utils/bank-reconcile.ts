@@ -3,6 +3,7 @@
 // revenue and spend by line against the P&L (these differ by timing: invoices not yet paid, bills paid later), and
 // how many of the company's accounts the bank side covers. A month can then be marked reconciled, with a note.
 import { deriveLines, type Lines } from '~/shared/fin-view'
+import { isDebt } from '~/shared/bank'
 
 // Balances on a day for an account (statement closing, running balance, a sheet's balance column, the live feed):
 // one per month (the last day seen) plus the closing balance, kept for working out month ends.
@@ -18,7 +19,7 @@ export async function saveBalances(entityId: string | null, account: string, cur
 async function feedAnchors() {
   const rows = (await db().query<{ institution: string | null; name: string; mask: string | null; currency: string; current: string | null; updated_at: string; entity_id: string | null; type: string | null; subtype: string | null }>(
     "SELECT i.institution, a.name, a.mask, a.currency, a.current::text, a.updated_at::date::text AS updated_at, i.entity_id, a.type, a.subtype FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL").catch(() => ({ rows: [] }))).rows
-  return rows.filter((a) => a.current !== null && !['credit', 'loan'].includes(a.type ?? '') && !['credit card', 'loan'].includes(a.subtype ?? ''))
+  return rows.filter((a) => a.current !== null && !isDebt(a))
     .map((a) => ({ account_label: (a.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), as_of: a.updated_at, balance: Number(a.current), currency: a.currency, entity_id: a.entity_id }))
 }
 
@@ -67,7 +68,9 @@ export async function reconView(sc: { group: boolean; entity: string | null; cur
     if (before && (day <= lastD || before.as_of.slice(0, 7) === day.slice(0, 7))) return before.balance + fl.filter((f) => f.d > before.as_of && f.d <= day).reduce((s, f) => s + f.v, 0)
     return null
   }
-  const accounts = [...acctCur.keys()].filter((a) => inScope(acctEnt.get(a) ?? null))
+  // Cards and loans owe money; they are not cash, so month-end cash is the bank accounts only.
+  const debts = await debtLabels()
+  const accounts = [...acctCur.keys()].filter((a) => inScope(acctEnt.get(a) ?? null) && !debts.has(a))
   const rec = new Map((await db().query<{ month: string; note: string | null; at: string; by: string | null; gap: string | null }>("SELECT r.month, r.note, r.at::text, u.email AS by, r.gap::text FROM banking.reconciled r LEFT JOIN core.users u ON u.id = r.by_user WHERE r.scope = $1", [scope])).rows.map((r) => [r.month, r]))
   const rows = []
   for (const m of months) {

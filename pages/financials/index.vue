@@ -151,6 +151,24 @@ const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = 
 watch([subject, periodType], () => { picked.value = [] })
 const allPicked = computed(() => { const ids = rows.value.filter((r) => r.id).map((r) => r.id as string); return ids.length > 0 && ids.every((i) => picked.value.includes(i)) })
 function pickAll(on: boolean) { picked.value = on ? rows.value.filter((r) => r.id).map((r) => r.id as string) : [] }
+// Financials from the bank: months with bank transactions and no figures of the company's own, drafted (cash basis)
+// for the founder to review and accept; months drafted before are refreshed the same way.
+interface BD { currency: string | null; available: boolean; months: { period_end: string; lines: Record<string, number>; status: 'new' | 'update' | 'current' | 'has_figures'; complete_cash: boolean; txns: boolean }[] }
+const bd = ref<BD | null>(null), bdOpen = ref(false), bdPick = ref<string[]>([]), bdBusy = ref(false)
+async function loadBd() { bd.value = null; if (!canEdit.value || !String(subject.value).startsWith('entity:')) return; try { bd.value = await $fetch<BD>('/api/financials/bank-draft', { query: { subject: subject.value } }) } catch { bd.value = null } }
+watch(subject, loadBd, { immediate: true })
+const bdOffer = computed(() => (bd.value?.months ?? []).filter((m) => (m.status === 'new' || m.status === 'update') && Object.keys(m.lines).length))
+const bdNew = computed(() => bdOffer.value.filter((m) => m.status === 'new').length)
+const fromBank = computed(() => monthly.value.filter((r) => r.source === 'bank').length)
+function openBd() { bdPick.value = bdOffer.value.map((m) => m.period_end); bdOpen.value = true }
+const bm = (v: number | undefined) => (v === undefined ? '—' : briefMoney(v, bd.value?.currency ?? 'USD'))
+const bdCost = (l: Record<string, number>) => ['cogs', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other', 'tax', 'interest'].reduce((t, k) => t + (l[k] ?? 0), 0)
+async function acceptBd() {
+  bdBusy.value = true
+  try { const r = await $fetch<{ written: number }>('/api/financials/bank-draft', { method: 'POST', body: { subject: subject.value, months: bdPick.value } }); bdOpen.value = false; ok.value = r.written + ' month' + (r.written === 1 ? '' : 's') + ' added from your bank (cash basis). Your own accounts replace them whenever you add them.'; await Promise.all([refresh(), refreshM(), loadBd()]) }
+  catch (e) { ok.value = ''; console.error(e) } finally { bdBusy.value = false }
+}
+onMounted(() => { if (useRoute().query.bank === '1') { const t = setInterval(() => { if (bd.value) { clearInterval(t); if (bdOffer.value.length) openBd() } }, 200); setTimeout(() => clearInterval(t), 8000) } })
 async function cfAnswered() { await Promise.all([refresh(), refreshM()]) }
 async function cleared(m: string) { clearOpen.value = false; picked.value = []; ok.value = m; await Promise.all([refresh(), refreshM()]) }
 // Figures that do not add up, across every saved period.
@@ -273,6 +291,15 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       </div>
     </template>
     <template v-else>
+    <div v-if="tab === 'overview' && bdOffer.length" class="bnk"><span><b>{{ bdNew ? (rows.length ? bdNew + ' month' + (bdNew === 1 ? '' : 's') + ' missing from Financials can be drafted from your bank.' : 'Start your Financials from your bank.') : bdOffer.length + ' month' + (bdOffer.length === 1 ? '' : 's') + ' drafted from your bank can be updated.' }}</b> Receipts, costs by line and month-end cash from Banking, cash basis, for you to review. Your own accounts replace them whenever you add them.</span><button class="btn sm" type="button" @click="openBd">Review</button></div>
+    <p v-if="tab === 'overview' && fromBank" class="hint">{{ fromBank }} month{{ fromBank === 1 ? ' is' : 's are' }} drafted from your bank (cash basis): replace them with your accounts when you have them.</p>
+    <AppModal :open="bdOpen" title="Financials from your bank" wide @close="bdOpen = false">
+      <p class="hint">Cash basis: money received counts as revenue in the month it arrived, and payments as costs in the month they left, by the categories set in Banking. Transfers between your own accounts and funding received are left out. Cash is the bank's month-end balance (only when every account has one). Months that already have your own figures are left alone.</p>
+      <table class="bdt"><thead><tr><th /><th>Month</th><th class="r">Revenue</th><th class="r">Costs</th><th class="r">Net</th><th class="r">Cash</th><th /></tr></thead>
+        <tbody><tr v-for="m in bdOffer" :key="m.period_end"><td><input v-model="bdPick" type="checkbox" :value="m.period_end" :aria-label="'Add ' + m.period_end"></td><td>{{ new Date(m.period_end + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) }}</td>
+          <td class="r">{{ bm(m.lines.revenue) }}</td><td class="r">{{ bm(bdCost(m.lines)) }}</td><td class="r">{{ bm((m.lines.revenue ?? 0) + (m.lines.other_income ?? 0) - bdCost(m.lines)) }}</td><td class="r">{{ m.complete_cash ? bm(m.lines.cash) : '—' }}</td><td class="mut">{{ m.status === 'update' ? 'Update' : 'New' }}</td></tr></tbody></table>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="bdOpen = false">Not now</button><button class="btn" :disabled="bdBusy || !bdPick.length" @click="acceptBd">{{ bdBusy ? 'Adding…' : 'Add ' + bdPick.length + ' month' + (bdPick.length === 1 ? '' : 's') }}</button></template>
+    </AppModal>
     <ClientOnly><StructureAsk v-if="canEdit && baseCo && !baseCo.structure && !structDone && pages.length <= 1" :name="baseCo.name" @answered="structAnswered" /></ClientOnly>
     <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group'" compact class="feeds" :link="canPath('/treasury') ? '/treasury' + (subject.startsWith('entity:') ? '?s=' + subject : '') : null" :entity="subject.startsWith('entity:') ? subject.slice(7) : null" /></ClientOnly>
     <ClientOnly v-if="subject !== 'group' && tab !== 'shares'"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
@@ -448,4 +475,6 @@ td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); font-size: 13.5
 .vsub { margin: 2px 0 0; font-size: 13.5px; color: var(--c-muted); } .icn { margin: 0 0 14px; font-size: 13.5px; color: var(--c-ink-soft); } .icn b { font-weight: 500; } .icn a { color: var(--c-blue-deep); text-decoration: none; }
 .reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; } .rep { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .rep h3 { margin: 0; font-size: 17px; font-weight: 500; color: var(--c-navy); display: flex; gap: 6px; align-items: center; } .rep p { margin: 0 0 4px; font-size: 13.5px; color: var(--c-ink-soft); line-height: 1.5; flex: 1; } .rep .mut { font-size: 12.5px; color: var(--c-muted); }
 .secf { border: 1px solid var(--c-rule-strong); padding: 10px 14px; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; } .secf legend { font-size: 12.5px; font-weight: 500; padding: 0 4px; } .secf label { display: flex; gap: 8px; align-items: center; }
+.bnk { display: flex; justify-content: space-between; align-items: center; gap: 14px; border: 1px solid var(--c-rule-strong); background: #f6f8fb; padding: 11px 16px; font-size: 13.5px; margin-bottom: 12px; } .bnk .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; flex: none; }
+.bdt { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .bdt th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 6px 8px; border-bottom: 1px solid var(--c-rule); } .bdt td { padding: 7px 8px; border-bottom: 1px solid var(--c-rule); } .bdt .r { text-align: right; } .bdt .mut { color: var(--c-muted); font-size: 12px; }
 </style>

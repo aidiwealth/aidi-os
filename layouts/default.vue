@@ -48,7 +48,7 @@ const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
   { label: 'Growth', items: [{ label: 'Sales', codes: ['sales'] }, { label: 'Marketing', codes: ['marketing'] }, { label: 'Stage monitor', codes: ['stage_monitor'] }, { label: 'Banking', codes: ['banking_treasury'] }] },
   { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
     { label: 'Services', codes: ['company_services', 'client_inbox', 'wallet', 'client_raise'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
-  { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'] }] }]
+  { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'], extra: [{ to: '/data-sources', label: 'Data sources', code: 'settings' }] }] }]
 // Aidi OS: grouped like Finvry, but the pages the team opens every day keep their own place in the side menu
 // (Pitches, Payments, Tax documents, Meeting minutes, Team, Blog).
 const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [

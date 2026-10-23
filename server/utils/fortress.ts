@@ -1,3 +1,4 @@
+import { isDebt } from '~/shared/bank'
 // The Fortress Balance Sheet: Aidi's guide allocation for wealth clients. Each bucket gathers the client's holdings
 // and accounts by type, and the review shows target against today, with the amount to move.
 export interface FortressBucket { key: string; label: string; pct: number; where: string }
@@ -44,7 +45,7 @@ export async function fortressView(clientId: string) {
     have[k] = (have[k] ?? 0) + v
   }
   for (const a of s.accounts) { const v = await usd(Number(a.balance), a.currency); const k = a.kind === 'bank' ? 'cash' : a.kind === 'savings' ? 'tbills' : a.kind === 'brokerage' ? 'stocks' : a.kind === 'crypto' ? 'crypto' : a.kind === 'retirement' ? 'retirement' : 'other'; if (k === 'retirement') retirement += v; else have[k] = (have[k] ?? 0) + v }
-  for (const b of s.banks) if (b.current != null && !['credit', 'loan'].includes(b.subtype ?? '')) have.cash = (have.cash ?? 0) + await usd(Number(b.current), b.currency)
+  for (const b of s.banks) if (b.current != null && !isDebt(b)) have.cash = (have.cash ?? 0) + await usd(Number(b.current), b.currency)
   const keys = new Set(model.map((m) => m.key))
   for (const k of ['metals', 'crypto']) if (!keys.has(k)) { have.other = (have.other ?? 0) + (have[k] ?? 0); have[k] = 0 }
   const base = Object.values(have).reduce((a, x) => a + x, 0)

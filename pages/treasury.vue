@@ -5,7 +5,7 @@
 useHead({ title: 'Banking' })
 interface Cat { key: string; label: string }
 interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null; saving: number; saving_pct: number | null; suggest: { flag: string; why: string } | null }
-interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; marked_monthly: number; runway_if_cut: number | string | null
+interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; cash_from?: string | null; cash_month?: string | null; burn_from?: string | null; marked_monthly: number; runway_if_cut: number | string | null
   by_category: { key: string; label: string; last: number; prev: number; avg3: number; budget: number | null }[]; top_vendors: { key: string; name: string; category: string; last: number; prev: number; total: number; recurring: boolean }[]
   movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
   ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
@@ -76,19 +76,20 @@ const today = new Date().toISOString().slice(0, 10)
 <template>
   <section class="tr">
     <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
-      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload bank statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['reconcile', 'Reconcile']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
     <ClientOnly><BankFeeds v-if="!data?.ng" class="feeds" :entity="isGroup ? null : entityId" @changed="sync" /></ClientOnly>
     <template v-if="d">
       <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>{{ d.ng ? 'Live connections for Nigerian banks are coming soon. For now, drag in' : 'Connect a US bank above for a live feed, drag in' }} CSV or PDF statements (PDFs are read with AI) for banks the feed does not reach, or link a Google Sheet of transactions. Twelve months gives the best picture.</p>
-        <div class="tb"><button class="btn" @click="up.open = true">Upload a statement</button></div></div>
+        <div class="tb"><button class="btn" @click="up.open = true">Upload bank statement</button></div></div>
 
       <template v-if="tab === 'overview'">
+        <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start your Financials from your bank</NuxtLink>: receipts, costs and month-end cash, cash basis, for you to review.</div>
         <div class="fx-stats">
-          <StatTile label="Cash" :value="m(d.cash)" note="Latest, from Financials" />
-          <StatTile label="Monthly burn" :value="m(d.burn)" :note="d.burn ? 'Same basis as Financials' : 'Not burning'" />
+          <StatTile label="Cash" :value="m(d.cash)" :note="d.cash_from === 'bank' ? 'From your bank, end of ' + mon(d.cash_month) : d.cash_from === 'financials' ? 'Latest, from Financials' : 'Add month-end balances or Financials'" />
+          <StatTile label="Monthly burn" :value="m(d.burn)" :note="!d.burn ? 'Not burning' : d.burn_from === 'bank' ? 'From your bank: money out less money in' : 'Same basis as Financials'" />
           <StatTile label="Runway" :value="d.runway === null ? '—' : d.runway + ' months'" :note="d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months after the cuts you marked' : 'Cuts you marked end the burn') : 'Mark payments to cut to see more'" :red="(d.runway ?? 99) < 6" full />
           <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month, in the cut list" clickable @click="go('cut')" />
         </div>

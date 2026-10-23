@@ -314,6 +314,12 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('bank template as a sheet: every column found', m.columns.date === 0 && m.columns.description === 1 && m.columns.credit === 2 && m.columns.debit === 3 && m.columns.balance === 4 && m.columns.spender === 5 && m.all_out === false, JSON.stringify(m.columns))
 }
 
+// 9c4. Cards and loans from the live feed are money owed, not cash.
+{
+  const B = await jiti.import(join(root, 'shared/bank.ts'))
+  check('bank: a card or loan is owed, a checking or savings account is cash', B.isDebt({ type: 'credit', subtype: 'credit card' }) && B.isDebt({ type: 'loan', subtype: 'business' }) && B.isCard({ type: 'credit', subtype: 'credit card' }) && !B.isDebt({ type: 'depository', subtype: 'checking' }) && !B.isDebt({ type: 'depository', subtype: 'savings' }) && B.CARD_PAY.test('BREX CARD PAYMENT') && !B.CARD_PAY.test('AWS EMEA'))
+}
+
 // 9d. Sales and marketing: conversion from deal moves, the weighted pipeline, and what a budget buys.
 {
   const G = await jiti.import(join(root, 'shared/growth.ts'))

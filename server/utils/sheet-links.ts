@@ -277,7 +277,8 @@ export async function syncLink(l: LinkRow, userId: string | null, src?: { buf: B
         if (held) skipped.push(held)
         const pe = lastDay(m)
         const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = 'month' AND period_end = $2`, [s.id, pe])).rows[0]
-        const { lines: merged, detail: md } = mergeStatement(ex, lines, detail, held ? ['bs'] : [])
+        // A month drafted from the bank is replaced outright by the company's own figures.
+        const { lines: merged, detail: md } = mergeStatement(ex?.source === 'bank' ? undefined : ex, lines, detail, held ? ['bs'] : [])
         if (balanceError(merged)) { skipped.push(m + ': balance sheet does not balance'); continue }
         const mk = { ...(ex?.kpis ?? {}), ...kpis }
         if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), l.currency, JSON.stringify(md)])

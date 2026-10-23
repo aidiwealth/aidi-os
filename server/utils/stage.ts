@@ -67,7 +67,7 @@ export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<ty
     WHERE l.direction = 'out' AND l.txn_date >= date_trunc('month', now()) - interval '3 months' AND l.txn_date < date_trunc('month', now()) AND ($1::uuid IS NULL OR coalesce(l.entity_id, $2::uuid) = $1) GROUP BY 1`, [ent, await companyEntityId()]).catch(() => ({ rows: [] }))).rows
   let cutMonthly = 0; for (const r of cutRows) cutMonthly += Number(r.v) * (r.currency === cur ? 1 : (await fxRate(r.currency, cur)) ?? 0)
   const cap = await capFacts(cur)
-  const i: Inputs = { months, usd, runway: burn.runway, cash: burn.cash ?? [...months].reverse().find((m) => m.cash !== null)?.cash ?? null, cash_at: burn.cash_at, cap, nrr, retention_on: retentionOn, room, bank }
+  const i: Inputs = { months, usd, runway: burn.runway, cash: burn.cash ?? [...months].reverse().find((m) => m.cash !== null)?.cash ?? (await bankCash(sc))?.cash ?? null, cash_at: burn.cash_at, cap, nrr, retention_on: retentionOn, room, bank }
   const fund = fundingStage(cap, rr), lastRev = [...months].reverse().find((m) => m.revenue !== null)?.revenue ?? 0
   const arrUsd = Math.max(0, lastRev) * 12 * usd, op = operatingStage(arrUsd, rr)
   const alive = defaultAlive(i), hl = health(i, alive)

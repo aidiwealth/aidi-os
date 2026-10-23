@@ -223,7 +223,7 @@ export async function writePeriods(subject: string, periods: PeriodOut[], curren
     const held = holdBadBalanceSheet({ period_end: p.period_end, period_type: p.period_type, lines, detail: p.detail })
     if (held) skipped.push(held)
     const ex = (await db().query<{ id: string; lines: Record<string, number>; kpis: Record<string, number>; detail: Record<string, number>; source: string }>(`SELECT id, lines, kpis, detail, source FROM financials.statements WHERE ${col} = $1 AND period_type = $2 AND period_end = $3`, [s.id, p.period_type, p.period_end])).rows[0]
-    const { lines: merged, detail: md } = mergeStatement(ex, lines, p.detail ?? {}, held ? ['bs'] : []), mk = { ...(ex?.kpis ?? {}), ...p.kpis }
+    const { lines: merged, detail: md } = mergeStatement(ex?.source === 'bank' ? undefined : ex, lines, p.detail ?? {}, held ? ['bs'] : []), mk = { ...(ex?.kpis ?? {}), ...p.kpis }
     if (balanceError(merged)) { skipped.push(p.period_end + ' (' + p.period_type + '): balance sheet does not balance'); continue }
     if (ex) await db().query("UPDATE financials.statements SET lines = $2, kpis = $3, currency = $4, detail = $5, source = 'sheet', updated_at = now() WHERE id = $1", [ex.id, JSON.stringify(merged), JSON.stringify(mk), currency, JSON.stringify(md)])
     else await db().query(`INSERT INTO financials.statements (${col}, period_type, period_end, currency, lines, kpis, detail, source, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,'sheet',$8)`, [s.id, p.period_type, p.period_end, currency, JSON.stringify(merged), JSON.stringify(mk), JSON.stringify(md), userId])

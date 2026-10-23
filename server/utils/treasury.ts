@@ -2,27 +2,31 @@
 // (the bank feed today, uploaded statements for banks the feed does not reach, Fincra later), each tied to a vendor and
 // a category the founder can correct once for good; and from it the spend view and the cut list: recurring payments
 // ranked by the runway they would give back. Nothing here moves money.
+import { isCard, isDebt, CARD_PAY } from '~/shared/bank'
 import { createHash } from 'node:crypto'
 import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
 
 // The rails: one contract, an adapter per provider, so pages never depend on which one a company uses.
-export interface RailTxn { entity?: string | null; spender?: string | null; balance?: number | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
+export interface RailTxn { entity?: string | null; spender?: string | null; balance?: number | null; category?: string; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
 export interface Rail { key: 'bank_feed' | 'upload' | 'fincra'; label: string; note: string; available: () => Promise<boolean>; pull?: (from: string) => Promise<RailTxn[]> }
 interface PTxn { transaction_id: string; account_id: string; amount: number; date: string; pending: boolean; name: string; merchant_name?: string | null; iso_currency_code: string | null; unofficial_currency_code: string | null; personal_finance_category?: { primary?: string } | null }
 export const RAILS: Rail[] = [
   { key: 'bank_feed', label: 'Bank feed', note: 'Connected bank accounts, read-only, refreshed when you open the page.', available: async () => plaidOn() && !!(await db().query("SELECT 1 FROM banking.plaid_items WHERE wm_client_id IS NULL LIMIT 1")).rowCount,
     pull: async (from) => {
       const items = (await db().query<{ id: string; access_token_enc: string; institution: string | null; entity_id: string | null }>('SELECT id, access_token_enc, institution, entity_id FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL')).rows
-      const out: RailTxn[] = [], to = new Date().toISOString().slice(0, 10)
+      const out: RailTxn[] = [], to = new Date().toISOString().slice(0, 10), cardKeys = await cardIssuerKeys()
       for (const it of items) {
         const accts = new Map((await db().query<{ account_id: string; name: string; mask: string | null; type: string | null; subtype: string | null }>('SELECT account_id, name, mask, type, subtype FROM banking.plaid_accounts WHERE item_id = $1', [it.id])).rows.map((a) => [a.account_id, a]))
         for (let off = 0; off < 5000; off += 500) {
           const j = await plaid<{ transactions: PTxn[]; total_transactions: number }>('/transactions/get', { access_token: decryptText(it.access_token_enc), start_date: from, end_date: to, options: { count: 500, offset: off } })
           for (const t of j.transactions) {
             const a = accts.get(t.account_id)
-            if (t.pending || !a || ['credit', 'loan'].includes(a.type ?? '') || ['credit card', 'loan'].includes(a.subtype ?? '')) continue
+            // Cards are in (their purchases are the spend); loans are not. A card's bill being paid is a transfer
+            // between the company's own accounts, on the card side and on the bank side.
+            if (t.pending || !a || (isDebt(a) && !isCard(a))) continue
+            const card = isCard(a), cardPay = card ? t.amount < 0 && CARD_PAY.test(t.name) : t.amount > 0 && cardKeys.some((k) => vendorKey(t.name, t.merchant_name).key.startsWith(k)) && (CARD_PAY.test(t.name) || ['LOAN_PAYMENTS', 'TRANSFER_OUT'].includes(t.personal_finance_category?.primary ?? ''))
             // The bank reports money out as a positive amount.
-            out.push({ entity: it.entity_id, ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: (it.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), bank_category: t.personal_finance_category?.primary ?? null })
+            out.push({ entity: it.entity_id, ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: (it.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), bank_category: t.personal_finance_category?.primary ?? null, category: cardPay ? 'transfer' : card && t.amount < 0 ? 'other_income' : undefined })
           }
           if (off + 500 >= j.total_transactions || !j.transactions.length) break
         }
@@ -99,7 +103,7 @@ export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityI
   for (const t of txns) {
     if (!t.amount) continue
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
-    const rule = rules.get(v.key), cat = rule ?? (isOwn(own, v.key) ? 'transfer' : autoCategory(v.key, t.description, dir, t.bank_category ?? null))
+    const rule = rules.get(v.key), cat = rule ?? t.category ?? (isOwn(own, v.key) ? 'transfer' : autoCategory(v.key, t.description, dir, t.bank_category ?? null))
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
     const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
@@ -118,13 +122,36 @@ export async function fixOwnTransfers() {
   if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
   return rows.length
 }
+// Connected cards: their names as the ledger shows them, and their issuers (Brex, Amex…) as payees, so paying the card's
+// bill from the bank is a transfer, not spend (the card's own purchases are the spend).
+export async function cardLabels(): Promise<string[]> {
+  return (await db().query<{ label: string }>("SELECT coalesce(i.institution, 'Bank') || ' · ' || a.name || coalesce(' ··' || a.mask, '') AS label FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL AND (a.type = 'credit' OR a.subtype = 'credit card')").catch(() => ({ rows: [] }))).rows.map((r) => r.label)
+}
+export async function debtLabels(): Promise<Set<string>> {
+  return new Set((await db().query<{ label: string; type: string | null; subtype: string | null }>("SELECT coalesce(i.institution, 'Bank') || ' · ' || a.name || coalesce(' ··' || a.mask, '') AS label, a.type, a.subtype FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL").catch(() => ({ rows: [] }))).rows.filter(isDebt).map((r) => r.label))
+}
+export async function cardIssuerKeys(): Promise<string[]> {
+  const r = (await db().query<{ institution: string | null }>("SELECT DISTINCT i.institution FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL AND (a.type = 'credit' OR a.subtype = 'credit card')").catch(() => ({ rows: [] }))).rows
+  return [...new Set(r.map((x) => vendorKey(x.institution ?? '').key).filter((k) => k && k !== 'other'))]
+}
+// Card bills paid from the bank before the card was connected: moved to transfers (unless the founder chose).
+export async function fixCardPayments() {
+  const keys = await cardIssuerKeys(); if (!keys.length) return 0
+  const cards = await cardLabels()
+  const rows = (await db().query<{ id: string; vendor_key: string; description: string }>("SELECT id, vendor_key, description FROM banking.ledger WHERE category_by = 'auto' AND direction = 'out' AND coalesce(category, '') <> 'transfer' AND NOT (account_label = ANY($1::text[]))", [cards])).rows
+    .filter((r) => keys.some((k) => r.vendor_key.startsWith(k)))
+  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
+  return rows.length
+}
 // The bank feed, pulled at most every six hours (twelve months the first time).
 export async function syncBankFeed(force = false): Promise<number> {
   const rail = RAILS[0]!
   if (!(await rail.available())) return 0
   const last = (await db().query<{ at: string | null; n: number }>("SELECT max(created_at)::text AS at, count(*)::int AS n FROM banking.ledger WHERE source = 'bank_feed'")).rows[0]
   if (!force && last?.at && Date.now() - new Date(last.at).getTime() < 6 * 3600_000) return 0
-  const d = new Date(); d.setUTCMonth(d.getUTCMonth() - (last?.n ? 2 : 12)); d.setUTCDate(1)
+  // Twelve months the first time, and again when a card is connected whose purchases are not in yet.
+  const newCard = (await cardLabels()).length ? !(await db().query("SELECT 1 FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[]) LIMIT 1", [await cardLabels()])).rowCount : false
+  const d = new Date(); d.setUTCMonth(d.getUTCMonth() - (last?.n && !newCard ? 2 : 12)); d.setUTCDate(1)
   try { return await addToLedger('bank_feed', await rail.pull!(d.toISOString().slice(0, 10)), await companyEntityId()) } catch (e) { console.error('[treasury] bank feed', (e as Error).message); return 0 }
 }
 
@@ -186,7 +213,9 @@ export async function treasuryView(sc: TScope) {
   const cb = await cashAndBurn(cur, sc.group ? 'group' : ent ? 'entity:' + ent : undefined)
   // Bank burn when Financials has none: money out less money in, over the last three full months.
   const bankBurn = last3.length ? Math.max(0, last3.reduce((s, m) => s + (months[m]!.out - months[m]!.in), 0) / last3.length) : null
-  const burn = cb.burn ?? bankBurn, cash = cb.cash
+  // No cash in Financials yet: the bank's latest month-end cash (every account with a balance), marked as from the bank.
+  const bc = cb.cash === null ? await bankCash(sc) : null
+  const burn = cb.burn ?? bankBurn, cash = cb.cash ?? bc?.cash ?? null
   const runway = (b: number | null) => (cash === null || b === null ? null : b <= 0 ? null : Math.round(cash / b * 10) / 10)
   const now = runway(burn)
   // Taxes, loan payments and transfers are not choices to cut.
@@ -242,7 +271,7 @@ export async function treasuryView(sc: TScope) {
   const movers = [...vend.values()].map((v) => ({ name: v.name, last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0 })).map((x) => ({ ...x, change: x.last - x.prev })).filter((x) => Math.abs(x.change) > 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 8)
   const count = (await db().query<{ n: number; first: string | null; sources: string[] }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
   return { currency: cur, months: full.map((m) => ({ month: m, ...months[m]! })), last_month: lastM, prev_month: prevM,
-    cash, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
+    cash, cash_from: cb.cash !== null ? 'financials' : bc ? 'bank' : null, cash_month: bc?.month ?? null, burn_from: cb.burn !== null ? 'financials' : bankBurn !== null ? 'bank' : null, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
     by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes, checks: checks.slice(0, 30), by_spender: bySpender,
     categories: [...STD_CATS.map((c) => ({ key: c.key, label: c.label })), ...accts.map((a) => ({ key: a.key, label: a.label + ' (' + (STD_CATS.find((c) => c.key === a.parent)?.label ?? a.parent) + ')' }))],
     ledger: { count: count.n, since: count.first, sources: count.sources ?? [] } }
