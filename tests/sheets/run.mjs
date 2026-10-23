@@ -265,6 +265,23 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('forecast template rows link by name', ['revenue', 'cogs', 'payroll', 'items', 'customers'].every((k) => sug.some((m) => m.to === k)) && !sug.some((m) => /Gross profit|Net income/.test(m.label) && m.to), sug.filter((m) => m.to).map((m) => m.label + '→' + m.to).join(', '))
 }
 
+// 9b. Stage Monitor: stages, health and the default-alive month from a company's own months.
+{
+  const ST = await jiti.import(join(root, 'shared/stage.ts'))
+  const rr = ST.DEFAULT_RULES.regions.us, cap = { has: true, raised_usd: 900000, priced_round: null, founders_pct: 70, pool: true, safes: 3 }
+  const mk = (rev, exp, cash) => rev.map((r, k) => ({ month: '2026-0' + (k + 1), revenue: r, expenses: exp[k], net: r - exp[k], ebitda: r - exp[k], gross_margin: 60, cash: cash[k], debt: null }))
+  const base = { usd: 1, cash_at: '2026-06-30', cap, nrr: null, retention_on: false, room: { deck: true, files: 3, links: 1 }, bank: { connected: false, months: 0 } }
+  const grow = { ...base, months: mk([50, 60, 72, 86, 100, 120].map((x) => x * 1000), [150, 150, 152, 152, 155, 155].map((x) => x * 1000), [3e6, 2.9e6, 2.8e6, 2.7e6, 2.6e6, 2.5e6]), runway: 70, cash: 2.5e6 }
+  const a = ST.defaultAlive(grow)
+  check('stage: funding stage from money raised, or the priced round', ST.fundingStage(cap, rr) === 'pre_seed' && ST.fundingStage({ ...cap, priced_round: ST.classStage('Series A Preferred') }, rr) === 'series_a' && ST.classStage('Seed Preferred') === 'seed')
+  check('stage: operating stage from the run rate', ST.operatingStage(0, rr) === 'pre_revenue' && ST.operatingStage(1.44e6, rr) === 'seed' && ST.operatingStage(2e6, rr) === 'series_a')
+  check('stage: a fast-growing company is default alive', !!a && !!a.cross && !a.zero && ST.health(grow, a) === 'default_alive', a ? a.cross + ' ' + a.zero : 'none')
+  const flat = { ...base, months: mk([50, 48, 46, 44].map((x) => x * 1000), [150, 150, 150, 150].map((x) => x * 1000), [5e5, 4e5, 3e5, 2e5]), runway: 2, cash: 2e5 }
+  check('stage: under three months of cash is critical; revenue down three months is struggling', ST.health(flat, ST.defaultAlive(flat)) === 'critical' && ST.health({ ...flat, runway: 5 }, ST.defaultAlive({ ...flat, cash: 5e5 })) === 'struggling')
+  const e = ST.equityScore(grow, rr, ST.DEFAULT_RULES.equity, 'pre_seed'), d = ST.debtScore(grow, ST.DEFAULT_RULES.debt)
+  check('stage: readiness scores out of 100, with what moves them up', e.total > 0 && e.total <= 100 && d.total > 0 && d.total <= 100 && ST.movesUp(e, d).length === 3 && ST.movesUp(e, d)[0].gain >= ST.movesUp(e, d)[2].gain, e.total + ' ' + d.total)
+}
+
 // 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
 {
   const V = await jiti.import(join(root, 'shared/valuation.ts'))
