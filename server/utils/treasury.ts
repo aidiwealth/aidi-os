@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
 
 // The rails: one contract, an adapter per provider, so pages never depend on which one a company uses.
-export interface RailTxn { entity?: string | null; spender?: string | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
+export interface RailTxn { entity?: string | null; spender?: string | null; balance?: number | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
 export interface Rail { key: 'bank_feed' | 'upload' | 'fincra'; label: string; note: string; available: () => Promise<boolean>; pull?: (from: string) => Promise<RailTxn[]> }
 interface PTxn { transaction_id: string; account_id: string; amount: number; date: string; pending: boolean; name: string; merchant_name?: string | null; iso_currency_code: string | null; unofficial_currency_code: string | null; personal_finance_category?: { primary?: string } | null }
 export const RAILS: Rail[] = [
@@ -30,7 +30,7 @@ export const RAILS: Rail[] = [
       return out
     } },
   { key: 'upload', label: 'Statement upload', note: 'Drag in CSV or PDF statements (PDFs read with AI), or link a Google Sheet of transactions, for banks the feed does not reach (most Nigerian banks today).', available: async () => true },
-  { key: 'fincra', label: 'Fincra', note: 'Accounts, payouts and cards through Fincra are planned; not connected yet.', available: async () => false }]
+  { key: 'fincra', label: 'Money Movement', note: 'Accounts, payouts and cards services are coming soon; not connected yet.', available: async () => false }]
 
 // "POS DEBIT 2093 AMAZON WEB SERVICES AWS.AMAZON.CO" → "amazon web services".
 const NOISE = /\b(pos|debit|credit|card|purchase|payment|pymt|pmt|ach|trf|transfer|nip|web|online|recurring|autopay|ref|txn|trx|visa|mastercard|mc|chk|checkout|ltd|limited|llc|inc|plc|co|com|ng|us|www|https?)\b/g
@@ -45,7 +45,7 @@ export const STD_CATS: { key: string; label: string; dir: 'in' | 'out' | 'any' }
   { key: 'revenue', label: 'Revenue (customer receipts)', dir: 'in' }, { key: 'financing', label: 'Funding and loans received', dir: 'in' }, { key: 'other_income', label: 'Other income', dir: 'in' },
   { key: 'cogs', label: 'Cost of revenue', dir: 'out' }, { key: 'opex_payroll', label: 'Payroll', dir: 'out' }, { key: 'opex_marketing', label: 'Sales & marketing', dir: 'out' }, { key: 'opex_rnd', label: 'Product & engineering', dir: 'out' },
   { key: 'opex_ga', label: 'General & admin', dir: 'out' }, { key: 'opex_other', label: 'Other operating costs', dir: 'out' }, { key: 'tax', label: 'Tax', dir: 'out' }, { key: 'interest', label: 'Interest and loan payments', dir: 'out' },
-  { key: 'capex', label: 'Equipment and capex', dir: 'out' }, { key: 'transfer', label: 'Transfer between own accounts', dir: 'any' }]
+  { key: 'capex', label: 'Equipment and capex', dir: 'out' }, { key: 'transfer', label: 'Transfer between own accounts or group companies', dir: 'any' }]
 const KW: [RegExp, string][] = [
   [/\b(aws|amazon web|google cloud|gcp|azure|digitalocean|vercel|heroku|cloudflare|netlify|render|github|gitlab|atlassian|jira|figma|openai|anthropic|twilio|sentry|datadog|mongodb|supabase|linear)\b/, 'opex_rnd'],
   [/\b(google ads|facebook|meta|linkedin|twitter|x ads|tiktok|hubspot|mailchimp|sendgrid|brevo|semrush|ahrefs|canva|apollo|clay)\b/, 'opex_marketing'],
@@ -63,7 +63,35 @@ export function autoCategory(vkey: string, desc: string, dir: 'in' | 'out', bank
 
 // Bring transactions in: the vendor, the category (the founder's rule for that vendor first), and the amounts in the
 // company's currency and in US dollars. Already-seen transactions are left as they are.
-export async function addToLedger(source: Rail['key'], txns: RailTxn[], entityId: string | null): Promise<number> {
+// The company's own names (the company, its subsidiaries, the organisation): money moving between them is a transfer
+// between the group's own accounts, never a vendor, a cost or revenue.
+export async function ownNames(): Promise<RegExp | null> {
+  const org = await currentOrg()
+  const names = [org?.name ?? '', ...(await db().query<{ name: string; legal_name: string | null }>('SELECT name, legal_name FROM core.entities').catch(() => ({ rows: [] }))).rows.flatMap((e) => [e.name, e.legal_name ?? ''])]
+  const keys = [...new Set(names.map((n) => vendorKey(n).key).filter((k) => k && k !== 'other' && k.length >= 4))]
+  return keys.length ? new RegExp('^(' + keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')).join('|') + ')(\\b|$)') : null
+}
+// The payee is one of the company's own names: judged on the payee (the vendor key, after "to" / "from"), not on any
+// mention in the narration, so a customer's payment that names the company is still revenue.
+export const isOwn = (own: RegExp | null, vkey: string) => !!own && own.test(vkey.replace(/^(to|from|for|by|tfr)\s+/, ''))
+// Uploaded transactions already in the ledger (same account, date, description and amount), counted, so statements
+// that overlap (Jan–Jun and Apr–Dec), the same file twice, or a sheet and a statement of the same account never count
+// a payment twice.
+export async function notYetIn(txns: RailTxn[], entityId: string | null): Promise<RailTxn[]> {
+  if (!txns.length) return []
+  const k = (a: string, d: string, desc: string, amt: number) => [a.toLowerCase().trim(), d, desc.slice(0, 500).toLowerCase().trim(), (Math.round(amt * 100) / 100).toFixed(2)].join('|')
+  const accts = [...new Set(txns.map((t) => t.account.slice(0, 160)))], dates = txns.map((t) => t.date).sort()
+  const have = new Map<string, number>()
+  for (const r of (await db().query<{ account_label: string | null; d: string; description: string; amt: string; direction: string }>(
+    "SELECT account_label, txn_date::text AS d, description, amount::text AS amt, direction FROM banking.ledger WHERE source IN ('upload', 'bank_feed') AND account_label = ANY($1::text[]) AND txn_date BETWEEN $2 AND $3 AND entity_id IS NOT DISTINCT FROM $4",
+    [accts, dates[0], dates[dates.length - 1], entityId])).rows) { const x = k(r.account_label ?? '', r.d, r.description, (r.direction === 'out' ? -1 : 1) * Number(r.amt)); have.set(x, (have.get(x) ?? 0) + 1) }
+  const out: RailTxn[] = []
+  for (const t of txns) { const x = k(t.account.slice(0, 160), t.date, t.description, t.amount), n = have.get(x) ?? 0; if (n > 0) have.set(x, n - 1); else out.push(t) }
+  return out
+}
+export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityId: string | null): Promise<number> {
+  const txns = source === 'upload' ? await notYetIn(txns0.map((t) => ({ ...t, entity: t.entity ?? entityId })), entityId) : txns0
+  const own = await ownNames()
   const org = await currentOrg(), base = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
   const rules = new Map((await db().query<{ vendor_key: string; category: string }>('SELECT vendor_key, category FROM banking.category_rules')).rows.map((r) => [r.vendor_key, r.category]))
   const rate = new Map<string, number | null>(), fx = async (a: string, b: string) => { if (a === b) return 1; const k = a + b; if (!rate.has(k)) rate.set(k, await fxRate(a, b)); return rate.get(k) ?? null }
@@ -71,7 +99,7 @@ export async function addToLedger(source: Rail['key'], txns: RailTxn[], entityId
   for (const t of txns) {
     if (!t.amount) continue
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
-    const rule = rules.get(v.key), cat = rule ?? autoCategory(v.key, t.description, dir, t.bank_category ?? null)
+    const rule = rules.get(v.key), cat = rule ?? (isOwn(own, v.key) ? 'transfer' : autoCategory(v.key, t.description, dir, t.bank_category ?? null))
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
     const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
@@ -82,6 +110,14 @@ export async function addToLedger(source: Rail['key'], txns: RailTxn[], entityId
 }
 export const uploadRef = (account: string, t: { date: string; description: string; amount: number; balance: number | null }, i: number) => createHash('sha1').update([account, t.date, t.description, t.amount, t.balance ?? '', i].join('|')).digest('hex')
 
+// Transactions brought in before the company's own names were recognised: moved to transfers (unless the founder chose
+// their category), so the company never shows up as its own vendor or customer.
+export async function fixOwnTransfers() {
+  const own = await ownNames(); if (!own) return 0
+  const rows = (await db().query<{ id: string; vendor_key: string }>("SELECT id, vendor_key FROM banking.ledger WHERE category_by = 'auto' AND coalesce(category, '') <> 'transfer'")).rows.filter((r) => isOwn(own, r.vendor_key))
+  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
+  return rows.length
+}
 // The bank feed, pulled at most every six hours (twelve months the first time).
 export async function syncBankFeed(force = false): Promise<number> {
   const rail = RAILS[0]!

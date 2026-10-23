@@ -33,7 +33,8 @@ const FIELDS: Record<LinkKind, { key: string; label: string; words: string[]; ne
     { key: 'mqls', label: 'Marketing qualified', words: ['mql', 'mqls', 'marketing qualified'] }, { key: 'sqls', label: 'Sales qualified', words: ['sql', 'sqls', 'sales qualified', 'opportunities'] },
     { key: 'customers', label: 'Customers', words: ['customers', 'new customers', 'conversions', 'won', 'paying'] }, { key: 'revenue', label: 'Revenue', words: ['revenue', 'sales', 'income'] }],
   bank_txns: [{ key: 'date', label: 'Date', words: ['date', 'transaction date', 'value date', 'posted', 'trans date', 'clearing date'], need: true }, { key: 'description', label: 'Description', words: ['merchant', 'description', 'narration', 'details', 'memo', 'payee', 'vendor', 'reference', 'remarks'], need: true },
-    { key: 'spender', label: 'Who spent', words: ['user', 'cardholder', 'card holder', 'spender', 'employee', 'member', 'submitted by'] },
+    { key: 'balance', label: 'Balance', words: ['balance', 'running balance', 'closing balance', 'ledger balance', 'available balance'] },
+    { key: 'spender', label: 'Who spent', words: ['who spent', 'user', 'cardholder', 'card holder', 'spender', 'employee', 'member', 'submitted by'] },
     { key: 'amount', label: 'Amount (+ in, − out)', words: ['amount', 'value'] }, { key: 'debit', label: 'Money out', words: ['debit', 'withdrawal', 'withdrawals', 'money out', 'paid out', 'dr'] }, { key: 'credit', label: 'Money in', words: ['credit', 'deposit', 'deposits', 'money in', 'paid in', 'cr', 'lodgement'] }] }
 export const TEMPLATE_HEADINGS: Record<LinkKind, string[]> = { sales_deals: ['Deal', 'Contact', 'Value', 'Stage', 'Expected close', 'Source', 'Owner', 'Notes'], marketing_months: ['Month', 'Channel', 'Spend', 'Visitors', 'Leads', 'Marketing qualified', 'Sales qualified', 'Customers', 'Revenue'], bank_txns: ['Date', 'Description', 'Money in', 'Money out', 'Balance'] }
 
@@ -123,6 +124,7 @@ async function readRows(kind: LinkKind, t: Tbl, map: Mapping, processId: string 
     const won = p.stages.find((s) => s.kind === 'won')?.key ?? null, lost = p.stages.find((s) => s.kind === 'lost')?.key ?? null
     const deals: DealIn[] = []
     for (const r of t.rows.slice(0, 2000)) {
+      if (r.some((c) => typeof c === 'string' && /\(delete this row\)/i.test(c))) continue
       const name = str(col(r, 'name')).slice(0, 160); if (!name) { skipped++; continue }
       const rawStage = str(col(r, 'stage')), status = norm(col(r, 'status'))
       // A won or lost status (Pipedrive, Close) wins over the stage the deal was in when it closed.
@@ -138,6 +140,7 @@ async function readRows(kind: LinkKind, t: Tbl, map: Mapping, processId: string 
     const p = (await db().query<{ channels: Channel[] }>("SELECT channels FROM growth.processes WHERE id = $1 AND kind = 'marketing'", [processId])).rows[0]; if (!p) throw apiError('not_found', 'Choose a marketing process.', 404)
     const channels = [...p.channels], months: MonthIn[] = []
     for (const r of t.rows.slice(0, 3000)) {
+      if (r.some((c) => typeof c === 'string' && /\(delete this row\)/i.test(c))) continue
       const month = monthOf(col(r, 'month')), raw = str(col(r, 'channel')); if (!month || !raw) { skipped++; continue }
       let key = map.values.channel?.[raw], isNew = false
       // A channel on the sheet that the company has not set up yet is added with the sheet's name.
@@ -149,13 +152,14 @@ async function readRows(kind: LinkKind, t: Tbl, map: Mapping, processId: string 
   }
   const cur = map.currency ?? 'USD', account = map.account ?? 'Linked sheet', seen = new Map<string, number>(), txns: RailTxn[] = []
   for (const r of t.rows.slice(0, 20000)) {
+    if (r.some((c) => typeof c === 'string' && /\(delete this row\)/i.test(c))) continue
     const date = dateOf(col(r, 'date')), desc = str(col(r, 'description')).slice(0, 500)
     // A card or expense export lists payments as positive amounts (refunds negative): every row is money out.
     const a0 = map.columns.amount != null ? numOf(col(r, 'amount')) : (numOf(col(r, 'credit')) ?? 0) - Math.abs(numOf(col(r, 'debit')) ?? 0)
     const amt = a0 === null ? null : map.all_out && map.columns.amount != null ? -a0 : a0
     if (!date || !desc || !amt) { skipped++; continue }
     const k = date + '|' + desc + '|' + amt, i = (seen.get(k) ?? 0) + 1; seen.set(k, i)
-    txns.push({ ref: createHash('sha1').update(ref + '|' + k + '|' + i).digest('hex'), date, description: desc, amount: amt, currency: cur, account, spender: str(col(r, 'spender')).slice(0, 120) || null })
+    txns.push({ ref: createHash('sha1').update(ref + '|' + k + '|' + i).digest('hex'), date, description: desc, amount: amt, currency: cur, account, spender: str(col(r, 'spender')).slice(0, 120) || null, balance: numOf(col(r, 'balance')) })
   }
   return { kind, skipped, deals: [] as DealIn[], stages: [] as Stage[], months: [] as MonthIn[], txns, channels: [] as Channel[] }
 }
@@ -196,8 +200,8 @@ export async function diffTable(kind: LinkKind, t: Tbl, map: Mapping, processId:
       if (ch.length) { out.changed++; add({ name: label, what: 'changed', changes: ch }) } else out.unchanged++
     }
   } else {
-    const have = new Set((await db().query<{ source_ref: string }>("SELECT source_ref FROM banking.ledger WHERE source = 'upload' AND source_ref = ANY($1::text[])", [R.txns.map((x) => x.ref.slice(0, 200))])).rows.map((r) => r.source_ref))
-    for (const x of R.txns) { if (have.has(x.ref.slice(0, 200))) out.unchanged++; else { out.added++; add({ name: x.date + ' · ' + x.description.slice(0, 60), what: 'new', changes: [(x.amount < 0 ? 'out ' : 'in ') + fmt(Math.abs(x.amount)) + ' ' + x.currency] }) } }
+    const fresh = new Set(await notYetIn(R.txns, map.entity ?? await companyEntityId()))
+    for (const x of R.txns) { if (!fresh.has(x)) out.unchanged++; else { out.added++; add({ name: x.date + ' · ' + x.description.slice(0, 60), what: 'new', changes: [(x.amount < 0 ? 'out ' : 'in ') + fmt(Math.abs(x.amount)) + ' ' + x.currency] }) } }
   }
   return out
 }
@@ -236,7 +240,10 @@ export async function applyTable(kind: LinkKind, t: Tbl, map: Mapping, processId
     const before = (await db().query<{ channels: Channel[] }>('SELECT channels FROM growth.processes WHERE id = $1', [processId])).rows[0]?.channels.length ?? 0
     if (R.channels.length !== before) await db().query('UPDATE growth.processes SET channels = $2, updated_at = now() WHERE id = $1', [processId, JSON.stringify(R.channels)])
   } else {
-    added = await addToLedger('upload', R.txns, map.entity ?? await companyEntityId()); updated = R.txns.length - added
+    const ent = map.entity ?? await companyEntityId()
+    added = await addToLedger('upload', R.txns, ent); updated = R.txns.length - added
+    // A balance column (bank exports usually have one) gives month-end cash for reconciling with Financials.
+    if (R.txns.some((x) => x.balance != null)) await saveBalances(ent, map.account ?? 'Linked sheet', map.currency ?? 'USD', 'sheet', R.txns.map((x) => ({ date: x.date, balance: x.balance ?? null }))).catch(() => 0)
   }
   return { added, updated, skipped: R.skipped }
 }

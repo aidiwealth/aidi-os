@@ -10,7 +10,7 @@ interface D { currency: string; months: { month: string; in: number; out: number
   movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
   ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
 const route = useRoute(), router = useRouter()
-const tab = computed(() => (['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
+const tab = computed(() => (['spend', 'txns', 'cut', 'reconcile'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
 const { sf, cust, isGroup, companies, entityId } = await useCoScope()
 const { data, refresh, pending } = await useFetch<D>('/api/treasury', { query: computed(() => ({ cust: cust.value })) })
@@ -23,6 +23,8 @@ async function sync() { busy.value = true; msg.value = ''; try { const r = await
 // Upload a statement.
 const lk = ref(false)
 const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null })
+// The statement's currency starts as the company's own (Naira for a Nigerian subsidiary, dollars for a US company).
+watch(() => up.open, (o) => { if (o && d.value?.currency) up.currency = d.value.currency })
 async function upload() {
   if (!up.file) return; busy.value = true; msg.value = ''
   const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency); if (isGroup.value && up.entity) fd.append('entity_id', up.entity)
@@ -52,6 +54,17 @@ async function mark(v: V, status: string, extra: { saving_pct?: number | null; n
   const remind = ['to_cancel', 'downgrade'].includes(status) ? (v.remind_on ?? (() => { const x = new Date(); x.setDate(x.getDate() + 7); return x.toISOString().slice(0, 10) })()) : null
   try { await sf('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind, ...extra } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cut; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ': ' + flagLabel(status) + '.'; await refresh() } catch (e) { msg.value = err(e) }
 }
+// Reconcile: the bank against Financials, month by month.
+interface RL { key: string; label: string; bank: number; fin: number | null }
+interface RR { month: string; status: string; cash: { bank: number | null; fin: number | null; gap: number | null; accounts: number; of: number }; receipts: { bank: number; fin: number | null; ok: boolean | null }; spend: RL[]; spend_total: { bank: number; fin: number | null; ok: boolean | null }; other: { financing: number; other_in: number; transfers: number }; reconciled: { note: string | null; at: string; by: string | null; gap: number | null } | null }
+const rc = ref<{ currency: string; accounts: { name: string; currency: string; balances: number; live: boolean }[]; rows: RR[] } | null>(null), rcOpen = ref(''), rcNote = ref('')
+async function loadRc() { try { rc.value = await sf('/api/treasury/reconcile') } catch (e) { msg.value = err(e) } }
+watch(() => [tab.value, cust.value], () => { if (tab.value === 'reconcile') void loadRc() }, { immediate: true })
+const ST: Record<string, string> = { matches: 'Cash matches', gap: 'Cash differs', partial: 'Some accounts missing', no_balance: 'No bank balance', no_bank: 'No bank data', no_financials: 'No Financials yet' }
+const rm = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, rc.value?.currency ?? 'USD'))
+async function markRc(r: RR, on: boolean) {
+  try { await sf('/api/treasury/reconcile', { method: 'POST', body: { month: r.month, reconciled: on, note: on ? rcNote.value : undefined, gap: r.cash.gap } }); rcNote.value = ''; ok.value = on ? mon(r.month) + ' marked reconciled.' : 'Reconciled mark removed for ' + mon(r.month) + '.'; await loadRc() } catch (e) { msg.value = err(e) }
+}
 const setPct = (v: V, ev: Event) => { const x = (ev.target as HTMLInputElement).value; void mark(v, v.status === 'keep' ? 'downgrade' : v.status, { saving_pct: x === '' ? null : Math.min(100, Math.max(0, Number(x))) }) }
 const setNote = (v: V, ev: Event) => void mark(v, v.status, { note: (ev.target as HTMLInputElement).value.trim() })
 const xlsx = computed(() => '/api/treasury/cut-list' + (cust.value ? '?cust=' + encodeURIComponent(cust.value) : ''))
@@ -64,7 +77,7 @@ const today = new Date().toISOString().slice(0, 10)
   <section class="tr">
     <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
       <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
-    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
+    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['reconcile', 'Reconcile']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
     <ClientOnly><BankFeeds v-if="!data?.ng" class="feeds" :entity="isGroup ? null : entityId" @changed="sync" /></ClientOnly>
@@ -83,7 +96,7 @@ const today = new Date().toISOString().slice(0, 10)
           <div v-if="d.months.length" class="bars"><div v-for="x in d.months" :key="x.month" class="bm" :title="mon(x.month) + ': in ' + m(x.in) + ', out ' + m(x.out)"><div class="bb"><i class="in" :style="{ height: x.in / maxOut * 100 + '%' }" /><i class="out" :style="{ height: x.out / maxOut * 100 + '%' }" /></div><span>{{ mon(x.month).slice(0, 3) }}</span></div></div>
           <p v-else class="mut">No full months yet.</p><div class="lg"><span><i class="in" />Money in</span><span><i class="out" />Money out</span></div></div>
         <div class="card"><div class="ch"><h2>Where transactions come from</h2><span class="mut">{{ d.ledger.count.toLocaleString('en-US') }} transactions{{ d.ledger.since ? ' since ' + d.ledger.since : '' }}.</span></div>
-          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' || r.soon ? (r.soon ? 'Coming soon' : 'Planned') : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
+          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' || r.soon ? 'Coming Soon' : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
       </template>
 
       <template v-if="tab === 'spend'">
@@ -126,6 +139,31 @@ const today = new Date().toISOString().slice(0, 10)
           <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th>Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
             <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
       </template>
+      <template v-if="tab === 'reconcile'">
+        <div class="hb">Your bank against Financials, month by month. <b>Cash</b> is the exact check: the bank's month-end balance (from statements, a sheet's balance column or the live feed) against the cash on your balance sheet. Receipts against revenue and spend against costs differ by timing (invoices not yet paid, bills paid later), so they are a guide. Transfers between your own accounts and companies are left out.</div>
+        <p v-if="!rc" class="mut">Loading…</p>
+        <template v-else>
+          <div class="card pad0"><table class="t rc" data-nosearch><thead><tr><th>Month</th><th class="r">Bank cash</th><th class="r">Financials cash</th><th class="r">Gap</th><th class="r">Receipts / revenue</th><th class="r">Spend / costs</th><th>Status</th><th /></tr></thead>
+            <tbody><template v-for="r in rc.rows" :key="r.month"><tr class="cl" :class="{ on: rcOpen === r.month }" @click="rcOpen = rcOpen === r.month ? '' : r.month">
+              <td><b>{{ mon(r.month) }}</b><small v-if="r.cash.of">{{ r.cash.accounts }} of {{ r.cash.of }} account{{ r.cash.of === 1 ? '' : 's' }} with a balance</small></td>
+              <td class="r">{{ rm(r.cash.bank) }}</td><td class="r">{{ rm(r.cash.fin) }}</td><td class="r" :class="{ neg: r.cash.gap !== null && r.status === 'gap' }">{{ r.cash.gap === null ? '—' : (r.cash.gap > 0 ? '+' : '') + rm(r.cash.gap) }}</td>
+              <td class="r" :class="{ mut2: r.receipts.ok }">{{ rm(r.receipts.bank) }} / {{ rm(r.receipts.fin) }}</td><td class="r" :class="{ mut2: r.spend_total.ok }">{{ rm(r.spend_total.bank) }} / {{ rm(r.spend_total.fin) }}</td>
+              <td><span class="rs" :class="r.reconciled ? 'done' : r.status">{{ r.reconciled ? 'Reconciled' : ST[r.status] }}</span></td><td class="r"><span class="chev">{{ rcOpen === r.month ? '−' : '+' }}</span></td></tr>
+              <tr v-if="rcOpen === r.month" class="dt"><td colspan="8"><div class="rd">
+                <table class="t" data-nosearch><thead><tr><th>Line</th><th class="r">Bank</th><th class="r">Financials</th><th class="r">Difference</th></tr></thead>
+                  <tbody><tr><td>Cash at month end</td><td class="r">{{ rm(r.cash.bank) }}</td><td class="r">{{ rm(r.cash.fin) }}</td><td class="r">{{ r.cash.gap === null ? '—' : rm(r.cash.gap) }}</td></tr>
+                    <tr><td>Customer receipts / revenue</td><td class="r">{{ rm(r.receipts.bank) }}</td><td class="r">{{ rm(r.receipts.fin) }}</td><td class="r">{{ r.receipts.fin === null ? '—' : rm(r.receipts.bank - r.receipts.fin) }}</td></tr>
+                    <tr v-for="x in r.spend" :key="x.key"><td>{{ x.label }}</td><td class="r">{{ rm(x.bank) }}</td><td class="r">{{ rm(x.fin) }}</td><td class="r">{{ x.fin === null ? '—' : rm(x.bank - x.fin) }}</td></tr>
+                    <tr class="mut2"><td>Also in the bank: funding and loans {{ rm(r.other.financing) }} · other money in {{ rm(r.other.other_in) }} · transfers between own accounts {{ rm(r.other.transfers) }}</td><td colspan="3" /></tr></tbody></table>
+                <p v-if="r.status === 'partial'" class="mut">Not every account has a balance for this month: upload its statement (or a sheet with a balance column) so cash can be checked in full.</p>
+                <p v-else-if="r.status === 'gap'" class="mut">Cash differs by {{ rm(Math.abs(r.cash.gap ?? 0)) }}. Common reasons: an account missing from Banking (or from Financials), a statement month not uploaded, money in transit between accounts at month end, or a figure keyed into Financials by mistake.</p>
+                <div v-if="r.reconciled" class="rcd">Reconciled{{ r.reconciled.by ? ' by ' + r.reconciled.by : '' }} on {{ r.reconciled.at.slice(0, 10) }}{{ r.reconciled.note ? ': ' + r.reconciled.note : '' }} <button class="lk" @click.stop="markRc(r, false)">Undo</button></div>
+                <div v-else-if="r.status !== 'no_financials' && r.status !== 'no_bank'" class="rcd"><input v-model="rcNote" maxlength="1000" placeholder="Note (e.g. difference is card payments in transit)" @click.stop><button class="btn sm" @click.stop="markRc(r, true)">Mark reconciled</button></div>
+              </div></td></tr></template></tbody></table></div>
+          <div v-if="rc.accounts.length" class="card"><div class="ch"><h2>Accounts</h2><span class="mut">Where month-end balances come from</span></div>
+            <table class="t" data-nosearch><tbody><tr v-for="a in rc.accounts" :key="a.name"><td>{{ a.name }}</td><td class="mut2">{{ a.currency }}</td><td class="r">{{ a.live ? a.balances + ' balance' + (a.balances === 1 ? '' : 's') + ' known' : 'No balance yet: upload a statement or a sheet with a balance column' }}</td></tr></tbody></table></div>
+        </template>
+      </template>
       <p class="fine">Read-only. Categories are suggestions until you set them; amounts in other currencies are converted at the daily rate. Not financial advice.</p>
     </template>
     <p v-else-if="pending" class="mut">Loading…</p>
@@ -134,7 +172,8 @@ const today = new Date().toISOString().slice(0, 10)
     <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
       <div class="frm"><label v-if="isGroup">Company<select v-model="up.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
         <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label>
-        <DropZone accept=".csv,.pdf" :label="up.file ? up.file.name : 'Drop the statement here'" hint="CSV (best) or PDF, up to 20 MB" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
+        <p class="w mut">Best: your bank's CSV export (or the PDF statement). If you put one together yourself, use the <button type="button" class="lk" @click="downloadTemplate('bank_txns')">template</button>: one row per transaction, the date as 2026-09-30, money in and money out as plain numbers, and the balance after each transaction (it lets Finvry reconcile month-end cash with Financials).</p>
+        <DropZone accept=".csv,.pdf" :label="up.file ? up.file.name : 'Drop the statement here'" hint="CSV (best) or PDF, up to 20 MB · overlapping statements are fine: payments already in are skipped" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file" @click="upload">{{ busy ? 'Reading…' : 'Add to the ledger' }}</button></template>
     </AppModal>
   </section>
@@ -162,4 +201,7 @@ i.in { background: var(--c-navy); } i.out { background: #aab4c2; } .lg { display
 .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 .fs { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; } .sg { display: block; color: var(--c-blue-deep); font-size: 11.5px; margin-top: 3px; }
 .bi.pc { width: 64px; } .nt { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--c-rule); width: 100%; min-width: 180px; } .nw { white-space: nowrap; }
+.rc .cl { cursor: pointer; } .rc tr.on td { background: var(--c-paper-3); } .chev { color: var(--c-muted); } .rd { padding: 10px 6px 14px; display: flex; flex-direction: column; gap: 10px; } .dt > td { background: #fbfcfd; }
+.rs { font-size: 12px; white-space: nowrap; color: var(--c-ink-soft); } .rs.matches, .rs.done { color: var(--c-blue-deep); font-weight: 500; } .rs.gap { color: var(--c-danger); }
+.rcd { display: flex; gap: 8px; align-items: center; font-size: 13px; } .rcd input { flex: 1; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
 </style>

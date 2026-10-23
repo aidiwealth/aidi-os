@@ -61,7 +61,8 @@ export function parseCsv(text: string, currency: string): ParsedStatement {
   const head = rows[hi]!
   const col = (re: RegExp, not?: RegExp) => head.findIndex((c) => re.test(c) && !(not && not.test(c)))
   const ci = { date: col(H.date), desc: col(H.desc), amount: col(H.amount), debit: col(H.debit, H.balance), credit: col(H.credit, H.balance), balance: col(H.balance) }
-  const body = rows.slice(hi + 1).filter((r) => r[ci.date])
+  // Example rows from Finvry's template ("delete this row") are skipped if left in.
+  const body = rows.slice(hi + 1).filter((r) => r[ci.date] && !r.some((c) => /\(delete this row\)/i.test(c)))
   // Decide day/month order from the data itself, then the currency
   let order: 'dmy' | 'mdy' = ['USD'].includes(currency) ? 'mdy' : 'dmy'
   for (const r of body) { const m = r[ci.date]!.match(/^(\d{1,2})[-/.](\d{1,2})[-/.]/); if (m) { if (+m[1]! > 12) { order = 'dmy'; break } if (+m[2]! > 12) { order = 'mdy'; break } } }

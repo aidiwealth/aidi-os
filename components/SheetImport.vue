@@ -7,7 +7,6 @@
 import type { ImportSummary } from '~/shared/growth'
 const props = defineProps<{ open: boolean; kind: 'sales_deals' | 'marketing_months' | 'bank_txns'; processId?: string | null; currency?: string }>()
 const emit = defineEmits<{ close: []; done: [] }>()
-const HEAD: Record<string, string[]> = { sales_deals: ['Deal', 'Customer', 'Contact', 'Value', 'Stage', 'Expected close', 'Source', 'Owner', 'Notes'], marketing_months: ['Month', 'Channel', 'Spend', 'Visitors', 'Leads', 'Marketing qualified', 'Sales qualified', 'Customers', 'Revenue'], bank_txns: ['Date', 'Description', 'Money in', 'Money out', 'Who spent'] }
 const WHAT: Record<string, string> = { sales_deals: 'deals', marketing_months: 'channel results', bank_txns: 'bank transactions' }
 const { sf, isGroup, companies } = await useCoScope()
 const f = reactive({ url: '', name: '', link: true, currency: props.currency ?? 'USD', account: '', entity: '', all_out: '' as '' | 'true' | 'false' })
@@ -54,17 +53,15 @@ async function connect() {
   try { const r = await sf<{ pending: string | null; summary: ImportSummary }>('/api/growth/connect', { method: 'POST', body: { process_id: props.processId, source: crm.source, token: crm.token } }); crm.token = ''; const nm = CRM[crm.source]!.label; crm.source = ''; if (r.pending) review.value = { id: r.pending, name: nm, summary: r.summary }; else ok.value = nm + ' connected; your deals already match.'; await loadLinks() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
-function template() {
-  const blob = new Blob([HEAD[props.kind]!.join(',') + '\n'], { type: 'text/csv' }), u = URL.createObjectURL(blob), a = document.createElement('a')
-  a.href = u; a.download = 'finvry-' + WHAT[props.kind]!.replace(/ /g, '-') + '-template.csv'; a.click(); URL.revokeObjectURL(u)
-}
+const template = () => downloadTemplate(props.kind)
 const LABEL: Record<string, string> = { name: 'Deal', account: 'Customer', status: 'Won or lost', external_id: 'Record ID', contact: 'Contact', value: 'Value', stage: 'Stage', expected_close: 'Expected close', source: 'Source', owner: 'Owner', notes: 'Notes', month: 'Month', channel: 'Channel', spend: 'Spend', visitors: 'Visitors', leads: 'Leads', mqls: 'Marketing qualified', sqls: 'Sales qualified', customers: 'Customers', revenue: 'Revenue', date: 'Date', description: 'Description', spender: 'Who spent', amount: 'Amount', debit: 'Money out', credit: 'Money in' }
 const srcLabel = (l: L) => (l.source === 'hubspot' ? 'HubSpot' : l.source === 'pipedrive' ? 'Pipedrive' : 'Sheet')
 </script>
 <template>
   <AppModal :open="open" :title="'Bring in ' + WHAT[kind]" wide @close="emit('close')">
     <div class="si">
-      <p class="lead">One row per {{ kind === 'sales_deals' ? 'deal' : kind === 'marketing_months' ? 'channel and month' : 'transaction' }}, headings in the first row. Headings are matched for you, with AI filling in what they leave open{{ kind === 'sales_deals' ? ' (including your sheet\'s stage names)' : kind === 'marketing_months' ? ' (including your channel names)' : '' }}. <button class="lk" type="button" @click="template">Download a template</button></p>
+      <p class="lead">One row per {{ kind === 'sales_deals' ? 'deal' : kind === 'marketing_months' ? 'channel and month' : 'transaction' }}, headings in the first row. Headings are matched for you, with AI filling in what they leave open{{ kind === 'sales_deals' ? ' (including your sheet\'s stage names)' : kind === 'marketing_months' ? ' (including your channel names)' : '' }}. <button class="lk" type="button" @click="template">Download a template</button> (with example rows showing the format).</p>
+      <p v-if="kind === 'bank_txns'" class="mut">Best: your bank's own CSV or Excel export. With the template: one row per transaction, the date as 2026-09-30, money in and money out as plain numbers (no currency signs), and the balance after each transaction so month-end cash can be reconciled with Financials. Card exports (Brex, Ramp, Amex) can go in as they are.</p>
       <label v-if="kind === 'bank_txns' && isGroup">Company<select v-model="f.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
       <div v-if="kind === 'bank_txns'" class="g2"><label>Account<input v-model="f.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label><label>Currency<select v-model="f.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></div>
       <DropZone accept=".xlsx,.csv" :disabled="busy" hint="Excel or CSV · brought in once" @change="fromFile" />

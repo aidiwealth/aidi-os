@@ -98,6 +98,9 @@ export async function growthSections(event: H3Event, subject: string, keys: stri
     const ms = t.months.slice(-12)
     const bullets: { text: string; tone?: 'good' | 'watch' | 'risk' }[] = []
     if (t.marked_monthly) bullets.push({ text: 'Savings flagged on the cut list (cuts, downgrades, personal spend): ' + mo(t.marked_monthly) + ' a month' + (typeof t.runway_if_cut === 'number' ? ', taking runway to about ' + t.runway_if_cut + ' months.' : t.runway_if_cut ? ', which ends the burn.' : '.'), tone: 'good' })
+    // Months the founder reconciled (bank against Financials) for this company or the group.
+    const recd = (await db().query<{ month: string }>("SELECT month FROM banking.reconciled WHERE scope = $1 ORDER BY month DESC LIMIT 12", [sc.group ? 'group' : sc.entity ?? 'group']).catch(() => ({ rows: [] }))).rows.map((r) => r.month).reverse()
+    if (recd.length) bullets.push({ text: 'Bank reconciled to Financials (month-end cash checked) for ' + recd.map(ML).join(', ') + '.', tone: 'good' })
     for (const d of t.duplicates.slice(0, 3)) bullets.push({ text: 'Several tools for ' + d.job + ': ' + d.vendors.map((v) => v.name + ' (' + mo(v.monthly) + ')').join(', ') + '.', tone: 'watch' })
     for (const c of t.by_category.filter((c) => c.budget !== null && c.last > (c.budget ?? 0) * 1.1).slice(0, 3)) bullets.push({ text: c.label + ' spend of ' + mo(c.last) + ' is over its ' + mo(c.budget) + ' monthly budget.', tone: 'risk' })
     out.push({ key: 'banking', title: 'Banking and spend', intro: who + ', from the bank ledger (' + t.ledger.count.toLocaleString('en-US') + ' transactions' + (t.ledger.since ? ' since ' + ML(t.ledger.since) : '') + '; transfers between your own accounts left out). Latest full month ' + (t.last_month ? ML(t.last_month) : '–') + '. Amounts in ' + cy + '.',

@@ -23,6 +23,8 @@ export default defineEventHandler(async (event) => {
   const kept = await putObject({ key, body: new Uint8Array(file.data), contentType: mime }).then(() => db().query("INSERT INTO core.documents (id, entity_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, uploaded_by) VALUES ($1,$2,$3,'statement','family',$4,$5,$6,$7,$8)",
     [docId, ent, account + ' statement', key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex'), user.userId])).then(() => true).catch((e) => { console.error('[treasury] keep file', (e as Error).message); return false })
   const added = await addToLedger('upload', parsed.txns.map((t, i) => ({ ref: uploadRef(account, t, i), date: t.date, description: t.description, amount: t.amount, currency, account })), ent)
+  // The statement's balances (running balance and closing), for reconciling month-end cash with Financials.
+  await saveBalances(ent, account, currency, 'statement', [...parsed.txns.map((t) => ({ date: t.date, balance: t.balance })), ...(parsed.period_end && parsed.closing !== null ? [{ date: parsed.period_end, balance: parsed.closing }] : [])]).catch((e) => console.error('[treasury] balances', (e as Error).message))
   const tie = parsed.opening !== null && parsed.closing !== null ? tieOut(parsed.opening, parsed.closing, parsed.txns) : null
   await audit({ event, actorUserId: user.userId, action: 'treasury.upload', objectType: 'document', objectId: kept ? docId : undefined, detail: { source: ext, txns: parsed.txns.length, added } })
   return { ok: true, read: parsed.txns.length, added, from: parsed.period_start, to: parsed.period_end, tie }

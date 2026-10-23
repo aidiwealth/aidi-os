@@ -291,6 +291,29 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('treasury: first categories from what the payment is', TR.autoCategory('google ads', 'NIP TRF GOOGLE ADS', 'out', null) === 'opex_marketing' && TR.autoCategory('aws emea amazon', 'AWS', 'out', null) === 'opex_rnd' && TR.autoCategory('acme', 'TRF FROM CUSTOMER ACME', 'in', null) === 'revenue' && TR.autoCategory('deel payroll', 'DEEL PAYROLL', 'out', null) === 'opex_payroll')
 }
 
+// 9c2. The company's own names are transfers, not vendors; a customer's payment that names the company is not.
+{
+  globalThis.currentOrg = async () => ({ name: 'Termii Inc', settings: {} })
+  globalThis.db = () => ({ query: async () => ({ rows: [{ name: 'Termii Webtech Limited', legal_name: null }, { name: 'Termii Inc', legal_name: 'Termii, Inc.' }] }) })
+  const TR = await jiti.import(join(root, 'server/utils/treasury.ts'))
+  const own = await TR.ownNames(), k = (d) => TR.vendorKey(d).key
+  check('treasury: payments to and from the company\'s own companies are transfers', TR.isOwn(own, k('Transfer to Termii Inc')) && TR.isOwn(own, k('TERMII WEBTECH LTD')) && TR.isOwn(own, k('ACH TRF FROM TERMII INC 0099')), [k('Transfer to Termii Inc'), k('TERMII WEBTECH LTD'), String(own)].join(' | '))
+  check('treasury: a customer payment naming the company stays revenue', !TR.isOwn(own, k('NIP/ZENITH/Acme Corp/TERMII WEBTECH LTD INV 12')) && !TR.isOwn(own, k('AWS EMEA')), k('NIP/ZENITH/Acme Corp/TERMII WEBTECH LTD INV 12'))
+  delete globalThis.db; delete globalThis.currentOrg
+}
+
+// 9c3. The bank template: its example rows are skipped, real rows read with their balances.
+{
+  const BP = await jiti.import(join(root, 'server/utils/bank-parse.ts'))
+  const csv = 'Date,Description,Money in,Money out,Balance,Who spent\n2026-09-01,EXAMPLE Acme Ltd invoice 1042 (delete this row),2500.00,,12500.00,\n2026-09-02,Acme Ltd invoice 7,1000,,11000,\n2026-09-03,AWS,,250.50,10749.50,Ada\n'
+  const r = BP.parseCsv(csv, 'USD')
+  check('bank template: example rows skipped, money in and out and balance read', r.txns.length === 2 && r.txns[0].amount === 1000 && r.txns[1].amount === -250.5 && r.txns[1].balance === 10749.5, JSON.stringify(r.txns))
+  const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
+  const t = GI.tableOf([{ name: 'S', rows: csv.trim().split('\n').map((l) => l.split(',')) }])
+  const m = await GI.mapTable('bank_txns', t, {})
+  check('bank template as a sheet: every column found', m.columns.date === 0 && m.columns.description === 1 && m.columns.credit === 2 && m.columns.debit === 3 && m.columns.balance === 4 && m.columns.spender === 5 && m.all_out === false, JSON.stringify(m.columns))
+}
+
 // 9d. Sales and marketing: conversion from deal moves, the weighted pipeline, and what a budget buys.
 {
   const G = await jiti.import(join(root, 'shared/growth.ts'))
