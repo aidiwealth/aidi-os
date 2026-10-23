@@ -10,6 +10,8 @@ export default defineEventHandler(async (event) => {
   const spec = ACTION_KINDS[b.data.kind]
   await requireRole(event, ...spec.roles)
   await requireModule(event, spec.module)
+  // The module as this person may use it now (the admin's role choices on the Modules page, and company limits).
+  if (!(await usableModules(user.roles, event)).has(spec.module)) throw apiError('forbidden', 'You do not have access to this.', 403)
   const g = b.data.args
   if (b.data.kind === 'secondary_status') {
     const v = z.object({ id: z.string().uuid(), status: z.enum(['new', 'reviewing', 'interested', 'passed', 'expired']) }).safeParse(g)

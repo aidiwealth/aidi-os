@@ -6,7 +6,7 @@ import { burnReview, deriveLines, withSecurities } from '~/shared/fin-view'
 import type { H3Event } from 'h3'
 
 export interface ACtx { event: H3Event; userId: string; roles: string[] }
-export interface ATool { name: string; module: string | null; description: string; input_schema: Record<string, unknown>; run: (a: Record<string, any>, c: ACtx) => Promise<unknown> }
+export interface ATool { name: string; module: string | null; roles?: string[]; description: string; input_schema: Record<string, unknown>; run: (a: Record<string, any>, c: ACtx) => Promise<unknown> }
 const S = (props: Record<string, unknown> = {}, req: string[] = []) => ({ type: 'object', properties: props, required: req })
 const str = (v: unknown, n = 80) => String(v ?? '').trim().slice(0, n)
 const daysTo = (d: string | null) => (d ? Math.round((new Date(d + 'T00:00:00Z').getTime() - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime()) / 86400e3) : null)
@@ -97,7 +97,7 @@ export const proposeAction: ATool = {
 }
 
 export const aidiExtra: ATool[] = [
-  { name: 'secondaries', module: 'secondaries', description: 'Secondaries / SPV opportunities (from Meridian, Wefunder or added by hand): company, what it is, sector, stage, lead and co-investors, minimum, valuation or cap, days left, status, whether it fits our criteria, the AI screen (score, verdict, summary), wealth clients interested, and amount invested. Filter by status (open = new/reviewing/interested) or text.', input_schema: S({ status: { type: 'string', description: 'open, new, reviewing, interested, invested, passed, expired or all' }, q: { type: 'string' } }),
+  { name: 'secondaries', module: 'secondaries', description: 'Secondaries / SPV opportunities (from deal alerts or added by hand): company, what it is, sector, stage, lead and co-investors, minimum, valuation or cap, days left, status, whether it fits our criteria, the AI screen (score, verdict, summary), wealth clients interested, and amount invested. Filter by status (open = new/reviewing/interested) or text.', input_schema: S({ status: { type: 'string', description: 'open, new, reviewing, interested, invested, passed, expired or all' }, q: { type: 'string' } }),
     run: async (a) => {
       const st = str(a.status, 20) || 'open'
       const rows = (await db().query<Record<string, any>>(`SELECT s.id, s.company, s.title, s.sector, s.stage, s.source, s.lead, s.co_investors, s.min_investment::float, s.valuation, to_char(s.closes_at, 'YYYY-MM-DD') AS closes_at, s.status, s.fits, s.fit_note, s.amount::float AS invested, s.ai_screen,
