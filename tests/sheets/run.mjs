@@ -320,6 +320,20 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('bank: a card or loan is owed, a checking or savings account is cash', B.isDebt({ type: 'credit', subtype: 'credit card' }) && B.isDebt({ type: 'loan', subtype: 'business' }) && B.isCard({ type: 'credit', subtype: 'credit card' }) && !B.isDebt({ type: 'depository', subtype: 'checking' }) && !B.isDebt({ type: 'depository', subtype: 'savings' }) && B.CARD_PAY.test('BREX CARD PAYMENT') && !B.CARD_PAY.test('AWS EMEA'))
 }
 
+// 9c5. Plaid notices: only a valid, fresh signature over this exact body is accepted.
+{
+  const { generateKeyPairSync, sign, createHash } = await import('node:crypto')
+  const PS = await jiti.import(join(root, 'server/utils/plaid-sync.ts'))
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' }), jwk = publicKey.export({ format: 'jwk' })
+  const body = JSON.stringify({ webhook_type: 'TRANSACTIONS', webhook_code: 'SYNC_UPDATES_AVAILABLE', item_id: 'x' })
+  const mk = (claims) => { const h = Buffer.from(JSON.stringify({ alg: 'ES256', kid: 'k1' })).toString('base64url'), p = Buffer.from(JSON.stringify(claims)).toString('base64url'); return h + '.' + p + '.' + sign('sha256', Buffer.from(h + '.' + p), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url') }
+  const sha = createHash('sha256').update(body).digest('hex'), now = Date.now(), get = async () => jwk
+  const good = await PS.plaidWebhookVerified(body, mk({ iat: Math.floor(now / 1000), request_body_sha256: sha }), get, now)
+  const tampered = await PS.plaidWebhookVerified(body.replace('x', 'y'), mk({ iat: Math.floor(now / 1000), request_body_sha256: sha }), get, now)
+  const stale = await PS.plaidWebhookVerified(body, mk({ iat: Math.floor(now / 1000) - 900, request_body_sha256: sha }), get, now)
+  check('plaid notices: a valid signature passes; a changed body or an old notice does not', good && !tampered && !stale, [good, tampered, stale].join(' '))
+}
+
 // 9d. Sales and marketing: conversion from deal moves, the weighted pipeline, and what a budget buys.
 {
   const G = await jiti.import(join(root, 'shared/growth.ts'))

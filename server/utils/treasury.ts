@@ -144,16 +144,9 @@ export async function fixCardPayments() {
   return rows.length
 }
 // The bank feed, pulled at most every six hours (twelve months the first time).
-export async function syncBankFeed(force = false): Promise<number> {
-  const rail = RAILS[0]!
-  if (!(await rail.available())) return 0
-  const last = (await db().query<{ at: string | null; n: number }>("SELECT max(created_at)::text AS at, count(*)::int AS n FROM banking.ledger WHERE source = 'bank_feed'")).rows[0]
-  if (!force && last?.at && Date.now() - new Date(last.at).getTime() < 6 * 3600_000) return 0
-  // Twelve months the first time, and again when a card is connected whose purchases are not in yet.
-  const newCard = (await cardLabels()).length ? !(await db().query("SELECT 1 FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[]) LIMIT 1", [await cardLabels()])).rowCount : false
-  const d = new Date(); d.setUTCMonth(d.getUTCMonth() - (last?.n && !newCard ? 2 : 12)); d.setUTCDate(1)
-  try { return await addToLedger('bank_feed', await rail.pull!(d.toISOString().slice(0, 10)), await companyEntityId()) } catch (e) { console.error('[treasury] bank feed', (e as Error).message); return 0 }
-}
+// The live bank feed: incremental, per connection (plaid-sync.ts). Kept under this name for the pages and jobs that
+// call it.
+export async function syncBankFeed(force = false): Promise<number> { return syncPlaidItems(force) }
 
 // Cash and burn on the same basis as Financials and the Stage Monitor, for the runway each cut gives back.
 export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null }> {

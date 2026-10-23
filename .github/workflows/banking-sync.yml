@@ -1,0 +1,16 @@
+# Every six hours: bank feeds and balances, linked sheets and CRMs (changes wait for the founder to accept), and
+# category tidying, for every live company, so pages open without waiting for banks. Needs the repository secret
+# CRON_SECRET (same value as NUXT_CRON_SECRET).
+name: Banking sync
+on:
+  schedule:
+    - cron: '20 */6 * * *'
+  workflow_dispatch: {}
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bank feeds, sheets and CRMs
+        run: |
+          curl -fsS -m 600 -X POST https://app.theaidigroup.com/api/public/cron/banking \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'

@@ -20,6 +20,16 @@ async function connect() {
     P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); emit('changed'); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
   } catch (e) { const x = e as { data?: { data?: { error?: { message?: string } } }; statusCode?: number }; msg.value = x.data?.data?.error?.message ?? (x.statusCode ? 'Could not start the bank connection (error ' + x.statusCode + '). Please try again in a minute.' : 'Could not load the bank connection window. Check your internet connection or ad blocker and try again.') } finally { busy.value = false }
 }
+// The bank needs the person to sign in again: Plaid Link in update mode for that connection.
+async function reconnect(id: string) {
+  busy.value = true; msg.value = ''
+  try {
+    await loadScript()
+    const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST', body: { item: id } })
+    const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid
+    P.create({ token: link_token, onSuccess: async () => { try { await $fetch('/api/plaid/items/' + id + '/reconnected', { method: 'POST' }); emit('changed'); await refresh() } catch { msg.value = 'Reconnected, but the balances could not load yet. Refresh in a minute.' } finally { busy.value = false } }, onExit: () => { busy.value = false } }).open()
+  } catch { msg.value = 'Could not start reconnecting. Try again in a minute.'; busy.value = false }
+}
 async function disconnect(id: string, name: string | null) { if (!await askConfirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
 const manage = ref(false)
 // Cards and loans are money owed: shown after the bank accounts, marked as owed, and not in the balance.
@@ -52,8 +62,8 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
         <div class="av">{{ a.available !== null && a.available !== a.current ? (a.debt ? 'Credit available ' : 'Available ') + fmt(a.available, a.currency) : a.error ? 'Needs attention' : '\u00a0' }}</div>
       </div>
     </div>
-    <div v-if="manage" class="mg"><div v-for="it in data.items" :key="it.id" class="mi"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button class="lk red" type="button" @click="disconnect(it.id, it.institution)">Disconnect</button></div></div>
-    <p v-else-if="data.items.some((i) => i.error)" class="err">{{ data.items.filter((i) => i.error).map((i) => (i.institution ?? 'A bank') + ' needs attention').join(' · ') }}. <button class="lk" type="button" @click="manage = true">Manage</button></p>
+    <div v-if="manage" class="mg"><div v-for="it in data.items" :key="it.id" class="mi"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button v-if="it.error" class="lk" type="button" :disabled="busy" @click="reconnect(it.id)">Reconnect</button><button class="lk red" type="button" @click="disconnect(it.id, it.institution)">Disconnect</button></div></div>
+    <p v-else-if="data.items.some((i) => i.error)" class="err">{{ data.items.filter((i) => i.error).map((i) => (i.institution ?? 'A bank') + ' needs attention').join(' · ') }}. <button v-if="data.manage" class="lk" type="button" :disabled="busy" @click="reconnect(data.items.find((i) => i.error)!.id)">Reconnect</button> <button class="lk" type="button" @click="manage = true">Manage</button></p>
     <p v-if="data.coverage?.partial" class="cov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg><span>US accounts only{{ data.coverage.reported ? ': ' + short(data.total, data.currency) + ' of the ' + short(data.coverage.reported, data.currency) + ' cash in Financials' + (data.coverage.as_of ? ' (' + new Date(data.coverage.as_of + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) + ')' : '') : '' }}. Cash, runway and forecasts use Financials.</span></p>
     <p v-if="msg" class="error">{{ msg }}</p>
   </div>

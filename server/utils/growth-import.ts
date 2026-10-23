@@ -299,6 +299,6 @@ export async function settleImport(id: string, accept: boolean, userId: string |
 }
 // Links kept in step: synced when their page opens, at most every six hours.
 export async function syncDue(kind: LinkKind, processId: string | null) {
-  const due = (await db().query<GLink>("SELECT " + LINK_COLS + " FROM growth.links WHERE kind = $1 AND ($2::uuid IS NULL OR process_id = $2) AND auto AND (last_synced_at IS NULL OR last_synced_at < now() - interval '6 hours') LIMIT 3", [kind, processId])).rows
+  const due = (await db().query<GLink>("SELECT " + LINK_COLS + " FROM growth.links WHERE kind = $1 AND ($2::uuid IS NULL OR process_id = $2) AND auto AND (last_synced_at IS NULL OR last_synced_at < now() - interval '6 hours') LIMIT " + (processId ? 3 : 20), [kind, processId])).rows
   for (const l of due) await syncGrowthLink(l, null).catch(() => {})
 }

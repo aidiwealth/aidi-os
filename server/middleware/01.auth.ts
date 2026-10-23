@@ -23,6 +23,8 @@ export default defineEventHandler(async (event) => {
   }
   event.context.user = s
   event.context.orgId = s.orgId
+  // Finvry: two-step verification must be on before anything else (signing in, the menu and set-up itself still work).
+  if (!/^\/api\/(auth|account|modules|notifications)(\/|$)/.test(path) && await mfaRequired(event, s)) throw apiError('mfa_setup_required', 'Turn on two-step verification to continue.', 403)
   event.context.entityScope = ''
   event.context.custEntity = ''
   // Roles limited to an entity see only that company, or that company and its subsidiaries when the role says so

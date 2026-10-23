@@ -4,12 +4,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (String(to.name ?? '').startsWith('handle')) return
   if (to.path === '/login' || to.path === '/start' || to.path === '/partners' || to.path === '/rewards' || to.path.startsWith('/c/') || to.path.startsWith('/u/') || to.path.startsWith('/d/') || to.path.startsWith('/unsub/') || to.path.startsWith('/report/') || to.path.startsWith('/job/') || to.path.startsWith('/pay/') || to.path.startsWith('/lp/') || to.path === '/developers' || to.path.startsWith('/b/') || to.path.startsWith('/deck/') || to.path.startsWith('/wv/') || to.path.startsWith('/legal/') || to.path === '/integrations/quickbooks/disconnected' || to.path.startsWith('/wr/') || to.path.startsWith('/wpay/') || to.path === '/status' || to.path.startsWith('/bill/') || to.path.startsWith('/info/') || to.path.startsWith('/formation/') || to.path.startsWith('/share/') || to.path.startsWith('/v/') || to.path.startsWith('/sign/')) return
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
-  let me: { platform: boolean; customers_view?: boolean; org: { id: string } | null }
+  let me: { platform: boolean; customers_view?: boolean; mfa_required?: boolean; org: { id: string } | null }
   try {
     me = await $fetch('/api/auth/me', { headers })
   } catch {
     return navigateTo('/login')
   }
+  // Finvry: two-step verification first, and again whenever it is off.
+  if (me.mfa_required && to.path !== '/account') return navigateTo('/account?required=1')
   // Team roles in the Aidi workspace may view Finvry customer accounts (read-only); the rest of the console is for staff.
   if (to.path === '/platform/customers' || to.path.startsWith('/platform/customers/')) return (me.platform || me.customers_view) && useBrand().key === 'aidi' ? undefined : navigateTo('/')
   if (to.path === '/platform' || to.path.startsWith('/platform/')) return me.platform && useBrand().key === 'aidi' ? undefined : navigateTo('/')

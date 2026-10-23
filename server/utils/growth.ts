@@ -70,7 +70,7 @@ export async function salesView(pid?: string, sc?: GScope) {
   const list = await processes('sales', sc), p = list.find((x) => x.id === pid) ?? list[0] ?? null
   const people = await orgPeople()
   // Sheets kept in step bring their deals in first (at most every six hours).
-  if (p) await syncDue('sales_deals', p.id).catch(() => {})
+  if (p) inBackground('sync:' + p.id, () => syncDue('sales_deals', p.id))
   const channels = (await processes('marketing', sc)).flatMap((m) => m.channels.map((c) => ({ key: c.key, name: c.name })))
   const rollup = sc?.group && list.length ? await salesRollup(sc, list) : null
   if (!p) return { processes: [], process: null, deals: [], stats: null, people, channels, rollup, templates: Object.entries(SALES_TEMPLATES).map(([k, t]) => ({ key: k, label: t.label })) }
@@ -87,7 +87,7 @@ export async function salesView(pid?: string, sc?: GScope) {
 export async function marketingView(pid?: string, monthsBack = 6, sc?: GScope) {
   const list = await processes('marketing', sc), p = list.find((x) => x.id === pid) ?? list[0] ?? null
   if (!p) return { processes: [], process: null, campaigns: [], rows: [], months: [], stats: null, avg_deal: null, vendors: [], rollup: null }
-  await syncDue('marketing_months', p.id).catch(() => {})
+  inBackground('sync:' + p.id, () => syncDue('marketing_months', p.id))
   const now = new Date(), months = Array.from({ length: monthsBack }, (_, k) => { const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack + 1 + k, 1)); return d.toISOString().slice(0, 7) })
   const typed = (await db().query<ChannelMonth & { id: string }>('SELECT id, channel_key, month, spend::float, visitors, leads, mqls, sqls, customers, revenue::float FROM growth.channel_months WHERE process_id = $1', [p.id])).rows
   // Filled in from the rest of Finvry when not typed: spend from the bank ledger (the channel's vendors), customers

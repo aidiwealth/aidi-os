@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
     if (step === null) throw apiError('bad_code', 'That code is not right. Enter the current 6-digit code from your app.', 400)
     const rc = newRecoveryCodes()
     await db().query('UPDATE core.user_mfa SET enabled_at = now(), recovery_hashes = $2, last_step = $3, updated_at = now() WHERE user_id = $1', [user.userId, rc.hashes, step])
+    forgetMfa(user.userId)
     await audit({ event, actorUserId: user.userId, action: 'account.mfa_on', objectType: 'user', objectId: user.userId })
     try { await sendEmail({ to: user.email, subject: 'Two-step verification is on', text: 'Two-step verification was turned on for your ' + issuer + ' account. If this was not you, contact support right away.', html: '<p>Two-step verification was turned on for your ' + issuer + ' account.</p><p>If this was not you, contact support right away.</p>' }) } catch { /* ignore */ }
     return { ok: true, recovery_codes: rc.codes }
@@ -30,6 +31,7 @@ export default defineEventHandler(async (event) => {
   if (!(await verifySecondFactor(user.userId, String(b.data.code ?? '')))) throw apiError('bad_code', 'Enter a current code from your app (or a recovery code) to confirm.', 400)
   if (b.data.action === 'recovery') { const rc = newRecoveryCodes(); await db().query('UPDATE core.user_mfa SET recovery_hashes = $2, updated_at = now() WHERE user_id = $1', [user.userId, rc.hashes]); return { ok: true, recovery_codes: rc.codes } }
   await db().query('DELETE FROM core.user_mfa WHERE user_id = $1', [user.userId])
+  forgetMfa(user.userId)
   await audit({ event, actorUserId: user.userId, action: 'account.mfa_off', objectType: 'user', objectId: user.userId })
   try { await sendEmail({ to: user.email, subject: 'Two-step verification is off', text: 'Two-step verification was turned off for your ' + issuer + ' account. If this was not you, contact support right away.', html: '<p>Two-step verification was turned off for your ' + issuer + ' account.</p><p>If this was not you, contact support right away.</p>' }) } catch { /* ignore */ }
   return { ok: true }

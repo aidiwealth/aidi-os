@@ -135,6 +135,7 @@
  "server/api/public/webhooks/fincra.post.ts": 4,
  "server/api/public/webhooks/inbound-email.post.ts": 1,
  "server/api/public/webhooks/monnify.post.ts": 1,
+ "server/api/public/webhooks/plaid.post.ts": 1,
  "server/api/public/wpay/[token].get.ts": 1,
  "server/api/public/wpay/[token].post.ts": 1,
  "server/api/public/wr/[token].post.ts": 4,

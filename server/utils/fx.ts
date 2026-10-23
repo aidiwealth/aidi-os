@@ -10,11 +10,20 @@ async function refresh(): Promise<void> {
       await db().query("INSERT INTO fx.history (quote, month, per_usd) VALUES ($1, date_trunc('month', now())::date, $2) ON CONFLICT (quote, month) DO UPDATE SET per_usd = EXCLUDED.per_usd", [q, v]).catch(() => {}) } })
   } catch (err) { console.error('[fx] refresh failed', err) }
 }
+// Read once every few minutes per server, not on every conversion (pages convert hundreds of amounts).
+let cache: { at: number; v: { rates: Map<string, number>; asOf: string | null } } | null = null
 export async function fxRates(): Promise<{ rates: Map<string, number>; asOf: string | null }> {
+  if (cache && Date.now() - cache.at < 5 * 60e3) return cache.v
+  const v = await fxRatesFresh(); if (v.rates.size >= 5) cache = { at: Date.now(), v }
+  return v
+}
+async function fxRatesFresh(): Promise<{ rates: Map<string, number>; asOf: string | null }> {
   const load = async () => (await asPlatform(() => db().query<{ quote: string; per_usd: string; fetched_at: string }>('SELECT quote, per_usd::text, fetched_at FROM fx.rates'))).rows
   let rows = await load()
   const newest = rows.reduce((m, r) => (r.fetched_at > m ? r.fetched_at : m), '')
-  if (!newest || Date.now() - new Date(newest).getTime() > 24 * 3600e3 || rows.length < 5) { refreshing ??= refresh().finally(() => { refreshing = null }); await refreshing; rows = await load() }
+  // No rates yet: wait for them. Rates a day old: use them now and refresh in the background.
+  if (rows.length < 5) { refreshing ??= refresh().finally(() => { refreshing = null }); await refreshing; rows = await load() }
+  else if (!newest || Date.now() - new Date(newest).getTime() > 24 * 3600e3) { refreshing ??= refresh().finally(() => { refreshing = null; cache = null }) }
   return { rates: new Map(rows.map((r) => [r.quote, Number(r.per_usd)])), asOf: rows.reduce((m, r) => (r.fetched_at > m ? r.fetched_at : m), '') || null }
 }
 // How many units of `to` one unit of `from` is worth (null if a rate is missing).

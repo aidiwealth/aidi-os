@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // Account security: turn on two-step verification with an authenticator app.
 useHead({ title: 'Account security' })
-const { data: me } = await useFetch<{ email: string }>('/api/auth/me', { key: 'me' })
+const { data: me, refresh: refreshMe } = await useFetch<{ email: string; mfa_required?: boolean }>('/api/auth/me', { key: 'me' })
+// Finvry asks everyone to turn this on before using the workspace (and again whenever it is off).
+const required = computed(() => !!me.value?.mfa_required || useRoute().query.required === '1')
+async function done() { await refreshMe(); await refreshNuxtData('modules').catch(() => {}); await navigateTo('/') }
 const { data: st, refresh } = await useFetch<{ enabled: boolean; enabled_at: string | null; recovery_left: number }>('/api/account/mfa', { key: 'mfa' })
 const setup = ref<{ secret: string; qr: string } | null>(null), code = ref(''), codes = ref<string[]>([]), msg = ref(''), busy = ref(false), mode = ref<'' | 'disable' | 'recovery'>('')
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
@@ -15,6 +18,7 @@ function copyCodes() { navigator.clipboard?.writeText(codes.value.join('\n')) }
 <template>
   <section class="acc">
     <p class="label">Account</p><h1>Account security</h1><p class="lead">Signed in as <b>{{ me?.email }}</b>. You sign in with a code sent to your email; two-step verification adds a code from an authenticator app on your phone.</p>
+    <div v-if="required && !st?.enabled" class="req"><b>Turn on two-step verification to continue.</b> Finvry holds your company's financials, bank data and investor records, so every account uses a code from an authenticator app as well as your email. It takes about a minute.</div>
     <div class="card">
       <div class="hd"><div><h2>Two-step verification</h2><p class="mut">Use Google Authenticator, Microsoft Authenticator, 1Password, Authy or any app that supports authenticator codes.</p></div><span class="pill" :class="{ on: st?.enabled }">{{ st?.enabled ? 'On' : 'Off' }}</span></div>
       <div v-if="codes.length" class="rc"><h3>Save your recovery codes</h3><p class="mut">Each code works once if you lose your phone. Store them somewhere safe; they will not be shown again.</p><div class="grid"><code v-for="c in codes" :key="c">{{ c }}</code></div><div class="row"><button class="btn secondary sm" @click="copyCodes">Copy codes</button><button class="btn sm" @click="codes = []">I have saved them</button></div></div>
@@ -29,6 +33,7 @@ function copyCodes() { navigator.clipboard?.writeText(codes.value.join('\n')) }
         <div v-else class="row"><button class="btn secondary" @click="mode = 'recovery'">New recovery codes</button><button class="btn secondary" @click="mode = 'disable'">Turn off</button></div>
       </template>
       <p v-if="msg" class="error">{{ msg }}</p>
+      <button v-if="st?.enabled && (required || codes.length) && useRoute().query.required === '1'" class="btn" type="button" @click="done">{{ codes.length ? 'I have saved my codes: continue' : 'Continue' }}</button>
     </div>
   </section>
 </template>
@@ -42,4 +47,5 @@ function copyCodes() { navigator.clipboard?.writeText(codes.value.join('\n')) }
 .lnk { background: none; border: 0; color: var(--c-muted); cursor: pointer; font: inherit; font-size: 13px; padding: 0; } .btn.danger { background: var(--c-danger); border-color: var(--c-danger); }
 .rc { background: var(--c-paper-2); padding: 16px; } .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 12px 0; } .grid code { background: #fff; text-align: center; padding: 6px; }
 .error { color: var(--c-danger); margin: 0; } @media (max-width: 640px) { .setup { grid-template-columns: 1fr; } }
+.req { border: 1px solid var(--c-rule-strong); background: #f6f8fb; padding: 12px 16px; margin: 0 0 14px; font-size: 14px; line-height: 1.55; }
 </style>
