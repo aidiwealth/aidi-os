@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
 
 // The rails: one contract, an adapter per provider, so pages never depend on which one a company uses.
-export interface RailTxn { entity?: string | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
+export interface RailTxn { entity?: string | null; spender?: string | null; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
 export interface Rail { key: 'bank_feed' | 'upload' | 'fincra'; label: string; note: string; available: () => Promise<boolean>; pull?: (from: string) => Promise<RailTxn[]> }
 interface PTxn { transaction_id: string; account_id: string; amount: number; date: string; pending: boolean; name: string; merchant_name?: string | null; iso_currency_code: string | null; unofficial_currency_code: string | null; personal_finance_category?: { primary?: string } | null }
 export const RAILS: Rail[] = [
@@ -73,9 +73,9 @@ export async function addToLedger(source: Rail['key'], txns: RailTxn[], entityId
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
     const rule = rules.get(v.key), cat = rule ?? autoCategory(v.key, t.description, dir, t.bank_category ?? null)
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
-    const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
-      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null])
+    const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
+      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null, t.spender ?? null])
     n += r.rowCount ?? 0
   }
   return n
@@ -106,7 +106,14 @@ const SAME_JOB: [string, RegExp][] = [['Video calls', /\b(zoom|google meet|teams
   ['File storage', /\b(dropbox|box|google one|onedrive)\b/], ['CRM', /\b(hubspot|salesforce|pipedrive|zoho|close)\b/], ['Email sending', /\b(mailchimp|sendgrid|brevo|mailgun|postmark|resend)\b/],
   ['Design', /\b(figma|canva|adobe|sketch)\b/], ['Code hosting', /\b(github|gitlab|bitbucket)\b/], ['Cloud hosting', /\b(aws|amazon web|google cloud|azure|digitalocean|vercel|heroku|render|netlify)\b/], ['Project tracking', /\b(jira|linear|asana|trello|monday|clickup)\b/]]
 
-export interface Vendor { key: string; name: string; category: string | null; months: Record<string, number>; total: number; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null }
+export interface Vendor { key: string; name: string; category: string | null; months: Record<string, number>; total: number; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; saving_pct: number | null; suggest?: { flag: string; why: string } | null }
+// Spend that looks personal, and money sent through transfer services (no clear payee): flagged for a look, the way
+// founders do it in their own cut-list sheets.
+const PERSONAL = /\b(spa|salon|barber|fitness|gym|netflix|spotify|disney|hulu|playstation|xbox|brewery|pub|liquor|wine shop|cinema|experian|credit karma|dating|uber eats|doordash|grubhub|deliveroo|glovo|chowdeck)\b/
+const PAYROLL = /\b(payroll|salar|wages|deel|gusto|rippling|raenest|oyster|remote com|seamlesshr|paystack payroll)/
+const TRANSFER = /\b(wise|transferwise|paypal|payoneer|remitly|western union|moneygram|venmo|cash app|zelle|revolut|grey|chipper)\b/
+// What a flag saves a month: cut and personal the whole payment, a downgrade its saving share (half unless set).
+export const savingOf = (v: { status: string; monthly: number; saving_pct: number | null }) => (v.status === 'to_cancel' || v.status === 'personal' ? v.monthly * (v.saving_pct ?? 100) / 100 : v.status === 'downgrade' ? v.monthly * (v.saving_pct ?? 50) / 100 : 0)
 // The spend view and the cut list, in the company's currency, from the last twelve months of the ledger.
 // The ledger for the company chosen at the top (transactions without a company count as the main one's), or every
 // company's for the group; amounts in that company's currency, or the group's reporting currency.
@@ -127,10 +134,10 @@ export async function treasuryView(sc: TScope) {
     const a = Number(r.amt); (months[r.m] ??= { in: 0, out: 0 })[r.direction as 'in' | 'out'] += a
     if (r.direction !== 'out') continue
     const c = r.category ?? 'opex_other'; (cats[c] ??= {})[r.m] = (cats[c]![r.m] ?? 0) + a
-    const v = vend.get(r.vendor_key) ?? { key: r.vendor_key, name: r.vendor, category: c, months: {}, total: 0, monthly: 0, recurring: false, last: r.last, status: 'keep', remind_on: null, note: null }
+    const v = vend.get(r.vendor_key) ?? { key: r.vendor_key, name: r.vendor, category: c, months: {}, total: 0, monthly: 0, recurring: false, last: r.last, status: 'keep', remind_on: null, note: null, saving_pct: null }
     v.months[r.m] = (v.months[r.m] ?? 0) + a; v.total += a; if (r.last > v.last) v.last = r.last; vend.set(r.vendor_key, v)
   }
-  const st = new Map((await db().query<{ vendor_key: string; status: string; remind_on: string | null; note: string | null }>("SELECT vendor_key, status, to_char(remind_on, 'YYYY-MM-DD') AS remind_on, note FROM banking.vendors")).rows.map((r) => [r.vendor_key, r]))
+  const st = new Map((await db().query<{ vendor_key: string; status: string; remind_on: string | null; note: string | null; saving_pct: number | null }>("SELECT vendor_key, status, to_char(remind_on, 'YYYY-MM-DD') AS remind_on, note, saving_pct::float FROM banking.vendors")).rows.map((r) => [r.vendor_key, r]))
   const med = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)]! : 0 }
   // Recurring: paid in at least three of the last four full months (or every one of them when there are fewer).
   const last4 = full.slice(-4)
@@ -138,7 +145,7 @@ export async function treasuryView(sc: TScope) {
     const paid = last4.filter((m) => (v.months[m] ?? 0) > 0)
     v.recurring = last4.length >= 2 && paid.length >= Math.min(3, last4.length) && (v.months[thisM] !== undefined || paid.includes(lastM ?? ''))
     v.monthly = Math.round(med(last3.map((m) => v.months[m] ?? 0).filter((x) => x > 0)) * 100) / 100
-    const s = st.get(v.key); if (s) { v.status = s.status; v.remind_on = s.remind_on; v.note = s.note }
+    const s = st.get(v.key); if (s) { v.status = s.status; v.remind_on = s.remind_on; v.note = s.note; v.saving_pct = s.saving_pct }
   }
   const cb = await cashAndBurn(cur, sc.group ? 'group' : ent ? 'entity:' + ent : undefined)
   // Bank burn when Financials has none: money out less money in, over the last three full months.
@@ -148,10 +155,49 @@ export async function treasuryView(sc: TScope) {
   const now = runway(burn)
   // Taxes, loan payments and transfers are not choices to cut.
   const recurring = [...vend.values()].filter((v) => v.recurring && v.monthly > 0 && !['tax', 'interest', 'transfer', 'financing'].includes(v.category ?? '')).sort((a, b) => b.monthly - a.monthly)
-  const cut = recurring.filter((v) => v.status !== 'cancelled').map((v) => { const after = burn === null ? null : burn - v.monthly; return { ...v, runway_gain: now === null || after === null ? null : after <= 0 ? 'stops the burn' : Math.round((runway(after)! - now) * 10) / 10 } })
-    .sort((a, b) => (typeof b.runway_gain === 'number' ? b.runway_gain : 999) - (typeof a.runway_gain === 'number' ? a.runway_gain : 999)).slice(0, 40)
-  const marked = recurring.filter((v) => v.status === 'to_cancel').reduce((s, v) => s + v.monthly, 0)
-  const dupes = SAME_JOB.map(([job, re]) => ({ job, vendors: recurring.filter((v) => re.test(v.key + ' ' + v.name.toLowerCase())).map((v) => ({ name: v.name, monthly: v.monthly })) })).filter((g) => g.vendors.length > 1)
+  const dupes = SAME_JOB.map(([job, re]) => ({ job, vendors: recurring.filter((v) => re.test(v.key + ' ' + v.name.toLowerCase())).map((v) => ({ key: v.key, name: v.name, monthly: v.monthly })) })).filter((g) => g.vendors.length > 1)
+  // A suggested flag for each recurring payment (the founder decides): personal-looking, transfers with no clear payee,
+  // a second tool for the same job, a bill rising fast, the largest bill.
+  const recTotal = recurring.reduce((s, v) => s + v.monthly, 0)
+  for (const v of recurring) {
+    const t = v.key + ' ' + v.name.toLowerCase(), dup = dupes.find((g) => g.vendors.some((x) => x.key === v.key)), lastV = lastM ? v.months[lastM] ?? 0 : 0
+    v.suggest = PERSONAL.test(t) ? { flag: 'personal', why: 'Looks personal: take it off the company card or have it paid back.' }
+      : TRANSFER.test(t) ? { flag: 'review', why: 'Money sent through a transfer service: confirm who it goes to and why.' }
+      : dup && dup.vendors[0]!.key !== [...dup.vendors].sort((a, b) => b.monthly - a.monthly)[0]!.key && dup.vendors.filter((x) => x.monthly > v.monthly).length ? { flag: 'to_cancel', why: dup.vendors.filter((x) => x.key !== v.key).map((x) => x.name).join(', ') + ' already ' + (dup.vendors.length > 2 ? 'do' : 'does') + ' ' + dup.job.toLowerCase() + '.' }
+      : v.monthly > 0 && lastV > v.monthly * 1.5 && lastV - v.monthly > recTotal * 0.02 ? { flag: 'review', why: 'Up ' + Math.round((lastV / v.monthly - 1) * 100) + '% on its usual month: check usage and billing.' }
+      : recTotal && v.monthly >= recTotal * 0.2 && !PAYROLL.test(t) && v.category !== 'opex_payroll' ? { flag: 'downgrade', why: 'One of the largest bills: negotiate, move to invoiced billing, or trim usage or seats.' } : null
+  }
+  const cut = recurring.filter((v) => v.status !== 'cancelled').map((v) => { const save = savingOf(v) || v.monthly, after = burn === null ? null : burn - save; return { ...v, saving: Math.round(savingOf(v) * 100) / 100, runway_gain: now === null || after === null ? null : after <= 0 ? 'stops the burn' : Math.round((runway(after)! - now) * 10) / 10 } })
+    .sort((a, b) => (typeof b.runway_gain === 'number' ? b.runway_gain : 999) - (typeof a.runway_gain === 'number' ? a.runway_gain : 999)).slice(0, 60)
+  const marked = recurring.reduce((s, v) => s + savingOf(v), 0)
+  // Payments worth a look (last 90 days): far above what that payee usually takes, round-number transfers, a new
+  // payee taking a lot, personal-looking spend.
+  const pays = (await db().query<{ id: string; d: string; vendor_key: string; vendor: string; description: string; currency: string; amount: number; spender: string | null }>(
+    `SELECT id, txn_date::text AS d, vendor_key, vendor, description, currency, amount::float, spender FROM banking.ledger WHERE direction = 'out' AND txn_date >= now() - interval '90 days' AND coalesce(category, '') NOT IN ('tax', 'interest')
+     AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1) ORDER BY txn_date DESC LIMIT 4000`, [ent, main])).rows
+  const seenBefore = new Set((await db().query<{ vendor_key: string }>("SELECT DISTINCT vendor_key FROM banking.ledger WHERE direction = 'out' AND txn_date < now() - interval '30 days' AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows.map((r) => r.vendor_key))
+  const outMonth = last3.length ? last3.reduce((s, m) => s + months[m]!.out, 0) / last3.length : 0
+  const byV = new Map<string, number[]>(); for (const p of pays) { p.amount = p.amount * await rate(p.currency); (byV.get(p.vendor_key) ?? byV.set(p.vendor_key, []).get(p.vendor_key)!).push(p.amount) }
+  const checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[] = [], ck = new Map<string, (typeof checks)[number]>()
+  for (const p of pays) {
+    // Transfers between the company's own accounts are not spend; only transfer services are looked at.
+    if ((p.vendor_key + ' ' + p.vendor.toLowerCase()).match(TRANSFER) === null && /transfer/.test(p.description.toLowerCase()) && !p.spender) continue
+    const t = p.vendor_key + ' ' + p.vendor.toLowerCase(), others = (byV.get(p.vendor_key) ?? []).filter((x) => x !== p.amount), usual = med(others)
+    const why = others.length >= 2 && usual > 0 && p.amount > usual * 5 && p.amount - usual > outMonth * 0.01 ? 'About ' + Math.round(p.amount / usual) + '× what this payee usually takes'
+      : TRANSFER.test(t) && Math.round(p.amount) % 50 === 0 && p.amount >= 200 ? 'Round-number transfer with no clear payee'
+      : TRANSFER.test(t) && pays.filter((q) => q.vendor_key === p.vendor_key && Math.abs(new Date(q.d).getTime() - new Date(p.d).getTime()) < 30 * 86400000).length >= 4 ? 'Frequent transfers with no clear payee'
+      : PERSONAL.test(t) ? 'Looks personal'
+      : !seenBefore.has(p.vendor_key) && outMonth && p.amount >= outMonth * 0.03 && Date.now() - new Date(p.d).getTime() < 30 * 86400000 ? 'New payee this month' : ''
+    if (!why) continue
+    // One line per payee and reason (the largest payment, with how many there were).
+    const k = p.vendor_key + '|' + why, ex = ck.get(k)
+    if (ex) { ex.count++; if (p.amount > ex.amount) Object.assign(ex, { id: p.id, date: p.d, amount: Math.round(p.amount * 100) / 100, spender: p.spender ?? ex.spender }) }
+    else { const c = { id: p.id, date: p.d, vendor: p.vendor, amount: Math.round(p.amount * 100) / 100, spender: p.spender, why, count: 1 }; ck.set(k, c); checks.push(c) }
+  }
+  checks.sort((a, b) => b.amount - a.amount)
+  // Who spends: card and expense exports name the person.
+  const spend3 = new Map<string, number>(); for (const p of pays) if (p.spender) spend3.set(p.spender, (spend3.get(p.spender) ?? 0) + p.amount)
+  const bySpender = [...spend3.entries()].map(([name, total]) => ({ name, total: Math.round(total), monthly: Math.round(total / 3) })).sort((a, b) => b.total - a.total).slice(0, 15)
   const budgets = new Map((await db().query<{ category: string; monthly: string }>('SELECT category, monthly FROM banking.budgets WHERE scope = $1', [sc.group ? 'group' : ent ?? 'group'])).rows.map((r) => [r.category, Number(r.monthly)]))
   const accts = (await listAccounts().catch(() => [])).map((a) => ({ key: 'cat:' + a.parent + ':' + a.name, label: a.name, parent: a.parent }))
   const catLabel = (k: string) => STD_CATS.find((c) => c.key === k)?.label ?? accts.find((a) => a.key === k)?.label ?? k
@@ -161,7 +207,7 @@ export async function treasuryView(sc: TScope) {
   const count = (await db().query<{ n: number; first: string | null; sources: string[] }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
   return { currency: cur, months: full.map((m) => ({ month: m, ...months[m]! })), last_month: lastM, prev_month: prevM,
     cash, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
-    by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes,
+    by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes, checks: checks.slice(0, 30), by_spender: bySpender,
     categories: [...STD_CATS.map((c) => ({ key: c.key, label: c.label })), ...accts.map((a) => ({ key: a.key, label: a.label + ' (' + (STD_CATS.find((c) => c.key === a.parent)?.label ?? a.parent) + ')' }))],
     ledger: { count: count.n, since: count.first, sources: count.sources ?? [] } }
 }

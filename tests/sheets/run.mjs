@@ -320,6 +320,33 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('import: bank columns, money in and out', b.columns.date === 0 && b.columns.description === 1 && b.columns.debit === 2 && b.columns.credit === 3 && GI.dateOf('01/09/2026') === '2026-09-01' && GI.dateOf(46000) === '2025-12-09', JSON.stringify(b.columns))
 }
 
+// 9f. Deals from CRMs (exports and connections), card exports, and what an import would change.
+{
+  const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
+  const DC = await jiti.import(join(root, 'server/utils/deal-crm.ts'))
+  const stages = [{ key: 'lead', name: 'Lead', kind: 'open' }, { key: 'demo', name: 'Demo', kind: 'open' }, { key: 'won', name: 'Won', kind: 'won' }, { key: 'lost', name: 'Lost', kind: 'lost' }]
+  const crm = await GI.mapTable('sales_deals', { headers: DC.CRM_HEADERS, rows: [['hubspot:1', 'Acme renewal', 'Acme Ltd', 'Ada', 5000, 'Demo', 'open', '2026-11-30', 'a@x.co']] }, { stages, channels: [], people: [] })
+  const c = crm.columns
+  check('CRM: every column of a connection found by heading', c.external_id === 0 && c.name === 1 && c.account === 2 && c.contact === 3 && c.value === 4 && c.stage === 5 && c.status === 6 && c.expected_close === 7 && c.owner === 8, JSON.stringify(c))
+  const sf = await GI.mapTable('sales_deals', { headers: ['Opportunity Name', 'Account Name', 'Amount', 'Stage', 'Close Date', 'Opportunity Owner', 'Lead Source'], rows: [['Big deal', 'Acme', 1, 'Demo', '2026-12-01', 'x', 'Web']] }, { stages, channels: [], people: [] })
+  check('CRM: a Salesforce opportunities export', sf.columns.name === 0 && sf.columns.account === 1 && sf.columns.value === 2 && sf.columns.stage === 3 && sf.columns.expected_close === 4 && sf.columns.owner === 5 && sf.columns.source === 6, JSON.stringify(sf.columns))
+  const pd = await GI.mapTable('sales_deals', { headers: ['Deal - Title', 'Deal - Value', 'Deal - Organization', 'Deal - Stage', 'Deal - Status', 'Deal - Expected close date'], rows: [['X', 1, 'Org', 'Demo', 'won', '2026-12-01']] }, { stages, channels: [], people: [] })
+  check('CRM: a Pipedrive export, status apart from stage', pd.columns.name === 0 && pd.columns.value === 1 && pd.columns.account === 2 && pd.columns.stage === 3 && pd.columns.status === 4 && pd.columns.expected_close === 5, JSON.stringify(pd.columns))
+  const calls = []
+  const hs = await DC.hubspotDeals('t', async (url) => { calls.push(url)
+    if (url.includes('/pipelines/')) return { results: [{ stages: [{ id: 's1', label: 'Demo', metadata: { isClosed: 'false', probability: '0.4' } }, { id: 'cw', label: 'Closed won', metadata: { isClosed: 'true', probability: '1.0' } }] }] }
+    if (url.includes('/owners')) return { results: [{ id: '9', email: 'rep@x.co' }] }
+    if (url.includes('/companies/batch')) return { results: [{ id: 'c1', properties: { name: 'Acme Ltd' } }] }
+    if (url.includes('after=')) return { results: [{ id: '2', properties: { dealname: 'Beta', amount: '700', dealstage: 'cw', closedate: '2026-09-01T00:00:00Z', hubspot_owner_id: null } }] }
+    return { results: [{ id: '1', properties: { dealname: 'Acme', amount: '5000.5', dealstage: 's1', closedate: '2026-11-30T00:00:00Z', hubspot_owner_id: '9' }, associations: { companies: { results: [{ id: 'c1' }] } } }], paging: { next: { after: 'p2' } } } })
+  check('CRM: HubSpot deals with stage labels, won status, owner and company, across pages', hs.rows.length === 2 && hs.rows[0].join('|') === 'hubspot:1|Acme|Acme Ltd||5000.5|Demo|open|2026-11-30|rep@x.co' && hs.rows[1][6] === 'won', JSON.stringify(hs.rows))
+  const pdr = await DC.pipedriveDeals('t', async (url) => url.includes('/stages') ? { data: [{ id: 3, name: 'Demo' }] } : url.includes('start=0') ? { data: [{ id: 7, title: 'Gamma', value: 900, stage_id: 3, status: 'lost', expected_close_date: null, org_name: 'Gamma Co', person_name: 'Bo', user_id: { email: 'o@x.co' } }], additional_data: { pagination: { more_items_in_collection: true, next_start: 500 } } } : { data: [] })
+  check('CRM: Pipedrive deals with stage names and status', pdr.rows.length === 1 && pdr.rows[0].join('|') === 'pipedrive:7|Gamma|Gamma Co|Bo|900|Demo|lost||o@x.co', JSON.stringify(pdr.rows))
+  const card = GI.tableOf([{ name: 'Payments', rows: [['Date', 'User', 'Card last 4', 'Amount ($)', 'Merchant', 'Flag', 'Category'], ['2026-10-14', 'Emmanuel', '8328', 1705.76, 'Wise', 'REVIEW', 'Transfer'], ['2026-10-09', 'Emmanuel', '6730', -47.32, 'Intuit', 'KEEP', 'Software'], ['2026-10-08', 'Atinuke', '3608', 104, '360dialog', 'KEEP', 'COGS'], ['2026-10-02', 'Emmanuel', '6730', 9302.64, 'Google Cloud', 'CRITICAL', 'Infra'], ['2026-10-01', 'Awe', '2971', 2004.94, 'Raenest', 'KEEP', 'Payroll']] }])
+  const cm = await GI.mapTable('bank_txns', card, {})
+  check('card export: merchant, who spent and amount found; read as payments', cm.columns.date === 0 && cm.columns.spender === 1 && cm.columns.amount === 3 && cm.columns.description === 4 && cm.all_out === true, JSON.stringify(cm))
+}
+
 // 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
 {
   const V = await jiti.import(join(root, 'shared/valuation.ts'))

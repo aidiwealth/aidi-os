@@ -22,7 +22,7 @@ const docMax = computed(() => Math.max(1, ...((data.value?.office?.documentsByEn
     <div class="head">
       <h1>Analytics</h1>
       <div class="filters">
-        <select v-model="entity" aria-label="Fund"><option value="">All funds</option><option v-for="e in funds" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+        <CompanyMenu v-model="entity" size="filter" menu-label="Analytics for" :options="[{ value: '', label: 'All funds', sub: 'Every fund' }, ...funds.map((e) => ({ value: e.id, label: e.name, sub: 'Fund' }))]" />
         <select v-model="range" aria-label="Period"><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       </div>
     </div>

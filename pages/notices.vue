@@ -96,7 +96,7 @@ async function copyScript() { await navigator.clipboard.writeText(script.value);
     <nav class="tabs"><button v-for="[k, l] in [['new', 'New'], ['done', 'Done'], ['archived', 'Archived'], ['all', 'All']]" :key="k" :class="{ on: status === k }" @click="status = k">{{ l }}<em v-if="k !== 'all'">{{ cnt(k) }}</em></button></nav>
     <div class="tools">
       <div class="srch"><input v-model="q" type="search" placeholder="Search sender, subject or summary" aria-label="Search notices"><button v-if="q" type="button" class="clr" aria-label="Clear search" @click="q = ''">×</button></div>
-      <select v-model="entity" aria-label="Company"><option value="">All companies</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+      <CompanyMenu v-if="(entities ?? []).length > 1" v-model="entity" size="filter" menu-label="Notices for" :options="[{ value: '', label: 'All companies', sub: 'Every company' }, ...(entities ?? []).map((e) => ({ value: e.id, label: e.name }))]" />
       <select v-model="need" aria-label="Show"><option value="">All notices</option><option value="action">Needs action</option><option value="due">Has a deadline</option><option value="soon">Due in 14 days</option><option value="overdue">Overdue</option></select>
       <span class="rc">{{ data.total ? from + '–' + to + ' of ' + data.total : '' }}<button v-if="filtered" class="lk" @click="clearFilters">Clear filters</button></span>
     </div>

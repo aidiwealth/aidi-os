@@ -1,16 +1,19 @@
 <script setup lang="ts">
-// The company (or the whole group) a Sales, Marketing, Banking or Stage page is on, shown under its title when the
-// company has subsidiaries. The same choice as Financials, kept in the address.
-const { options, s, many, pages } = await useCoScope()
+// The title of Sales, Marketing, Banking and the Stage Monitor: with subsidiaries, the company (or the group) you are
+// looking at, switched the same way as Financials (kept in the address, shared across these pages); otherwise the
+// page's name.
+const props = defineProps<{ page: string }>()
+const { options, s, many, pages, current, currencyOf, co } = await useCoScope()
+const { data: me } = useNuxtData<{ roles: string[] }>('me')
+const admin = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const mainName = computed(() => pages.value.find((p) => p.main)?.name ?? '')
-const label = (v: string, l: string) => (v === 'group' ? (mainName.value ? mainName.value + ' group' : 'Group') + ' · all companies' : l)
+const title = (v: string, label: string) => (v === 'group' ? (mainName.value ? mainName.value + ' group' : 'Group') : label)
+const opts = computed(() => options.value.map((o) => ({ value: o.value, label: title(o.value, o.label), sub: o.group ? 'Consolidated' : o.sub })))
+const meta = computed(() => !current.value ? props.page : props.page + ' · ' + (current.value.group ? 'Consolidated · ' + currencyOf('group') + ' · ' + pages.value.length + ' companies' : current.value.sub))
 </script>
 <template>
-  <label v-if="many" class="ss"><span>Showing</span>
-    <select v-model="s" aria-label="Company"><option v-for="o in options" :key="o.value" :value="o.value">{{ label(o.value, o.label) }}</option></select>
-  </label>
+  <CompanyMenu v-if="many" v-model="s" :options="opts" :meta="meta" :menu-label="page + ' for'">
+    <template v-if="admin && co" #actions><NuxtLink to="/financials?add=sub">+ Add a subsidiary</NuxtLink></template>
+  </CompanyMenu>
+  <h1 v-else>{{ page }}</h1>
 </template>
-<style scoped>
-.ss { display: inline-flex; align-items: center; gap: 8px; margin: 2px 0 6px; font-size: 13px; color: var(--c-muted); }
-.ss select { font: inherit; font-size: 14px; font-weight: 600; color: var(--c-ink); padding: 5px 28px 5px 9px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; min-width: 0; max-width: 100%; }
-</style>

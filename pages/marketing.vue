@@ -69,9 +69,10 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 </script>
 <template>
   <section class="mk">
-    <div class="hd"><div><h1>Marketing</h1><ScopeSwitch /><p class="lead">Design your funnel and channels, track each channel's month, run campaigns, and see what a budget should bring in. Spend comes in from Banking and customers from won deals in Sales.</p></div>
+    <div class="hd"><div><ScopeSwitch page="Marketing" /><p class="lead">Design your funnel and channels, track each channel's month, run campaigns, and see what a budget should bring in. Spend comes in from Banking and customers from won deals in Sales.</p></div>
       <div v-if="canEdit && p" class="tb"><button class="btn" @click="go({ t: 'campaigns' }); editC()">New campaign</button></div></div>
     <p v-if="msg && !cf.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
+    <ClientOnly><PendingUpdates v-if="p" kind="marketing_months" :process-id="p.id" what="channel results" @done="refresh()" /></ClientOnly>
     <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>A starting funnel (visitors, leads, marketing qualified, sales qualified, customers) and six common channels, ready to rename. Add each channel's budget and the bank vendors you pay for it, and the dashboard works out cost per lead, CAC and return.</p>
       <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <button class="btn" :disabled="!canEdit" @click="create">Set up the standard funnel</button></div>

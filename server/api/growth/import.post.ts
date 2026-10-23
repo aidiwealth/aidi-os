@@ -30,13 +30,12 @@ export default defineEventHandler(async (event) => {
   // transactions) or, for deals, the main company unless the process belongs to one.
   const sc = await forecastScope(event), picked = sc.companies.find((c) => c.id === f.entity_id)?.id
   map.entity = sc.group ? (picked ?? null) : sc.entity
-  const r = await applyTable(kind.data, t, map, pid, user.userId, url || fileName)
-  let link: string | null = null
-  if (url && f.link === 'true') {
-    const { ai: _ai, ...keep } = map; void _ai
-    link = (await one<{ id: string }>('INSERT INTO growth.links (kind, process_id, name, url, mapping, last_synced_at, last_result, created_by) VALUES ($1,$2,$3,$4,$5, now(), $6, $7) RETURNING id', [kind.data, pid, (f.name || 'Linked sheet').slice(0, 120), url, JSON.stringify(keep), JSON.stringify(r), user.userId])).id
-  }
-  await audit({ event, actorUserId: user.userId, action: 'growth.import', objectType: 'growth_import', detail: { kind: kind.data, ...r, linked: !!link, ai: map.ai } })
+  if (kind.data === 'bank_txns' && (f.all_out === 'true' || f.all_out === 'false')) map.all_out = f.all_out === 'true'
+  // Nothing is written yet: what the rows would add or change is held for the founder to accept (with the link kept
+  // only once they do).
+  const h = await holdImport({ kind: kind.data, processId: pid, name: (f.name || fileName || 'Sheet').slice(0, 120), ref: url || fileName, t, map, userId: user.userId,
+    keepLink: url && f.link === 'true' ? { url, name: (f.name || 'Linked sheet').slice(0, 120), auto: true } : null })
+  await audit({ event, actorUserId: user.userId, action: 'growth.import_review', objectType: 'growth_import', detail: { kind: kind.data, added: h.summary.added, changed: h.summary.changed, linked: url && f.link === 'true', ai: map.ai } })
   const used = Object.entries(map.columns).filter(([, i]) => i !== null && i !== undefined).map(([k, i]) => ({ field: k, column: t.headers[i!] || 'column ' + (i! + 1) }))
-  return { ok: true, ...r, rows: t.rows.length, columns: used, ai: map.ai, link }
+  return { ok: true, pending: h.id, summary: h.summary, rows: t.rows.length, columns: used, ai: map.ai, all_out: map.all_out ?? null }
 })

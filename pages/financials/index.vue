@@ -188,7 +188,7 @@ async function fromGoogle() { src.busy = 'gs'; msg.value = ''; try { const gr = 
 const qbWall = ref(false)
 async function fromQuickBooks() { if (!periodEnd.value) { msg.value = 'Choose the period first.'; return } src.busy = 'qb'; msg.value = ''; try { applyProposal(await $fetch('/api/integrations/quickbooks/pull', { method: 'POST', body: { subject: form.subject, period_type: form.period_type, period_end: periodEnd.value } })) } catch (e) { msg.value = errOf(e, 'Could not pull from QuickBooks.'); if ((e as { data?: { data?: { error?: { code?: string } } } }).data?.data?.error?.code === 'quickbooks_reconnect') await loadSources() } finally { src.busy = '' } }
 async function qbDisconnect() { if (!await askConfirm('Disconnect QuickBooks for this entity or company?')) return; await $fetch('/api/integrations/quickbooks/disconnect', { method: 'POST', body: { subject: form.subject } }); await loadSources() }
-onMounted(() => { const q = useRoute().query; if (q.qb === 'upgrade') qbWall.value = true; if (q.qb === 'connected') { ok.value = 'QuickBooks connected. Open "Add a statement" and choose Pull from QuickBooks.' } else if (q.qb === 'failed' || q.qb === 'cancelled') msg.value = q.qb === 'failed' ? 'QuickBooks connection failed. Please try again.' : 'QuickBooks connection cancelled.' })
+onMounted(() => { const q = useRoute().query; if (q.add === 'sub') pickPage('+add'); if (q.qb === 'upgrade') qbWall.value = true; if (q.qb === 'connected') { ok.value = 'QuickBooks connected. Open "Add a statement" and choose Pull from QuickBooks.' } else if (q.qb === 'failed' || q.qb === 'cancelled') msg.value = q.qb === 'failed' ? 'QuickBooks connection failed. Please try again.' : 'QuickBooks connection cancelled.' })
 async function fromSheet(ev: Event) {
   const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return
   busy.value = true; msg.value = ''
@@ -274,7 +274,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
     </template>
     <template v-else>
     <ClientOnly><StructureAsk v-if="canEdit && baseCo && !baseCo.structure && !structDone && pages.length <= 1" :name="baseCo.name" @answered="structAnswered" /></ClientOnly>
-    <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group'" compact class="feeds" :entity="subject.startsWith('entity:') ? subject.slice(7) : null" /></ClientOnly>
+    <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group'" compact class="feeds" :link="canPath('/treasury') ? '/treasury' + (subject.startsWith('entity:') ? '?s=' + subject : '') : null" :entity="subject.startsWith('entity:') ? subject.slice(7) : null" /></ClientOnly>
     <ClientOnly v-if="subject !== 'group' && tab !== 'shares'"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
     <p v-if="rolled" class="hint">Added up from your monthly figures (no {{ view === 'year' ? 'yearly' : 'quarterly' }} statements were entered).</p>

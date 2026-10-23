@@ -3,8 +3,8 @@
 // targets, win rate, cycle, the weighted pipeline, expected wins by month, and what the monthly target needs.
 import type { Process, SalesStats } from '~/shared/growth'
 useHead({ title: 'Sales' })
-interface DealRow { id: string; name: string; contact: string | null; value: number | null; recurring: boolean; stage_key: string; owner_id: string | null; source_channel: string | null; expected_close: string | null; steps_done: Record<string, number[]>; notes: string | null; lost_reason: string | null; closed_at: string | null; created_at: string; updated_at: string }
-interface D { processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; open: number; weighted: number; won_90d: number; win_rate: number | null; deals: number }[]; total: { open: number; weighted: number; won_90d: number } } | null; process: (Process & { company?: string }) | null; deals: DealRow[]; stats: SalesStats | null; people: { id: string; name: string }[]; channels: { key: string; name: string }[]; templates: { key: string; label: string }[] }
+interface DealRow { id: string; name: string; contact: string | null; value: number | null; recurring: boolean; stage_key: string; owner_id: string | null; source_channel: string | null; expected_close: string | null; steps_done: Record<string, number[]>; notes: string | null; lost_reason: string | null; closed_at: string | null; created_at: string; updated_at: string; deal_type?: string; customer_key?: string | null; customer_name?: string | null }
+interface D { split?: Record<string, number>; processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; open: number; weighted: number; won_90d: number; win_rate: number | null; deals: number }[]; total: { open: number; weighted: number; won_90d: number } } | null; process: (Process & { company?: string }) | null; deals: DealRow[]; stats: SalesStats | null; people: { id: string; name: string }[]; channels: { key: string; name: string }[]; templates: { key: string; label: string }[] }
 const route = useRoute(), router = useRouter()
 const pid = computed(() => (typeof route.query.p === 'string' ? route.query.p : undefined))
 const tab = computed(() => (['pipeline', 'design'].includes(String(route.query.t)) ? String(route.query.t) : 'dashboard'))
@@ -34,13 +34,32 @@ async function aiNext() { nx.busy = true; msg.value = ''; try { const r = await 
 async function copyEmail() { try { await navigator.clipboard.writeText('Subject: ' + nx.subject + '\n\n' + nx.email); nx.copied = true } catch { /* ignore */ } }
 async function create() { try { const r = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { template: nw.template, name: nw.name || undefined } }); nw.open = false; await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Deals.
-const blank = () => ({ id: '', name: '', contact: '', value: '' as number | '', recurring: false, stage_key: '', owner_id: '' as string | null, source_channel: '' as string | null, expected_close: '', notes: '', lost_reason: '' })
+const blank = () => ({ id: '', name: '', deal_type: 'new' as 'new' | 'expansion' | 'renewal', customer_key: '' as string | null, customer_name: '' as string | null, contact: '', value: '' as number | '', recurring: false, stage_key: '', owner_id: '' as string | null, source_channel: '' as string | null, expected_close: '', notes: '', lost_reason: '' })
 const f = reactive({ open: false, ...blank() }), busy = ref(false)
 const cur = computed(() => d.value?.deals.find((x) => x.id === f.id) ?? null)
-function edit(x?: DealRow, stage?: string) { Object.assign(nx, { steps: [], subject: '', email: '' }); Object.assign(f, blank(), x ? { ...x, value: x.value ?? '', contact: x.contact ?? '', expected_close: x.expected_close ?? '', notes: x.notes ?? '', lost_reason: x.lost_reason ?? '', owner_id: x.owner_id ?? '', source_channel: x.source_channel ?? '' } : { stage_key: stage ?? p.value?.stages.find((s) => s.kind === 'open')?.key ?? '' }, { open: true }); msg.value = '' }
+function edit(x?: DealRow, stage?: string) { Object.assign(nx, { steps: [], subject: '', email: '' }); Object.assign(f, blank(), x ? { ...x, value: x.value ?? '', contact: x.contact ?? '', expected_close: x.expected_close ?? '', notes: x.notes ?? '', lost_reason: x.lost_reason ?? '', owner_id: x.owner_id ?? '', source_channel: x.source_channel ?? '', customer_key: x.customer_key ?? '', customer_name: x.customer_name ?? '', deal_type: (x.deal_type ?? 'new') as 'new' | 'expansion' | 'renewal' } : { stage_key: stage ?? p.value?.stages.find((s) => s.kind === 'open')?.key ?? '' }, { open: true }); msg.value = '' }
 async function saveDeal() {
   busy.value = true; msg.value = ''
-  try { await sf('/api/sales/deal', { method: 'POST', body: { id: f.id || undefined, process_id: p.value!.id, name: f.name, contact: f.contact, value: f.value, recurring: f.recurring, stage_key: f.stage_key, owner_id: f.owner_id || null, source_channel: f.source_channel || null, expected_close: f.expected_close || null, notes: f.notes, lost_reason: f.lost_reason } }); f.open = false; await refresh() }
+  try { await sf('/api/sales/deal', { method: 'POST', body: { id: f.id || undefined, process_id: p.value!.id, name: f.name, contact: f.contact, value: f.value, recurring: f.recurring, stage_key: f.stage_key, owner_id: f.owner_id || null, source_channel: f.source_channel || null, expected_close: f.expected_close || null, notes: f.notes, lost_reason: f.lost_reason, deal_type: f.deal_type, customer_key: f.customer_key || null, customer_name: f.customer_key ? cs.value?.customers.find((c) => c.key === f.customer_key)?.name ?? f.customer_name : f.customer_name || null } }); f.open = false; await refresh() }
+  catch (e) { msg.value = err(e) } finally { busy.value = false }
+}
+// Customers from Financials: key accounts to grow or renew through the pipeline, and won new deals to add as customers.
+interface CS { enabled: boolean; currency: string; as_of: string | null; customers: { key: string; name: string; segment: string | null; monthly: number; year: number; open_deals: number }[]; won_not_customers: { id: string; name: string; customer_name: string | null; value: number | null; closed_at: string | null; process: string }[] }
+const cs = ref<CS | null>(null)
+async function loadCs() { try { cs.value = await sf<CS>('/api/sales/customers') } catch { cs.value = null } }
+watch(cust, loadCs, { immediate: true })
+const ka = reactive({ open: false, picked: [] as string[], type: 'expansion' as 'expansion' | 'renewal', uplift: 20, q: '' })
+const kaList = computed(() => (cs.value?.customers ?? []).filter((c) => !ka.q || c.name.toLowerCase().includes(ka.q.toLowerCase())))
+const cm = (v: number) => briefMoney(v, cs.value?.currency ?? 'USD')
+async function addKeyAccounts() {
+  busy.value = true; msg.value = ''
+  try { const r = await sf<{ added: number; skipped: number }>('/api/sales/key-accounts', { method: 'POST', body: { process_id: p.value!.id, keys: ka.picked, deal_type: ka.type, uplift_pct: ka.uplift } }); ka.open = false; ka.picked = []; ok.value = r.added + ' key-account deal' + (r.added === 1 ? '' : 's') + ' added' + (r.skipped ? ' (' + r.skipped + ' already had an open deal)' : '') + '.'; await refresh(); await loadCs() }
+  catch (e) { msg.value = err(e) } finally { busy.value = false }
+}
+const wc = reactive({ open: false, picked: [] as string[] })
+async function toCustomers() {
+  busy.value = true; msg.value = ''
+  try { const r = await sf<{ added: number }>('/api/sales/to-customers', { method: 'POST', body: { deal_ids: wc.picked } }); wc.open = false; ok.value = r.added + ' customer' + (r.added === 1 ? '' : 's') + ' added to Financials. Their revenue comes in with your customer revenue data.'; await loadCs(); await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 async function delDeal() { if (!await askConfirm('Delete the deal "' + f.name + '"?')) return; await sf('/api/sales/deal', { method: 'POST', body: { id: f.id, delete: true } }); f.open = false; await refresh() }
@@ -57,9 +76,10 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 </script>
 <template>
   <section class="sl">
-    <div class="hd"><div><h1>Sales</h1><ScopeSwitch /><p class="lead">Design your sales process, move deals through it, and see what it will close. Conversion, cycle and forecasts come from your own deals as they move.</p></div>
-      <div v-if="canEdit" class="tb"><button v-if="p" class="btn secondary" @click="imp = true">Import deals</button><button class="btn secondary" @click="nw.open = true">New process</button><button v-if="p" class="btn" @click="go({ t: 'pipeline' }); edit()">Add a deal</button></div></div>
-    <p v-if="msg && !f.open" class="error">{{ msg }}</p>
+    <div class="hd"><div><ScopeSwitch page="Sales" /><p class="lead">Design your sales process, move deals through it, and see what it will close. Conversion, cycle and forecasts come from your own deals as they move.</p></div>
+      <div v-if="canEdit" class="tb"><button v-if="p" class="btn secondary" @click="imp = true">Import deals</button><button v-if="p && cs?.customers.length" class="btn secondary" @click="ka.open = true">Key accounts</button><button class="btn secondary" @click="nw.open = true">New process</button><button v-if="p" class="btn" @click="go({ t: 'pipeline' }); edit()">Add a deal</button></div></div>
+    <p v-if="msg && !f.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
+    <ClientOnly><PendingUpdates v-if="p" kind="sales_deals" :process-id="p.id" what="deals" @done="refresh()" /></ClientOnly>
     <div v-if="d && !p" class="empty"><h2>Set up your sales process</h2><p>Start from a template and make it yours: the stages a deal goes through, how many should move on at each, how long each takes, and the steps that move them on. Several processes are fine (for example SMB and Enterprise).</p>
       <div class="aic"><b><AiSpark /> Describe how you sell and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. We sell a messaging API to banks and fintechs in Nigeria. Leads come from referrals and outbound; a technical demo, then a pilot, then procurement and a contract." /><div><button class="btn" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <p class="or">Or start from a template</p>
@@ -80,6 +100,8 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
           <StatTile label="Win rate" :value="st.win_rate === null ? '—' : st.win_rate + '%'" :note="st.won + ' won · ' + st.lost + ' lost'" />
           <StatTile label="Average deal" :value="m(st.avg_won)" :note="st.cycle_days ? 'Closes in about ' + Math.round(st.cycle_days) + ' days' : ''" />
         </div>
+        <div v-if="d.split && (d.split.expansion || d.split.renewal)" class="hb">Open pipeline: <b>{{ m(d.split.new) }}</b> new business · <b>{{ m(d.split.expansion + d.split.renewal) }}</b> from existing customers (growing spend {{ m(d.split.expansion) }}, renewals {{ m(d.split.renewal) }}).</div>
+        <div v-if="canEdit && cs?.won_not_customers.length" class="hb">{{ cs.won_not_customers.length }} won deal{{ cs.won_not_customers.length === 1 ? ' is' : 's are' }} not in your customers in Financials yet. <button class="lk" @click="wc.picked = cs!.won_not_customers.map((x) => x.id); wc.open = true">Review and add</button></div>
         <div v-if="p.target_monthly" class="hb"><b>Target: {{ p.target_kind === 'revenue' ? m(p.target_monthly) + ' of new revenue' : p.target_monthly + ' deals' }} a month.</b>
           <template v-if="st.to_target?.deals_needed"> That takes about <b>{{ st.to_target.deals_needed }} won deals</b> a month, so roughly <b>{{ st.to_target.leads_needed }} new deals entering "{{ p.stages.find((s) => s.kind === 'open')?.name }}"</b> each month ({{ st.to_target.note }}).</template><template v-else> {{ st.to_target?.note ?? 'Win a few deals so the win rate is known.' }}</template>
           <template v-if="st.velocity_per_month"> At today's pace the pipeline closes about <b>{{ m(st.velocity_per_month) }}</b> a month.</template></div>
@@ -99,7 +121,7 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 
       <template v-if="tab === 'pipeline'">
         <div class="kb"><div v-for="c in cols" :key="c.key" class="col" :class="c.kind" @dragover.prevent @drop="drop(c.key)"><div class="cth"><b>{{ c.name }}</b><span>{{ c.deals.length }} · {{ m(c.value) }}</span></div>
-          <div v-for="x in c.deals" :key="x.id" class="dc" draggable="true" @dragstart="drag = x.id" @click="edit(x)"><b>{{ x.name }}</b><span>{{ m(x.value) }}{{ x.recurring ? ' a month' : '' }}</span><small>{{ [who(x.owner_id), x.expected_close ? 'close ' + x.expected_close : ''].filter(Boolean).join(' · ') }}<em v-if="late(x)"> · late</em></small>
+          <div v-for="x in c.deals" :key="x.id" class="dc" draggable="true" @dragstart="drag = x.id" @click="edit(x)"><b>{{ x.name }}</b><em v-if="x.deal_type && x.deal_type !== 'new'" class="ex">{{ x.deal_type === 'renewal' ? 'Renewal' : 'Existing customer' }}</em><span>{{ m(x.value) }}{{ x.recurring ? ' a month' : '' }}</span><small>{{ [who(x.owner_id), x.expected_close ? 'close ' + x.expected_close : ''].filter(Boolean).join(' · ') }}<em v-if="late(x)"> · late</em></small>
             <small v-if="c.kind === 'open' && c.steps.length" class="pg">{{ (x.steps_done[c.key] ?? []).length }}/{{ c.steps.length }} steps</small></div>
           <button v-if="c.kind === 'open'" class="lk add" @click="edit(undefined, c.key)">+ Add</button></div></div>
         <p class="mut">Drag a card to move it, or open it to tick its steps. <button v-if="canEdit" class="lk" @click="imp = true">Import deals from Excel, CSV or a Google Sheet</button></p>
@@ -110,6 +132,9 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
     <AppModal :open="f.open" :title="f.id ? f.name : 'Add a deal'" wide @close="f.open = false">
       <div class="frm"><label>Deal or company<input v-model="f.name" maxlength="160"></label><label>Contact<input v-model="f.contact" maxlength="200" placeholder="Name, email"></label>
         <label>Value ({{ p?.currency }})<input v-model.number="f.value" type="number" min="0"></label><label class="cb"><input v-model="f.recurring" type="checkbox"> Value is a month (recurring)</label>
+        <label>Type<select v-model="f.deal_type"><option value="new">New business</option><option value="expansion">Existing customer: grow spend</option><option value="renewal">Existing customer: renewal</option></select></label>
+        <label v-if="f.deal_type !== 'new' && cs?.customers.length">Customer in Financials<select v-model="f.customer_key"><option value="">—</option><option v-for="c in cs.customers" :key="c.key" :value="c.key">{{ c.name }} · {{ cm(c.monthly) }} a month</option></select></label>
+        <label v-else>Customer (company)<input v-model="f.customer_name" maxlength="200" placeholder="If different from the deal name"></label>
         <label>Stage<select v-model="f.stage_key"><option v-for="s in p?.stages ?? []" :key="s.key" :value="s.key">{{ s.name }}</option></select></label><label>Expected close<input v-model="f.expected_close" type="date"></label>
         <label>Owner<select v-model="f.owner_id"><option value="">—</option><option v-for="x in d?.people ?? []" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
         <label>Source<select v-model="f.source_channel"><option value="">—</option><option v-for="c in d?.channels ?? []" :key="c.key" :value="c.key">{{ c.name }}</option></select></label>
@@ -120,6 +145,18 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
           <template v-if="nx.email"><ul><li v-for="(s, i) in nx.steps" :key="i">{{ s }}</li></ul><div class="em"><b>{{ nx.subject }}</b><p>{{ nx.email }}</p><button class="lk" @click="copyEmail">{{ nx.copied ? 'Copied' : 'Copy email' }}</button></div></template></div>
         <p v-if="msg" class="error w">{{ msg }}</p></div>
       <template #foot><button v-if="f.id" class="btn secondary" @click="delDeal">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button class="btn" :disabled="busy || !f.name.trim()" @click="saveDeal">{{ busy ? 'Saving…' : 'Save' }}</button></template>
+    </AppModal>
+    <AppModal :open="ka.open" title="Key accounts from your customers" wide @close="ka.open = false">
+      <div class="frm"><p class="w mut">Customers from Financials{{ cs?.as_of ? ' (revenue to ' + cs.as_of + ')' : '' }}. Each one picked becomes a deal in {{ p?.name }}: growing their spend by the share below, or renewing what they pay a year.</p>
+        <label>Deal type<select v-model="ka.type"><option value="expansion">Grow spend</option><option value="renewal">Renewal</option></select></label><label v-if="ka.type === 'expansion'">Grow spend by (%)<input v-model.number="ka.uplift" type="number" min="0" max="1000"></label>
+        <label class="w">Find<input v-model="ka.q" placeholder="Customer name"></label>
+        <div class="w kl"><label v-for="c in kaList" :key="c.key" class="kr"><input v-model="ka.picked" type="checkbox" :value="c.key" :disabled="c.open_deals > 0"><span><b>{{ c.name }}</b><small>{{ cm(c.monthly) }} a month · {{ cm(c.year) }} last 12 months{{ c.segment ? ' · ' + c.segment : '' }}{{ c.open_deals ? ' · already in the pipeline' : '' }}</small></span></label></div></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="ka.open = false">Cancel</button><button class="btn" :disabled="busy || !ka.picked.length" @click="addKeyAccounts">Add {{ ka.picked.length || '' }} to the pipeline</button></template>
+    </AppModal>
+    <AppModal :open="wc.open" title="Add won deals to your customers" @close="wc.open = false">
+      <div class="frm"><p class="w mut">These won new-business deals become customers in Financials, starting the month they were won. Untick any that should not.</p>
+        <div class="w kl"><label v-for="x in cs?.won_not_customers ?? []" :key="x.id" class="kr"><input v-model="wc.picked" type="checkbox" :value="x.id"><span><b>{{ x.customer_name ?? x.name }}</b><small>{{ x.process }}{{ x.value ? ' · ' + m(x.value) : '' }}{{ x.closed_at ? ' · won ' + x.closed_at.slice(0, 10) : '' }}</small></span></label></div></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="wc.open = false">Not now</button><button class="btn" :disabled="busy || !wc.picked.length" @click="toCustomers">Add {{ wc.picked.length }} customer{{ wc.picked.length === 1 ? '' : 's' }}</button></template>
     </AppModal>
     <SheetImport v-if="p" :open="imp" kind="sales_deals" :process-id="p.id" @close="imp = false" @done="refresh()" />
     <AppModal :open="nw.open" title="New sales process" @close="nw.open = false">
@@ -150,4 +187,6 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 .aic { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 14px; margin-bottom: 6px; } .aic b { display: flex; gap: 6px; align-items: center; font-weight: 600; } .aic textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 .or { margin: 8px 0; font-size: 12.5px; color: var(--c-muted); } .nx { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .nx ul { margin: 0; padding-left: 18px; font-size: 13.5px; } .em { border: 1px solid var(--c-rule); padding: 10px 12px; width: 100%; } .em p { white-space: pre-line; margin: 6px 0; font-size: 13.5px; color: var(--c-ink-soft); }
 .t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
+.kl { max-height: 320px; overflow: auto; border: 1px solid var(--c-rule); } .frm .kr, .kr { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; padding: 8px 10px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .kr small { display: block; color: var(--c-muted); font-size: 12px; } .ok { color: var(--c-ink-soft); font-size: 13.5px; margin: 0; }
+.dc .ex { font-style: normal; font-size: 11px; color: var(--c-blue-deep); }
 </style>

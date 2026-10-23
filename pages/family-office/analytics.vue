@@ -25,7 +25,7 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
     <div class="head">
       <h1>Analytics</h1>
       <div class="filters">
-        <select v-model="entity" aria-label="Entity"><option value="">All entities</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select>
+        <CompanyMenu v-model="entity" size="filter" menu-label="Analytics for" :options="[{ value: '', label: 'All entities', sub: 'Every entity' }, ...(entities ?? []).map((e) => ({ value: e.id, label: e.name }))]" />
         <select v-model="range" aria-label="Period"><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       </div>
     </div>

@@ -34,10 +34,10 @@ async function capFacts(currency: string): Promise<CapFacts> {
   return { has: true, raised_usd: Math.round(raised), priced_round: round?.stage ?? null, founders_pct: founders.length ? founders.reduce((s, r) => s + r.pctFd, 0) : null, pool: d.plans.some((p) => p.reserved > 0), safes: d.convertibles.filter((c) => c.status === 'outstanding').length }
 }
 
-export async function stageMonitor(event: H3Event) {
+export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<typeof forecastScope>>) {
   const org = (await currentOrg())!, s = org.settings as Record<string, unknown>
   // The company chosen at the top, or the whole group (consolidated statements, every company's bank and customers).
-  const sc = await forecastScope(event), ent = sc.group ? null : sc.entity, subject = sc.group ? 'group' : ent ? 'entity:' + ent : null
+  const sc = scope ?? await forecastScope(event), ent = sc.group ? null : sc.entity, subject = sc.group ? 'group' : ent ? 'entity:' + ent : null
   const rules = await stageRules(), region = regionOf(s.country as string), rr = rules.regions[region]
   const cur = sc.currency
   const usd = cur === 'USD' ? 1 : (await fxRate(cur, 'USD')) ?? 0

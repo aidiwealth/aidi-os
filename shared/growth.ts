@@ -124,3 +124,6 @@ export function predictBudget(stats: ChannelStat[], budget: Record<string, numbe
   void months
   return { rows, total: { budget: rows.reduce((t, r) => t + r.budget, 0), leads: rows.reduce((t, r) => t + r.leads, 0), customers: r1(rows.reduce((t, r) => t + r.customers, 0)), revenue: avgDeal ? rows.reduce((t, r) => t + (r.revenue ?? 0), 0) : null } }
 }
+
+// What a sheet, file or CRM would change, held for review before it is written.
+export interface ImportSummary { rows: number; added: number; changed: number; unchanged: number; skipped: number; new_channels: string[]; sample: { name: string; what: 'new' | 'changed'; changes: string[] }[] }

@@ -39,7 +39,7 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
 </script>
 <template>
   <section class="sm">
-    <div class="hd"><div><h1>Stage monitor</h1><ScopeSwitch /><p class="lead">Where {{ d?.company ?? 'your company' }} stands today, worked out from your Financials, bank and cap table{{ d?.as_of ? ' (latest month ' + mon(d.as_of) + ')' : '' }}. It updates when your figures do.</p></div>
+    <div class="hd"><div><ScopeSwitch page="Stage monitor" /><p class="lead">Where {{ d?.company ?? 'your company' }} stands today, worked out from your Financials, bank and cap table{{ d?.as_of ? ' (latest month ' + mon(d.as_of) + ')' : '' }}. It updates when your figures do.</p></div>
       <button class="btn secondary" @click="refresh()">Refresh</button></div>
     <p v-if="error" class="error">Could not load the stage monitor.</p>
     <template v-if="d">

@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
   const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), process_id: z.string().uuid().optional(), name: z.string().trim().min(1).max(160).optional(), contact: z.string().trim().max(200).optional(),
     value: amt.optional(), recurring: z.boolean().optional(), stage_key: z.string().max(40).optional(), owner_id: z.string().uuid().nullable().optional(), source_channel: z.string().max(40).nullable().optional(),
-    expected_close: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), notes: z.string().max(4000).optional(), lost_reason: z.string().trim().max(300).optional(),
+    expected_close: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), notes: z.string().max(4000).optional(), deal_type: z.enum(['new', 'expansion', 'renewal']).optional(), customer_key: z.string().max(200).nullable().optional(), customer_name: z.string().trim().max(200).nullable().optional(), lost_reason: z.string().trim().max(300).optional(),
     step: z.object({ stage: z.string().max(40), i: z.number().int().min(0).max(19), done: z.boolean() }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the deal: a name, and a value in numbers.')
   const d = b.data
@@ -20,8 +20,8 @@ export default defineEventHandler(async (event) => {
     // The deal is for the process's company, or (a group-wide process) the company chosen at the top.
     const sc = await forecastScope(event), ent = p.entity_id ?? (sc.group ? null : sc.entity)
     const stage = d.stage_key ?? p.stages.find((s) => s.kind === 'open')!.key
-    const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, recurring, stage_key, owner_id, source_channel, expected_close, notes, entity_id, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12, CASE WHEN $11 THEN now() END) RETURNING id',
-      [pid, d.name, d.contact || null, d.value ?? null, d.recurring ?? false, stage, d.owner_id ?? user.userId, d.source_channel || null, d.expected_close ?? null, d.notes || null, closedKind(stage) !== 'open', ent])).id
+    const id = (await one<{ id: string }>('INSERT INTO growth.deals (process_id, name, contact, value, recurring, stage_key, owner_id, source_channel, expected_close, notes, entity_id, closed_at, deal_type, customer_key, customer_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12, CASE WHEN $11 THEN now() END, $13, $14, $15) RETURNING id',
+      [pid, d.name, d.contact || null, d.value ?? null, d.recurring ?? false, stage, d.owner_id ?? user.userId, d.source_channel || null, d.expected_close ?? null, d.notes || null, closedKind(stage) !== 'open', ent, d.deal_type ?? (d.customer_key ? 'expansion' : 'new'), d.customer_key || null, d.customer_name || null])).id
     await db().query('INSERT INTO growth.deal_moves (deal_id, from_stage, to_stage, by_user) VALUES ($1, NULL, $2, $3)', [id, stage, user.userId])
     return { ok: true, id }
   }
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
   const put = (col: string, v: unknown) => { vals.push(v); set.push(col + ' = $' + vals.length) }
   if (d.name !== undefined) put('name', d.name); if (d.contact !== undefined) put('contact', d.contact || null); if (d.value !== undefined) put('value', d.value); if (d.recurring !== undefined) put('recurring', d.recurring)
   if (d.owner_id !== undefined) put('owner_id', d.owner_id); if (d.source_channel !== undefined) put('source_channel', d.source_channel || null); if (d.expected_close !== undefined) put('expected_close', d.expected_close)
-  if (d.notes !== undefined) put('notes', d.notes || null); if (d.lost_reason !== undefined) put('lost_reason', d.lost_reason || null)
+  if (d.notes !== undefined) put('notes', d.notes || null); if (d.deal_type) put('deal_type', d.deal_type); if (d.customer_key !== undefined) put('customer_key', d.customer_key || null); if (d.customer_name !== undefined) put('customer_name', d.customer_name || null); if (d.lost_reason !== undefined) put('lost_reason', d.lost_reason || null)
   if (d.stage_key && d.stage_key !== cur.stage_key) {
     put('stage_key', d.stage_key); vals.push(closedKind(d.stage_key) !== 'open'); set.push('closed_at = CASE WHEN $' + vals.length + ' THEN now() END')
     await db().query('INSERT INTO growth.deal_moves (deal_id, from_stage, to_stage, by_user) VALUES ($1,$2,$3,$4)', [d.id, cur.stage_key, d.stage_key, user.userId])

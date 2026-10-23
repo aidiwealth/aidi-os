@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // Live bank balances through Plaid (US banks), with a total in the reporting currency. For a company with accounts
 // outside the US (or a group), it says these are part of the cash, not all of it.
-const props = withDefaults(defineProps<{ compact?: boolean; entity?: string | null }>(), { compact: false, entity: null })
+// With `link` (Financials, the dashboard, when Banking is on the plan) it is one line pointing to Banking, where the
+// accounts are shown and managed, so they are not managed in two places.
+const props = withDefaults(defineProps<{ compact?: boolean; entity?: string | null; link?: string | null }>(), { compact: false, entity: null, link: null })
 const emit = defineEmits<{ changed: [] }>()
 interface A { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
 const { data, refresh } = await useFetch<{ ng?: boolean; available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; currency: string; coverage?: { reported: number | null; as_of: string | null; share: number | null; partial: boolean; group: boolean } | null }>('/api/plaid/accounts', { query: computed(() => (props.entity ? { entity: props.entity } : {})), key: 'plaid-accounts' + (props.entity ? ':' + props.entity : '') })
@@ -27,7 +29,11 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
 </script>
 <template>
   <!-- Live bank balances as a slim strip: the total, then one small card per account, scrolling sideways if there are many. -->
-  <div v-if="data && data.available !== false && (data.accounts.length || (data.manage && data.enabled))" class="bf" :class="{ cmp: compact }">
+  <NuxtLink v-if="link && data && data.available !== false && data.accounts.length" :to="link" class="bf ln">
+    <span class="tt"><span class="live"><i />Live</span><b>Bank balances</b><span class="tot">{{ fmt(data.total, data.currency) }}</span><span class="mut">{{ data.accounts.length }} account{{ data.accounts.length === 1 ? '' : 's' }}{{ newest ? ' · updated ' + ago(newest) : '' }}{{ data.coverage?.partial ? ' · US accounts only' : '' }}</span></span>
+    <span class="go">Accounts in Banking<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg></span>
+  </NuxtLink>
+  <div v-else-if="!link && data && data.available !== false && (data.accounts.length || (data.manage && data.enabled))" class="bf" :class="{ cmp: compact }">
     <div class="top">
       <div class="tt"><span class="live"><i />Live</span><b>Bank balances</b>
         <template v-if="data.accounts.length"><span class="tot">{{ fmt(data.total, data.currency) }}</span><span class="mut">{{ data.accounts.length }} account{{ data.accounts.length === 1 ? '' : 's' }}{{ newest ? ' · updated ' + ago(newest) : '' }}{{ data.env === 'sandbox' ? ' · sandbox' : '' }}</span></template>
@@ -51,6 +57,8 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
   </div>
 </template>
 <style scoped>
+.bf.ln { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 11px 16px; text-decoration: none; color: inherit; } .bf.ln:hover { border-color: var(--c-rule-strong); }
+.go { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--c-blue-deep); white-space: nowrap; } .go svg { width: 14px; height: 14px; }
 .bf { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: #fff; border: 1px solid var(--c-line-soft, var(--c-rule)); }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .tt { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; } .tt b { font-size: 14px; font-weight: 600; color: var(--c-ink); }

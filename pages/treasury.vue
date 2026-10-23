@@ -4,15 +4,15 @@
 // Read-only: Finvry never holds or moves money.
 useHead({ title: 'Banking' })
 interface Cat { key: string; label: string }
-interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null }
+interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null; saving: number; saving_pct: number | null; suggest: { flag: string; why: string } | null }
 interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; marked_monthly: number; runway_if_cut: number | string | null
   by_category: { key: string; label: string; last: number; prev: number; avg3: number; budget: number | null }[]; top_vendors: { key: string; name: string; category: string; last: number; prev: number; total: number; recurring: boolean }[]
-  movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
-  ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean }[]; added: number }
+  movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
+  ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
 const route = useRoute(), router = useRouter()
 const tab = computed(() => (['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
-const { sf, cust, isGroup, companies } = await useCoScope()
+const { sf, cust, isGroup, companies, entityId } = await useCoScope()
 const { data, refresh, pending } = await useFetch<D>('/api/treasury', { query: computed(() => ({ cust: cust.value })) })
 const d = computed(() => data.value)
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, d.value?.currency ?? 'USD'))
@@ -44,10 +44,17 @@ async function setCat(t: T, category: string, always: boolean) {
 }
 const always = ref(true)
 // Cut list.
-async function mark(v: V, status: 'keep' | 'to_cancel' | 'cancelled') {
-  const remind = status === 'to_cancel' ? (() => { const x = new Date(); x.setDate(x.getDate() + 7); return x.toISOString().slice(0, 10) })() : null
-  try { await sf('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cancel; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ' kept.'; await refresh() } catch (e) { msg.value = err(e) }
+// Flags as founders use them in their own cut-list sheets: keep, cut, downgrade (with the share it saves), review,
+// personal (off the company card), and cancelled once it is done.
+const FLAGS: [string, string][] = [['keep', 'Keep'], ['to_cancel', 'Cut'], ['downgrade', 'Downgrade'], ['review', 'Review'], ['personal', 'Personal'], ['cancelled', 'Cancelled']]
+const flagLabel = (k: string) => FLAGS.find((f) => f[0] === k)?.[1] ?? k
+async function mark(v: V, status: string, extra: { saving_pct?: number | null; note?: string } = {}) {
+  const remind = ['to_cancel', 'downgrade'].includes(status) ? (v.remind_on ?? (() => { const x = new Date(); x.setDate(x.getDate() + 7); return x.toISOString().slice(0, 10) })()) : null
+  try { await sf('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind, ...extra } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cut; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ': ' + flagLabel(status) + '.'; await refresh() } catch (e) { msg.value = err(e) }
 }
+const setPct = (v: V, ev: Event) => { const x = (ev.target as HTMLInputElement).value; void mark(v, v.status === 'keep' ? 'downgrade' : v.status, { saving_pct: x === '' ? null : Math.min(100, Math.max(0, Number(x))) }) }
+const setNote = (v: V, ev: Event) => void mark(v, v.status, { note: (ev.target as HTMLInputElement).value.trim() })
+const xlsx = computed(() => '/api/treasury/cut-list' + (cust.value ? '?cust=' + encodeURIComponent(cust.value) : ''))
 async function budget(c: { key: string; budget: number | null }, ev: Event) { const v = (ev.target as HTMLInputElement).value; try { await sf('/api/treasury/budget', { method: 'POST', body: { category: c.key, monthly: v } }); await refresh() } catch (e) { msg.value = err(e) } }
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : null)
 const maxOut = computed(() => Math.max(1, ...(d.value?.months ?? []).map((x) => Math.max(x.in, x.out))))
@@ -55,13 +62,15 @@ const today = new Date().toISOString().slice(0, 10)
 </script>
 <template>
   <section class="tr">
-    <div class="hd"><div><h1>Banking</h1><ScopeSwitch /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
-      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+    <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
+      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
+    <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
+    <ClientOnly><BankFeeds v-if="!data?.ng" class="feeds" :entity="isGroup ? null : entityId" @changed="sync" /></ClientOnly>
     <template v-if="d">
-      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>Connect your bank under Financials for a live feed, drag in CSV or PDF statements (PDFs are read with AI) for banks the feed does not reach, or link a Google Sheet of transactions. Twelve months gives the best picture.</p>
-        <div class="tb"><button class="btn" @click="up.open = true">Upload a statement</button><NuxtLink to="/financials" class="btn secondary">Connect a bank</NuxtLink></div></div>
+      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>{{ d.ng ? 'Live connections for Nigerian banks are coming soon. For now, drag in' : 'Connect a US bank above for a live feed, drag in' }} CSV or PDF statements (PDFs are read with AI) for banks the feed does not reach, or link a Google Sheet of transactions. Twelve months gives the best picture.</p>
+        <div class="tb"><button class="btn" @click="up.open = true">Upload a statement</button></div></div>
 
       <template v-if="tab === 'overview'">
         <div class="fx-stats">
@@ -74,7 +83,7 @@ const today = new Date().toISOString().slice(0, 10)
           <div v-if="d.months.length" class="bars"><div v-for="x in d.months" :key="x.month" class="bm" :title="mon(x.month) + ': in ' + m(x.in) + ', out ' + m(x.out)"><div class="bb"><i class="in" :style="{ height: x.in / maxOut * 100 + '%' }" /><i class="out" :style="{ height: x.out / maxOut * 100 + '%' }" /></div><span>{{ mon(x.month).slice(0, 3) }}</span></div></div>
           <p v-else class="mut">No full months yet.</p><div class="lg"><span><i class="in" />Money in</span><span><i class="out" />Money out</span></div></div>
         <div class="card"><div class="ch"><h2>Where transactions come from</h2><span class="mut">{{ d.ledger.count.toLocaleString('en-US') }} transactions{{ d.ledger.since ? ' since ' + d.ledger.since : '' }}.</span></div>
-          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' ? 'Planned' : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
+          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' || r.soon ? (r.soon ? 'Coming soon' : 'Planned') : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
       </template>
 
       <template v-if="tab === 'spend'">
@@ -88,6 +97,7 @@ const today = new Date().toISOString().slice(0, 10)
               <tbody><tr v-for="v in d.top_vendors" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table></div>
           <div class="card"><div class="ch"><h2>Biggest changes</h2><span class="mut">{{ mon(d.prev_month) }} to {{ mon(d.last_month) }}</span></div>
             <table v-if="d.movers.length" class="t" data-nosearch><tbody><tr v-for="v in d.movers" :key="v.name"><td>{{ v.name }}</td><td class="r mut2">{{ m(v.prev) }} → {{ m(v.last) }}</td><td class="r" :class="{ neg: v.change > 0 }">{{ v.change > 0 ? '+' : '' }}{{ m(v.change) }}</td></tr></tbody></table><p v-else class="mut">No changes yet.</p>
+            <template v-if="d.by_spender.length"><h3>Who spends</h3><p class="mut">Card and expense payments, last 90 days</p><table class="t" data-nosearch><tbody><tr v-for="p in d.by_spender" :key="p.name"><td>{{ p.name }}</td><td class="r">{{ m(p.monthly) }} a month</td><td class="r mut2">{{ m(p.total) }}</td></tr></tbody></table></template>
             <template v-if="d.duplicates.length"><h3>Tools doing the same job</h3><p v-for="g in d.duplicates" :key="g.job" class="dup"><b>{{ g.job }}:</b> {{ g.vendors.map((v) => v.name + ' (' + m(v.monthly) + ')').join(', ') }}</p></template></div>
         </div>
       </template>
@@ -104,12 +114,17 @@ const today = new Date().toISOString().slice(0, 10)
       </template>
 
       <template v-if="tab === 'cut'">
-        <div class="hb">Recurring payments, ranked by how much runway cancelling each one would give back{{ d.runway !== null ? ' (today: ' + d.runway + ' months)' : '' }}. Marked to cancel: <b>{{ m(d.marked_monthly) }}</b> a month{{ d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? ', runway ' + d.runway_if_cut + ' months' : ', which ends the burn') : '' }}. Cancelling is done with the vendor; Finvry reminds you and stops counting it once you record it as cancelled.</div>
-        <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">A month</th><th class="r">Runway gained</th><th>Status</th><th /></tr></thead>
-          <tbody><tr v-for="v in d.cut_list" :key="v.key" :class="{ mk: v.status === 'to_cancel' }"><td><b>{{ v.name }}</b><small>Last paid {{ v.last }}</small></td><td class="mut2">{{ catLabel(v.category) }}</td><td class="r">{{ m(v.monthly) }}</td><td class="r">{{ v.runway_gain === null ? '—' : typeof v.runway_gain === 'number' ? '+' + v.runway_gain + ' mo' : v.runway_gain }}</td>
-            <td>{{ v.status === 'to_cancel' ? 'To cancel' + (v.remind_on ? (v.remind_on <= today ? ' · reminder due' : ' · reminder ' + v.remind_on) : '') : 'Keeping' }}</td>
-            <td class="ac"><template v-if="v.status === 'to_cancel'"><button class="lk" @click="mark(v, 'cancelled')">Cancelled it</button><button class="lk" @click="mark(v, 'keep')">Keep</button></template><button v-else class="lk" @click="mark(v, 'to_cancel')">Mark to cancel</button></td></tr></tbody></table>
-          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments found yet: they show once a vendor is paid in three of the last four months.</p></div>
+        <div class="hb">Recurring payments, ranked by the runway each would give back{{ d.runway !== null ? ' (today: ' + d.runway + ' months)' : '' }}. Flag each one; a downgrade counts the saving % you set. Estimated saving: <b>{{ m(d.marked_monthly) }}</b> a month{{ d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? ', runway ' + d.runway_if_cut + ' months' : ', which ends the burn') : '' }}. Cancelling is done with the vendor; Finvry reminds you and stops counting it once it stops. <a :href="xlsx" class="lk">Download as Excel</a></div>
+        <div class="card pad0"><table class="t cl" data-nosearch><thead><tr><th>Payee</th><th>Category</th><th class="r">A month</th><th>Flag</th><th class="r">Saving %</th><th class="r">Saves a month</th><th class="r">Runway gained</th><th>Action</th></tr></thead>
+          <tbody><tr v-for="v in d.cut_list" :key="v.key" :class="{ mk: v.status !== 'keep' }"><td><b>{{ v.name }}</b><small>Last paid {{ v.last }}{{ v.remind_on && ['to_cancel', 'downgrade'].includes(v.status) ? (v.remind_on <= today ? ' · reminder due' : ' · reminder ' + v.remind_on) : '' }}</small></td><td class="mut2">{{ catLabel(v.category) }}</td><td class="r">{{ m(v.monthly) }}</td>
+            <td><select class="fs" :value="v.status" :aria-label="'Flag for ' + v.name" @change="mark(v, ($event.target as HTMLSelectElement).value)"><option v-for="[k, l] in FLAGS" :key="k" :value="k">{{ l }}</option></select><small v-if="v.suggest && v.status === 'keep'" class="sg">Suggested: {{ flagLabel(v.suggest.flag) }}</small></td>
+            <td class="r"><input class="bi pc" :value="v.saving_pct ?? (v.status === 'downgrade' ? 50 : ['to_cancel', 'personal'].includes(v.status) ? 100 : '')" inputmode="decimal" :disabled="['keep', 'review', 'cancelled'].includes(v.status)" :aria-label="'Saving % for ' + v.name" @change="setPct(v, $event)"></td>
+            <td class="r">{{ v.saving ? m(v.saving) : '—' }}</td><td class="r">{{ v.runway_gain === null || v.runway_gain === 0 ? '—' : typeof v.runway_gain === 'number' ? '+' + v.runway_gain + ' mo' : v.runway_gain }}</td>
+            <td><input class="nt" :value="v.note ?? ''" :placeholder="v.suggest?.why ?? 'What to do'" maxlength="500" :aria-label="'Action for ' + v.name" @change="setNote(v, $event)"></td></tr></tbody></table>
+          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments found yet: they show once a payee is paid in three of the last four months.</p></div>
+        <div v-if="d.checks.length" class="card"><div class="ch"><h2>Worth a look</h2><span class="mut">Payments in the last 90 days that stand out</span></div>
+          <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th>Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
+            <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
       </template>
       <p class="fine">Read-only. Categories are suggestions until you set them; amounts in other currencies are converted at the daily rate. Not financial advice.</p>
     </template>
@@ -145,4 +160,6 @@ i.in { background: var(--c-navy); } i.out { background: #aab4c2; } .lg { display
 .hb { border: 1px solid var(--c-rule); background: #fff; padding: 12px 16px; font-size: 14px; color: var(--c-ink-soft); line-height: 1.55; }
 .frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm input, .frm select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
 .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
+.fs { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; } .sg { display: block; color: var(--c-blue-deep); font-size: 11.5px; margin-top: 3px; }
+.bi.pc { width: 64px; } .nt { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--c-rule); width: 100%; min-width: 180px; } .nw { white-space: nowrap; }
 </style>

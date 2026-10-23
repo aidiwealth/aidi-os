@@ -61,8 +61,11 @@ export default defineEventHandler(async (event) => {
   let r
   try { r = buildMgmtReport(rows as never, { company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, analysis, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
+  // Sales, Marketing, Banking and Stage, for the same company (or the group), in the report's order.
+  const extra = await growthSections(event, d.subject, d.sections).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
+  if (extra.length) { r.sections.push(...extra); r.sections.sort((a, b) => MR_SECTIONS.findIndex((s) => s.key === a.key) - MR_SECTIONS.findIndex((s) => s.key === b.key)) }
   // Remember the sections for next month.
-  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies } }
+  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, growth_seen: true } }
   // Not when made from Retention or Customers (a customers-only report should not change next month's choice).
   if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()
@@ -85,6 +88,7 @@ export default defineEventHandler(async (event) => {
       { type: 'metrics_table', title: 'Key metrics', metrics: ['revenue', 'gross_margin', 'net_income', 'cash', 'burn', 'runway'], period: 'month', count: 6 },
       { type: 'chart', title: 'Revenue', metrics: ['revenue'], period: 'month', count: 12 },
       ...(hasCust ? [{ type: 'metrics_table', title: 'Customers and retention', metrics: ['cust:nrr', 'cust:grr', 'cust:arr', 'cust:active'], period: 'month', count: 6 }, { type: 'sectors', title: 'Revenue by customer sector' }] : []),
+      ...(extra.length ? [{ type: 'text', md: extra.map((s) => '## ' + s.title + '\n\n' + (s.tiles ?? []).map((t) => '- **' + t.label + ':** ' + t.value + (t.sub ? ' (' + t.sub + ')' : '')).join('\n') + ((s.facts ?? []).length ? (s.tiles?.length ? '\n' : '') + s.facts!.map(([k, v]) => '- **' + k + ':** ' + v).join('\n') : '') + (s.key === 'stage' ? '\n\n_' + (s.intro ?? '') + '_' : '')).join('\n\n') }] : []),
       ...(d.priorities.trim() ? [{ type: 'text', md: '## Priorities for next month\n\n' + d.priorities.trim() }] : [])]
     const end = month.length === 7 ? month + '-28' : month
     updateId = (await one<{ id: string }>("INSERT INTO financials.updates (title, period_type, period_end, created_by, blocks, subject) VALUES ($1,'month',$2,$3,$4,$5) RETURNING id", [name + ': ' + r.label + ' update', end, user.userId, JSON.stringify(blocks), org.kind === 'company' ? null : d.subject])).id
