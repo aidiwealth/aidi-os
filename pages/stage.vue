@@ -62,7 +62,7 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
               <tr><td>Gross margin</td><td v-for="x in last6" :key="x.month" class="r">{{ x.gross_margin === null ? '—' : x.gross_margin + '%' }}</td></tr><tr><td>Net income</td><td v-for="x in last6" :key="x.month" class="r" :class="{ neg: (x.net ?? 0) < 0 }">{{ m(x.net) }}</td></tr>
               <tr><td>Cash</td><td v-for="x in last6" :key="x.month" class="r">{{ m(x.cash) }}</td></tr></tbody></table>
           <p v-else class="mut">No monthly statements yet.</p>
-          <p v-if="d.runway.cut_monthly" class="mut sm2">Cancelling the payments marked in <NuxtLink to="/treasury?t=cut">Banking &amp; Treasury</NuxtLink> saves {{ m(d.runway.cut_monthly) }} a month{{ d.runway.if_cut ? ' and stretches runway to ' + d.runway.if_cut + ' months' : ' and ends the burn' }}.</p>
+          <p v-if="d.runway.cut_monthly" class="mut sm2">Cancelling the payments marked in <NuxtLink to="/treasury?t=cut">Banking</NuxtLink> saves {{ m(d.runway.cut_monthly) }} a month{{ d.runway.if_cut ? ' and stretches runway to ' + d.runway.if_cut + ' months' : ' and ends the burn' }}.</p>
           <p v-if="d.runway.burn !== null" class="mut sm2">Burn {{ m(d.runway.burn) }} a month ({{ d.runway.basis }}) · cash {{ m(d.runway.cash) }}{{ d.runway.cash_at ? ' at ' + d.runway.cash_at : '' }}</p></div>
         <div class="card"><div class="ch"><h2>Cap table</h2><NuxtLink to="/cap-table" class="lk">Open</NuxtLink></div>
           <template v-if="d.cap"><p class="mut sm2">{{ d.cap.name }} · {{ d.cap.fully_diluted.toLocaleString('en-US') }} shares fully diluted · {{ d.cap.safes }} SAFE{{ d.cap.safes === 1 ? '' : 's' }} or notes outstanding</p>

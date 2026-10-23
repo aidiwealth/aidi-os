@@ -291,6 +291,35 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('treasury: first categories from what the payment is', TR.autoCategory('google ads', 'NIP TRF GOOGLE ADS', 'out', null) === 'opex_marketing' && TR.autoCategory('aws emea amazon', 'AWS', 'out', null) === 'opex_rnd' && TR.autoCategory('acme', 'TRF FROM CUSTOMER ACME', 'in', null) === 'revenue' && TR.autoCategory('deel payroll', 'DEEL PAYROLL', 'out', null) === 'opex_payroll')
 }
 
+// 9d. Sales and marketing: conversion from deal moves, the weighted pipeline, and what a budget buys.
+{
+  const G = await jiti.import(join(root, 'shared/growth.ts'))
+  const stages = G.withKeys([{ name: 'Lead', kind: 'open', target_pct: 50, days: 5, steps: [] }, { name: 'Proposal', kind: 'open', target_pct: 50, days: 10, steps: [] }, { name: 'Won', kind: 'won', target_pct: null, days: null, steps: [] }, { name: 'Lost', kind: 'lost', target_pct: null, days: null, steps: [] }])
+  const p = { id: 'p', kind: 'sales', name: 'B2B', currency: 'USD', target_monthly: 10000, target_kind: 'revenue', stages, channels: [] }
+  const mk = (id, path, value) => ({ deal: { id, stage_key: path[path.length - 1], value, recurring: false, created_at: '2026-06-01T00:00:00Z', closed_at: path.at(-1) === 'won' || path.at(-1) === 'lost' ? '2026-07-01T00:00:00Z' : null, expected_close: '2026-11-15', source_channel: null, owner_id: null },
+    moves: path.slice(1).map((to, k) => ({ deal_id: id, from_stage: path[k], to_stage: to, at: '2026-06-' + String(10 + k * 5).padStart(2, '0') + 'T00:00:00Z' })) })
+  const all = [mk('a', ['lead', 'proposal', 'won'], 5000), mk('b', ['lead', 'proposal', 'won'], 5000), mk('c', ['lead', 'proposal', 'lost'], 4000), mk('d', ['lead', 'lost'], 0), mk('e', ['lead', 'proposal'], 6000), mk('f', ['lead'], 2000)]
+  const s = G.salesStats(p, all.map((x) => x.deal), all.flatMap((x) => x.moves), '2026-10-23')
+  const lead = s.stages.find((x) => x.key === 'lead'), prop = s.stages.find((x) => x.key === 'proposal')
+  check('sales: conversion from moves, win rate and average deal', lead.reached === 6 && lead.moved_on === 4 && lead.actual_pct === 80 && prop.actual_pct === 66.7 && s.won === 2 && s.win_rate === 50 && s.avg_won === 5000, JSON.stringify([lead.actual_pct, prop.actual_pct, s.win_rate, s.avg_won]))
+  check('sales: weighted pipeline and what the target needs', s.open_value === 8000 && s.weighted === Math.round(6000 * 0.667 + 2000 * 0.8 * 0.667) && s.to_target.deals_needed === 2 && s.to_target.leads_needed === 4, JSON.stringify([s.weighted, s.to_target]))
+  const pr = G.predictBudget([{ key: 'ads', name: 'Ads', spend: 5000, leads: 100, customers: 10, revenue: 0, cpl: 50, cac: 500, lead_to_customer: 10, roi: null, budget: null }], { ads: 2000 }, 3, 1000)
+  check('marketing: a budget buys leads and customers at the channel\'s own rates', pr.rows[0].leads === 40 && pr.rows[0].customers === 4 && pr.total.revenue === 4000, JSON.stringify(pr.rows[0]))
+}
+
+// 9e. Bringing sheets into Sales, Marketing and Banking: columns by heading, the sheet's names matched to the company's.
+{
+  globalThis.useRuntimeConfig = () => ({})
+  const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
+  const t = GI.tableOf([{ name: 'Deals', rows: [['Pipeline export'], ['Company', 'Deal size', 'Status', 'Close date', 'Lead source'], ['Acme', '5,000', 'Proposal sent', '2026-11-30', 'Referral'], ['Beta', 3000, 'Closed won', 46000, 'Paid search'], [null, null, null, null, null]] }])
+  const stages = [{ key: 'lead', name: 'Lead', kind: 'open' }, { key: 'proposal', name: 'Proposal', kind: 'open' }, { key: 'won', name: 'Won', kind: 'won' }]
+  const m = await GI.mapTable('sales_deals', t, { stages, channels: [{ key: 'paid_search', name: 'Paid search' }, { key: 'referrals', name: 'Referrals and partners' }], people: [] })
+  check('import: deal columns found by their headings', t.headers[0] === 'Company' && t.rows.length === 2 && m.columns.name === 0 && m.columns.value === 1 && m.columns.stage === 2 && m.columns.expected_close === 3 && m.columns.source === 4, JSON.stringify(m.columns))
+  check('import: the sheet\'s stage and channel names matched where they are close', m.values.stage['Proposal sent'] === 'proposal' && m.values.channel['Paid search'] === 'paid_search' && m.values.stage['Closed won'] === 'won', JSON.stringify(m.values))
+  const b = await GI.mapTable('bank_txns', GI.tableOf([{ name: 'S', rows: [['Txn Date', 'Narration', 'Withdrawals', 'Lodgements', 'Balance'], ['01/09/2026', 'NIP TRF', '1,000', '', '9,000']] }]), {})
+  check('import: bank columns, money in and out', b.columns.date === 0 && b.columns.description === 1 && b.columns.debit === 2 && b.columns.credit === 3 && GI.dateOf('01/09/2026') === '2026-09-01' && GI.dateOf(46000) === '2025-12-09', JSON.stringify(b.columns))
+}
+
 // 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
 {
   const V = await jiti.import(join(root, 'shared/valuation.ts'))

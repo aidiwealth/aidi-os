@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Banking & Treasury: every bank transaction in one ledger (bank feed and uploaded statements; Fincra later), where the
+// Banking: every bank transaction in one ledger (bank feed and uploaded statements; Fincra later), where the
 // money goes by category and vendor, and the cut list — recurring payments ranked by the runway they would give back.
 // Read-only: Finvry never holds or moves money.
-useHead({ title: 'Banking & Treasury' })
+useHead({ title: 'Banking' })
 interface Cat { key: string; label: string }
 interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null }
 interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; marked_monthly: number; runway_if_cut: number | string | null
@@ -20,6 +20,7 @@ const msg = ref(''), ok = ref(''), busy = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
 async function sync() { busy.value = true; msg.value = ''; try { const r = await $fetch<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // Upload a statement.
+const lk = ref(false)
 const up = reactive({ open: false, account: '', currency: 'NGN', file: null as File | null })
 async function upload() {
   if (!up.file) return; busy.value = true; msg.value = ''
@@ -53,12 +54,12 @@ const today = new Date().toISOString().slice(0, 10)
 </script>
 <template>
   <section class="tr">
-    <div class="hd"><div><h1>Banking &amp; Treasury</h1><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
-      <div class="tb"><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+    <div class="hd"><div><h1>Banking</h1><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
+      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <template v-if="d">
-      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>Connect your bank under Financials for a live feed, or upload CSV or PDF statements here for banks the feed does not reach. Twelve months gives the best picture.</p>
+      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>Connect your bank under Financials for a live feed, drag in CSV or PDF statements (PDFs are read with AI) for banks the feed does not reach, or link a Google Sheet of transactions. Twelve months gives the best picture.</p>
         <div class="tb"><button class="btn" @click="up.open = true">Upload a statement</button><NuxtLink to="/financials" class="btn secondary">Connect a bank</NuxtLink></div></div>
 
       <template v-if="tab === 'overview'">
@@ -113,6 +114,7 @@ const today = new Date().toISOString().slice(0, 10)
     </template>
     <p v-else-if="pending" class="mut">Loading…</p>
 
+    <SheetImport :open="lk" kind="bank_txns" :currency="d?.currency" @close="lk = false" @done="refresh()" />
     <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
       <div class="frm"><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
         <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label>

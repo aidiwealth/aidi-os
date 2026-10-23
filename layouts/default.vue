@@ -45,7 +45,7 @@ interface WsTab { to: string; label: string; code: string; locked?: boolean; pag
 interface WsItem { label: string; icon: string; to: string; tabs: WsTab[]; inner?: boolean }
 const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
   { label: 'Investors', items: [{ label: 'Financials', codes: ['financials', 'forecast'], inner: true }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity'] }, { label: 'Boards', codes: ['boards'] }] },
-  { label: 'Growth', items: [{ label: 'Stage monitor', codes: ['stage_monitor'] }, { label: 'Banking & Treasury', codes: ['banking_treasury'] }] },
+  { label: 'Growth', items: [{ label: 'Sales', codes: ['sales'] }, { label: 'Marketing', codes: ['marketing'] }, { label: 'Stage monitor', codes: ['stage_monitor'] }, { label: 'Banking', codes: ['banking_treasury'] }] },
   { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
     { label: 'Services', codes: ['company_services', 'client_inbox', 'wallet', 'client_raise'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
   { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'] }] }]

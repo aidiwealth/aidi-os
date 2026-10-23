@@ -1,4 +1,4 @@
-// Finvry Banking & Treasury (read-only foundations). One ledger of every bank transaction, whatever rail it came from
+// Finvry Banking (read-only foundations). One ledger of every bank transaction, whatever rail it came from
 // (the bank feed today, uploaded statements for banks the feed does not reach, Fincra later), each tied to a vendor and
 // a category the founder can correct once for good; and from it the spend view and the cut list: recurring payments
 // ranked by the runway they would give back. Nothing here moves money.
@@ -29,7 +29,7 @@ export const RAILS: Rail[] = [
       }
       return out
     } },
-  { key: 'upload', label: 'Statement upload', note: 'CSV or PDF statements for banks the feed does not reach (most Nigerian banks today).', available: async () => true },
+  { key: 'upload', label: 'Statement upload', note: 'Drag in CSV or PDF statements (PDFs read with AI), or link a Google Sheet of transactions, for banks the feed does not reach (most Nigerian banks today).', available: async () => true },
   { key: 'fincra', label: 'Fincra', note: 'Accounts, payouts and cards through Fincra are planned; not connected yet.', available: async () => false }]
 
 // "POS DEBIT 2093 AMAZON WEB SERVICES AWS.AMAZON.CO" → "amazon web services".
