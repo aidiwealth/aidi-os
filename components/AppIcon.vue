@@ -2,6 +2,7 @@
 // Line icons (24px grid, Telroi style) for the sidebar, top bar and empty states. One distinct icon per feature.
 const props = defineProps<{ name: string }>()
 const P: Record<string, string> = {
+  banking_treasury: '<path d="M3 9.5 12 4l9 5.5"/><path d="M4.5 10v8M9 10v8M15 10v8M19.5 10v8"/><path d="M3 20h18"/>',
   stage_monitor: '<path d="M4 18a8 8 0 0 1 16 0"/><path d="M12 18l4.5-6.5"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/><path d="M6.3 12.4l1.2.9M12 9.6V8.2M17.7 12.4l-1.2.9" opacity=".6"/>',
   forecast: '<path d="M3 20h18"/><path d="M4 16l5-5 4 3 7-8"/><path d="M15 6h5v5" stroke-dasharray="2 2"/>',
   equity: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5V12l6.5 5"/><path d="M12 12H3.5"/>',

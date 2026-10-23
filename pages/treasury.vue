@@ -1,0 +1,145 @@
+<script setup lang="ts">
+// Banking & Treasury: every bank transaction in one ledger (bank feed and uploaded statements; Fincra later), where the
+// money goes by category and vendor, and the cut list — recurring payments ranked by the runway they would give back.
+// Read-only: Finvry never holds or moves money.
+useHead({ title: 'Banking & Treasury' })
+interface Cat { key: string; label: string }
+interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null }
+interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; marked_monthly: number; runway_if_cut: number | string | null
+  by_category: { key: string; label: string; last: number; prev: number; avg3: number; budget: number | null }[]; top_vendors: { key: string; name: string; category: string; last: number; prev: number; total: number; recurring: boolean }[]
+  movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
+  ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean }[]; added: number }
+const route = useRoute(), router = useRouter()
+const tab = computed(() => (['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
+const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
+const { data, refresh, pending } = await useFetch<D>('/api/treasury')
+const d = computed(() => data.value)
+const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, d.value?.currency ?? 'USD'))
+const mon = (ym: string | null | undefined) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
+const msg = ref(''), ok = ref(''), busy = ref(false)
+const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
+async function sync() { busy.value = true; msg.value = ''; try { const r = await $fetch<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+// Upload a statement.
+const up = reactive({ open: false, account: '', currency: 'NGN', file: null as File | null })
+async function upload() {
+  if (!up.file) return; busy.value = true; msg.value = ''
+  const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency)
+  try { const r = await $fetch<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
+  catch (e) { msg.value = err(e) } finally { busy.value = false }
+}
+// Transactions.
+const f = reactive({ month: '', dir: '' as '' | 'in' | 'out', category: '', q: '', page: 0 })
+interface T { id: string; date: string; description: string; vendor: string; vendor_key: string; direction: 'in' | 'out'; amount: number; currency: string; amount_base: number; base_currency: string; category: string | null; category_by: string; account_label: string | null; source: string }
+const tx = ref<{ rows: T[]; total: number } | null>(null)
+async function loadTx() { tx.value = await $fetch('/api/treasury/transactions', { query: { month: f.month || undefined, dir: f.dir || undefined, category: f.category || undefined, q: f.q || undefined, page: f.page } }) }
+watch(() => [tab.value, f.month, f.dir, f.category, f.page], () => { if (tab.value === 'txns') void loadTx() }, { immediate: true })
+let qt: ReturnType<typeof setTimeout> | undefined
+watch(() => f.q, () => { clearTimeout(qt); qt = setTimeout(() => { f.page = 0; void loadTx() }, 300) })
+const catLabel = (k: string | null) => d.value?.categories.find((c) => c.key === k)?.label ?? k ?? '—'
+async function setCat(t: T, category: string, always: boolean) {
+  try { const r = await $fetch<{ updated: number }>('/api/treasury/categorize', { method: 'POST', body: { id: t.id, category, always } }); ok.value = always ? 'Every payment to ' + t.vendor + ' now goes under ' + catLabel(category) + ' (' + r.updated + ' updated).' : 'Saved.'; await loadTx(); void refresh() }
+  catch (e) { msg.value = err(e) }
+}
+const always = ref(true)
+// Cut list.
+async function mark(v: V, status: 'keep' | 'to_cancel' | 'cancelled') {
+  const remind = status === 'to_cancel' ? (() => { const x = new Date(); x.setDate(x.getDate() + 7); return x.toISOString().slice(0, 10) })() : null
+  try { await $fetch('/api/treasury/vendor', { method: 'POST', body: { vendor_key: v.key, status, remind_on: remind } }); ok.value = status === 'to_cancel' ? v.name + ' marked to cancel; we will remind you on ' + remind + '.' : status === 'cancelled' ? v.name + ' recorded as cancelled.' : v.name + ' kept.'; await refresh() } catch (e) { msg.value = err(e) }
+}
+async function budget(c: { key: string; budget: number | null }, ev: Event) { const v = (ev.target as HTMLInputElement).value; try { await $fetch('/api/treasury/budget', { method: 'POST', body: { category: c.key, monthly: v } }); await refresh() } catch (e) { msg.value = err(e) } }
+const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : null)
+const maxOut = computed(() => Math.max(1, ...(d.value?.months ?? []).map((x) => Math.max(x.in, x.out))))
+const today = new Date().toISOString().slice(0, 10)
+</script>
+<template>
+  <section class="tr">
+    <div class="hd"><div><h1>Banking &amp; Treasury</h1><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
+      <div class="tb"><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload a statement</button><button class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
+    <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
+    <template v-if="d">
+      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>Connect your bank under Financials for a live feed, or upload CSV or PDF statements here for banks the feed does not reach. Twelve months gives the best picture.</p>
+        <div class="tb"><button class="btn" @click="up.open = true">Upload a statement</button><NuxtLink to="/financials" class="btn secondary">Connect a bank</NuxtLink></div></div>
+
+      <template v-if="tab === 'overview'">
+        <div class="fx-stats">
+          <StatTile label="Cash" :value="m(d.cash)" note="Latest, from Financials" />
+          <StatTile label="Monthly burn" :value="m(d.burn)" :note="d.burn ? 'Same basis as Financials' : 'Not burning'" />
+          <StatTile label="Runway" :value="d.runway === null ? '—' : d.runway + ' months'" :note="d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months after the cuts you marked' : 'Cuts you marked end the burn') : 'Mark payments to cut to see more'" :red="(d.runway ?? 99) < 6" full />
+          <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month, in the cut list" clickable @click="go('cut')" />
+        </div>
+        <div class="card"><div class="ch"><h2>Money in and out</h2><span class="mut">Full months, in {{ d.currency }}, transfers between your own accounts left out.</span></div>
+          <div v-if="d.months.length" class="bars"><div v-for="x in d.months" :key="x.month" class="bm" :title="mon(x.month) + ': in ' + m(x.in) + ', out ' + m(x.out)"><div class="bb"><i class="in" :style="{ height: x.in / maxOut * 100 + '%' }" /><i class="out" :style="{ height: x.out / maxOut * 100 + '%' }" /></div><span>{{ mon(x.month).slice(0, 3) }}</span></div></div>
+          <p v-else class="mut">No full months yet.</p><div class="lg"><span><i class="in" />Money in</span><span><i class="out" />Money out</span></div></div>
+        <div class="card"><div class="ch"><h2>Where transactions come from</h2><span class="mut">{{ d.ledger.count.toLocaleString('en-US') }} transactions{{ d.ledger.since ? ' since ' + d.ledger.since : '' }}.</span></div>
+          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' ? 'Planned' : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
+      </template>
+
+      <template v-if="tab === 'spend'">
+        <div class="card"><div class="ch"><h2>Spend by category</h2><span class="mut">{{ mon(d.last_month) }} against {{ mon(d.prev_month) }} and your monthly budget.</span></div>
+          <table class="t" data-nosearch><thead><tr><th>Category</th><th class="r">{{ mon(d.prev_month) }}</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">Change</th><th class="r">3-month average</th><th class="r">Budget a month</th></tr></thead>
+            <tbody><tr v-for="c in d.by_category" :key="c.key"><td>{{ c.label }}</td><td class="r">{{ m(c.prev) }}</td><td class="r" :class="{ neg: c.budget !== null && c.last > c.budget }">{{ m(c.last) }}</td><td class="r" :class="{ neg: (pct(c.last, c.prev) ?? 0) > 20 }">{{ pct(c.last, c.prev) === null ? '—' : (pct(c.last, c.prev)! > 0 ? '+' : '') + pct(c.last, c.prev) + '%' }}</td><td class="r">{{ m(c.avg3) }}</td>
+              <td class="r"><input class="bi" :value="c.budget ?? ''" inputmode="decimal" placeholder="Set" :aria-label="'Budget for ' + c.label" @change="budget(c, $event)"></td></tr></tbody></table></div>
+        <div class="two">
+          <div class="card"><div class="ch"><h2>Top vendors</h2><span class="mut">Last 12 months</span></div>
+            <table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">12 months</th></tr></thead>
+              <tbody><tr v-for="v in d.top_vendors" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table></div>
+          <div class="card"><div class="ch"><h2>Biggest changes</h2><span class="mut">{{ mon(d.prev_month) }} to {{ mon(d.last_month) }}</span></div>
+            <table v-if="d.movers.length" class="t" data-nosearch><tbody><tr v-for="v in d.movers" :key="v.name"><td>{{ v.name }}</td><td class="r mut2">{{ m(v.prev) }} → {{ m(v.last) }}</td><td class="r" :class="{ neg: v.change > 0 }">{{ v.change > 0 ? '+' : '' }}{{ m(v.change) }}</td></tr></tbody></table><p v-else class="mut">No changes yet.</p>
+            <template v-if="d.duplicates.length"><h3>Tools doing the same job</h3><p v-for="g in d.duplicates" :key="g.job" class="dup"><b>{{ g.job }}:</b> {{ g.vendors.map((v) => v.name + ' (' + m(v.monthly) + ')').join(', ') }}</p></template></div>
+        </div>
+      </template>
+
+      <template v-if="tab === 'txns'">
+        <div class="fl"><input v-model="f.q" placeholder="Search description or vendor" aria-label="Search"><input v-model="f.month" type="month" aria-label="Month"><select v-model="f.dir" aria-label="Direction"><option value="">In and out</option><option value="in">Money in</option><option value="out">Money out</option></select>
+          <select v-model="f.category" aria-label="Category"><option value="">Every category</option><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select>
+          <label class="al"><input v-model="always" type="checkbox"> Changing a category applies to every payment to that vendor</label></div>
+        <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th class="r">Amount</th><th>Category</th><th>Account</th></tr></thead>
+          <tbody><tr v-for="t in tx?.rows ?? []" :key="t.id"><td class="nw">{{ t.date }}</td><td>{{ t.vendor }}</td><td class="ds">{{ t.description }}</td><td class="r nw" :class="{ pos: t.direction === 'in' }">{{ t.direction === 'in' ? '+' : '−' }}{{ briefMoney(t.amount, t.currency) }}<small v-if="t.currency !== t.base_currency">{{ m(t.amount_base) }}</small></td>
+            <td><select :value="t.category ?? ''" :aria-label="'Category for ' + t.vendor" @change="setCat(t, ($event.target as HTMLSelectElement).value, always)"><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select><small>{{ t.category_by === 'auto' ? 'Suggested' : t.category_by === 'rule' ? 'Your rule' : 'Set by you' }}</small></td><td class="mut2">{{ t.account_label }}</td></tr></tbody></table>
+          <p v-if="tx && !tx.rows.length" class="mut padx">No transactions match.</p>
+          <div v-if="tx && tx.total > 100" class="pg"><button class="lk" :disabled="!f.page" @click="f.page--">← Newer</button><span class="mut">{{ f.page * 100 + 1 }}–{{ Math.min(tx.total, f.page * 100 + 100) }} of {{ tx.total }}</span><button class="lk" :disabled="(f.page + 1) * 100 >= tx.total" @click="f.page++">Older →</button></div></div>
+      </template>
+
+      <template v-if="tab === 'cut'">
+        <div class="hb">Recurring payments, ranked by how much runway cancelling each one would give back{{ d.runway !== null ? ' (today: ' + d.runway + ' months)' : '' }}. Marked to cancel: <b>{{ m(d.marked_monthly) }}</b> a month{{ d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? ', runway ' + d.runway_if_cut + ' months' : ', which ends the burn') : '' }}. Cancelling is done with the vendor; Finvry reminds you and stops counting it once you record it as cancelled.</div>
+        <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">A month</th><th class="r">Runway gained</th><th>Status</th><th /></tr></thead>
+          <tbody><tr v-for="v in d.cut_list" :key="v.key" :class="{ mk: v.status === 'to_cancel' }"><td><b>{{ v.name }}</b><small>Last paid {{ v.last }}</small></td><td class="mut2">{{ catLabel(v.category) }}</td><td class="r">{{ m(v.monthly) }}</td><td class="r">{{ v.runway_gain === null ? '—' : typeof v.runway_gain === 'number' ? '+' + v.runway_gain + ' mo' : v.runway_gain }}</td>
+            <td>{{ v.status === 'to_cancel' ? 'To cancel' + (v.remind_on ? (v.remind_on <= today ? ' · reminder due' : ' · reminder ' + v.remind_on) : '') : 'Keeping' }}</td>
+            <td class="ac"><template v-if="v.status === 'to_cancel'"><button class="lk" @click="mark(v, 'cancelled')">Cancelled it</button><button class="lk" @click="mark(v, 'keep')">Keep</button></template><button v-else class="lk" @click="mark(v, 'to_cancel')">Mark to cancel</button></td></tr></tbody></table>
+          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments found yet: they show once a vendor is paid in three of the last four months.</p></div>
+      </template>
+      <p class="fine">Read-only. Categories are suggestions until you set them; amounts in other currencies are converted at the daily rate. Not financial advice.</p>
+    </template>
+    <p v-else-if="pending" class="mut">Loading…</p>
+
+    <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
+      <div class="frm"><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
+        <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label>
+        <DropZone accept=".csv,.pdf" :label="up.file ? up.file.name : 'Drop the statement here'" hint="CSV (best) or PDF, up to 20 MB" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file" @click="upload">{{ busy ? 'Reading…' : 'Add to the ledger' }}</button></template>
+    </AppModal>
+  </section>
+</template>
+<style scoped>
+.tr { display: flex; flex-direction: column; gap: 16px; } .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; } .hd h1 { margin: 0; } .lead { margin: 6px 0 0; color: var(--c-muted); max-width: 640px; }
+.tb { display: flex; gap: 8px; flex-wrap: wrap; } .fx-stats { margin: 0; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--c-rule); } .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; margin-bottom: -1px; } .tabs button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); font-weight: 500; } .tabs .n { margin-left: 6px; font-size: 11.5px; color: var(--c-muted); }
+.card h2 { margin: 0; font-size: 17px; } .card h3 { margin: 16px 0 6px; font-size: 14px; } .ch { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .mut2 { color: var(--c-muted); } .pad0 { padding: 0; overflow-x: auto; } .padx { padding: 14px; }
+.empty { background: #fff; border: 1px solid var(--c-rule); padding: 18px; } .empty p { margin: 6px 0 12px; color: var(--c-ink-soft); font-size: 14px; }
+.bars { display: flex; gap: 6px; align-items: flex-end; height: 180px; } .bm { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; } .bb { flex: 1; width: 100%; display: flex; gap: 2px; align-items: flex-end; justify-content: center; } .bb i { width: 42%; display: block; } .bm span { font-size: 11px; color: var(--c-muted); }
+i.in { background: var(--c-navy); } i.out { background: #aab4c2; } .lg { display: flex; gap: 16px; font-size: 12px; color: var(--c-muted); margin-top: 8px; } .lg i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; }
+.rails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .rail { border: 1px solid var(--c-rule); padding: 14px; } .rail b { font-weight: 600; } .rail em { font-style: normal; font-size: 12px; margin-left: 8px; color: var(--c-blue-deep); } .rail.off em { color: var(--c-muted); } .rail p { margin: 6px 0 0; font-size: 13px; color: var(--c-ink-soft); }
+.t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .t td { padding: 7px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
+.t .r { text-align: right; } .t .neg { color: var(--c-danger); } .t .pos { color: var(--c-blue-deep); } .t small { display: block; color: var(--c-muted); font-size: 11.5px; margin-top: 2px; } .t .nw { white-space: nowrap; } .t .ds { max-width: 320px; color: var(--c-ink-soft); } .t select { font: inherit; font-size: 12.5px; padding: 3px 5px; border: 1px solid var(--c-rule-strong); background: #fff; max-width: 200px; }
+.t tr.mk td { background: #f7f8fb; } .ac { white-space: nowrap; } .ac .lk + .lk { margin-left: 12px; }
+.bi { width: 100px; font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--c-rule-strong); text-align: right; }
+.chip { margin-left: 6px; font-size: 11px; padding: 1px 6px; background: var(--c-signal-soft); color: var(--c-blue-deep); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 960px) { .two, .rails { grid-template-columns: 1fr; } }
+.dup { margin: 4px 0; font-size: 13px; color: var(--c-ink-soft); }
+.fl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .fl input:not([type="checkbox"]), .fl select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .fl input[placeholder] { min-width: 240px; } .al { font-size: 12.5px; color: var(--c-muted); display: flex; gap: 6px; align-items: center; }
+.pg { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk:disabled { color: var(--c-muted); cursor: default; }
+.hb { border: 1px solid var(--c-rule); background: #fff; padding: 12px 16px; font-size: 14px; color: var(--c-ink-soft); line-height: 1.55; }
+.frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm input, .frm select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
+.fine { margin: 0; font-size: 12px; color: var(--c-muted); }
+</style>

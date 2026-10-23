@@ -21,6 +21,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'decks', group: 'fin', label: 'Decks', to: '/decks', roles: ['admin', 'gp', 'team'], api: [], pages: ['/decks'], switchable: true },
   { code: 'equity', group: 'fin', label: 'Cap table', to: '/cap-table', roles: ['admin', 'gp', 'team'], api: ['/api/equity'], pages: ['/cap-table'], switchable: true },
   { code: 'forecast', group: 'fin', label: 'Forecast', to: '/forecast', roles: ['admin', 'gp', 'team'], api: ['/api/forecast'], pages: ['/forecast'], switchable: true },
+  { code: 'banking_treasury', group: 'fin', label: 'Banking & Treasury', to: '/treasury', roles: ['admin', 'gp'], api: ['/api/treasury'], pages: ['/treasury'], switchable: true },
   { code: 'stage_monitor', group: 'fin', label: 'Stage monitor', to: '/stage', roles: ['admin', 'gp', 'team'], api: ['/api/stage'], pages: ['/stage'], switchable: true },
   { code: 'investor_page', group: 'fin', label: 'Investor page', to: '/investor-page', roles: ['gp', 'team'], api: ['/api/investor-page', '/api/sharing'], pages: ['/investor-page'], switchable: true },
   { code: 'wallet', group: 'fo', label: 'Wallet', to: '/wallet', roles: ['admin', 'gp', 'team', 'family'], api: ['/api/wallet'], pages: ['/wallet'], switchable: true },

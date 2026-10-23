@@ -61,6 +61,9 @@ export async function stageMonitor(event: H3Event) {
   const room = { deck: (await q('SELECT count(*)::int AS n FROM fundraise.files WHERE is_deck')) > 0, files: await q('SELECT count(*)::int AS n FROM fundraise.files'), links: await q('SELECT count(*)::int AS n FROM fundraise.links WHERE NOT revoked') }
   const bank = { connected: (await q('SELECT count(*)::int AS n FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL')) > 0,
     months: ent ? await q("SELECT count(DISTINCT to_char(s.period_end, 'YYYY-MM'))::int AS n FROM banking.statements s JOIN banking.accounts a ON a.id = s.account_id WHERE a.entity_id = $1 AND s.period_end > now() - interval '13 months' AND s.continuity_ok IS NOT FALSE", [ent]) : 0 }
+  // Payments marked to cancel in Banking & Treasury: what they cost a month (last three full months), for the runway after cutting them.
+  const cutMonthly = Number((await db().query<{ v: string | null }>(`SELECT sum(l.amount_base) / 3 AS v FROM banking.ledger l JOIN banking.vendors v ON v.vendor_key = l.vendor_key AND v.status = 'to_cancel'
+    WHERE l.direction = 'out' AND l.txn_date >= date_trunc('month', now()) - interval '3 months' AND l.txn_date < date_trunc('month', now())`).catch(() => ({ rows: [{ v: null }] }))).rows[0]?.v ?? 0)
   const cap = await capFacts(cur)
   const i: Inputs = { months, usd, runway: burn.runway, cash: burn.cash ?? [...months].reverse().find((m) => m.cash !== null)?.cash ?? null, cash_at: burn.cash_at, cap, nrr, retention_on: retentionOn, room, bank }
   const fund = fundingStage(cap, rr), lastRev = [...months].reverse().find((m) => m.revenue !== null)?.revenue ?? 0
@@ -82,7 +85,7 @@ export async function stageMonitor(event: H3Event) {
     funding: { key: fund, label: FUNDING_LABEL[fund], basis: cap.priced_round ? 'Your latest priced round on the cap table' : cap.has ? 'Money raised on your cap table (SAFEs, notes and preferred shares): about $' + cap.raised_usd.toLocaleString('en-US') : 'No cap table yet' },
     operating: { key: op, label: OPERATING_LABEL[op], arr_usd: Math.round(arrUsd), basis: 'Annual run rate from the latest month of revenue, against ' + rr.label + ' benchmarks' },
     health: { key: hl, label: HEALTH_LABEL[hl], note: HEALTH_NOTE[hl] },
-    runway: { months: burn.runway, cash_out: cashOut, burn: burn.burn, cash: i.cash, cash_at: burn.cash_at, basis: burn.basis },
+    runway: { months: burn.runway, cash_out: cashOut, burn: burn.burn, cash: i.cash, cash_at: burn.cash_at, basis: burn.basis, cut_monthly: Math.round(cutMonthly), if_cut: cutMonthly && burn.burn && i.cash !== null ? (burn.burn - cutMonthly <= 0 ? null : Math.round(i.cash / (burn.burn - cutMonthly) * 10) / 10) : null },
     alive, months, cap: capView,
     equity: eq, debt: dt, moves: movesUp(eq, dt),
     history }

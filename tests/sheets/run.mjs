@@ -282,6 +282,15 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('stage: readiness scores out of 100, with what moves them up', e.total > 0 && e.total <= 100 && d.total > 0 && d.total <= 100 && ST.movesUp(e, d).length === 3 && ST.movesUp(e, d)[0].gain >= ST.movesUp(e, d)[2].gain, e.total + ' ' + d.total)
 }
 
+// 9c. Banking & Treasury: vendors from bank descriptions, and the category before the founder corrects it.
+{
+  globalThis.plaidOn = () => false
+  const TR = await jiti.import(join(root, 'server/utils/treasury.ts'))
+  const v1 = TR.vendorKey('POS DEBIT AWS EMEA AWS.AMAZON REF 1042'), v2 = TR.vendorKey('NIP TRF 0123 GOOGLE ADS 99'), v3 = TR.vendorKey('anything', 'Notion Labs')
+  check('treasury: vendor names without card and reference noise', v1.key === 'aws emea amazon' && v2.key === 'google ads' && v3.name === 'Notion Labs', [v1.key, v2.key, v3.name].join(' | '))
+  check('treasury: first categories from what the payment is', TR.autoCategory('google ads', 'NIP TRF GOOGLE ADS', 'out', null) === 'opex_marketing' && TR.autoCategory('aws emea amazon', 'AWS', 'out', null) === 'opex_rnd' && TR.autoCategory('acme', 'TRF FROM CUSTOMER ACME', 'in', null) === 'revenue' && TR.autoCategory('deel payroll', 'DEEL PAYROLL', 'out', null) === 'opex_payroll')
+}
+
 // 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
 {
   const V = await jiti.import(join(root, 'shared/valuation.ts'))

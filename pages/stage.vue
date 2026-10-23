@@ -6,7 +6,7 @@ useHead({ title: 'Stage monitor' })
 interface Prov { id: string; name: string; kind: string; instrument: 'equity' | 'debt' | 'grant'; countries: string[]; stages: string[]; sectors: string[]; ticket_min: number | null; ticket_max: number | null; currency: string; criteria: string | null; link: string | null; affiliate: boolean; fit: number }
 interface D { company: string; currency: string; region: string; region_label: string; tier: number; country: string | null; as_of: string | null
   funding: { key: string; label: string; basis: string }; operating: { key: string; label: string; arr_usd: number; basis: string }; health: { key: string; label: string; note: string }
-  runway: { months: number | null; cash_out: string | null; burn: number | null; cash: number | null; cash_at: string | null; basis: string }
+  runway: { months: number | null; cash_out: string | null; burn: number | null; cash: number | null; cash_at: string | null; basis: string; cut_monthly?: number; if_cut?: number | null }
   alive: Alive | null; months: Mo[]; cap: { name: string; fully_diluted: number; pool_available: number; by_kind: { kind: string; pct: number }[]; safes: number; raised_usd: number } | null
   equity: Score | null; debt: Score | null; moves: { of: string; label: string; fix: string | null; to: string | null; gain: number }[]
   history: { period: string; funding_stage: string; operating_stage: string; health: string; runway: string | null; equity_score: number | null; debt_score: number | null }[]
@@ -62,6 +62,7 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
               <tr><td>Gross margin</td><td v-for="x in last6" :key="x.month" class="r">{{ x.gross_margin === null ? '—' : x.gross_margin + '%' }}</td></tr><tr><td>Net income</td><td v-for="x in last6" :key="x.month" class="r" :class="{ neg: (x.net ?? 0) < 0 }">{{ m(x.net) }}</td></tr>
               <tr><td>Cash</td><td v-for="x in last6" :key="x.month" class="r">{{ m(x.cash) }}</td></tr></tbody></table>
           <p v-else class="mut">No monthly statements yet.</p>
+          <p v-if="d.runway.cut_monthly" class="mut sm2">Cancelling the payments marked in <NuxtLink to="/treasury?t=cut">Banking &amp; Treasury</NuxtLink> saves {{ m(d.runway.cut_monthly) }} a month{{ d.runway.if_cut ? ' and stretches runway to ' + d.runway.if_cut + ' months' : ' and ends the burn' }}.</p>
           <p v-if="d.runway.burn !== null" class="mut sm2">Burn {{ m(d.runway.burn) }} a month ({{ d.runway.basis }}) · cash {{ m(d.runway.cash) }}{{ d.runway.cash_at ? ' at ' + d.runway.cash_at : '' }}</p></div>
         <div class="card"><div class="ch"><h2>Cap table</h2><NuxtLink to="/cap-table" class="lk">Open</NuxtLink></div>
           <template v-if="d.cap"><p class="mut sm2">{{ d.cap.name }} · {{ d.cap.fully_diluted.toLocaleString('en-US') }} shares fully diluted · {{ d.cap.safes }} SAFE{{ d.cap.safes === 1 ? '' : 's' }} or notes outstanding</p>
