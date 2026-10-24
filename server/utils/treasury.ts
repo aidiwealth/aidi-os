@@ -98,16 +98,18 @@ export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityI
   const own = await ownNames()
   const org = await currentOrg(), base = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
   const rules = new Map((await db().query<{ vendor_key: string; category: string }>('SELECT vendor_key, category FROM banking.category_rules')).rows.map((r) => [r.vendor_key, r.category]))
+  const aiRules = new Map((await db().query<{ k: string; category: string }>("SELECT vendor_key || '|' || direction AS k, category FROM banking.ai_rules WHERE category IS NOT NULL").catch(() => ({ rows: [] }))).rows.map((r) => [r.k, r.category]))
   const rate = new Map<string, number | null>(), fx = async (a: string, b: string) => { if (a === b) return 1; const k = a + b; if (!rate.has(k)) rate.set(k, await fxRate(a, b)); return rate.get(k) ?? null }
   let n = 0
   for (const t of txns) {
     if (!t.amount) continue
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
-    const rule = rules.get(v.key), cat = rule ?? t.category ?? (isOwn(own, v.key) ? 'transfer' : autoCategory(v.key, t.description, dir, t.bank_category ?? null))
+    const rule = rules.get(v.key), own1 = !rule && !t.category && isOwn(own, v.key), ai = !rule && !t.category && !own1 ? aiRules.get(v.key + '|' + dir) : undefined
+    const cat = rule ?? t.category ?? (own1 ? 'transfer' : ai ?? autoCategory(v.key, t.description, dir, t.bank_category ?? null))
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
     const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender, upload_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
-      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null, t.spender ?? null, uploadId])
+      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : ai ? 'ai' : 'auto', t.bank_category ?? null, t.spender ?? null, uploadId])
     n += r.rowCount ?? 0
   }
   return n
@@ -128,11 +130,11 @@ export async function pairTransfers(): Promise<number> {
         FROM banking.ledger o JOIN banking.ledger i
           ON i.organization_id = o.organization_id AND i.direction = 'in' AND i.currency = o.currency AND i.amount = o.amount
          AND i.account_label IS DISTINCT FROM o.account_label AND abs(i.txn_date - o.txn_date) <= 3
-       WHERE o.direction = 'out' AND o.amount >= 50 AND o.category_by = 'auto' AND i.category_by = 'auto'
+       WHERE o.direction = 'out' AND o.amount >= 50 AND o.category_by IN ('auto', 'ai') AND i.category_by IN ('auto', 'ai')
          AND coalesce(o.category, '') <> 'transfer' AND coalesce(i.category, '') <> 'transfer')
-    UPDATE banking.ledger SET category = 'transfer' WHERE id IN (SELECT oid FROM c WHERE ro = 1 AND ri = 1 UNION ALL SELECT iid FROM c WHERE ro = 1 AND ri = 1)`)
+    UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id IN (SELECT oid FROM c WHERE ro = 1 AND ri = 1 UNION ALL SELECT iid FROM c WHERE ro = 1 AND ri = 1)`)
   const held = (await db().query<{ w: string }>("SELECT DISTINCT lower(split_part(account_label, ' ', 1)) AS w FROM banking.ledger WHERE account_label IS NOT NULL")).rows.map((r) => r.w).filter((w) => PROCESSORS.includes(w))
-  const settled = held.length ? await db().query(`UPDATE banking.ledger SET category = 'transfer' WHERE direction = 'in' AND category_by = 'auto' AND coalesce(category, '') <> 'transfer'
+  const settled = held.length ? await db().query(`UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE direction = 'in' AND category_by IN ('auto', 'ai') AND coalesce(category, '') <> 'transfer'
       AND lower(split_part(coalesce(account_label, ''), ' ', 1)) <> ALL($1::text[]) AND (description ~* $2 OR vendor_key ~* $2)`, [held, '\\m(' + held.join('|') + ')\\M']) : null
   return (paired.rowCount ?? 0) + (settled?.rowCount ?? 0)
 }
@@ -141,8 +143,8 @@ export async function pairTransfers(): Promise<number> {
 // their category), so the company never shows up as its own vendor or customer.
 export async function fixOwnTransfers() {
   const own = await ownNames(); if (!own) return 0
-  const rows = (await db().query<{ id: string; vendor_key: string }>("SELECT id, vendor_key FROM banking.ledger WHERE category_by = 'auto' AND coalesce(category, '') <> 'transfer'")).rows.filter((r) => isOwn(own, r.vendor_key))
-  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
+  const rows = (await db().query<{ id: string; vendor_key: string }>("SELECT id, vendor_key FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND coalesce(category, '') <> 'transfer'")).rows.filter((r) => isOwn(own, r.vendor_key))
+  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
   return rows.length
 }
 // Connected cards: their names as the ledger shows them, and their issuers (Brex, Amex…) as payees, so paying the card's
@@ -161,9 +163,9 @@ export async function cardIssuerKeys(): Promise<string[]> {
 export async function fixCardPayments() {
   const keys = await cardIssuerKeys(); if (!keys.length) return 0
   const cards = await cardLabels()
-  const rows = (await db().query<{ id: string; vendor_key: string; description: string }>("SELECT id, vendor_key, description FROM banking.ledger WHERE category_by = 'auto' AND direction = 'out' AND coalesce(category, '') <> 'transfer' AND NOT (account_label = ANY($1::text[]))", [cards])).rows
+  const rows = (await db().query<{ id: string; vendor_key: string; description: string }>("SELECT id, vendor_key, description FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND direction = 'out' AND coalesce(category, '') <> 'transfer' AND NOT (account_label = ANY($1::text[]))", [cards])).rows
     .filter((r) => keys.some((k) => r.vendor_key.startsWith(k)))
-  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
+  if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
   return rows.length
 }
 // The bank feed, pulled at most every six hours (twelve months the first time).
@@ -285,10 +287,10 @@ export async function treasuryView(sc: TScope) {
   const byCat = Object.entries(cats).map(([k, ms]) => ({ key: k, label: catLabel(k), last: lastM ? ms[lastM] ?? 0 : 0, prev: prevM ? ms[prevM] ?? 0 : 0, avg3: last3.reduce((s, m) => s + (ms[m] ?? 0), 0) / Math.max(1, last3.length), budget: budgets.get(k) ?? null })).sort((a, b) => b.avg3 - a.avg3)
   const topVendors = [...vend.values()].map((v) => ({ key: v.key, name: v.name, category: catLabel(v.category ?? 'opex_other'), last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0, total: v.total, recurring: v.recurring })).sort((a, b) => b.total - a.total).slice(0, 15)
   const movers = [...vend.values()].map((v) => ({ name: v.name, last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0 })).map((x) => ({ ...x, change: x.last - x.prev })).filter((x) => Math.abs(x.change) > 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 8)
-  const count = (await db().query<{ n: number; first: string | null; sources: string[] }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
+  const count = (await db().query<{ n: number; first: string | null; sources: string[]; ai: number }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources, count(*) FILTER (WHERE category_by = 'ai')::int AS ai FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
   return { currency: cur, months: full.map((m) => ({ month: m, ...months[m]! })), last_month: lastM, prev_month: prevM,
     cash, cash_from: cb.cash !== null ? 'financials' : bc ? 'bank' : null, cash_month: bc?.month ?? null, burn_from: cb.burn !== null ? 'financials' : bankBurn !== null ? 'bank' : null, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
     by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes, checks: checks.slice(0, 30), by_spender: bySpender,
     categories: [...STD_CATS.map((c) => ({ key: c.key, label: c.label })), ...accts.map((a) => ({ key: a.key, label: a.label + ' (' + (STD_CATS.find((c) => c.key === a.parent)?.label ?? a.parent) + ')' }))],
-    ledger: { count: count.n, since: count.first, sources: count.sources ?? [] } }
+    ledger: { count: count.n, since: count.first, sources: count.sources ?? [], ai: count.ai } }
 }

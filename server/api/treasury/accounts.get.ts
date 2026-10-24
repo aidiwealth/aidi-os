@@ -9,8 +9,8 @@ export default defineEventHandler(async (event) => {
   if (sc.group || !(await nigerianBanking(sc.entity))) {
     const rate = await rateTo(sc.currency)
     const rows = (await db().query<{ type: string | null; subtype: string | null; currency: string; current: string | null; updated_at: string }>(
-      'SELECT a.type, a.subtype, a.currency, a.current::text, a.updated_at FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL')).rows
-    for (const a of rows) if (a.current !== null && !isDebt(a)) { live += Number(a.current) * await rate(a.currency); if (!liveAt || a.updated_at > liveAt) liveAt = a.updated_at }
+      'SELECT a.type, a.subtype, a.currency, a.current::text, a.updated_at::text AS updated_at FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL')).rows
+    for (const a of rows) if (a.current !== null && !isDebt(a)) { const k = await rate(a.currency); if (!Number.isFinite(k)) continue; live += Number(a.current) * k; if (!liveAt || a.updated_at > liveAt) liveAt = a.updated_at }
   }
   const asOf = [liveAt?.slice(0, 10) ?? null, ...up.accounts.map((a) => a.as_of)].filter(Boolean).sort().pop() ?? null
   return { ...up, live_total: Math.round(live * 100) / 100, all_total: Math.round((live + up.total) * 100) / 100, as_of: asOf }

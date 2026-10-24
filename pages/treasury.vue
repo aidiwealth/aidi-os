@@ -9,7 +9,7 @@ interface V { key: string; name: string; category: string | null; monthly: numbe
 interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; cash_from?: string | null; cash_month?: string | null; burn_from?: string | null; marked_monthly: number; runway_if_cut: number | string | null
   by_category: { key: string; label: string; last: number; prev: number; avg3: number; budget: number | null }[]; top_vendors: { key: string; name: string; category: string; last: number; prev: number; total: number; recurring: boolean }[]
   movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
-  ledger: { count: number; since: string | null; sources: string[] }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
+  ledger: { count: number; since: string | null; sources: string[]; ai?: number }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
 const route = useRoute(), router = useRouter()
 const tab = computed(() => (['spend', 'txns', 'cut', 'reconcile'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
@@ -74,6 +74,9 @@ async function setCat(t: T, category: string, always: boolean) {
   catch (e) { msg.value = err(e) }
 }
 const always = ref(true)
+// AI categories: run for whatever is still on the automatic guess, then refresh as they land.
+const aiBusy = ref(false)
+async function aiSort() { aiBusy.value = true; try { await sf('/api/treasury/ai-categorize', { method: 'POST' }); ok.value = 'Sorting with AI. Categories update over the next minute.'; setTimeout(() => { void refresh(); if (tab.value === 'txns') void loadTx(); aiBusy.value = false }, 40000) } catch (e) { msg.value = err(e); aiBusy.value = false } }
 // Cut list.
 // Flags as founders use them in their own cut-list sheets: keep, cut, downgrade (with the share it saves), review,
 // personal (off the company card), and cancelled once it is done.
@@ -122,8 +125,8 @@ const today = new Date().toISOString().slice(0, 10)
               <div class="wr"><b>{{ d.currency }}</b><span v-if="ua?.as_of">as of {{ day(ua.as_of) }}</span></div></div>
           </div>
           <div class="kp">
-            <StatTile label="Monthly burn" :value="m(d.burn)" :note="!d.burn ? 'Not burning' : d.burn_from === 'bank' ? 'From your bank' : 'As in Financials'" />
-            <StatTile label="Runway" :value="d.runway === null ? '—' : d.runway + ' months'" :note="d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months with your cuts' : 'Your cuts end the burn') : 'Before any cuts'" :red="(d.runway ?? 99) < 6" full />
+            <StatTile label="Monthly burn" :value="d.burn === null ? '—' : !d.burn ? 'None' : m(d.burn)" :note="d.burn === null ? 'Add Financials or statements' : !d.burn ? 'Money in covers money out' : d.burn_from === 'bank' ? 'From your bank' : 'As in Financials'" />
+            <StatTile label="Runway" :value="d.runway === null ? (d.burn === 0 ? 'Not burning' : '—') : d.runway + ' months'" :note="d.runway === null ? (d.burn === 0 ? 'Cash is not running down' : 'Needs burn and cash') : d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months with your cuts' : 'Your cuts end the burn') : 'Before any cuts'" :red="(d.runway ?? 99) < 6" full />
             <StatTile :label="lastM ? 'Net, ' + mon(lastM.month) : 'Net last month'" :value="lastM ? m(lastM.in - lastM.out) : '—'" :note="lastM ? 'In ' + m(lastM.in) + ' · out ' + m(lastM.out) : 'No full month yet'" :red="!!lastM && lastM.in < lastM.out" />
             <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month · see the cut list" clickable @click="go('cut')" />
           </div>
@@ -164,10 +167,11 @@ const today = new Date().toISOString().slice(0, 10)
       <template v-if="tab === 'txns'">
         <div class="fl"><input v-model="f.q" placeholder="Search description or vendor" aria-label="Search"><input v-model="f.month" type="month" aria-label="Month"><select v-model="f.dir" aria-label="Direction"><option value="">In and out</option><option value="in">Money in</option><option value="out">Money out</option></select>
           <select v-model="f.category" aria-label="Category"><option value="">Every category</option><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select>
-          <label class="al"><input v-model="always" type="checkbox"> Changing a category applies to every payment to that vendor</label></div>
+          <label class="al"><input v-model="always" type="checkbox"> Apply my change to every payment to that vendor</label></div>
+        <div class="aib"><span><b>AI</b> sorts each vendor into a category, past and future. Your changes always win.</span><span class="mut">{{ (d.ledger.ai ?? 0).toLocaleString('en-US') }} payments sorted by AI</span><button class="lk" type="button" :disabled="aiBusy" @click="aiSort">{{ aiBusy ? 'Sorting…' : 'Sort the rest with AI' }}</button></div>
         <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th class="r">Amount</th><th>Category</th><th>Account</th></tr></thead>
           <tbody><tr v-for="t in tx?.rows ?? []" :key="t.id"><td class="nw">{{ t.date }}</td><td>{{ t.vendor }}</td><td class="ds">{{ t.description }}</td><td class="r nw" :class="{ pos: t.direction === 'in' }">{{ t.direction === 'in' ? '+' : '−' }}{{ briefMoney(t.amount, t.currency) }}<small v-if="t.currency !== t.base_currency">{{ m(t.amount_base) }}</small></td>
-            <td><select :value="t.category ?? ''" :aria-label="'Category for ' + t.vendor" @change="setCat(t, ($event.target as HTMLSelectElement).value, always)"><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select><small>{{ t.category_by === 'auto' ? 'Suggested' : t.category_by === 'rule' ? 'Your rule' : 'Set by you' }}</small></td><td class="mut2">{{ t.account_label }}</td></tr></tbody></table>
+            <td><select :value="t.category ?? ''" :aria-label="'Category for ' + t.vendor" @change="setCat(t, ($event.target as HTMLSelectElement).value, always)"><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select><small :class="{ ai: t.category_by === 'ai' }">{{ t.category_by === 'auto' ? (t.category === 'transfer' ? 'Own accounts' : 'Suggested') : t.category_by === 'ai' ? 'AI' : t.category_by === 'rule' ? 'Your rule' : 'Set by you' }}</small></td><td class="mut2">{{ t.account_label }}</td></tr></tbody></table>
           <p v-if="tx && !tx.rows.length" class="mut padx">No transactions match.</p>
           <div v-if="tx && tx.total > 100" class="pg"><button class="lk" :disabled="!f.page" @click="f.page--">← Newer</button><span class="mut">{{ f.page * 100 + 1 }}–{{ Math.min(tx.total, f.page * 100 + 100) }} of {{ tx.total }}</span><button class="lk" :disabled="(f.page + 1) * 100 >= tx.total" @click="f.page++">Older →</button></div></div>
       </template>
@@ -253,6 +257,8 @@ i.in { background: var(--c-navy); } i.out { background: #a9b6c8; }
 .xl { position: absolute; bottom: 3px; font-size: 11.5px; color: var(--c-muted); }
 .tip { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 5; background: #fff; border: 1px solid var(--c-rule-strong); box-shadow: 0 10px 26px rgba(12, 26, 46, .14); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; white-space: nowrap; pointer-events: none; }
 .tip b { font-size: 12.5px; font-weight: 600; } .tip i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .tip .tn { margin-top: 3px; padding-top: 4px; border-top: 1px solid var(--c-rule); font-weight: 500; } .tip .neg { color: var(--c-danger); }
+.aib { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: #fff; border: 1px solid var(--c-rule); font-size: 13px; color: var(--c-ink-soft); } .aib b { font-weight: 600; color: var(--c-navy); } .aib .lk { margin-left: auto; }
+small.ai { color: var(--c-blue-deep); font-weight: 600; }
 .src { margin: 0; font-size: 12.5px; color: var(--c-muted); }
 @media (max-width: 960px) { .ov { grid-template-columns: 1fr; } }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .t td { padding: 7px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }

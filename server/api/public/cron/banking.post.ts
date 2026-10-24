@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
       added += await syncBankFeed()
       if (plaidOn()) for (const it of (await db().query<{ id: string; access_token_enc: string }>("SELECT id, access_token_enc FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL")).rows) await refreshItem(it.id, it.access_token_enc).catch(() => {})
       for (const k of ['bank_txns', 'sales_deals', 'marketing_months'] as const) await syncDue(k, null).catch(() => {})
-      await fixOwnTransfers(); await fixCardPayments(); await pairTransfers()
+      await fixOwnTransfers(); await fixCardPayments(); await pairTransfers(); await aiCategorize().catch(() => null)
     } catch (e) { failed++; console.error('[cron banking]', org.id, (e as Error).message) }
   }
   return { ok: true, orgs, added, failed }
