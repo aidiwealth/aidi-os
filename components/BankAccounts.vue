@@ -9,7 +9,7 @@ export interface LiveData { available?: boolean; manage?: boolean; enabled: bool
 const props = defineProps<{ live: LiveData | null; uploaded: { accounts: UpAcc[] } | null; group?: boolean; ng?: boolean }>()
 const emit = defineEmits<{ upload: [a: UpAcc | null]; sheet: []; changed: []; refreshLive: [] }>()
 const { sf } = await useCoScope()
-const pl = usePlaidLink(() => emit('changed')), { busy: plBusy, msg: plMsg } = pl
+const pl = usePlaidLink(() => emit('changed')), { busy: plBusy, msg: plMsg, progress } = pl
 const show = ref<'all' | 'live' | 'up'>('all'), manage = ref(false), open = ref(''), busy = ref(''), msg = ref(''), addOpen = ref(false)
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€', KES: 'KSh ', GHS: 'GH₵', ZAR: 'R ' }
 const fmt = (v: number | string | null, c: string) => (v === null ? '—' : (Number(v) < 0 ? '−' : '') + (SYM[c] ?? c + ' ') + Math.abs(Number(v)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
@@ -61,6 +61,12 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
       </div>
     </header>
 
+    <div v-if="progress" class="prog" :class="{ done: progress.done && !progress.slow }" role="status" aria-live="polite">
+      <div class="pt"><span v-if="!progress.done" class="spin" aria-hidden="true" /><svg v-else-if="!progress.slow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+        <span><b>{{ progress.done ? (progress.slow ? progress.banks + ' is still sending payments' : progress.banks + ' is up to date') : 'Updating ' + progress.banks }}</b>
+          {{ progress.done ? (progress.slow ? 'They will appear here as they arrive; you can carry on.' : progress.payments.toLocaleString('en-US') + ' payments brought in.') : (progress.payments ? progress.payments.toLocaleString('en-US') + ' payments so far. ' : 'Bringing in balances and payments. ') + 'This can take a few minutes; you can keep working.' }}</span></div>
+      <div v-if="!progress.done" class="track"><i /></div>
+    </div>
     <div v-if="count || live.length" class="cards">
       <template v-if="show !== 'up'">
         <div v-for="a in live" :key="a.id" class="bc" :class="{ debt: a.debt }">
@@ -133,6 +139,12 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
 .ft { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 11px; opacity: .72; white-space: nowrap; } .tag { text-transform: uppercase; letter-spacing: .06em; font-size: 10px; } .ft .dot { width: 5px; height: 5px; }
 .plus { display: none; } .bc.st:hover .tag, .bc.st:focus-visible .tag { display: none; } .bc.st:hover .plus, .bc.st:focus-visible .plus { display: inline; }
 .none { display: flex; flex-direction: column; gap: 4px; padding: 26px; background: var(--c-paper-2); } .none b { font-size: 15px; font-weight: 600; } .none span { font-size: 13.5px; color: var(--c-muted); } .na { display: flex; gap: 8px; margin-top: 10px; }
+.prog { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--c-paper-2); border: 1px solid var(--c-rule); }
+.prog .pt { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--c-ink-soft); } .prog b { color: var(--c-ink); font-weight: 600; margin-right: 4px; }
+.prog svg { width: 18px; height: 18px; color: var(--c-blue-deep); flex: none; }
+.spin { width: 16px; height: 16px; flex: none; border: 2px solid var(--c-rule-strong); border-top-color: var(--c-navy); border-radius: 50%; animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+.track { position: relative; height: 3px; overflow: hidden; background: var(--c-rule); } .track i { position: absolute; top: 0; bottom: 0; width: 30%; background: var(--c-navy); animation: slide 1.3s ease-in-out infinite; } @keyframes slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .spin, .track i { animation: none; } .track i { left: 0; width: 100%; opacity: .4; } }
 .warn { margin: 0; font-size: 13px; color: var(--c-danger); } .hint { margin: 0; font-size: 13px; color: var(--c-ink-soft); }
 .mg { display: flex; flex-direction: column; border-top: 1px solid var(--c-rule); padding-top: 6px; } .mg h3 { margin: 12px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--c-muted); }
 .row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--c-rule); background: none; font: inherit; text-align: left; } .row b { font-size: 13.5px; font-weight: 600; color: var(--c-ink); } .sp { flex: 1; }
