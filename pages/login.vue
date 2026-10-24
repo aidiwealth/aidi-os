@@ -21,9 +21,10 @@ async function requestCode() {
   catch (e) { error.value = message(e) } finally { busy.value = false }
 }
 async function verifyMfa() {
+  if (busy.value) return
   busy.value = true; error.value = ''
   try { await $fetch('/api/auth/mfa-verify', { method: 'POST', body: { ticket: ticket.value, code: mfaCode.value } }); await navigateTo('/') }
-  catch (e) { error.value = message(e) } finally { busy.value = false }
+  catch (e) { error.value = message(e); if (!useRecovery.value) mfaCode.value = '' } finally { busy.value = false }
 }
 async function verify() {
   busy.value = true; error.value = ''
@@ -45,8 +46,9 @@ async function verify() {
     <form v-else-if="step === 'mfa'" @submit.prevent="verifyMfa">
       <h1>Two-step verification</h1>
       <p class="hint">{{ useRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.' }}</p>
-      <label for="mfa" class="label">{{ useRecovery ? 'Recovery code' : 'Authenticator code' }}</label>
-      <input id="mfa" v-model="mfaCode" :inputmode="useRecovery ? 'text' : 'numeric'" autocomplete="one-time-code" :maxlength="useRecovery ? 20 : 6" required autofocus>
+      <template v-if="useRecovery"><label for="mfa" class="label">Recovery code</label>
+        <input id="mfa" v-model="mfaCode" inputmode="text" autocomplete="off" maxlength="20" required autofocus placeholder="XXXXX-XXXXX"></template>
+      <CodeBoxes v-else v-model="mfaCode" class="lgcb" autofocus :disabled="busy" @complete="verifyMfa" />
       <button class="btn" type="submit" :disabled="busy">{{ busy ? 'Checking…' : 'Verify and sign in' }}</button>
       <button class="link" type="button" @click="useRecovery = !useRecovery; mfaCode = ''">{{ useRecovery ? 'Use your authenticator app' : 'Lost your phone? Use a recovery code' }}</button>
     </form>
@@ -76,4 +78,5 @@ input { width: 100%; font: inherit; padding: 9px 12px; border: 1px solid var(--c
 .error { color: var(--c-danger); margin-top: 16px; }
 .new { margin: 18px 0 0; font-size: 13.5px; color: var(--c-muted); }
 .gate { opacity: .45; pointer-events: none; transition: opacity .4s; } form { transition: opacity .4s; }
+.lgcb { margin: 8px 0 16px; justify-content: flex-start; }
 </style>

@@ -11,7 +11,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/login')
   }
   // Finvry: two-step verification first, and again whenever it is off.
-  if (me.mfa_required && to.path !== '/account') return navigateTo('/account?required=1')
+  if (me.mfa_required && to.path !== '/security-setup') return navigateTo('/security-setup')
+  if (!me.mfa_required && to.path === '/security-setup') return navigateTo('/')
   // Team roles in the Aidi workspace may view Finvry customer accounts (read-only); the rest of the console is for staff.
   if (to.path === '/platform/customers' || to.path.startsWith('/platform/customers/')) return (me.platform || me.customers_view) && useBrand().key === 'aidi' ? undefined : navigateTo('/')
   if (to.path === '/platform' || to.path.startsWith('/platform/')) return me.platform && useBrand().key === 'aidi' ? undefined : navigateTo('/')

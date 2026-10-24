@@ -1,51 +1,53 @@
 <script setup lang="ts">
-// Account security: turn on two-step verification with an authenticator app.
+// Account security: two-step verification (an authenticator app). Off: the step-by-step set-up. On: when it was turned
+// on, recovery codes left, new codes, and turning it off (Finvry asks for it again straight away).
 useHead({ title: 'Account security' })
-const { data: me, refresh: refreshMe } = await useFetch<{ email: string; mfa_required?: boolean }>('/api/auth/me', { key: 'me' })
-// Finvry asks everyone to turn this on before using the workspace (and again whenever it is off).
-const required = computed(() => !!me.value?.mfa_required || useRoute().query.required === '1')
-async function done() { await refreshMe(); await refreshNuxtData('modules').catch(() => {}); await navigateTo('/') }
+const brand = useBrand()
+const { data: me } = await useFetch<{ email: string }>('/api/auth/me', { key: 'me' })
 const { data: st, refresh } = await useFetch<{ enabled: boolean; enabled_at: string | null; recovery_left: number }>('/api/account/mfa', { key: 'mfa' })
-const setup = ref<{ secret: string; qr: string } | null>(null), code = ref(''), codes = ref<string[]>([]), msg = ref(''), busy = ref(false), mode = ref<'' | 'disable' | 'recovery'>('')
+const mode = ref<'' | 'disable' | 'recovery'>(''), code = ref(''), codes = ref<string[]>([]), msg = ref(''), busy = ref(false), copied = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
-async function act(action: string) { busy.value = true; msg.value = ''; try {
-    const r = await $fetch<{ secret?: string; qr?: string; recovery_codes?: string[] }>('/api/account/mfa', { method: 'POST', body: { action, code: code.value || undefined } })
-    if (action === 'start') { setup.value = { secret: r.secret!, qr: r.qr! }; code.value = '' }
-    else { if (r.recovery_codes) codes.value = r.recovery_codes; setup.value = null; code.value = ''; mode.value = ''; await refresh() }
-  } catch (e) { msg.value = err(e) } finally { busy.value = false } }
-function copyCodes() { navigator.clipboard?.writeText(codes.value.join('\n')) }
+async function act() {
+  busy.value = true; msg.value = ''
+  try { const r = await $fetch<{ recovery_codes?: string[] }>('/api/account/mfa', { method: 'POST', body: { action: mode.value, code: code.value } }); codes.value = r.recovery_codes ?? []; mode.value = ''; code.value = ''; await refresh(); if (!st.value?.enabled && brand.key === 'finvry') await navigateTo('/security-setup') }
+  catch (e) { msg.value = err(e) } finally { busy.value = false }
+}
+function copyCodes() { void navigator.clipboard?.writeText(codes.value.join('\n')); copied.value = true; setTimeout(() => (copied.value = false), 1800) }
+const since = computed(() => (st.value?.enabled_at ? new Date(st.value.enabled_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''))
 </script>
 <template>
   <section class="acc">
-    <p class="label">Account</p><h1>Account security</h1><p class="lead">Signed in as <b>{{ me?.email }}</b>. You sign in with a code sent to your email; two-step verification adds a code from an authenticator app on your phone.</p>
-    <div v-if="required && !st?.enabled" class="req"><b>Turn on two-step verification to continue.</b> Finvry holds your company's financials, bank data and investor records, so every account uses a code from an authenticator app as well as your email. It takes about a minute.</div>
-    <div class="card">
-      <div class="hd"><div><h2>Two-step verification</h2><p class="mut">Use Google Authenticator, Microsoft Authenticator, 1Password, Authy or any app that supports authenticator codes.</p></div><span class="pill" :class="{ on: st?.enabled }">{{ st?.enabled ? 'On' : 'Off' }}</span></div>
-      <div v-if="codes.length" class="rc"><h3>Save your recovery codes</h3><p class="mut">Each code works once if you lose your phone. Store them somewhere safe; they will not be shown again.</p><div class="grid"><code v-for="c in codes" :key="c">{{ c }}</code></div><div class="row"><button class="btn secondary sm" @click="copyCodes">Copy codes</button><button class="btn sm" @click="codes = []">I have saved them</button></div></div>
-      <template v-else-if="!st?.enabled">
-        <button v-if="!setup" class="btn" :disabled="busy" @click="act('start')">Set up two-step verification</button>
-        <div v-else class="setup"><div class="qr" v-html="setup.qr" /><div class="steps"><p><b>1.</b> Scan this QR code with your authenticator app.</p><p class="mut sm">Can't scan? Enter this key: <code>{{ setup.secret }}</code></p><p><b>2.</b> Enter the 6-digit code it shows.</p>
-          <div class="row"><input v-model="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><button class="btn" :disabled="busy || code.length !== 6" @click="act('enable')">Turn on</button></div><button class="lnk" @click="setup = null">Cancel</button></div></div>
-      </template>
-      <template v-else>
-        <p class="mut">On since {{ st.enabled_at ? new Date(st.enabled_at).toLocaleDateString('en-GB') : '' }} · {{ st.recovery_left }} recovery codes left.</p>
-        <div v-if="mode" class="row"><input v-model="code" maxlength="20" :placeholder="'Code from your app or a recovery code'"><button class="btn" :class="{ danger: mode === 'disable' }" :disabled="busy || code.length < 6" @click="act(mode)">{{ mode === 'disable' ? 'Turn off' : 'Get new codes' }}</button><button class="lnk" @click="mode = ''; code = ''">Cancel</button></div>
-        <div v-else class="row"><button class="btn secondary" @click="mode = 'recovery'">New recovery codes</button><button class="btn secondary" @click="mode = 'disable'">Turn off</button></div>
-      </template>
+    <div><h1>Account security</h1><p class="lead">Signed in as <b>{{ me?.email }}</b>. You sign in with a code sent to your email, plus a code from an authenticator app.</p></div>
+    <div v-if="!st?.enabled" class="card pad"><MfaWizard :framed="false" @done="refresh()" /></div>
+    <div v-else class="card">
+      <div class="st"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3z" /><path d="M9 12l2 2 4-4" /></svg></div>
+        <div class="tx"><h2>Two-step verification is on</h2><p>Since {{ since }} · authenticator app</p></div><span class="pill">On</span></div>
+      <div class="rows">
+        <div class="row"><div><b>Recovery codes</b><p>{{ st.recovery_left }} of 10 left. Each works once if you lose your phone.</p><div class="meter"><i :style="{ width: st.recovery_left * 10 + '%' }" /></div></div><button class="btn secondary" @click="mode = mode === 'recovery' ? '' : 'recovery'; msg = ''; codes = []">New codes</button></div>
+        <div class="row"><div><b>Turn off</b><p>{{ brand.key === 'finvry' ? 'Finvry asks you to set it up again straight away (for example on a new phone).' : 'You will sign in with your email code only.' }}</p></div><button class="btn secondary" @click="mode = mode === 'disable' ? '' : 'disable'; msg = ''; codes = []">Turn off</button></div>
+      </div>
+      <div v-if="mode" class="confirm"><label>{{ mode === 'disable' ? 'To turn it off, enter' : 'To make new codes, enter' }} a current code from your app (or a recovery code)</label>
+        <div class="in"><input v-model="code" maxlength="20" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" @keyup.enter="act"><button class="btn" :class="{ danger: mode === 'disable' }" :disabled="busy || code.replace(/\s/g, '').length < 6" @click="act">{{ busy ? 'Checking…' : mode === 'disable' ? 'Turn off' : 'Make new codes' }}</button></div></div>
+      <div v-if="codes.length" class="codes"><p><b>Your new recovery codes.</b> The old ones no longer work. Save these now; they will not be shown again.</p><div class="grid"><code v-for="c in codes" :key="c">{{ c }}</code></div><button class="btn secondary" @click="copyCodes">{{ copied ? 'Copied' : 'Copy all' }}</button></div>
       <p v-if="msg" class="error">{{ msg }}</p>
-      <button v-if="st?.enabled && (required || codes.length) && useRoute().query.required === '1'" class="btn" type="button" @click="done">{{ codes.length ? 'I have saved my codes: continue' : 'Continue' }}</button>
     </div>
   </section>
 </template>
 <style scoped>
-.acc { max-width: 760px; } h1 { margin: 0; } .lead { color: var(--c-muted); margin: 6px 0 18px; } .card { display: flex; flex-direction: column; gap: 14px; }
-.hd { display: flex; justify-content: space-between; gap: 14px; } h2 { margin: 0 0 4px; font-size: 17px; } h3 { margin: 0 0 4px; font-size: 15px; } .mut { color: var(--c-muted); margin: 0; font-size: 13.5px; } .sm { font-size: 12.5px; }
-.pill { height: fit-content; font-size: 12px; font-weight: 600; padding: 3px 10px; background: var(--c-paper-2); color: var(--c-muted); } .pill.on { background: rgba(29,90,134,.1); color: var(--c-ok); }
-.setup { display: grid; grid-template-columns: 200px 1fr; gap: 22px; align-items: start; } .qr { width: 200px; height: 200px; border: 1px solid var(--c-rule); } .qr :deep(svg) { width: 100%; height: 100%; display: block; }
-.steps p { margin: 0 0 10px; } code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--c-paper-2); padding: 2px 6px; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .row input { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); width: 220px; letter-spacing: .08em; }
-.lnk { background: none; border: 0; color: var(--c-muted); cursor: pointer; font: inherit; font-size: 13px; padding: 0; } .btn.danger { background: var(--c-danger); border-color: var(--c-danger); }
-.rc { background: var(--c-paper-2); padding: 16px; } .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 12px 0; } .grid code { background: #fff; text-align: center; padding: 6px; }
-.error { color: var(--c-danger); margin: 0; } @media (max-width: 640px) { .setup { grid-template-columns: 1fr; } }
-.req { border: 1px solid var(--c-rule-strong); background: #f6f8fb; padding: 12px 16px; margin: 0 0 14px; font-size: 14px; line-height: 1.55; }
+.acc { max-width: 720px; display: flex; flex-direction: column; gap: 18px; } h1 { margin: 0; } .lead { color: var(--c-muted); margin: 6px 0 0; }
+.card { display: flex; flex-direction: column; gap: 0; padding: 0; } .card.pad { padding: 26px 28px; }
+.st { display: flex; align-items: center; gap: 14px; padding: 20px 22px; border-bottom: 1px solid var(--c-rule); } .tx { flex: 1; } .tx h2 { font-size: 17px; } .tx p { margin: 2px 0 0; font-size: 13px; color: var(--c-muted); }
+.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--c-navy); color: #fff; flex: none; } .ic svg { width: 22px; height: 22px; }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; background: rgba(95,168,211,.16); color: var(--c-navy); }
+.rows { display: flex; flex-direction: column; } .row { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 16px 22px; border-bottom: 1px solid var(--c-rule); }
+.row b { font-size: 14px; color: var(--c-ink); font-weight: 500; } .row p { margin: 2px 0 0; font-size: 13px; color: var(--c-muted); }
+.meter { width: 180px; height: 4px; background: var(--c-paper-3); margin-top: 8px; } .meter i { display: block; height: 100%; background: var(--c-blue-deep); }
+.confirm { padding: 16px 22px; background: var(--c-paper-2); display: flex; flex-direction: column; gap: 8px; } .confirm label { font-size: 13px; color: var(--c-ink); }
+.in { display: flex; gap: 8px; } .in input { font: inherit; font-size: 16px; letter-spacing: .12em; padding: 9px 12px; border: 1px solid var(--c-rule-strong); width: 200px; background: #fff; }
+.btn.danger { background: var(--c-danger); border-color: var(--c-danger); }
+.codes { padding: 16px 22px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; } .codes p { margin: 0; font-size: 13.5px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 14px; background: var(--c-paper-2); border: 1px solid var(--c-rule); width: 100%; max-width: 340px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; text-align: center; color: var(--c-ink); }
+.error { color: var(--c-danger); margin: 0; padding: 0 22px 16px; font-size: 13px; }
+@media (max-width: 640px) { .row { flex-direction: column; align-items: flex-start; } .in input { width: 100%; } }
 </style>
