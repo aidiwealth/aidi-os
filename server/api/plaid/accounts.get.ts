@@ -13,7 +13,13 @@ export default defineEventHandler(async (event): Promise<Record<string, unknown>
   const ent = z.string().uuid().safeParse(getQuery(event).entity)
   const ng = await nigerianBanking(ent.success ? ent.data : null)
   if (ng && ent.success) return { available: false, enabled: false, env: '', items: [], accounts: [], total: 0, currency: 'USD' }
-  const items = await db().query<{ id: string; access_token_enc: string; institution: string | null; error: string | null; stale: boolean }>("SELECT i.id, i.access_token_enc, i.institution, i.error, coalesce((SELECT min(a.updated_at) < now() - interval '1 hour' FROM banking.plaid_accounts a WHERE a.item_id = i.id), true) AS stale FROM banking.plaid_items i WHERE i.wm_client_id IS NULL ORDER BY i.created_at")
+  // history_from: the oldest payment the connection brought in. Connections made with 90 days of history (before two
+  // years were asked for) are "short": reconnecting brings in two years.
+  const items = await db().query<{ id: string; access_token_enc: string; institution: string | null; error: string | null; stale: boolean; history_from: string | null; short: boolean }>(`SELECT i.id, i.access_token_enc, i.institution, i.error, coalesce((SELECT min(a.updated_at) < now() - interval '1 hour' FROM banking.plaid_accounts a WHERE a.item_id = i.id), true) AS stale, h.first::text AS history_from,
+      coalesce(h.first > (i.created_at::date - 150), false) AS short
+    FROM banking.plaid_items i LEFT JOIN LATERAL (SELECT min(l.txn_date) AS first FROM banking.ledger l JOIN banking.plaid_accounts a ON a.item_id = i.id
+      WHERE l.source = 'bank_feed' AND l.account_label = coalesce(i.institution, 'Bank') || ' · ' || a.name || coalesce(' ··' || a.mask, '')) h ON true
+    WHERE i.wm_client_id IS NULL ORDER BY i.created_at`)
   // Refresh asked for: wait for the banks. Balances over an hour old: shown now, refreshed after the response.
   if (plaidOn() && getQuery(event).refresh === '1') for (const it of items.rows) await refreshItem(it.id, it.access_token_enc)
   else if (plaidOn() && getQuery(event).refresh !== '0' && items.rows.some((i) => i.stale)) inBackground('plaid-balances', async () => { for (const it of items.rows) if (it.stale) await refreshItem(it.id, it.access_token_enc) })
@@ -26,5 +32,5 @@ export default defineEventHandler(async (event): Promise<Record<string, unknown>
   for (const a of accts) if (a.current !== null) { const k = await fxRate(a.currency, to); if (!k) continue; if (a.debt) owed += Math.abs(Number(a.current)) * k; else total += Number(a.current) * k }
   // How much of the company's cash these accounts are (they are US accounts only).
   const coverage = accts.length ? await bankCoverage(total, to).catch(() => null) : null
-  return { available: true, manage, enabled: plaidOn() && (!ng || await monoOn()), ng, env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error })), accounts: accts, total: Math.round(total * 100) / 100, owed: Math.round(owed * 100) / 100, currency: to, coverage }
+  return { available: true, manage, enabled: plaidOn() && (!ng || await monoOn()), ng, env: (useRuntimeConfig().plaidEnv as string) || 'sandbox', items: items.rows.map((i) => ({ id: i.id, institution: i.institution, error: i.error, history_from: i.history_from, short: i.short })), accounts: accts, total: Math.round(total * 100) / 100, owed: Math.round(owed * 100) / 100, currency: to, coverage }
 })

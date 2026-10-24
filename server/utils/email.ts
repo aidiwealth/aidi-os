@@ -404,3 +404,11 @@ export async function sendAccessDeclined(to: string, name: string): Promise<void
   const html = shell(h1('Thank you, ' + first) + para('We are opening Finvry to a small number of companies at a time and cannot offer you an account just now. We will keep your request and get in touch when we can.'), 'About your Finvry request')
   await sendEmail({ brand: 'finvry', to, subject: 'About your Finvry request', text: 'Thank you, ' + first + '. We cannot offer you a Finvry account just now; we will keep your request and get in touch when we can.', html })
 }
+
+// A large export is ready: a link to download it (sign-in needed; it expires).
+export async function sendExportEmail(to: string, what: string, link: string, days: number): Promise<void> {
+  const text = 'Your export is ready: ' + what + '.\n\nDownload it: ' + link + '\n\nThe link works for ' + days + ' days, for you only (sign in to download).'
+  const html = shell(h1('Your export is ready') + para(esc(what) + '.') + button('Download →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">The link works for ${days} days and only for you: you will be asked to sign in.</p>`, 'Your export is ready')
+  await sendEmail({ to, subject: 'Your {{PRODUCT}} export is ready', text, html })
+}

@@ -74,6 +74,14 @@ async function setCat(t: T, category: string, always: boolean) {
   catch (e) { msg.value = err(e) }
 }
 const always = ref(true)
+// Spend and cut list: filters and pages, in the browser.
+const sv = reactive({ q: '', cat: '', page: 0 }), mvPage = ref(0)
+const vendorsShown = computed(() => (d.value?.top_vendors ?? []).filter((v) => (!sv.q || v.name.toLowerCase().includes(sv.q.toLowerCase())) && (!sv.cat || v.category === sv.cat)))
+const vendorCats = computed(() => [...new Set((d.value?.top_vendors ?? []).map((v) => v.category))].sort())
+const cf = reactive({ q: '', cat: '', flag: '', page: 0 })
+const cutShown = computed(() => (d.value?.cut_list ?? []).filter((v) => (!cf.q || v.name.toLowerCase().includes(cf.q.toLowerCase())) && (!cf.cat || v.category === cf.cat) && (!cf.flag || v.status === cf.flag)))
+const cutCats = computed(() => [...new Set((d.value?.cut_list ?? []).map((v) => v.category).filter((x): x is string => !!x))])
+watch(() => [sv.q, sv.cat], () => (sv.page = 0)); watch(() => [cf.q, cf.cat, cf.flag], () => (cf.page = 0))
 // AI categories: run for whatever is still on the automatic guess, then refresh as they land.
 const aiBusy = ref(false)
 async function aiSort() { aiBusy.value = true; try { await sf('/api/treasury/ai-categorize', { method: 'POST' }); ok.value = 'Sorting with AI. Categories update over the next minute.'; setTimeout(() => { void refresh(); if (tab.value === 'txns') void loadTx(); aiBusy.value = false }, 40000) } catch (e) { msg.value = err(e); aiBusy.value = false } }
@@ -121,7 +129,7 @@ const today = new Date().toISOString().slice(0, 10)
             <div class="ht"><span>Cash in the bank</span><svg viewBox="0 0 40 28" class="hchip" aria-hidden="true"><rect x="1" y="1" width="38" height="26" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M14 1v26M26 1v26M1 10h13M26 10h13M1 18h13M26 18h13" fill="none" stroke="currentColor" stroke-width="1.4" /></svg></div>
             <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
             <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') + (nLive && nUp ? ' · ' + nLive + ' live, ' + nUp + ' from statements' : nLive ? ' · live' : ' · from statements') : 'Add an account to see your cash' }}</span>
-            <div class="hf"><div><span class="fl">{{ d.cash_from === 'financials' ? 'In Financials' : 'Month-end' }}</span><span class="fv">{{ m(d.cash) }}{{ d.cash_month ? ' · ' + mon(d.cash_month) : '' }}</span></div>
+            <div class="hf"><div><span class="hfl">{{ d.cash_from === 'financials' ? 'In Financials' : 'Month-end' }}</span><span class="fv">{{ m(d.cash) }}{{ d.cash_month ? ' · ' + mon(d.cash_month) : '' }}</span></div>
               <div class="wr"><b>{{ d.currency }}</b><span v-if="ua?.as_of">as of {{ day(ua.as_of) }}</span></div></div>
           </div>
           <div class="kp">
@@ -149,16 +157,18 @@ const today = new Date().toISOString().slice(0, 10)
       </template>
 
       <template v-if="tab === 'spend'">
-        <div class="card"><div class="ch"><h2>Spend by category</h2><span class="mut">{{ mon(d.last_month) }} against {{ mon(d.prev_month) }} and your monthly budget.</span></div>
+        <div class="card"><div class="ch"><h2>Spend by category</h2><div class="cha"><span class="mut">{{ mon(d.last_month) }} against {{ mon(d.prev_month) }}</span><ExportMenu kind="bank_spend" label="Export spend" /></div></div>
           <table class="t" data-nosearch><thead><tr><th>Category</th><th class="r">{{ mon(d.prev_month) }}</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">Change</th><th class="r">3-month average</th><th class="r">Budget a month</th></tr></thead>
             <tbody><tr v-for="c in d.by_category" :key="c.key"><td>{{ c.label }}</td><td class="r">{{ m(c.prev) }}</td><td class="r" :class="{ neg: c.budget !== null && c.last > c.budget }">{{ m(c.last) }}</td><td class="r" :class="{ neg: (pct(c.last, c.prev) ?? 0) > 20 }">{{ pct(c.last, c.prev) === null ? '—' : (pct(c.last, c.prev)! > 0 ? '+' : '') + pct(c.last, c.prev) + '%' }}</td><td class="r">{{ m(c.avg3) }}</td>
               <td class="r"><input class="bi" :value="c.budget ?? ''" inputmode="decimal" placeholder="Set" :aria-label="'Budget for ' + c.label" @change="budget(c, $event)"></td></tr></tbody></table></div>
         <div class="two">
-          <div class="card"><div class="ch"><h2>Top vendors</h2><span class="mut">Last 12 months</span></div>
+          <div class="card pad0"><div class="ch padh"><h2>Top vendors</h2><span class="mut">Last 12 months</span></div>
+            <div class="flt"><input v-model="sv.q" placeholder="Search vendors" aria-label="Search vendors"><select v-model="sv.cat" aria-label="Category"><option value="">All categories</option><option v-for="c in vendorCats" :key="c" :value="c">{{ c }}</option></select></div>
             <table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">12 months</th></tr></thead>
-              <tbody><tr v-for="v in d.top_vendors" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table></div>
+              <tbody><tr v-for="v in vendorsShown.slice(sv.page * 10, sv.page * 10 + 10)" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table>
+            <p v-if="!vendorsShown.length" class="mut padx">No vendors match.</p><TablePager v-model="sv.page" :total="vendorsShown.length" :size="10" /></div>
           <div class="card"><div class="ch"><h2>Biggest changes</h2><span class="mut">{{ mon(d.prev_month) }} to {{ mon(d.last_month) }}</span></div>
-            <table v-if="d.movers.length" class="t" data-nosearch><tbody><tr v-for="v in d.movers" :key="v.name"><td>{{ v.name }}</td><td class="r mut2">{{ m(v.prev) }} → {{ m(v.last) }}</td><td class="r" :class="{ neg: v.change > 0 }">{{ v.change > 0 ? '+' : '' }}{{ m(v.change) }}</td></tr></tbody></table><p v-else class="mut">No changes yet.</p>
+            <table v-if="d.movers.length" class="t" data-nosearch><tbody><tr v-for="v in d.movers.slice(mvPage * 8, mvPage * 8 + 8)" :key="v.name"><td>{{ v.name }}</td><td class="r mut2">{{ m(v.prev) }} → {{ m(v.last) }}</td><td class="r" :class="{ neg: v.change > 0 }">{{ v.change > 0 ? '+' : '' }}{{ m(v.change) }}</td></tr></tbody></table><p v-else class="mut">No changes yet.</p><TablePager v-model="mvPage" :total="d.movers.length" :size="8" />
             <template v-if="d.by_spender.length"><h3>Who spends</h3><p class="mut">Card and expense payments, last 90 days</p><table class="t" data-nosearch><tbody><tr v-for="p in d.by_spender" :key="p.name"><td>{{ p.name }}</td><td class="r">{{ m(p.monthly) }} a month</td><td class="r mut2">{{ m(p.total) }}</td></tr></tbody></table></template>
             <template v-if="d.duplicates.length"><h3>Tools doing the same job</h3><p v-for="g in d.duplicates" :key="g.job" class="dup"><b>{{ g.job }}:</b> {{ g.vendors.map((v) => v.name + ' (' + m(v.monthly) + ')').join(', ') }}</p></template></div>
         </div>
@@ -166,7 +176,7 @@ const today = new Date().toISOString().slice(0, 10)
 
       <template v-if="tab === 'txns'">
         <div class="fl"><input v-model="f.q" placeholder="Search description or vendor" aria-label="Search"><input v-model="f.month" type="month" aria-label="Month"><select v-model="f.dir" aria-label="Direction"><option value="">In and out</option><option value="in">Money in</option><option value="out">Money out</option></select>
-          <select v-model="f.category" aria-label="Category"><option value="">Every category</option><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select>
+          <select v-model="f.category" aria-label="Category"><option value="">Every category</option><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select><ExportMenu kind="bank_transactions" label="Export transactions" />
           <label class="al"><input v-model="always" type="checkbox"> Apply my change to every payment to that vendor</label></div>
         <div class="aib"><span><b>AI</b> sorts each vendor into a category, past and future. Your changes always win.</span><span class="mut">{{ (d.ledger.ai ?? 0).toLocaleString('en-US') }} payments sorted by AI</span><button class="lk" type="button" :disabled="aiBusy" @click="aiSort">{{ aiBusy ? 'Sorting…' : 'Sort the rest with AI' }}</button></div>
         <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th class="r">Amount</th><th>Category</th><th>Account</th></tr></thead>
@@ -177,14 +187,17 @@ const today = new Date().toISOString().slice(0, 10)
       </template>
 
       <template v-if="tab === 'cut'">
-        <div class="hb">Recurring payments, ranked by the runway each would give back{{ d.runway !== null ? ' (today: ' + d.runway + ' months)' : '' }}. Flag each one; a downgrade counts the saving % you set. Estimated saving: <b>{{ m(d.marked_monthly) }}</b> a month{{ d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? ', runway ' + d.runway_if_cut + ' months' : ', which ends the burn') : '' }}. Cancelling is done with the vendor; Finvry reminds you and stops counting it once it stops. <a :href="xlsx" class="lk">Download as Excel</a></div>
+        <div class="hb">Recurring payments, ranked by the runway each would give back{{ d.runway !== null ? ' (today: ' + d.runway + ' months)' : '' }}. Flag each one; a downgrade counts the saving % you set. Estimated saving: <b>{{ m(d.marked_monthly) }}</b> a month{{ d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? ', runway ' + d.runway_if_cut + ' months' : ', which ends the burn') : '' }}. Finvry reminds you to cancel and stops counting it once it stops.</div>
+        <div class="flt bar"><input v-model="cf.q" placeholder="Search payees" aria-label="Search payees"><select v-model="cf.cat" aria-label="Category"><option value="">All categories</option><option v-for="c in cutCats" :key="c" :value="c">{{ catLabel(c) }}</option></select>
+          <select v-model="cf.flag" aria-label="Flag"><option value="">Every flag</option><option v-for="[k, l] in FLAGS" :key="k" :value="k">{{ l }}</option></select><span class="sp" />
+          <ExportMenu kind="bank_cut_list" :ranged="false" label="Export cut list"><a :href="xlsx" class="lk xl2">Excel with saving formulas</a></ExportMenu></div>
         <div class="card pad0"><table class="t cl" data-nosearch><thead><tr><th>Payee</th><th>Category</th><th class="r">A month</th><th>Flag</th><th class="r">Saving %</th><th class="r">Saves a month</th><th class="r">Runway gained</th><th>Action</th></tr></thead>
-          <tbody><tr v-for="v in d.cut_list" :key="v.key" :class="{ mk: v.status !== 'keep' }"><td><b>{{ v.name }}</b><small>Last paid {{ v.last }}{{ v.remind_on && ['to_cancel', 'downgrade'].includes(v.status) ? (v.remind_on <= today ? ' · reminder due' : ' · reminder ' + v.remind_on) : '' }}</small></td><td class="mut2">{{ catLabel(v.category) }}</td><td class="r">{{ m(v.monthly) }}</td>
+          <tbody><tr v-for="v in cutShown.slice(cf.page * 20, cf.page * 20 + 20)" :key="v.key" :class="{ mk: v.status !== 'keep' }"><td><b>{{ v.name }}</b><small>Last paid {{ v.last }}{{ v.remind_on && ['to_cancel', 'downgrade'].includes(v.status) ? (v.remind_on <= today ? ' · reminder due' : ' · reminder ' + v.remind_on) : '' }}</small></td><td class="mut2">{{ catLabel(v.category) }}</td><td class="r">{{ m(v.monthly) }}</td>
             <td><select class="fs" :value="v.status" :aria-label="'Flag for ' + v.name" @change="mark(v, ($event.target as HTMLSelectElement).value)"><option v-for="[k, l] in FLAGS" :key="k" :value="k">{{ l }}</option></select><small v-if="v.suggest && v.status === 'keep'" class="sg">Suggested: {{ flagLabel(v.suggest.flag) }}</small></td>
             <td class="r"><input class="bi pc" :value="v.saving_pct ?? (v.status === 'downgrade' ? 50 : ['to_cancel', 'personal'].includes(v.status) ? 100 : '')" inputmode="decimal" :disabled="['keep', 'review', 'cancelled'].includes(v.status)" :aria-label="'Saving % for ' + v.name" @change="setPct(v, $event)"></td>
             <td class="r">{{ v.saving ? m(v.saving) : '—' }}</td><td class="r">{{ v.runway_gain === null || v.runway_gain === 0 ? '—' : typeof v.runway_gain === 'number' ? '+' + v.runway_gain + ' mo' : v.runway_gain }}</td>
             <td><input class="nt" :value="v.note ?? ''" :placeholder="v.suggest?.why ?? 'What to do'" maxlength="500" :aria-label="'Action for ' + v.name" @change="setNote(v, $event)"></td></tr></tbody></table>
-          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments yet.</p></div>
+          <p v-if="!cutShown.length" class="mut padx">{{ d.cut_list.length ? 'No payees match.' : 'No recurring payments yet.' }}</p><TablePager v-model="cf.page" :total="cutShown.length" :size="20" /></div>
         <div v-if="d.checks.length" class="card"><div class="ch"><h2>Worth a look</h2><span class="mut">Payments in the last 90 days that stand out</span></div>
           <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th>Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
             <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
@@ -240,7 +253,7 @@ const today = new Date().toISOString().slice(0, 10)
 .hero { background: linear-gradient(135deg, #0c1a2e 0%, #1c3d63 55%, #2f6494 100%); color: #fff; padding: 24px 26px; display: flex; flex-direction: column; min-height: 228px; }
 .ht { display: flex; justify-content: space-between; align-items: center; } .ht span { font-family: var(--font-heading); font-size: 20px; font-weight: 500; } .hchip { width: 36px; height: 25px; color: rgba(255,255,255,.55); flex: none; }
 .hv { margin-top: 22px; font-size: 40px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; } .hs { margin-top: 6px; font-size: 13px; color: rgba(255,255,255,.72); }
-.hf { margin-top: auto; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; } .fl { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.58); } .fv { font-size: 14px; }
+.hf { margin-top: auto; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; } .hfl { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.58); } .fv { font-size: 14px; }
 .wr { text-align: right; } .wr b { display: block; font-size: 14px; letter-spacing: .06em; } .wr span { font-size: 12px; color: rgba(255,255,255,.7); }
 .kp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } .kp > * { margin: 0; }
 .ic { width: 38px; height: 38px; display: grid; place-items: center; background: #fff; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 16px; height: 16px; } .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
@@ -259,6 +272,9 @@ i.in { background: var(--c-navy); } i.out { background: #a9b6c8; }
 .tip b { font-size: 12.5px; font-weight: 600; } .tip i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .tip .tn { margin-top: 3px; padding-top: 4px; border-top: 1px solid var(--c-rule); font-weight: 500; } .tip .neg { color: var(--c-danger); }
 .aib { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: #fff; border: 1px solid var(--c-rule); font-size: 13px; color: var(--c-ink-soft); } .aib b { font-weight: 600; color: var(--c-navy); } .aib .lk { margin-left: auto; }
 small.ai { color: var(--c-blue-deep); font-weight: 600; }
+.cha { display: flex; align-items: center; gap: 12px; } .padh { padding: 18px 20px 0; }
+.flt { display: flex; gap: 8px; padding: 12px 20px; flex-wrap: wrap; align-items: center; } .flt input, .flt select { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .flt input { flex: 1; min-width: 160px; }
+.flt.bar { padding: 0; } .flt .sp { flex: 1; } .xl2 { font-size: 12.5px; color: var(--c-blue-deep); margin-top: 4px; }
 .src { margin: 0; font-size: 12.5px; color: var(--c-muted); }
 @media (max-width: 960px) { .ov { grid-template-columns: 1fr; } }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .t td { padding: 7px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }

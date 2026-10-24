@@ -26,6 +26,23 @@ export async function resyncPlaidItem(id: string): Promise<{ removed: number; ad
   return { removed, added: r.added }
 }
 
+// A bank connected again to bring in two years of history (history length is fixed when a bank is first connected):
+// the new connection's payments replace the old one's. Only for the same bank; categories set by hand are put back
+// on the same payments (same account, day, amount and direction); "always" rules apply anyway.
+export async function replacePlaidItem(oldId: string, newId: string): Promise<{ replaced: boolean; removed: number; added: number }> {
+  const [o, n] = await Promise.all([oldId, newId].map(async (id) => (await db().query<PItem>(`SELECT ${ITEM_COLS} FROM banking.plaid_items WHERE id = $1`, [id])).rows[0]))
+  if (!o || !n) return { replaced: false, removed: 0, added: 0 }
+  if ((o.institution ?? '').toLowerCase() !== (n.institution ?? '').toLowerCase()) { await syncPlaidItem(n); return { replaced: false, removed: 0, added: 0 } }
+  const labels = (await db().query<{ name: string; mask: string | null }>('SELECT name, mask FROM banking.plaid_accounts WHERE item_id = $1', [oldId])).rows.map((a) => feedLabel(o.institution, a))
+  const kept = (await db().query<{ account_label: string; d: string; amount: string; direction: string; category: string }>("SELECT account_label, txn_date::text AS d, amount::text, direction, category FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[]) AND category_by = 'manual' AND category IS NOT NULL", [labels])).rows
+  const removed = (await db().query("DELETE FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[])", [labels])).rowCount ?? 0
+  await plaid('/item/remove', { access_token: decryptText(o.access_token_enc) }).catch(() => {})
+  await db().query('DELETE FROM banking.plaid_items WHERE id = $1', [oldId])
+  const r = await syncPlaidItem(n)
+  for (const k of kept) await db().query("UPDATE banking.ledger SET category = $5, category_by = 'manual' WHERE source = 'bank_feed' AND account_label = $1 AND txn_date = $2 AND amount = $3 AND direction = $4", [k.account_label, k.d, k.amount, k.direction, k.category])
+  return { replaced: true, removed, added: r.added }
+}
+
 export async function syncPlaidItem(it: PItem): Promise<{ added: number; modified: number; removed: number }> {
   const accts = new Map((await db().query<{ account_id: string; name: string; mask: string | null; type: string | null; subtype: string | null }>('SELECT account_id, name, mask, type, subtype FROM banking.plaid_accounts WHERE item_id = $1', [it.id])).rows.map((a) => [a.account_id, a]))
   const cardKeys = await cardIssuerKeys(), token = decryptText(it.access_token_enc)

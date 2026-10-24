@@ -11,12 +11,14 @@ function loadScript(): Promise<void> {
 export function usePlaidLink(changed: () => unknown) {
   const busy = ref(false), msg = ref('')
   const P = () => (window as unknown as { Plaid: PlaidFactory }).Plaid
-  async function connect() {
+  // replaces: a connection being made again for two years of history (its payments are swapped for the new ones).
+  async function connect(replaces?: unknown) {
+    const rep = typeof replaces === 'string' ? replaces : undefined
     busy.value = true; msg.value = ''
     try {
       await loadScript()
       const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST' })
-      P().create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); await changed() } catch (e) { msg.value = errMsg(e, 'Could not connect.') } }, onExit: () => { busy.value = false } }).open()
+      P().create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name, ...(rep ? { replaces: rep } : {}) } }); await changed() } catch (e) { msg.value = errMsg(e, 'Could not connect.') } }, onExit: () => { busy.value = false } }).open()
     } catch (e) { const x = e as { statusCode?: number }; msg.value = x.statusCode ? errMsg(e, 'Could not start the connection. Try again in a minute.') : 'Could not open the bank window. Check your connection or ad blocker.' } finally { busy.value = false }
   }
   // The bank needs the person to sign in again (update mode for that connection).

@@ -2,7 +2,7 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp')
-  const b = z.object({ public_token: z.string().min(10).max(300), institution: z.string().max(200).optional(), entity_id: z.string().uuid().optional() }).safeParse(await readBody(event))
+  const b = z.object({ public_token: z.string().min(10).max(300), institution: z.string().max(200).optional(), entity_id: z.string().uuid().optional(), replaces: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const r = await plaid<{ access_token: string; item_id: string }>('/item/public_token/exchange', { public_token: b.data.public_token })
   const enc = encryptText(r.access_token)
@@ -10,7 +10,10 @@ export default defineEventHandler(async (event) => {
   await refreshItem(row.id, enc)
   // Notices from the bank come to this site; the first transactions are pulled after the response.
   await db().query('UPDATE banking.plaid_items SET webhook_url = $2, needs_sync = true WHERE id = $1', [row.id, getRequestURL(event).origin + '/api/public/webhooks/plaid'])
-  inBackground('plaid-sync', () => syncPlaidItems())
+  // Reconnected for two years of history: the old connection's payments are swapped for the new one's (categories set
+  // by hand carried over); otherwise the first payments are pulled now.
+  if (b.data.replaces && b.data.replaces !== row.id) inBackground('plaid-replace:' + b.data.replaces, () => replacePlaidItem(b.data.replaces!, row.id).then((r) => console.log('[plaid replace]', r)))
+  else inBackground('plaid-sync', () => syncPlaidItems())
   await audit({ event, actorUserId: user.userId, action: 'plaid.connect', objectType: 'plaid_item', objectId: row.id })
   return { ok: true }
 })

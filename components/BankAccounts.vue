@@ -5,7 +5,7 @@
 interface Up { id: string; file_name: string | null; file_kind: string; period_start: string | null; period_end: string | null; added: number; read: number; created_at: string }
 export interface UpAcc { key: string; label: string; entity_id: string | null; entity: string | null; currency: string; balance: number | null; as_of: string | null; count: number; from: string | null; to: string | null; sheet: boolean; uploads: Up[] }
 export interface LiveAcc { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; debt?: boolean; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
-export interface LiveData { available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: LiveAcc[] }
+export interface LiveData { available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null; history_from?: string | null; short?: boolean }[]; accounts: LiveAcc[] }
 const props = defineProps<{ live: LiveData | null; uploaded: { accounts: UpAcc[] } | null; group?: boolean; ng?: boolean }>()
 const emit = defineEmits<{ upload: [a: UpAcc | null]; sheet: []; changed: []; refreshLive: [] }>()
 const { sf } = await useCoScope()
@@ -25,6 +25,7 @@ const count = computed(() => live.value.filter((a) => !a.debt).length + ups.valu
 const newest = computed(() => live.value.reduce((m, a) => (a.updated_at > m ? a.updated_at : m), ''))
 const canConnect = computed(() => !props.ng && !!props.live?.enabled && !!props.live?.manage)
 const attention = computed(() => (props.live?.items ?? []).filter((i) => i.error))
+const shortItems = computed(() => (props.live?.items ?? []).filter((i) => i.short && !i.error))
 async function del(a: UpAcc, u: Up) {
   if (!await askConfirm('Its ' + u.added + ' payment' + (u.added === 1 ? '' : 's') + ' are removed from ' + a.label + '.', { title: 'Delete this statement?', ok: 'Delete', danger: true })) return
   busy.value = u.id; msg.value = ''
@@ -34,6 +35,11 @@ async function clear(a: UpAcc) {
   if (!await askConfirm('All ' + a.count.toLocaleString('en-US') + ' payments and statements are removed.', { title: 'Clear ' + a.label + '?', ok: 'Clear account', danger: true })) return
   busy.value = a.key; msg.value = ''
   try { await sf('/api/treasury/accounts/clear', { method: 'POST', body: { label: a.label, entity_id: a.entity_id } }); emit('changed') } catch (e) { msg.value = err(e) } finally { busy.value = '' }
+}
+// History length is fixed when a bank is first connected: connecting it again brings in two years.
+async function twoYears(it: { id: string; institution: string | null }) {
+  if (!await askConfirm('Sign in to ' + (it.institution ?? 'the bank') + ' again and Finvry brings in two years of payments in place of the current ones. Categories you set are kept.', { title: 'Get 2 years of history?', ok: 'Continue' })) return
+  void pl.connect(it.id)
 }
 function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k === 'bank') void pl.connect(); else if (k === 'sheet') emit('sheet'); else emit('upload', null) }
 </script>
@@ -76,12 +82,13 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
     <div v-else class="none"><b>No accounts yet</b><span>{{ canConnect ? 'Connect a US bank for live balances, or upload a statement from any bank.' : 'Upload a statement from any bank, or link a sheet.' }}</span>
       <div class="na"><button v-if="canConnect" class="btn" type="button" :disabled="plBusy" @click="pl.connect()">Connect a bank</button><button class="btn" :class="{ secondary: canConnect }" type="button" @click="emit('upload', null)">Upload a statement</button></div></div>
 
+    <p v-if="shortItems.length && !manage" class="hint">{{ shortItems.map((i) => i.institution ?? 'A bank').join(' and ') }} {{ shortItems.length === 1 ? 'shows' : 'show' }} only recent payments. <button class="lk" type="button" @click="manage = true">Get 2 years of history</button></p>
     <p v-if="attention.length && !manage" class="warn">{{ attention.map((i) => (i.institution ?? 'A bank') + ' needs you to sign in again').join(' · ') }}. <button class="lk" type="button" @click="pl.reconnect(attention[0]!.id)">Reconnect</button></p>
 
     <div v-if="manage" class="mg">
       <template v-if="live.length">
         <h3>Live connections</h3>
-        <div v-for="it in props.live?.items ?? []" :key="it.id" class="row"><b>{{ it.institution ?? 'Bank' }}</b><span class="mut">{{ it.error ? 'Needs attention' : live.filter((a) => a.item_id === it.id).length + ' accounts' }}</span>
+        <div v-for="it in props.live?.items ?? []" :key="it.id" class="row"><b>{{ it.institution ?? 'Bank' }}</b><span class="mut">{{ it.error ? 'Needs attention' : live.filter((a) => a.item_id === it.id).length + ' accounts' }}{{ it.history_from ? ' · since ' + day(it.history_from) : '' }}</span><button v-if="it.short && !it.error" class="lk" type="button" @click="twoYears(it)">Get 2 years of history</button>
           <span class="sp" /><button v-if="it.error" class="lk" type="button" @click="pl.reconnect(it.id)">Reconnect</button><button v-else class="lk" type="button" @click="pl.resync(it.id, it.institution)">Resync</button><button class="lk red" type="button" @click="pl.disconnect(it.id, it.institution)">Disconnect</button></div>
       </template>
       <template v-if="ups.length">
@@ -125,7 +132,7 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
 .ft { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 11px; opacity: .72; white-space: nowrap; } .tag { text-transform: uppercase; letter-spacing: .06em; font-size: 10px; } .ft .dot { width: 5px; height: 5px; }
 .plus { display: none; } .bc.st:hover .tag, .bc.st:focus-visible .tag { display: none; } .bc.st:hover .plus, .bc.st:focus-visible .plus { display: inline; }
 .none { display: flex; flex-direction: column; gap: 4px; padding: 26px; background: var(--c-paper-2); } .none b { font-size: 15px; font-weight: 600; } .none span { font-size: 13.5px; color: var(--c-muted); } .na { display: flex; gap: 8px; margin-top: 10px; }
-.warn { margin: 0; font-size: 13px; color: var(--c-danger); }
+.warn { margin: 0; font-size: 13px; color: var(--c-danger); } .hint { margin: 0; font-size: 13px; color: var(--c-ink-soft); }
 .mg { display: flex; flex-direction: column; border-top: 1px solid var(--c-rule); padding-top: 6px; } .mg h3 { margin: 12px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--c-muted); }
 .row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--c-rule); background: none; font: inherit; text-align: left; } .row b { font-size: 13.5px; font-weight: 600; color: var(--c-ink); } .sp { flex: 1; }
 .ah { cursor: pointer; } .ah svg { width: 16px; height: 16px; color: var(--c-muted); transition: transform .15s; } .ah svg.up { transform: rotate(180deg); }
