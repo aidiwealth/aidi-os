@@ -7,13 +7,30 @@ export interface ParsedStatement { period_start: string | null; period_end: stri
 
 // ── CSV
 export function parseCsvRows(text: string): string[][] { return csvRows(text) }
+// The file's one separator (comma, semicolon or tab), from its first lines outside quotes: the most common one that
+// appears the same number of times on most lines. Only that one splits cells, so a semicolon or tab inside a
+// narration never shifts the columns.
+export function csvSeparator(text: string): ',' | ';' | '\t' {
+  const lines: string[] = []; let cur = '', q = false
+  for (let i = 0; i < text.length && lines.length < 30; i++) { const c = text[i]!; if (c === '"') q = !q; if (!q && (c === '\n' || c === '\r')) { if (cur.trim()) lines.push(cur); cur = '' } else if (!q) cur += c }
+  if (cur.trim() && lines.length < 30) lines.push(cur)
+  let best: ',' | ';' | '\t' = ',', score = -1
+  for (const d of [',', ';', '\t'] as const) {
+    const n = lines.map((l) => l.split(d).length - 1).filter((x) => x > 0); if (!n.length) continue
+    const mode = [...n.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<number, number>())].sort((a, b) => b[1] - a[1])[0]!
+    const sc = mode[1] * 1000 + mode[0]
+    if (sc > score) { score = sc; best = d }
+  }
+  return best
+}
 function csvRows(text: string): string[][] {
   const rows: string[][] = []; let row: string[] = []; let cell = ''; let q = false
+  const sep = csvSeparator(text)
   for (let i = 0; i < text.length; i++) {
     const c = text[i]!
     if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++ } else q = false } else cell += c }
     else if (c === '"') q = true
-    else if (c === ',' || c === ';' || c === '\t') { row.push(cell.trim()); cell = '' }
+    else if (c === sep) { row.push(cell.trim()); cell = '' }
     else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell.trim()); if (row.some((x) => x !== '')) rows.push(row); row = []; cell = '' }
     else cell += c
   }

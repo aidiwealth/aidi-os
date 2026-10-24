@@ -241,7 +241,7 @@ export async function applyTable(kind: LinkKind, t: Tbl, map: Mapping, processId
     if (R.channels.length !== before) await db().query('UPDATE growth.processes SET channels = $2, updated_at = now() WHERE id = $1', [processId, JSON.stringify(R.channels)])
   } else {
     const ent = map.entity ?? await companyEntityId()
-    added = await addToLedger('upload', R.txns, ent); updated = R.txns.length - added
+    added = await addToLedger('upload', R.txns, ent); updated = R.txns.length - added; await pairTransfers().catch(() => 0)
     // A balance column (bank exports usually have one) gives month-end cash for reconciling with Financials.
     if (R.txns.some((x) => x.balance != null)) await saveBalances(ent, map.account ?? 'Linked sheet', map.currency ?? 'USD', 'sheet', R.txns.map((x) => ({ date: x.date, balance: x.balance ?? null }))).catch(() => 0)
   }

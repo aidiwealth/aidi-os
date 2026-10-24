@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   const code = b.webhook_code ?? '', type = b.webhook_type ?? ''
   if (type === 'TRANSACTIONS' && ['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE', 'HISTORICAL_UPDATE', 'TRANSACTIONS_REMOVED'].includes(code)) {
     await db().query('UPDATE banking.plaid_items SET needs_sync = true WHERE id = $1', [it.id])
-    inBackground('plaid-sync', async () => { await syncPlaidItems(); await fixOwnTransfers(); await fixCardPayments() })
+    inBackground('plaid-sync', async () => { await syncPlaidItems(); await fixOwnTransfers(); await fixCardPayments(); await pairTransfers() })
   } else if (type === 'ITEM' && ['ERROR', 'PENDING_EXPIRATION', 'PENDING_DISCONNECT', 'USER_PERMISSION_REVOKED', 'USER_ACCOUNT_REVOKED'].includes(code)) {
     const msg = code === 'PENDING_EXPIRATION' || code === 'PENDING_DISCONNECT' ? 'Access to this bank ends soon: reconnect to keep it updating.' : code === 'ERROR' && b.error?.error_code === 'ITEM_LOGIN_REQUIRED' ? 'The bank needs you to sign in again: reconnect.' : code.startsWith('USER_') ? 'Access to this bank was withdrawn: reconnect or disconnect it.' : 'The bank connection has a problem: reconnect.'
     await db().query('UPDATE banking.plaid_items SET error = $2, error_code = $3 WHERE id = $1', [it.id, msg, (b.error?.error_code ?? code).slice(0, 80)])

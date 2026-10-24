@@ -114,6 +114,29 @@ export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityI
 }
 export const uploadRef = (account: string, t: { date: string; description: string; amount: number; balance: number | null }, i: number) => createHash('sha1').update([account, t.date, t.description, t.amount, t.balance ?? '', i].join('|')).digest('hex')
 
+// Money moved between the company's own accounts (a payout from a payment processor's balance to the bank, one bank to
+// another, a group company funding another): neither revenue nor spend. Two ways to see it:
+//  1. a payment out of one own account and the same amount into another own account (same currency) within three days;
+//  2. money in that names a payment processor the company itself holds an account with (its settlement payouts).
+// Only rows still on the automatic category change; amounts under 50 are left alone (too many coincidences).
+const PROCESSORS = ['paystack', 'monnify', 'flutterwave', 'paga', 'opay', 'palmpay', 'moniepoint', 'squad', 'korapay', 'interswitch', 'remita', 'stripe', 'payoneer', 'wise', 'fincra', 'kuda']
+export async function pairTransfers(): Promise<number> {
+  const paired = await db().query(`WITH c AS (
+      SELECT o.id AS oid, i.id AS iid,
+             row_number() OVER (PARTITION BY o.id ORDER BY abs(i.txn_date - o.txn_date), i.id) AS ro,
+             row_number() OVER (PARTITION BY i.id ORDER BY abs(i.txn_date - o.txn_date), o.id) AS ri
+        FROM banking.ledger o JOIN banking.ledger i
+          ON i.organization_id = o.organization_id AND i.direction = 'in' AND i.currency = o.currency AND i.amount = o.amount
+         AND i.account_label IS DISTINCT FROM o.account_label AND abs(i.txn_date - o.txn_date) <= 3
+       WHERE o.direction = 'out' AND o.amount >= 50 AND o.category_by = 'auto' AND i.category_by = 'auto'
+         AND coalesce(o.category, '') <> 'transfer' AND coalesce(i.category, '') <> 'transfer')
+    UPDATE banking.ledger SET category = 'transfer' WHERE id IN (SELECT oid FROM c WHERE ro = 1 AND ri = 1 UNION ALL SELECT iid FROM c WHERE ro = 1 AND ri = 1)`)
+  const held = (await db().query<{ w: string }>("SELECT DISTINCT lower(split_part(account_label, ' ', 1)) AS w FROM banking.ledger WHERE account_label IS NOT NULL")).rows.map((r) => r.w).filter((w) => PROCESSORS.includes(w))
+  const settled = held.length ? await db().query(`UPDATE banking.ledger SET category = 'transfer' WHERE direction = 'in' AND category_by = 'auto' AND coalesce(category, '') <> 'transfer'
+      AND lower(split_part(coalesce(account_label, ''), ' ', 1)) <> ALL($1::text[]) AND (description ~* $2 OR vendor_key ~* $2)`, [held, '\\m(' + held.join('|') + ')\\M']) : null
+  return (paired.rowCount ?? 0) + (settled?.rowCount ?? 0)
+}
+
 // Transactions brought in before the company's own names were recognised: moved to transfers (unless the founder chose
 // their category), so the company never shows up as its own vendor or customer.
 export async function fixOwnTransfers() {

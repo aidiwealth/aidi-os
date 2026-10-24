@@ -35,6 +35,8 @@ export default defineEventHandler(async (event) => {
     [ent, account, currency, (file.filename ?? '').slice(0, 200) || null, ext === 'png' || ext === 'jpg' || ext === 'jpeg' ? 'image' : ext, parsed.period_start, parsed.period_end, parsed.closing, parsed.txns.length, kept ? docId : null, user.userId])).rows[0]!.id
   const added = await addToLedger('upload', parsed.txns.map((t, i) => ({ ref: uploadRef(account, t, i), date: t.date, description: t.description, amount: t.amount, currency, account })), ent, upId)
   await db().query('UPDATE banking.uploads SET added_count = $2 WHERE id = $1', [upId, added])
+  // Payouts and moves between the company's own accounts are transfers, not receipts or spend.
+  await pairTransfers().catch((e) => console.error('[treasury] transfers', (e as Error).message))
   // The statement's balances (running balance and closing), for reconciling month-end cash with Financials.
   await saveBalances(ent, account, currency, 'statement', [...parsed.txns.map((t) => ({ date: t.date, balance: t.balance })), ...(parsed.period_end && parsed.closing !== null ? [{ date: parsed.period_end, balance: parsed.closing }] : [])]).catch((e) => console.error('[treasury] balances', (e as Error).message))
   const tie = parsed.opening !== null && parsed.closing !== null ? tieOut(parsed.opening, parsed.closing, parsed.txns) : null

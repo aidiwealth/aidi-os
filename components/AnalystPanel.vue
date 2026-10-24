@@ -2,6 +2,7 @@
 // AI analyst: a floating button opens a slim chat panel on the right. Closed by default. Conversations are saved:
 // "New chat" starts a fresh one, "Chats" lists earlier ones to pick up again; closing the panel keeps the current one.
 const brand = useBrand(); const route = useRoute()
+const aj = useAiJob<{ text: string; actions: Act[]; chat_id: string }>()
 const open = ref(false), hint = ref(false), input = ref(''), busy = ref(false), err = ref('')
 interface Act { type: string; path?: string; label: string; kind?: string; args?: Record<string, unknown>; summary?: string; done?: boolean }
 const msgs = ref<{ role: 'user' | 'assistant'; content: string; actions?: Act[] }[]>([])
@@ -25,7 +26,8 @@ function toggle() { open.value = !open.value; hint.value = false; try { localSto
 async function send(q?: string) {
   const text = (q ?? input.value).trim(); if (!text || busy.value) return
   msgs.value.push({ role: 'user', content: text }); input.value = ''; busy.value = true; err.value = ''; scroll()
-  try { const r = await $fetch<{ text: string; actions: Act[]; chat_id: string }>('/api/ai/analyst', { method: 'POST', body: { messages: msgs.value.map((m) => ({ role: m.role, content: m.content, actions: m.actions })), path: route.fullPath, chat_id: chatId.value } }); msgs.value.push({ role: 'assistant', content: r.text, actions: r.actions }); chatId.value = r.chat_id; remember(r.chat_id) }
+  try { const { job } = await $fetch<{ job: string }>('/api/ai/analyst', { method: 'POST', body: { messages: msgs.value.map((m) => ({ role: m.role, content: m.content, actions: m.actions })), path: route.fullPath, chat_id: chatId.value } })
+    const r = await aj.follow(job); if (!r) throw { data: { data: { error: { message: aj.fail.value?.message ?? 'The analyst could not answer. Try again.' } } } }; msgs.value.push({ role: 'assistant', content: r.text, actions: r.actions }); chatId.value = r.chat_id; remember(r.chat_id) }
   catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not reach the analyst.' }
   finally { busy.value = false; scroll() }
 }
