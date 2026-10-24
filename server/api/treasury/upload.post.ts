@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
   await db().query('UPDATE banking.uploads SET added_count = $2 WHERE id = $1', [upId, added])
   // Payouts and moves between the company's own accounts are transfers, not receipts or spend.
   await pairTransfers().catch((e) => console.error('[treasury] transfers', (e as Error).message))
+  await fixBrokerage().catch(() => 0)
   // New vendors get their AI category in the background (the page shows them as they land).
   inBackground('bank-ai', () => aiCategorize())
   // The statement's balances (running balance and closing), for reconciling month-end cash with Financials.

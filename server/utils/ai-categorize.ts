@@ -15,9 +15,10 @@ export async function aiCategorize(maxVendors = 300): Promise<{ asked: number; s
     `SELECT l.vendor_key, l.direction, max(l.vendor) AS vendor, count(*)::int AS n, round(sum(coalesce(l.amount_usd, l.amount)))::float AS total,
             (array_agg(DISTINCT left(l.description, 70)))[1:3] AS descs
        FROM banking.ledger l
-      WHERE l.category_by = 'auto' AND coalesce(l.category, '') <> 'transfer'
+      WHERE l.category_by = 'auto' AND coalesce(l.category, '') NOT IN ('transfer', 'investment')
         AND NOT EXISTS (SELECT 1 FROM banking.category_rules r WHERE r.organization_id = l.organization_id AND r.vendor_key = l.vendor_key)
         AND NOT EXISTS (SELECT 1 FROM banking.ai_rules a WHERE a.organization_id = l.organization_id AND a.vendor_key = l.vendor_key AND a.direction = l.direction)
+        AND NOT EXISTS (SELECT 1 FROM banking.account_settings b WHERE b.organization_id = l.organization_id AND b.kind = 'brokerage' AND b.account_label = l.account_label)
       GROUP BY 1, 2 ORDER BY sum(coalesce(l.amount_usd, l.amount)) DESC LIMIT $1`, [maxVendors])).rows
   if (!todo.length) return { asked: 0, set: 0, updated: 0 }
   const org = await currentOrg(), own = (await custEntities().catch(() => [])).map((e) => e.name)
@@ -49,6 +50,7 @@ export async function aiCategorize(maxVendors = 300): Promise<{ asked: number; s
 // Every payment still on the automatic guess, from a vendor AI has a category for (transfers already found stay).
 export async function applyAiRules(): Promise<number> {
   return (await db().query(`UPDATE banking.ledger l SET category = a.category, category_by = 'ai' FROM banking.ai_rules a
-      WHERE a.organization_id = l.organization_id AND a.vendor_key = l.vendor_key AND a.direction = l.direction AND a.category IS NOT NULL AND l.category_by = 'auto' AND coalesce(l.category, '') <> 'transfer'
-        AND NOT EXISTS (SELECT 1 FROM banking.category_rules r WHERE r.organization_id = l.organization_id AND r.vendor_key = l.vendor_key)`)).rowCount ?? 0
+      WHERE a.organization_id = l.organization_id AND a.vendor_key = l.vendor_key AND a.direction = l.direction AND a.category IS NOT NULL AND l.category_by = 'auto' AND coalesce(l.category, '') NOT IN ('transfer', 'investment')
+        AND NOT EXISTS (SELECT 1 FROM banking.category_rules r WHERE r.organization_id = l.organization_id AND r.vendor_key = l.vendor_key)
+        AND NOT EXISTS (SELECT 1 FROM banking.account_settings b WHERE b.organization_id = l.organization_id AND b.kind = 'brokerage' AND b.account_label = l.account_label)`)).rowCount ?? 0
 }

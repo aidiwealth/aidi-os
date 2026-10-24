@@ -46,6 +46,7 @@
  "server/api/platform/orgs/[id].delete.ts": 2,
  "server/api/platform/orgs/[id].get.ts": 1,
  "server/api/platform/orgs/[id].patch.ts": 1,
+ "server/api/platform/orgs/[id]/ai-gift.post.ts": 1,
  "server/api/platform/orgs/[id]/features.post.ts": 2,
  "server/api/platform/orgs/[id]/invite.post.ts": 2,
  "server/api/platform/orgs/[id]/price.post.ts": 1,

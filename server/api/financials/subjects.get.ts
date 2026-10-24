@@ -8,12 +8,13 @@ export default defineEventHandler(async (event) => {
   const cur = await db().query<{ currency: string }>('SELECT DISTINCT currency FROM financials.statements ORDER BY 1')
   const org = (await currentOrg())!
   const rep = org.settings.reporting_currency as string | undefined
-  const company = org.kind === 'company' ? { subject: 'entity:' + (await companyEntityId()), name: org.name, currency: (org.settings.currency as string) || 'USD', reporting: rep || null, rate_as_of: rep ? (await fxRates()).asOf : null, structure: (org.settings.structure as 'single' | 'group' | undefined) ?? null } : null
+  const company = org.kind === 'company' ? { subject: 'entity:' + (await companyEntityId()), name: org.name, currency: (org.settings.currency as string) || 'USD', reporting: rep || null, rate_as_of: rep ? (await fxRates()).asOf : null, structure: (org.settings.structure as 'single' | 'group' | undefined) ?? null, group_name: '' } : null
   // A company's own Financials pages: the company first, then its subsidiaries (each with its name and currency).
   // Subsidiaries only on the Scale plan: on another plan just the company (subsidiaries kept, counted as hidden).
   const all = org.kind === 'company' ? (await db().query<{ id: string; name: string; currency: string | null; main: boolean }>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed' ORDER BY (parent_id IS NOT NULL), created_at")).rows : []
   const subsOk = await subsidiariesAllowed()
   const pages = subsOk ? all : all.filter((p) => p.main)
   if (company && pages[0]?.main) company.name = pages[0].name
+  if (company) company.group_name = String(org.settings.group_name ?? '').trim() || company.name + ' group'
   return { company, pages, subs_hidden: all.length - pages.length, paid: org.kind === 'company' && org.plan_code === 'company_scale', entities: e.rows, companies: c.rows, currencies: cur.rows.map((r) => r.currency), lines: LINES, derived: DERIVED }
 })

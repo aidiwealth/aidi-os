@@ -23,15 +23,15 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function sync() { busy.value = true; msg.value = ''; try { const r = await sf<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // Upload a statement.
 const lk = ref(false)
-const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null, existing: '' })
+const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null, existing: '', mode: 'statement' as 'statement' | 'valuation' })
 // Accounts that come in by statement: shown as cards; a newer statement goes to the same account.
-const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; live_total: number; all_total: number; as_of: string | null; accounts: UpAcc[]; parts?: { label: string; value: number }[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
+const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; holdings_total?: number; live_total: number; all_total: number; as_of: string | null; accounts: UpAcc[]; parts?: { label: string; value: number }[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
 // Live accounts (US banks): loaded in the browser so the page never waits for a bank.
 const liveQ = computed(() => (isGroup.value || !entityId.value ? {} : { entity: entityId.value }))
 const { data: live, refresh: refreshLiveData } = await useFetch<LiveData & { total: number; currency: string }>('/api/plaid/accounts', { query: liveQ, server: false, key: 'treasury-live' })
 async function refreshLive() { try { live.value = await $fetch('/api/plaid/accounts', { query: { ...liveQ.value, refresh: '1' } }); await refreshUa() } catch { /* shown as is */ } }
 const upAcc = computed(() => ua.value?.accounts.find((a) => a.key === up.existing) ?? null)
-function openUpload(a: UpAcc | null) { up.existing = a?.key ?? ''; up.file = null; up.open = true }
+function openUpload(a: UpAcc | null, mode: 'statement' | 'valuation' = 'statement') { up.existing = a?.key ?? ''; up.file = null; up.mode = mode; up.open = true }
 watch(upAcc, (a) => { if (a) { up.account = a.label; up.currency = a.currency; up.entity = a.entity_id && !companies.value.find((c) => c.id === a.entity_id)?.main ? a.entity_id : '' } else if (up.open) up.account = '' })
 async function changed() { await Promise.all([refreshUa(), refresh(), refreshLiveData()]) }
 // Messages fade after a few seconds and never follow you to another company.
@@ -57,7 +57,18 @@ const series = computed(() => {
 })
 // The statement's currency starts as the company's own (Naira for a Nigerian subsidiary, dollars for a US company).
 watch(() => up.open, (o) => { if (o && d.value?.currency && !upAcc.value) up.currency = d.value.currency })
+// A brokerage account's month-end valuations.
+async function uploadValuation() {
+  if (!up.file || !up.account) return; busy.value = true; msg.value = ''
+  const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency); if (isGroup.value && up.entity) fd.append('entity_id', up.entity)
+  try {
+    const r = await sf<{ months: number; recategorised: number; check: { months: number; off: { month: string; why: string }[] } }>('/api/treasury/valuation', { method: 'POST', body: fd })
+    up.open = false; up.file = null; await changed()
+    ok.value = r.months + ' month-end valuation' + (r.months === 1 ? '' : 's') + ' added' + (r.check.off.length ? '; ' + new Set(r.check.off.map((o) => o.month)).size + ' month(s) do not reconcile, see Manage.' : '; every month reconciles.') + (r.recategorised ? ' ' + r.recategorised + ' payments moved to investment, interest, fees or transfers.' : '')
+  } catch (e) { msg.value = err(e) } finally { busy.value = false }
+}
 async function upload() {
+  if (up.mode === 'valuation') return uploadValuation()
   if (!up.file) return; busy.value = true; msg.value = ''
   const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency); if (isGroup.value && up.entity) fd.append('entity_id', up.entity)
   try { const r = await sf<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; void refreshUa(); ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
@@ -129,9 +140,9 @@ const today = new Date().toISOString().slice(0, 10)
         <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start them from your bank →</NuxtLink></div>
         <div class="ov">
           <div class="hero">
-            <span class="ht">Cash in the bank</span>
+            <span class="ht">{{ ua?.holdings_total ? 'Cash and investments' : 'Cash in the bank' }}</span>
             <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
-            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}{{ d.cash !== null ? ' · ' + (d.cash_from === 'financials' ? 'Financials shows ' : 'month-end ') + m(d.cash) : '' }}</span>
+            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.holdings_total ? ' · incl. ' + m(ua.holdings_total) + ' investments' : '' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}{{ d.cash !== null ? ' · ' + (d.cash_from === 'financials' ? 'Financials shows ' : 'month-end ') + m(d.cash) : '' }}</span>
             <template v-if="parts.length">
               <div class="bar" role="img" :aria-label="parts.map((p) => p.label + ' ' + m(p.value)).join(', ')"><i v-for="(p, i) in parts" :key="p.label" :style="{ width: Math.max(1.5, p.value / partsTotal * 100) + '%', background: PAL[i % PAL.length] }" :title="p.label + ': ' + m(p.value)" /></div>
               <div class="lgd"><span v-for="(p, i) in parts" :key="p.label"><i :style="{ background: PAL[i % PAL.length] }" />{{ p.label }} <b>{{ m(p.value) }}</b></span></div>
@@ -144,7 +155,7 @@ const today = new Date().toISOString().slice(0, 10)
             <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month · see the cut list" clickable @click="go('cut')" />
           </div>
         </div>
-        <ClientOnly><BankAccounts :live="data?.ng ? null : live ?? null" :uploaded="ua ?? null" :group="isGroup" :ng="!!data?.ng" @upload="openUpload" @sheet="lk = true" @changed="changed" @refresh-live="refreshLive" /></ClientOnly>
+        <ClientOnly><BankAccounts :live="data?.ng ? null : live ?? null" :uploaded="ua ?? null" :group="isGroup" :ng="!!data?.ng" @upload="openUpload" @valuation="(a: UpAcc | null) => openUpload(a, 'valuation')" @sheet="lk = true" @changed="changed" @refresh-live="refreshLive" /></ClientOnly>
         <div class="card chart">
           <div class="ch"><h2>Money in and out</h2><div class="lg"><span><i class="in" />In</span><span><i class="out" />Out</span><span class="mut">Transfers left out · {{ d.currency }}</span></div></div>
           <div v-if="d.months.length" class="plot" @mouseleave="hover = null">
@@ -237,14 +248,17 @@ const today = new Date().toISOString().slice(0, 10)
     <p v-else-if="pending" class="mut">Loading…</p>
 
     <SheetImport :open="lk" kind="bank_txns" :currency="d?.currency" @close="lk = false" @done="refresh()" />
-    <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
-      <div class="frm"><TemplateCard class="w" title="Any bank export works" text="CSV, Excel, PDF or a photo. Making one yourself? Use the template." @download="downloadTemplate('bank_txns')" />
+    <AppModal :open="up.open" :title="up.mode === 'valuation' ? 'Upload brokerage valuations' : 'Upload a bank statement'" @close="up.open = false">
+      <div class="frm"><div class="seg2" role="tablist"><button v-for="[k, l] in ([['statement', 'Bank statement'], ['valuation', 'Brokerage valuation']] as const)" :key="k" type="button" role="tab" :aria-selected="up.mode === k" :class="{ on: up.mode === k }" @click="up.mode = k; up.file = null">{{ l }}</button></div>
+        <TemplateCard v-if="up.mode === 'statement'" class="w" title="Any bank export works" text="CSV, Excel, PDF or a photo. Making one yourself? Use the template." @download="downloadTemplate('bank_txns')" />
+        <TemplateCard v-else class="w" title="Month-end valuations" text="One row per month end: cash, holdings at market value, total value and accrued interest, from each statement. Upload the account's transactions as a bank statement too." @download="downloadTemplate('brokerage_valuation')" />
         <label v-if="ua?.accounts.length">Account<select v-model="up.existing"><option value="">A new account</option><option v-for="a in ua.accounts" :key="a.key" :value="a.key">{{ a.label }}{{ isGroup && a.entity ? ' · ' + a.entity : '' }} ({{ a.currency }})</option></select></label>
         <template v-if="!upAcc"><label v-if="isGroup">Company<select v-model="up.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
         <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></template>
+        <p v-else-if="up.mode === 'valuation'" class="hint">{{ upAcc.valuation_as_of ? 'Valuations up to ' + new Date(upAcc.valuation_as_of + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) + '. Months already in are replaced.' : 'No valuations yet: this makes it a brokerage account.' }}</p>
         <p v-else class="hint">Has payments up to {{ upAcc.to ? new Date(upAcc.to + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'now' }}. Overlaps are skipped.</p>
-        <DropZone no-tip accept=".csv,.xlsx,.pdf,.png,.jpg,.jpeg" :label="up.file ? up.file.name : 'Drop the statement here'" hint="Up to 20 MB" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
-      <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file" @click="upload">{{ busy ? 'Reading…' : 'Add to the ledger' }}</button></template>
+        <DropZone no-tip :accept="up.mode === 'valuation' ? '.csv,.xlsx' : '.csv,.xlsx,.pdf,.png,.jpg,.jpeg'" :label="up.file ? up.file.name : up.mode === 'valuation' ? 'Drop the valuation file here' : 'Drop the statement here'" :hint="up.mode === 'valuation' ? 'CSV or Excel' : 'Up to 20 MB'" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file || (up.mode === 'valuation' && !up.account)" @click="upload">{{ busy ? 'Reading…' : up.mode === 'valuation' ? 'Add valuations' : 'Add to the ledger' }}</button></template>
     </AppModal>
   </section>
 </template>
@@ -292,6 +306,7 @@ small.ai { color: var(--c-blue-deep); font-weight: 600; }
 .fl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .fl input:not([type="checkbox"]), .fl select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .fl input[placeholder] { min-width: 240px; } .al { font-size: 12.5px; color: var(--c-muted); display: flex; gap: 6px; align-items: center; }
 .pg { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk:disabled { color: var(--c-muted); cursor: default; }
 .hb { border: 1px solid var(--c-rule); background: #fff; padding: 12px 16px; font-size: 14px; color: var(--c-ink-soft); line-height: 1.55; }
+.seg2 { display: inline-flex; border: 1px solid var(--c-rule-strong); align-self: flex-start; } .seg2 button { background: #fff; border: 0; font: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer; color: var(--c-ink-soft); } .seg2 button.on { background: var(--c-navy); color: #fff; }
 .hint { margin: 0; font-size: 13px; color: var(--c-muted); } .frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm input, .frm select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
 .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 .fs { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; } .sg { display: block; color: var(--c-blue-deep); font-size: 11.5px; margin-top: 3px; }

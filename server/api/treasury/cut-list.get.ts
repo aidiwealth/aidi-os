@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const navy = 'FF0C1A2E', blue = 'FF1F5FA8', head = (ws: import('exceljs').Worksheet, r: number) => { ws.getRow(r).eachCell((c) => { c.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Arial', size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } } }) }
   const money = '#,##0.00'
   const ws = wb.addWorksheet('Cut list')
-  ws.addRow([(sc.group ? (await currentOrg())!.name + ' group' : sc.name) + ' - cut list']).font = { bold: true, size: 14, name: 'Arial' }
+  ws.addRow([sc.name + ' - cut list']).font = { bold: true, size: 14, name: 'Arial' }
   ws.addRow(['Recurring payments from the bank ledger, amounts in ' + cy + '. Blue cells are editable: change "Saving %" to model your own cuts. Indicative only.']).font = { italic: true, size: 9, name: 'Arial' }
   ws.addRow([])
   ws.addRow(['Payee', 'Flag', 'Suggested', 'Category', 'Avg monthly', '12-month total', 'Saving %', 'Est. monthly saving', 'Action', 'Last paid']); head(ws, 4)

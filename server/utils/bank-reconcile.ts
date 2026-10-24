@@ -43,7 +43,7 @@ export async function reconView(sc: { group: boolean; entity: string | null; cur
   const flows = new Map<string, { d: string; v: number }[]>(), acctCur = new Map<string, string>(), acctEnt = new Map<string, string | null>()
   for (const r of led) {
     const m = r.d.slice(0, 7), a = Number(r.amount), k = await rate(r.currency), x = (byM[m] ??= { receipts: 0, financing: 0, other_in: 0, out: {}, transfers: 0 }), line = LINE_OF(r.category)
-    if (line === 'transfer') x.transfers += a * k
+    if (line === 'transfer' || line === 'investment') x.transfers += a * k
     else if (r.direction === 'in') { if (line === 'revenue') x.receipts += a * k; else if (line === 'financing') x.financing += a * k; else x.other_in += a * k }
     else x.out[line] = (x.out[line] ?? 0) + a * k
     const acc = r.account_label ?? 'Account'; acctCur.set(acc, r.currency); acctEnt.set(acc, r.entity_id)

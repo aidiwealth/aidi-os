@@ -25,6 +25,9 @@ export default defineEventHandler(async (event) => {
         WHERE a.organization_id = $1 AND a.action LIKE 'platform.%' ORDER BY a.at DESC LIMIT 20`, [id.data])
     const cards = await db().query("SELECT provider, brand, last4, exp_month, exp_year, is_default FROM platform.payment_methods WHERE organization_id = $1 ORDER BY is_default DESC, created_at DESC", [id.data])
     const stor = await storageOf(id.data)
+    // AI: this week's use against the plan, credits left, and gifts made.
+    const ai = await aiAllowance(id.data).catch(() => null)
+    const gifts = (await db().query<{ tokens: string; created_at: string }>("SELECT tokens::text, created_at FROM ai.purchases WHERE organization_id = $1 AND pack = 'gift' ORDER BY created_at DESC LIMIT 5", [id.data])).rows
     const paidPlans = (await db().query<{ code: string; name: string; modules: string[] }>("SELECT code, name, modules FROM core.plans WHERE code IN ('company_startup', 'company_medium', 'company_scale') ORDER BY sort")).rows
     const own = new Set((o.rows[0] as { plan_modules: string[] }).plan_modules ?? [])
     const grantable = MODULES.filter((m) => m.switchable && !own.has(m.code) && paidPlans.some((p) => p.modules.includes(m.code))).map((m) => ({ code: m.code, label: m.label, plans: paidPlans.filter((p) => p.modules.includes(m.code)).map((p) => p.name) }))
@@ -40,6 +43,6 @@ export default defineEventHandler(async (event) => {
          FROM core.impersonations i JOIN core.users su ON su.id = i.staff_user_id LEFT JOIN core.people sp ON sp.id = su.person_id JOIN core.users tu ON tu.id = i.target_user_id
         WHERE i.organization_id = $1 ORDER BY i.started_at DESC LIMIT 20`, [id.data])).rows
     const price = o.rows[0]?.kind === 'company' ? await planPrice(id.data).catch(() => null) : null
-    return { price, members, support, can_support: staff.staffRole !== 'viewer', can_edit: staff.staffRole !== 'viewer' && staff.staffRole !== 'support', agreements, grantable, storage: stor, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
+    return { price, members, support, can_support: staff.staffRole !== 'viewer', can_edit: staff.staffRole !== 'viewer' && staff.staffRole !== 'support', agreements, grantable, storage: stor, ai: ai ? { weekly_used: ai.weekly.used, weekly_limit: ai.weekly.limit, credits: ai.credits, blocked: ai.blocked, gifts: gifts.map((g) => ({ tokens: Number(g.tokens), at: g.created_at })) } : null, org: o.rows[0], usage: { ...usage, storage: Number(usage.storage) }, admins: admins.rows, log: log.rows, cards: cards.rows }
   })
 })

@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   // "Refresh bank feed" waits for the bank; opening the page does not (the feed, linked sheets and tidying run after
   // the response, and on a schedule).
   let added = 0
-  const tidy = async () => { await fixOwnTransfers().catch(() => 0); await fixCardPayments().catch(() => 0); await pairTransfers().catch(() => 0) }
+  const tidy = async () => { await fixOwnTransfers().catch(() => 0); await fixCardPayments().catch(() => 0); await pairTransfers().catch(() => 0); await fixBrokerage().catch(() => 0) }
   if (getQuery(event).sync === '1') { added = await syncBankFeed(true); await tidy() }
   else inBackground('bank', async () => { await syncBankFeed(); await syncDue('bank_txns', null).catch(() => {}); await tidy(); await aiCategorize().catch((e) => console.error('[treasury] ai categories', (e as Error).message)) })
   const rails = await Promise.all(RAILS.map(async (r) => ({ key: r.key, label: r.label, note: r.note, on: await r.available() })))

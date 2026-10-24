@@ -3,7 +3,7 @@ const id = useRoute().params.id as string
 const invited = useRoute().query.invited === '1'
 interface Mem { user_id: string; name: string; email: string; roles: string }
 interface Sup { id: string; reason: string; can_edit: boolean; started_at: string; expires_at: string; ended_at: string | null; by_name: string; as_email: string; changes: number }
-interface D { price?: { code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: { free?: boolean; amount?: number; interval?: string; note?: string; set_at?: string; set_by?: string } | null } | null; members?: Mem[]; support?: Sup[]; can_support?: boolean; can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
+interface D { ai?: { weekly_used: number; weekly_limit: number | null; credits: number; blocked: boolean; gifts: { tokens: number; at: string }[] } | null; price?: { code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: { free?: boolean; amount?: number; interval?: string; note?: string; set_at?: string; set_by?: string } | null } | null; members?: Mem[]; support?: Sup[]; can_support?: boolean; can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
 const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
 const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
@@ -50,6 +50,15 @@ async function toggleFeature(code: string, on: boolean) { const cur = new Set(da
 async function setRaise(enabled: boolean) { await $fetch('/api/platform/orgs/' + id + '/raise', { method: 'POST', body: { enabled, fee_pct: raiseFee.value } }); await refresh() }
 const extraGb = ref(0)
 watchEffect(() => { if (data.value?.storage) extraGb.value = data.value.storage.extra_gb })
+// Gift AI: tokens added to the workspace's AI credits at no charge.
+const gift = reactive({ tokens: 1_000_000, busy: false, msg: '' })
+const tk = (n: number) => (n >= 1e6 ? Math.round(n / 1e5) / 10 + 'M' : Math.round(n / 1e3) + 'k')
+async function giftAi() {
+  if (!await askConfirm('Add ' + tk(gift.tokens) + ' AI tokens to ' + (data.value?.org.name ?? 'this workspace') + ' at no charge? They are used once the plan\'s allowance runs out.', { title: 'Gift AI', ok: 'Gift' })) return
+  gift.busy = true; gift.msg = ''
+  try { const r = await $fetch<{ credits: number }>('/api/platform/orgs/' + id + '/ai-gift', { method: 'POST', body: { tokens: gift.tokens } }); gift.msg = 'Gifted. ' + tk(r.credits) + ' tokens of credit now.'; await refresh() }
+  catch (e) { gift.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not gift. Try again.' } finally { gift.busy = false }
+}
 async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage', { method: 'POST', body: { extra_gb: Number(extraGb.value) || 0 } }); await refresh() }
 </script>
 
@@ -125,6 +134,12 @@ async function saveExtra() { await $fetch('/api/platform/orgs/' + id + '/storage
           <div class="u"><span>Storage</span><b>{{ gb(data.usage.storage) }} GB{{ data.storage?.limit_gb != null ? ' of ' + data.storage.limit_gb : '' }}</b><i><s :style="{ width: pct(data.usage.storage / 1024 ** 3, data.storage?.limit_gb ?? data.org.storage_gb) + '%' }" /></i></div>
           <p v-if="data.storage" class="meta">Plan {{ data.storage.plan_gb ?? 'unlimited' }}{{ data.storage.plan_gb != null ? ' GB' : '' }}<template v-if="data.storage.addon_gb"> · packs +{{ data.storage.addon_gb }} GB</template> · extra <input v-model.number="extraGb" type="number" min="0" class="xg"> GB <button class="lk" type="button" @click="saveExtra">Save</button></p>
           <div class="u"><span>AI runs this month</span><b>{{ data.usage.ai }}{{ data.org.ai_runs_month ? ' of ' + data.org.ai_runs_month : '' }}</b><i><s :style="{ width: pct(data.usage.ai, data.org.ai_runs_month) + '%' }" /></i></div>
+          <template v-if="data.ai">
+            <div class="u"><span>AI this week</span><b>{{ tk(data.ai.weekly_used) }}{{ data.ai.weekly_limit ? ' of ' + tk(data.ai.weekly_limit) : '' }} tokens</b><i><s :style="{ width: pct(data.ai.weekly_used, data.ai.weekly_limit) + '%' }" /></i></div>
+            <p class="meta">Credits {{ tk(data.ai.credits) }}{{ data.ai.blocked ? ' · AI paused until the allowance resets' : '' }}{{ data.ai.gifts.length ? ' · last gift ' + tk(data.ai.gifts[0].tokens) + ' on ' + when(data.ai.gifts[0].at) : '' }}
+              <template v-if="data.can_edit"> · gift <select v-model.number="gift.tokens" class="xg" aria-label="Tokens to gift"><option :value="500000">500k</option><option :value="1000000">1M</option><option :value="5000000">5M</option><option :value="15000000">15M</option></select> <button class="lk" type="button" :disabled="gift.busy" @click="giftAi">{{ gift.busy ? 'Gifting…' : 'Gift AI' }}</button></template></p>
+            <p v-if="gift.msg" class="meta">{{ gift.msg }}</p>
+          </template>
           <p class="meta">Last activity {{ when(data.usage.last_activity) }} · created {{ when(data.org.created_at) }}<template v-if="data.usage.modules_off"> · {{ data.usage.modules_off }} module{{ data.usage.modules_off === 1 ? '' : 's' }} switched off</template></p>
         </div>
         <div class="card">

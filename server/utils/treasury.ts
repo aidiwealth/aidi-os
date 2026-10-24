@@ -49,7 +49,8 @@ export const STD_CATS: { key: string; label: string; dir: 'in' | 'out' | 'any' }
   { key: 'revenue', label: 'Revenue (customer receipts)', dir: 'in' }, { key: 'financing', label: 'Funding and loans received', dir: 'in' }, { key: 'other_income', label: 'Other income', dir: 'in' },
   { key: 'cogs', label: 'Cost of revenue', dir: 'out' }, { key: 'opex_payroll', label: 'Payroll', dir: 'out' }, { key: 'opex_marketing', label: 'Sales & marketing', dir: 'out' }, { key: 'opex_rnd', label: 'Product & engineering', dir: 'out' },
   { key: 'opex_ga', label: 'General & admin', dir: 'out' }, { key: 'opex_other', label: 'Other operating costs', dir: 'out' }, { key: 'tax', label: 'Tax', dir: 'out' }, { key: 'interest', label: 'Interest and loan payments', dir: 'out' },
-  { key: 'capex', label: 'Equipment and capex', dir: 'out' }, { key: 'transfer', label: 'Transfer between own accounts or group companies', dir: 'any' }]
+  { key: 'capex', label: 'Equipment and capex', dir: 'out' }, { key: 'transfer', label: 'Transfer between own accounts or group companies', dir: 'any' },
+  { key: 'investment', label: 'Investment bought, sold or matured', dir: 'any' }]
 const KW: [RegExp, string][] = [
   [/\b(aws|amazon web|google cloud|gcp|azure|digitalocean|vercel|heroku|cloudflare|netlify|render|github|gitlab|atlassian|jira|figma|openai|anthropic|twilio|sentry|datadog|mongodb|supabase|linear)\b/, 'opex_rnd'],
   [/\b(google ads|facebook|meta|linkedin|twitter|x ads|tiktok|hubspot|mailchimp|sendgrid|brevo|semrush|ahrefs|canva|apollo|clay)\b/, 'opex_marketing'],
@@ -98,14 +99,17 @@ export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityI
   const own = await ownNames()
   const org = await currentOrg(), base = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
   const rules = new Map((await db().query<{ vendor_key: string; category: string }>('SELECT vendor_key, category FROM banking.category_rules')).rows.map((r) => [r.vendor_key, r.category]))
+  const broker = new Set((await db().query<{ label: string }>("SELECT account_label AS label FROM banking.account_settings WHERE kind = 'brokerage'").catch(() => ({ rows: [] }))).rows.map((r) => r.label))
   const aiRules = new Map((await db().query<{ k: string; category: string }>("SELECT vendor_key || '|' || direction AS k, category FROM banking.ai_rules WHERE category IS NOT NULL").catch(() => ({ rows: [] }))).rows.map((r) => [r.k, r.category]))
   const rate = new Map<string, number | null>(), fx = async (a: string, b: string) => { if (a === b) return 1; const k = a + b; if (!rate.has(k)) rate.set(k, await fxRate(a, b)); return rate.get(k) ?? null }
   let n = 0
   for (const t of txns) {
     if (!t.amount) continue
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
-    const rule = rules.get(v.key), own1 = !rule && !t.category && isOwn(own, v.key), ai = !rule && !t.category && !own1 ? aiRules.get(v.key + '|' + dir) : undefined
-    const cat = rule ?? t.category ?? (own1 ? 'transfer' : ai ?? autoCategory(v.key, t.description, dir, t.bank_category ?? null))
+    // In a brokerage account, buying, selling and maturities move money between cash and holdings (brokerage.ts).
+    const bk = broker.has(t.account) ? brokerageCategory(t.description) : null
+    const rule = rules.get(v.key), own1 = !rule && !t.category && !bk && isOwn(own, v.key), ai = !rule && !t.category && !own1 && !bk ? aiRules.get(v.key + '|' + dir) : undefined
+    const cat = rule ?? t.category ?? bk ?? (own1 ? 'transfer' : ai ?? autoCategory(v.key, t.description, dir, t.bank_category ?? null))
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
     const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender, upload_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
@@ -131,10 +135,10 @@ export async function pairTransfers(): Promise<number> {
           ON i.organization_id = o.organization_id AND i.direction = 'in' AND i.currency = o.currency AND i.amount = o.amount
          AND i.account_label IS DISTINCT FROM o.account_label AND abs(i.txn_date - o.txn_date) <= 3
        WHERE o.direction = 'out' AND o.amount >= 50 AND o.category_by IN ('auto', 'ai') AND i.category_by IN ('auto', 'ai')
-         AND coalesce(o.category, '') <> 'transfer' AND coalesce(i.category, '') <> 'transfer')
+         AND coalesce(o.category, '') NOT IN ('transfer', 'investment') AND coalesce(i.category, '') NOT IN ('transfer', 'investment'))
     UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id IN (SELECT oid FROM c WHERE ro = 1 AND ri = 1 UNION ALL SELECT iid FROM c WHERE ro = 1 AND ri = 1)`)
   const held = (await db().query<{ w: string }>("SELECT DISTINCT lower(split_part(account_label, ' ', 1)) AS w FROM banking.ledger WHERE account_label IS NOT NULL")).rows.map((r) => r.w).filter((w) => PROCESSORS.includes(w))
-  const settled = held.length ? await db().query(`UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE direction = 'in' AND category_by IN ('auto', 'ai') AND coalesce(category, '') <> 'transfer'
+  const settled = held.length ? await db().query(`UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE direction = 'in' AND category_by IN ('auto', 'ai') AND coalesce(category, '') NOT IN ('transfer', 'investment')
       AND lower(split_part(coalesce(account_label, ''), ' ', 1)) <> ALL($1::text[]) AND (description ~* $2 OR vendor_key ~* $2)`, [held, '\\m(' + held.join('|') + ')\\M']) : null
   return (paired.rowCount ?? 0) + (settled?.rowCount ?? 0)
 }
@@ -143,7 +147,7 @@ export async function pairTransfers(): Promise<number> {
 // their category), so the company never shows up as its own vendor or customer.
 export async function fixOwnTransfers() {
   const own = await ownNames(); if (!own) return 0
-  const rows = (await db().query<{ id: string; vendor_key: string }>("SELECT id, vendor_key FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND coalesce(category, '') <> 'transfer'")).rows.filter((r) => isOwn(own, r.vendor_key))
+  const rows = (await db().query<{ id: string; vendor_key: string }>("SELECT id, vendor_key FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND coalesce(category, '') NOT IN ('transfer', 'investment')")).rows.filter((r) => isOwn(own, r.vendor_key))
   if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
   return rows.length
 }
@@ -163,7 +167,7 @@ export async function cardIssuerKeys(): Promise<string[]> {
 export async function fixCardPayments() {
   const keys = await cardIssuerKeys(); if (!keys.length) return 0
   const cards = await cardLabels()
-  const rows = (await db().query<{ id: string; vendor_key: string; description: string }>("SELECT id, vendor_key, description FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND direction = 'out' AND coalesce(category, '') <> 'transfer' AND NOT (account_label = ANY($1::text[]))", [cards])).rows
+  const rows = (await db().query<{ id: string; vendor_key: string; description: string }>("SELECT id, vendor_key, description FROM banking.ledger WHERE category_by IN ('auto', 'ai') AND direction = 'out' AND coalesce(category, '') NOT IN ('transfer', 'investment') AND NOT (account_label = ANY($1::text[]))", [cards])).rows
     .filter((r) => keys.some((k) => r.vendor_key.startsWith(k)))
   if (rows.length) await db().query("UPDATE banking.ledger SET category = 'transfer', category_by = 'auto' WHERE id = ANY($1::uuid[])", [rows.map((r) => r.id)])
   return rows.length
@@ -204,7 +208,7 @@ export async function treasuryView(sc: TScope) {
   const cur = sc.currency, rate = await rateTo(cur), main = await companyEntityId(), ent = sc.group ? null : sc.entity
   const raw = (await db().query<{ m: string; vendor_key: string; vendor: string; direction: string; category: string | null; currency: string; amt: string; last: string }>(
     `SELECT to_char(txn_date, 'YYYY-MM') AS m, vendor_key, max(vendor) AS vendor, direction, category, currency, sum(amount)::text AS amt, max(txn_date)::text AS last FROM banking.ledger
-     WHERE txn_date >= date_trunc('month', now()) - interval '12 months' AND coalesce(category, '') <> 'transfer' AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1) GROUP BY 1, 2, 4, 5, 6`, [ent, main])).rows
+     WHERE txn_date >= date_trunc('month', now()) - interval '12 months' AND coalesce(category, '') NOT IN ('transfer', 'investment') AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1) GROUP BY 1, 2, 4, 5, 6`, [ent, main])).rows
   const rows: { m: string; vendor_key: string; vendor: string; direction: string; category: string | null; amt: string; last: string }[] = []
   for (const r of raw) rows.push({ ...r, amt: String(Number(r.amt) * await rate(r.currency)) })
   const thisM = new Date().toISOString().slice(0, 7), full = [...new Set(rows.map((r) => r.m))].filter((m) => m < thisM).sort()
@@ -237,7 +241,7 @@ export async function treasuryView(sc: TScope) {
   const runway = (b: number | null) => (cash === null || b === null ? null : b <= 0 ? null : Math.round(cash / b * 10) / 10)
   const now = runway(burn)
   // Taxes, loan payments and transfers are not choices to cut.
-  const recurring = [...vend.values()].filter((v) => v.recurring && v.monthly > 0 && !['tax', 'interest', 'transfer', 'financing'].includes(v.category ?? '')).sort((a, b) => b.monthly - a.monthly)
+  const recurring = [...vend.values()].filter((v) => v.recurring && v.monthly > 0 && !['tax', 'interest', 'transfer', 'investment', 'financing'].includes(v.category ?? '')).sort((a, b) => b.monthly - a.monthly)
   const dupes = SAME_JOB.map(([job, re]) => ({ job, vendors: recurring.filter((v) => re.test(v.key + ' ' + v.name.toLowerCase())).map((v) => ({ key: v.key, name: v.name, monthly: v.monthly })) })).filter((g) => g.vendors.length > 1)
   // A suggested flag for each recurring payment (the founder decides): personal-looking, transfers with no clear payee,
   // a second tool for the same job, a bill rising fast, the largest bill.

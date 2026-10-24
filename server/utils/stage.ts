@@ -83,7 +83,7 @@ export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<ty
     const by: Record<string, number> = {}; for (const r of t.rows) by[r.holder.kind] = (by[r.holder.kind] ?? 0) + r.pctFd
     return { name: main.name, fully_diluted: t.fd, pool_available: t.pool, by_kind: Object.entries(by).map(([kind, pct]) => ({ kind, pct: Math.round(pct * 10) / 10 })).sort((a, b) => b.pct - a.pct), safes: cap.safes, raised_usd: cap.raised_usd } })() : null
   return {
-    company: sc.group ? org.name + ' group' : sc.name, group: sc.group, currency: cur, region, region_label: rr.label, tier, country: (s.country as string) || null, as_of: months[months.length - 1]?.month ?? null,
+    company: sc.name, group: sc.group, currency: cur, region, region_label: rr.label, tier, country: (s.country as string) || null, as_of: months[months.length - 1]?.month ?? null,
     funding: { key: fund, label: FUNDING_LABEL[fund], basis: cap.priced_round ? 'Your latest priced round on the cap table' : cap.has ? 'Money raised on your cap table (SAFEs, notes and preferred shares): about $' + cap.raised_usd.toLocaleString('en-US') : 'No cap table yet' },
     operating: { key: op, label: OPERATING_LABEL[op], note: operatingNote(op, rr), arr_usd: Math.round(arrUsd), basis: 'Annual run rate from the latest month of revenue, against ' + rr.label + ' benchmarks' },
     health: { key: hl, label: HEALTH_LABEL[hl], note: HEALTH_NOTE[hl] },

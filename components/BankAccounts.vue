@@ -3,11 +3,12 @@
 // others come from statements, with the latest balance a statement shows. Manage holds the connections (sign in
 // again, resync, disconnect) and each uploaded account's statements (add a newer one, delete one, clear the account).
 interface Up { id: string; file_name: string | null; file_kind: string; period_start: string | null; period_end: string | null; added: number; read: number; created_at: string }
-export interface UpAcc { key: string; label: string; entity_id: string | null; entity: string | null; currency: string; balance: number | null; as_of: string | null; count: number; from: string | null; to: string | null; sheet: boolean; uploads: Up[] }
+export interface UpAcc { key: string; label: string; entity_id: string | null; entity: string | null; currency: string; balance: number | null; as_of: string | null; count: number; from: string | null; to: string | null; sheet: boolean; uploads: Up[]
+  kind?: 'bank' | 'brokerage'; cash?: number | null; holdings?: number | null; accrued?: number | null; include_holdings?: boolean; valuation_as_of?: string | null; recon?: { months: number; off: { month: string; why: string }[] } | null }
 export interface LiveAcc { id: string; item_id: string; name: string; mask: string | null; subtype: string | null; debt?: boolean; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
 export interface LiveData { available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null; history_from?: string | null; short?: boolean }[]; accounts: LiveAcc[] }
 const props = defineProps<{ live: LiveData | null; uploaded: { accounts: UpAcc[] } | null; group?: boolean; ng?: boolean }>()
-const emit = defineEmits<{ upload: [a: UpAcc | null]; sheet: []; changed: []; refreshLive: [] }>()
+const emit = defineEmits<{ upload: [a: UpAcc | null]; valuation: [a: UpAcc | null]; sheet: []; changed: []; refreshLive: [] }>()
 const { sf } = await useCoScope()
 const pl = usePlaidLink(() => emit('changed')), { busy: plBusy, msg: plMsg, progress } = pl
 const show = ref<'all' | 'live' | 'up'>('all'), manage = ref(false), open = ref(''), busy = ref(''), msg = ref(''), addOpen = ref(false)
@@ -41,6 +42,12 @@ async function twoYears(it: { id: string; institution: string | null }) {
   if (!await askConfirm('Sign in to ' + (it.institution ?? 'the bank') + ' again and Finvry brings in two years of payments in place of the current ones. Categories you set are kept.', { title: 'Get 2 years of history?', ok: 'Continue' })) return
   void pl.connect(it.id)
 }
+// Brokerage accounts: whether holdings count in the total.
+async function setHoldings(a: UpAcc, on: boolean) {
+  try { await sf('/api/treasury/account-settings', { method: 'POST', body: { label: a.label, entity_id: a.entity_id, include_holdings: on } }); emit('changed') } catch (e) { msg.value = err(e) }
+}
+const brief = (v: number, c: string) => briefMoney(v, c)
+const mon = (ym: string) => new Date(ym + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k === 'bank') void pl.connect(); else if (k === 'sheet') emit('sheet'); else emit('upload', null) }
 </script>
 <template>
@@ -56,6 +63,7 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
           <div v-if="addOpen" class="menu" @mouseleave="addOpen = false">
             <button v-if="canConnect" type="button" @click="add('bank')"><b>Connect a US bank</b><span>Live balances and payments</span></button>
             <button type="button" @click="add('statement')"><b>Upload a statement</b><span>Any bank, any format</span></button>
+            <button type="button" @click="addOpen = false; emit('valuation', null)"><b>Add a brokerage account</b><span>Cash plus holdings, from month-end valuations</span></button>
             <button type="button" @click="add('sheet')"><b>Link a sheet</b><span>Updates when the sheet changes</span></button>
           </div></div>
       </div>
@@ -81,7 +89,7 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
           <div class="r1"><span class="inst">{{ parts(a.label).bank }}</span><span class="mask">{{ parts(a.label).mask ? '•• ' + parts(a.label).mask : a.currency }}</span></div>
           <div class="nm" :title="a.label">{{ parts(a.label).name || 'Account' }}<em v-if="group && a.entity">{{ a.entity }}</em></div>
           <div class="bal">{{ fmt(a.balance, a.currency) }}</div>
-          <div class="ft"><span>{{ a.as_of ? day(a.as_of) : day(a.to) }}</span><span class="tag">Statement</span><span class="plus">+ Statement</span></div>
+          <div class="ft"><span>{{ a.kind === 'brokerage' && a.holdings !== null && a.holdings !== undefined ? brief(a.cash ?? 0, a.currency) + ' cash · ' + brief(a.holdings, a.currency) + ' held' : a.as_of ? day(a.as_of) : day(a.to) }}</span><span class="tag">{{ a.kind === 'brokerage' ? 'Brokerage' : 'Statement' }}</span><span class="plus">+ Statement</span></div>
         </button>
       </template>
     </div>
@@ -106,8 +114,14 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
           <div v-if="open === a.key" class="ab">
             <div v-for="u in a.uploads" :key="u.id" class="ur"><span class="fn">{{ u.file_name ?? 'Statement' }}</span><span class="mut">{{ day(u.period_start) }} – {{ day(u.period_end) }}</span><span class="sp" />
               <button class="lk red" type="button" :disabled="busy === u.id" @click="del(a, u)">{{ busy === u.id ? 'Deleting…' : 'Delete' }}</button></div>
-            <p v-if="!a.uploads.length" class="mut ur">Older upload or linked sheet</p>
-            <div class="aa"><button class="lk" type="button" @click="emit('upload', a)">+ Upload statement</button><button class="lk red" type="button" :disabled="busy === a.key" @click="clear(a)">{{ busy === a.key ? 'Clearing…' : 'Clear account' }}</button></div>
+            <p v-if="!a.uploads.length && a.count" class="mut ur">Older upload or linked sheet</p>
+            <template v-if="a.kind === 'brokerage'">
+              <div class="ur"><span class="fn">Month-end valuations</span><span class="mut">{{ a.recon?.months ?? 0 }} month{{ a.recon?.months === 1 ? '' : 's' }}{{ a.valuation_as_of ? ' to ' + day(a.valuation_as_of) : '' }}</span><span class="sp" />
+                <span :class="a.recon?.off.length ? 'bad' : 'good'">{{ !a.recon?.months ? 'None yet' : a.recon.off.length ? new Set(a.recon.off.map((o) => o.month)).size + ' month(s) do not reconcile' : 'Reconciles every month' }}</span></div>
+              <p v-for="o in (a.recon?.off ?? []).slice(0, 4)" :key="o.month + o.why" class="mut ur">{{ mon(o.month) }}: {{ o.why }}</p>
+              <label class="ur chk"><input type="checkbox" :checked="a.include_holdings !== false" @change="setHoldings(a, ($event.target as HTMLInputElement).checked)"> Count holdings in the total{{ a.accrued ? ' (accrued interest of ' + fmt(a.accrued, a.currency) + ' is not counted)' : '' }}</label>
+            </template>
+            <div class="aa"><button class="lk" type="button" @click="emit('valuation', a)">{{ a.kind === 'brokerage' ? '+ Upload valuations' : 'This is a brokerage account' }}</button><button class="lk" type="button" @click="emit('upload', a)">+ Upload statement</button><button class="lk red" type="button" :disabled="busy === a.key" @click="clear(a)">{{ busy === a.key ? 'Clearing…' : 'Clear account' }}</button></div>
           </div>
         </div>
       </template>
@@ -151,6 +165,7 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
 .ah { cursor: pointer; } .ah svg { width: 16px; height: 16px; color: var(--c-muted); transition: transform .15s; } .ah svg.up { transform: rotate(180deg); }
 .ab { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 10px; border-bottom: 1px solid var(--c-rule); } .aa { display: flex; gap: 16px; justify-content: flex-end; padding-top: 6px; }
 .ur { display: flex; align-items: center; gap: 10px; padding: 4px 0 4px 14px; font-size: 13px; margin: 0; } .ur .fn { color: var(--c-ink); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.good { font-size: 12.5px; color: var(--c-blue-deep); } .bad { font-size: 12.5px; color: var(--c-danger); } .chk { gap: 8px; color: var(--c-ink-soft); cursor: pointer; } .chk input { margin: 0; }
 .msg { margin: 0; font-size: 13px; color: var(--c-ink-soft); }
 @media (max-width: 640px) { .tr .mut { display: none; } .bc { flex-basis: 210px; } }
 </style>

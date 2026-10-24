@@ -1,7 +1,13 @@
 // Templates to fill in for Sales, Marketing and Banking: the headings Finvry reads, with example rows that show the
 // format (they say "delete this row" and are skipped if left in). CSV, so any bank export or spreadsheet can match it.
 const EX = ' (delete this row)'
-export const TEMPLATES: Record<'sales_deals' | 'marketing_months' | 'bank_txns', { file: string; rows: string[][] }> = {
+export const TEMPLATES: Record<'sales_deals' | 'marketing_months' | 'bank_txns' | 'brokerage_valuation', { file: string; rows: string[][] }> = {
+  // Brokerage and investment accounts: each month end's cash, holdings at market value and total, from the statement.
+  brokerage_valuation: { file: 'finvry-brokerage-valuation-template.csv', rows: [
+    ['Month end', 'Cash', 'Holdings market value', 'Total account value', 'Accrued interest'],
+    ['2026-08-31', '890.43', '105621.87', '106512.30', '1064.58' + EX],
+    ['2026-09-30', '1202.93', '105189.29', '106392.22', '1000.81' + EX],
+  ] },
   bank_txns: { file: 'finvry-bank-transactions-template.csv', rows: [
     ['Date', 'Description', 'Money in', 'Money out', 'Balance', 'Who spent'],
     ['2026-09-01', 'EXAMPLE Acme Ltd invoice 1042' + EX, '2500.00', '', '12500.00', ''],

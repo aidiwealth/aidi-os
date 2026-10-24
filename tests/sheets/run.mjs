@@ -325,6 +325,20 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('bank template as a sheet: every column found', m.columns.date === 0 && m.columns.description === 1 && m.columns.credit === 2 && m.columns.debit === 3 && m.columns.balance === 4 && m.columns.spender === 5 && m.all_out === false, JSON.stringify(m.columns))
 }
 
+// 9c3b. Brokerage month-end valuations (a Schwab statement's figures) and how brokerage payments are categorised.
+{
+  const BK = await jiti.import(join(root, 'server/utils/brokerage.ts'))
+  const csv = 'Month end,Cash (USD),Treasuries & fixed income at market value (USD),Total account value (USD),Accrued interest (USD),Total incl. accrued interest (USD)\n2023-10-31,125843.44,888346.09,1014189.53,1355.71,1015545.24\n2024-12-31,193975.31,862594.24,1056569.55,,\n2026-09-30,1202.93,105189.29,106392.22,1000.81,107393.03\n'
+  const rows = csv.trim().split('\n').map((l) => l.split(','))
+  const v = BK.parseValuations(rows), last = v[v.length - 1]
+  check('brokerage: valuation columns found (cash, holdings, total, accrued; not the total with interest)', v.length === 3 && last.month_end === '2026-09-30' && last.cash === 1202.93 && last.holdings === 105189.29 && last.total === 106392.22 && last.accrued === 1000.81 && v[1].accrued === null, JSON.stringify(v))
+  check('brokerage: every month adds up (cash + holdings = total)', v.every((x) => Math.abs(x.cash + x.holdings - x.total) <= 1))
+  const t = (d) => BK.brokerageCategory(d)
+  check('brokerage: buying, redemptions and maturities are investment; interest income; advisor fee a cost; MoneyLink a transfer',
+    t('Bought 50,000 US TREASURY NOTE') === 'investment' && t('Full Redemption US TREASURY BILL') === 'investment' && t('CD Maturity ALLY BANK') === 'investment' && t('Bond Interest US TREASURY') === 'other_income' && t('Credit Interest') === 'other_income' && t('Advisor Fee') === 'opex_ga' && t('Withdrawal - Funds Paid MoneyLink Transfer JPMORGAN') === 'transfer' && t('Deposit - MoneyLink') === 'transfer',
+    ['Bought', 'Full Redemption', 'CD Maturity', 'Bond Interest', 'Credit Interest', 'Advisor Fee', 'Withdrawal', 'Deposit'].map((d) => d + '=' + t(d)).join(' '))
+}
+
 // 9c4. Cards and loans from the live feed are money owed, not cash.
 {
   const B = await jiti.import(join(root, 'shared/bank.ts'))

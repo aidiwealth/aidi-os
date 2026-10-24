@@ -12,7 +12,7 @@ export function exportSlotGive() { running = Math.max(0, running - 1) }
 type Cell = string | number | null
 export interface Built { name: string; sheets: { name: string; headers: string[]; rows: Cell[][]; money?: number[] }[] }
 interface Kind { label: string; ranged: boolean; build: (event: H3Event, from: string | null, to: string | null) => Promise<Built> }
-const scopeName = async (event: H3Event) => { const sc = await forecastScope(event); return { sc, title: sc.group ? (await currentOrg())!.name + ' group' : sc.name } }
+const scopeName = async (event: H3Event) => { const sc = await forecastScope(event); return { sc, title: sc.name } }
 
 export const EXPORTS: Record<string, Kind> = {
   // Every bank payment in the period, in its own currency and the view's.
@@ -35,7 +35,7 @@ export const EXPORTS: Record<string, Kind> = {
     const { sc, title } = await scopeName(event), main = await companyEntityId(), rate = await rateTo(sc.currency)
     const r = (await db().query<{ m: string; category: string | null; vendor: string; currency: string; amt: number }>(
       `SELECT to_char(txn_date, 'YYYY-MM') AS m, category, vendor, currency, sum(amount)::float AS amt FROM banking.ledger
-        WHERE direction = 'out' AND coalesce(category, '') <> 'transfer' AND txn_date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR coalesce(entity_id, $4::uuid) = $3) GROUP BY 1, 2, 3, 4`, [from, to, sc.group ? null : sc.entity, main])).rows
+        WHERE direction = 'out' AND coalesce(category, '') NOT IN ('transfer', 'investment') AND txn_date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR coalesce(entity_id, $4::uuid) = $3) GROUP BY 1, 2, 3, 4`, [from, to, sc.group ? null : sc.entity, main])).rows
     const cats = new Map(STD_CATS.map((c) => [c.key, c.label])), cat = (k: string | null) => (k ? cats.get(k) ?? k.replace(/^cat:[a-z_]+:/, '') : 'Uncategorised')
     const months = [...new Set(r.map((x) => x.m))].sort(), byCat = new Map<string, Record<string, number>>(), byVen = new Map<string, { cat: string; total: number }>()
     for (const x of r) { const v = x.amt * await rate(x.currency), c = cat(x.category), o = byCat.get(c) ?? {}; o[x.m] = (o[x.m] ?? 0) + v; byCat.set(c, o); const vv = byVen.get(x.vendor) ?? { cat: c, total: 0 }; vv.total += v; byVen.set(x.vendor, vv) }

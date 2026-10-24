@@ -9,7 +9,7 @@ export async function forecastScope(event: H3Event): Promise<ForecastScope> {
   const ents = await custEntities()
   const scoped = !!(event.context.entityScope as string | undefined)
   if (getQuery(event).cust === 'group' && ents.length > 1 && !scoped)
-    return { group: true, entity: null, name: org?.name ?? '', currency: (org?.settings.reporting_currency as string) || base, main: false, companies: ents }
+    return { group: true, entity: null, name: await groupName(), currency: (org?.settings.reporting_currency as string) || base, main: false, companies: ents }
   const id = custEntityId() || (await companyEntityId())
   const e = ents.find((x) => x.id === id) ?? null
   return { group: false, entity: id, name: e?.name ?? org?.name ?? '', currency: e?.currency || base, main: e ? e.main : true, companies: ents }

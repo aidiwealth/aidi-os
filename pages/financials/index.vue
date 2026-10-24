@@ -144,7 +144,7 @@ const mr = reactive({ open: false })
 const crpt = ref(false)
 const custOf = computed(() => (subject.value === 'group' ? '' : fs.entityId.value ?? ''))
 // The heading says exactly what is shown: the consolidated group, or one company.
-const viewName = computed(() => (subject.value === 'group' ? (co.value ? (pages.value.find((p) => p.main)?.name ?? baseCo.value?.name ?? 'The') + ' group' : 'Group') : fs.current.value?.label ?? (data.value?.name ?? 'Financials')))
+const viewName = computed(() => (subject.value === 'group' ? (co.value ? fs.groupName.value : 'Group') : fs.current.value?.label ?? (data.value?.name ?? 'Financials')))
 function mrDone(m: string) { mr.open = false; ok.value = m }
 // Bulk delete / clear.
 const picked = ref<string[]>([]); const clearOpen = ref(false); const coaOpen = ref(false)

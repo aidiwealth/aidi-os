@@ -142,7 +142,7 @@ async function scopeFor(event: H3Event, company?: unknown) {
   const reporting = (org?.settings.reporting_currency as string) || (org?.settings.currency as string) || sc.currency
   const pick = name && name !== 'group' ? sc.companies.find((c) => c.name.toLowerCase() === name) ?? sc.companies.find((c) => c.name.toLowerCase().includes(name)) : undefined
   if (pick) return { ...sc, group: false, entity: pick.id, name: pick.name, currency: pick.currency || sc.currency, main: pick.main }
-  if (groupOk && (name === 'group' || !name)) return { ...sc, group: true, entity: null, name: (org?.name ?? '') + ' group', currency: reporting, main: false }
+  if (groupOk && (name === 'group' || !name)) return { ...sc, group: true, entity: null, name: await groupName(), currency: reporting, main: false }
   return sc
 }
 const COMPANY = { company: { type: 'string', description: 'A company in the group by name, or "group" for all of them combined. Leave out for the default (the group when there are subsidiaries).' } }

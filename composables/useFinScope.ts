@@ -3,7 +3,7 @@
 // Customers, What to do next, Reports) stays on it. A company with subsidiaries opens on the group; someone limited to
 // some companies opens on their first; Aidi OS opens on the group.
 export interface FinSubjects {
-  company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null } | null
+  company: { subject: string; name: string; currency: string; reporting: string | null; rate_as_of: string | null; structure?: 'single' | 'group' | null; group_name?: string } | null
   pages: { id: string; name: string; currency: string | null; main: boolean }[]; subs_hidden?: number
   entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string; relationship: string }[]
   currencies: string[]; paid: boolean; lines: { key: string; label: string; section: string }[]; derived: { key: string; label: string }[]
@@ -41,5 +41,7 @@ export async function useFinScope() {
   // The page's currency: a company page its own; the group the reporting currency (else the company's).
   const currencyOf = (v: string) => (v === 'group' ? co.value?.reporting ?? co.value?.currency ?? subj.value?.currencies[0] ?? 'USD' : pages.value.find((p) => 'entity:' + p.id === v)?.currency ?? co.value?.currency ?? 'USD')
   const hasGroup = computed(() => options.value.some((o) => o.group))
-  return { subj, refreshSubjects, me, scoped, co, pages, options, s, isGroup, entityId, current, currencyOf, hasGroup }
+  // The group's own name (set by the founder), else the main company's name with "group".
+  const groupName = computed(() => co.value?.group_name || ((pages.value.find((p) => p.main)?.name ?? co.value?.name ?? '') + ' group').trim())
+  return { subj, refreshSubjects, me, scoped, co, pages, options, s, isGroup, entityId, current, currencyOf, hasGroup, groupName }
 }
