@@ -222,9 +222,23 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   const actions: unknown[] = []; let inTok = 0, outTok = 0, text = ''
   const model = String((useRuntimeConfig() as unknown as Record<string, string>).aiModelAnalyst || '') || MODEL_DEFAULT
   for (let round = 0; round < 8; round++) {
-    const res = await fetch(anthropicBaseUrl.replace(/\/$/, '') + '/v1/messages', { method: 'POST', headers: { 'x-api-key': anthropicApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: 1600, system: [{ type: 'text', text: system + (isCo ? GROWTH_NOTE : ''), cache_control: { type: 'ephemeral' } }], tools: toolDefs, messages: msgs }), signal: AbortSignal.timeout(60000) }).catch(() => null)
-    if (!res || !res.ok) throw apiError('ai_failed', 'The AI analyst could not answer right now. Please try again.', 502)
+    // Busy or briefly unavailable (429, 5xx, overloaded): wait and try again, up to three times. Anything else is
+    // reported with the service's own reason, so it can be fixed rather than guessed at.
+    const payload = JSON.stringify({ model, max_tokens: 1600, system: [{ type: 'text', text: system + (isCo ? GROWTH_NOTE : ''), cache_control: { type: 'ephemeral' } }], tools: toolDefs, messages: msgs })
+    let res: Response | null = null, why = ''
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt))
+      res = await fetch(anthropicBaseUrl.replace(/\/$/, '') + '/v1/messages', { method: 'POST', headers: { 'x-api-key': anthropicApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: payload, signal: AbortSignal.timeout(120000) })
+        .catch((e) => { why = (e as Error).name === 'TimeoutError' ? 'timed out' : 'could not connect (' + (e as Error).message + ')'; return null })
+      if (res?.ok) break
+      if (res) { const t = await res.text().catch(() => ''); let m = t; try { const j = JSON.parse(t) as { error?: { type?: string; message?: string } }; m = (j.error?.type ?? '') + ': ' + (j.error?.message ?? '') } catch { /* not JSON */ } why = res.status + ' ' + m.slice(0, 240) }
+      console.error('[analyst] round', round, 'attempt', attempt, why)
+      if (res && res.status < 500 && res.status !== 429) break
+    }
+    if (!res || !res.ok) {
+      await db().query("INSERT INTO core.ai_runs (task, model, prompt_version, input_ref, output, valid, error, input_tokens, output_tokens, cost_usd, billed_to) VALUES ('analyst',$1,'analyst-v3',$2,null,false,$3,0,0,0,$4)", [model, path.slice(0, 120), why.slice(0, 500), gate.billed]).catch(() => {})
+      throw apiError('ai_failed', /^(429|5\d\d)|overloaded|timed out/.test(why) ? 'The AI service is busy. Please try again in a minute.' : 'The AI analyst could not answer (' + why.slice(0, 160) + ').', 502)
+    }
     const body = await res.json() as { content: any[]; stop_reason: string; usage?: Record<string, number> }
     const u = body.usage ?? {}; inTok += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0); outTok += u.output_tokens ?? 0
     text = body.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim()
