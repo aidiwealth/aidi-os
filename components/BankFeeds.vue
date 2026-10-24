@@ -7,36 +7,10 @@ const props = withDefaults(defineProps<{ compact?: boolean; entity?: string | nu
 const emit = defineEmits<{ changed: [] }>()
 interface A { id: string; item_id: string; name: string; mask: string | null; type?: string | null; subtype: string | null; debt?: boolean; currency: string; current: string | null; available: string | null; updated_at: string; institution: string | null; error: string | null }
 const { data, refresh } = await useFetch<{ ng?: boolean; available?: boolean; manage?: boolean; enabled: boolean; env: string; items: { id: string; institution: string | null; error: string | null }[]; accounts: A[]; total: number; owed?: number; currency: string; coverage?: { reported: number | null; as_of: string | null; share: number | null; partial: boolean; group: boolean } | null }>('/api/plaid/accounts', { query: computed(() => (props.entity ? { entity: props.entity } : {})), key: 'plaid-accounts' + (props.entity ? ':' + props.entity : '') })
-const busy = ref(false); const msg = ref('')
+
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const fmt = (v: string | number | null, c: string) => (v === null ? '—' : (SYM[c] ?? c + ' ') + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-function loadScript(): Promise<void> { return new Promise((res, rej) => { if ((window as unknown as { Plaid?: unknown }).Plaid) return res(); const s = document.createElement('script'); s.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js'; s.onload = () => res(); s.onerror = () => rej(new Error('Could not load Plaid')); document.head.appendChild(s) }) }
-async function connect() {
-  busy.value = true; msg.value = ''
-  try {
-    await loadScript()
-    const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST' })
-    const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid
-    P.create({ token: link_token, onSuccess: async (public_token: string, meta: { institution?: { name?: string } }) => { try { await $fetch('/api/plaid/exchange', { method: 'POST', body: { public_token, institution: meta.institution?.name } }); emit('changed'); await refresh() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not connect.' } }, onExit: () => { busy.value = false } }).open()
-  } catch (e) { const x = e as { data?: { data?: { error?: { message?: string } } }; statusCode?: number }; msg.value = x.data?.data?.error?.message ?? (x.statusCode ? 'Could not start the bank connection (error ' + x.statusCode + '). Please try again in a minute.' : 'Could not load the bank connection window. Check your internet connection or ad blocker and try again.') } finally { busy.value = false }
-}
-// The bank needs the person to sign in again: Plaid Link in update mode for that connection.
-async function reconnect(id: string) {
-  busy.value = true; msg.value = ''
-  try {
-    await loadScript()
-    const { link_token } = await $fetch<{ link_token: string }>('/api/plaid/link-token', { method: 'POST', body: { item: id } })
-    const P = (window as unknown as { Plaid: { create: (o: Record<string, unknown>) => { open: () => void } } }).Plaid
-    P.create({ token: link_token, onSuccess: async () => { try { await $fetch('/api/plaid/items/' + id + '/reconnected', { method: 'POST' }); emit('changed'); await refresh() } catch { msg.value = 'Reconnected, but the balances could not load yet. Refresh in a minute.' } finally { busy.value = false } }, onExit: () => { busy.value = false } }).open()
-  } catch { msg.value = 'Could not start reconnecting. Try again in a minute.'; busy.value = false }
-}
-// Clear a bank's transactions and bring the full history back from the bank (categories set by hand are kept).
-async function resync(id: string, name: string | null) {
-  if (!await askConfirm('Payments are reloaded from the bank. Your categories are kept.', { title: 'Resync ' + (name ?? 'this bank') + '?', ok: 'Resync' })) return
-  msg.value = ''
-  try { await $fetch('/api/plaid/items/' + id + '/resync', { method: 'POST' }); msg.value = 'Resyncing. Back in a minute or two.'; setTimeout(() => emit('changed'), 45000) } catch { msg.value = 'Could not start the resync. Try again in a minute.' }
-}
-async function disconnect(id: string, name: string | null) { if (!await askConfirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
+const pl = usePlaidLink(async () => { emit('changed'); await refresh() }), { busy, msg, connect, reconnect, resync, disconnect } = pl
 const manage = ref(false)
 // Cards and loans are money owed: shown after the bank accounts, marked as owed, and not in the balance.
 const cash = computed(() => (data.value?.accounts ?? []).filter((a) => !a.debt))

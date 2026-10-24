@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UpAcc } from '~/components/UploadedAccounts.vue'
+import type { UpAcc, LiveData } from '~/components/BankAccounts.vue'
 // Banking: every bank transaction in one ledger (bank feed and uploaded statements; Fincra later), where the
 // money goes by category and vendor, and the cut list — recurring payments ranked by the runway they would give back.
 // Read-only: Finvry never holds or moves money.
@@ -25,11 +25,33 @@ async function sync() { busy.value = true; msg.value = ''; try { const r = await
 const lk = ref(false)
 const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null, existing: '' })
 // Accounts that come in by statement: shown as cards; a newer statement goes to the same account.
-const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; accounts: UpAcc[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
+const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; live_total: number; all_total: number; as_of: string | null; accounts: UpAcc[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
+// Live accounts (US banks): loaded in the browser so the page never waits for a bank.
+const liveQ = computed(() => (isGroup.value || !entityId.value ? {} : { entity: entityId.value }))
+const { data: live, refresh: refreshLiveData } = await useFetch<LiveData & { total: number; currency: string }>('/api/plaid/accounts', { query: liveQ, server: false, key: 'treasury-live' })
+async function refreshLive() { try { live.value = await $fetch('/api/plaid/accounts', { query: { ...liveQ.value, refresh: '1' } }); await refreshUa() } catch { /* shown as is */ } }
 const upAcc = computed(() => ua.value?.accounts.find((a) => a.key === up.existing) ?? null)
 function openUpload(a: UpAcc | null) { up.existing = a?.key ?? ''; up.file = null; up.open = true }
 watch(upAcc, (a) => { if (a) { up.account = a.label; up.currency = a.currency; up.entity = a.entity_id && !companies.value.find((c) => c.id === a.entity_id)?.main ? a.entity_id : '' } else if (up.open) up.account = '' })
-async function changed() { await Promise.all([refreshUa(), refresh()]) }
+async function changed() { await Promise.all([refreshUa(), refresh(), refreshLiveData()]) }
+// Messages fade after a few seconds and never follow you to another company.
+let okT: ReturnType<typeof setTimeout> | undefined
+watch(ok, (v) => { clearTimeout(okT); if (v) okT = setTimeout(() => (ok.value = ''), 6000) })
+watch(cust, () => { ok.value = ''; msg.value = '' })
+// The hero: every account's cash in the view's currency, and the last full month.
+const nLive = computed(() => (live.value?.accounts ?? []).filter((a) => !a.debt).length), nUp = computed(() => ua.value?.accounts.length ?? 0)
+const lastM = computed(() => d.value?.months[d.value.months.length - 1] ?? null)
+const big = (v: number | null | undefined) => (v === null || v === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: d.value?.currency ?? 'USD', maximumFractionDigits: 0, currencyDisplay: 'narrowSymbol' }).format(v))
+const day = (x: string | null | undefined) => (x ? new Date(x.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
+// Chart: a tidy scale (1, 2, 2.5 or 5 × a power of ten) and the month under the pointer.
+const scaleMax = computed(() => { const v = Math.max(1, ...(d.value?.months ?? []).map((x) => Math.max(x.in, x.out))), p = 10 ** Math.floor(Math.log10(v)); return ([1, 2, 2.5, 5, 10].map((k) => k * p).find((k) => k >= v)) ?? v })
+const hover = ref<string | null>(null)
+// Twelve months in a row ending with the last full month, empty months included, so gaps show as gaps.
+const series = computed(() => {
+  const ms = d.value?.months ?? []; if (!ms.length) return []
+  const end = ms.reduce((a, x) => (x.month > a ? x.month : a), ms[0]!.month), by = new Map(ms.map((x) => [x.month, x]))
+  return Array.from({ length: 12 }, (_, i) => { const t = new Date(end + '-15T00:00:00Z'); t.setUTCMonth(t.getUTCMonth() - 11 + i); const k = t.toISOString().slice(0, 7); return by.get(k) ?? { month: k, in: 0, out: 0 } })
+})
 // The statement's currency starts as the company's own (Naira for a Nigerian subsidiary, dollars for a US company).
 watch(() => up.open, (o) => { if (o && d.value?.currency && !upAcc.value) up.currency = d.value.currency })
 async function upload() {
@@ -83,29 +105,44 @@ const today = new Date().toISOString().slice(0, 10)
 <template>
   <section class="tr">
     <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and payment in one place. Read-only: Finvry never holds or moves your money.</p></div>
-      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="openUpload(null)">Upload bank statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+      <div class="tb"><button v-if="!d?.ng" class="ic" type="button" :disabled="busy" title="Refresh bank feed" aria-label="Refresh bank feed" @click="sync"><svg :class="{ spin: busy }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg></button><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn" :disabled="busy" @click="openUpload(null)">Upload statement</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['reconcile', 'Reconcile']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
-    <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
+    <transition name="toast"><p v-if="ok" class="toast" role="status">{{ ok }}<button type="button" aria-label="Close" @click="ok = ''">×</button></p></transition><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
-    <ClientOnly><BankFeeds v-if="!data?.ng" class="feeds" :entity="isGroup ? null : entityId" @changed="sync" /></ClientOnly>
-    <UploadedAccounts :data="ua ?? null" :group="isGroup" @upload="openUpload" @changed="changed" />
     <template v-if="d">
-      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>{{ d.ng ? 'Upload a statement in any format, or link a sheet.' : 'Connect a bank, upload a statement, or link a sheet.' }} Twelve months works best.</p>
-        <div class="tb"><button class="btn" @click="openUpload(null)">Upload bank statement</button></div></div>
 
       <template v-if="tab === 'overview'">
-        <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start your Financials from your bank</NuxtLink> for you to review.</div>
-        <div class="fx-stats">
-          <StatTile label="Cash" :value="m(d.cash)" :note="d.cash_from === 'bank' ? 'From your bank, end of ' + mon(d.cash_month) : d.cash_from === 'financials' ? 'Latest, from Financials' : 'Add month-end balances or Financials'" />
-          <StatTile label="Monthly burn" :value="m(d.burn)" :note="!d.burn ? 'Not burning' : d.burn_from === 'bank' ? 'From your bank: money out less money in' : 'Same basis as Financials'" />
-          <StatTile label="Runway" :value="d.runway === null ? '—' : d.runway + ' months'" :note="d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months after the cuts you marked' : 'Cuts you marked end the burn') : 'Mark payments to cut to see more'" :red="(d.runway ?? 99) < 6" full />
-          <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month, in the cut list" clickable @click="go('cut')" />
+        <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start them from your bank →</NuxtLink></div>
+        <div class="ov">
+          <div class="hero">
+            <div class="ht"><span>Cash in the bank</span><svg viewBox="0 0 40 28" class="hchip" aria-hidden="true"><rect x="1" y="1" width="38" height="26" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M14 1v26M26 1v26M1 10h13M26 10h13M1 18h13M26 18h13" fill="none" stroke="currentColor" stroke-width="1.4" /></svg></div>
+            <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
+            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') + (nLive && nUp ? ' · ' + nLive + ' live, ' + nUp + ' from statements' : nLive ? ' · live' : ' · from statements') : 'Add an account to see your cash' }}</span>
+            <div class="hf"><div><span class="fl">{{ d.cash_from === 'financials' ? 'In Financials' : 'Month-end' }}</span><span class="fv">{{ m(d.cash) }}{{ d.cash_month ? ' · ' + mon(d.cash_month) : '' }}</span></div>
+              <div class="wr"><b>{{ d.currency }}</b><span v-if="ua?.as_of">as of {{ day(ua.as_of) }}</span></div></div>
+          </div>
+          <div class="kp">
+            <StatTile label="Monthly burn" :value="m(d.burn)" :note="!d.burn ? 'Not burning' : d.burn_from === 'bank' ? 'From your bank' : 'As in Financials'" />
+            <StatTile label="Runway" :value="d.runway === null ? '—' : d.runway + ' months'" :note="d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months with your cuts' : 'Your cuts end the burn') : 'Before any cuts'" :red="(d.runway ?? 99) < 6" full />
+            <StatTile :label="lastM ? 'Net, ' + mon(lastM.month) : 'Net last month'" :value="lastM ? m(lastM.in - lastM.out) : '—'" :note="lastM ? 'In ' + m(lastM.in) + ' · out ' + m(lastM.out) : 'No full month yet'" :red="!!lastM && lastM.in < lastM.out" />
+            <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month · see the cut list" clickable @click="go('cut')" />
+          </div>
         </div>
-        <div class="card"><div class="ch"><h2>Money in and out</h2><span class="mut">Full months, in {{ d.currency }}, transfers between your own accounts left out.</span></div>
-          <div v-if="d.months.length" class="bars"><div v-for="x in d.months" :key="x.month" class="bm" :title="mon(x.month) + ': in ' + m(x.in) + ', out ' + m(x.out)"><div class="bb"><i class="in" :style="{ height: x.in / maxOut * 100 + '%' }" /><i class="out" :style="{ height: x.out / maxOut * 100 + '%' }" /></div><span>{{ mon(x.month).slice(0, 3) }}</span></div></div>
-          <p v-else class="mut">No full months yet.</p><div class="lg"><span><i class="in" />Money in</span><span><i class="out" />Money out</span></div></div>
-        <div class="card"><div class="ch"><h2>Where transactions come from</h2><span class="mut">{{ d.ledger.count.toLocaleString('en-US') }} transactions{{ d.ledger.since ? ' since ' + d.ledger.since : '' }}.</span></div>
-          <div class="rails"><div v-for="r in d.rails" :key="r.key" class="rail" :class="{ off: !r.on }"><b>{{ r.label }}</b><em>{{ r.on ? 'On' : r.key === 'fincra' || r.soon ? 'Coming Soon' : 'Not connected' }}</em><p>{{ r.note }}</p></div></div></div>
+        <ClientOnly><BankAccounts :live="data?.ng ? null : live ?? null" :uploaded="ua ?? null" :group="isGroup" :ng="!!data?.ng" @upload="openUpload" @sheet="lk = true" @changed="changed" @refresh-live="refreshLive" /></ClientOnly>
+        <div class="card chart">
+          <div class="ch"><h2>Money in and out</h2><div class="lg"><span><i class="in" />In</span><span><i class="out" />Out</span><span class="mut">Transfers left out · {{ d.currency }}</span></div></div>
+          <div v-if="d.months.length" class="plot" @mouseleave="hover = null">
+            <div class="ya"><span>{{ m(scaleMax) }}</span><span>{{ m(scaleMax / 2) }}</span><span>0</span></div>
+            <div class="area"><div class="grid" aria-hidden="true"><i /><i /><i /></div>
+              <div v-for="x in series" :key="x.month" class="col" :class="{ hv: hover === x.month }" @mouseenter="hover = x.month">
+                <div class="pair"><i class="in" :style="{ height: Math.max(x.in ? 1 : 0, x.in / scaleMax * 100) + '%' }" /><i class="out" :style="{ height: Math.max(x.out ? 1 : 0, x.out / scaleMax * 100) + '%' }" /></div>
+                <span class="xl">{{ mon(x.month).slice(0, 3) }}</span>
+                <div v-if="hover === x.month" class="tip"><b>{{ mon(x.month) }}</b><span><i class="in" />In {{ m(x.in) }}</span><span><i class="out" />Out {{ m(x.out) }}</span><span class="tn" :class="{ neg: x.in < x.out }">Net {{ m(x.in - x.out) }}</span></div>
+              </div></div>
+          </div>
+          <p v-else class="mut">No full months yet.</p>
+        </div>
+        <p v-if="d.ledger.count" class="src">{{ d.ledger.count.toLocaleString('en-US') }} payments{{ d.ledger.since ? ' since ' + day(d.ledger.since) : '' }} · from {{ d.rails.filter((r) => r.on).map((r) => r.label.toLowerCase()).join(', ') || 'no source yet' }} · <NuxtLink to="/data-sources" class="lk">Data sources</NuxtLink></p>
       </template>
 
       <template v-if="tab === 'spend'">
@@ -195,9 +232,29 @@ const today = new Date().toISOString().slice(0, 10)
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--c-rule); } .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; margin-bottom: -1px; } .tabs button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); font-weight: 500; } .tabs .n { margin-left: 6px; font-size: 11.5px; color: var(--c-muted); }
 .card h2 { margin: 0; font-size: 17px; } .card h3 { margin: 16px 0 6px; font-size: 14px; } .ch { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .mut2 { color: var(--c-muted); } .pad0 { padding: 0; overflow-x: auto; } .padx { padding: 14px; }
 .empty { background: #fff; border: 1px solid var(--c-rule); padding: 18px; } .empty p { margin: 6px 0 12px; color: var(--c-ink-soft); font-size: 14px; }
-.bars { display: flex; gap: 6px; align-items: flex-end; height: 180px; } .bm { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; } .bb { flex: 1; width: 100%; display: flex; gap: 2px; align-items: flex-end; justify-content: center; } .bb i { width: 42%; display: block; } .bm span { font-size: 11px; color: var(--c-muted); }
-i.in { background: var(--c-navy); } i.out { background: #aab4c2; } .lg { display: flex; gap: 16px; font-size: 12px; color: var(--c-muted); margin-top: 8px; } .lg i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; }
-.rails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .rail { border: 1px solid var(--c-rule); padding: 14px; } .rail b { font-weight: 600; } .rail em { font-style: normal; font-size: 12px; margin-left: 8px; color: var(--c-blue-deep); } .rail.off em { color: var(--c-muted); } .rail p { margin: 6px 0 0; font-size: 13px; color: var(--c-ink-soft); }
+.ov { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; }
+.hero { background: linear-gradient(135deg, #0c1a2e 0%, #1c3d63 55%, #2f6494 100%); color: #fff; padding: 24px 26px; display: flex; flex-direction: column; min-height: 228px; }
+.ht { display: flex; justify-content: space-between; align-items: center; } .ht span { font-family: var(--font-heading); font-size: 20px; font-weight: 500; } .hchip { width: 36px; height: 25px; color: rgba(255,255,255,.55); flex: none; }
+.hv { margin-top: 22px; font-size: 40px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; } .hs { margin-top: 6px; font-size: 13px; color: rgba(255,255,255,.72); }
+.hf { margin-top: auto; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; } .fl { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.58); } .fv { font-size: 14px; }
+.wr { text-align: right; } .wr b { display: block; font-size: 14px; letter-spacing: .06em; } .wr span { font-size: 12px; color: rgba(255,255,255,.7); }
+.kp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } .kp > * { margin: 0; }
+.ic { width: 38px; height: 38px; display: grid; place-items: center; background: #fff; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 16px; height: 16px; } .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; right: 24px; bottom: 96px; z-index: 60; display: flex; align-items: center; gap: 14px; margin: 0; padding: 12px 14px 12px 16px; background: var(--c-navy); color: #fff; font-size: 13.5px; max-width: 420px; box-shadow: 0 14px 34px rgba(12, 26, 46, .22); }
+.toast button { background: none; border: 0; color: rgba(255,255,255,.7); font-size: 18px; line-height: 1; cursor: pointer; padding: 0; } .toast-enter-active, .toast-leave-active { transition: opacity .2s, transform .2s; } .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(8px); }
+.chart .lg { display: flex; gap: 14px; align-items: center; font-size: 12.5px; color: var(--c-ink-soft); } .lg i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+i.in { background: var(--c-navy); } i.out { background: #a9b6c8; }
+.plot { display: grid; grid-template-columns: auto 1fr; gap: 10px; height: 230px; padding-top: 6px; }
+.ya { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: var(--c-muted); text-align: right; padding-bottom: 22px; font-variant-numeric: tabular-nums; }
+.area { position: relative; display: flex; gap: 4px; }
+.grid { position: absolute; inset: 0 0 22px 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; } .grid i { border-top: 1px dashed var(--c-rule); } .grid i:last-child { border-top: 1px solid var(--c-rule-strong); }
+.col { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; padding-bottom: 22px; } .col.hv { background: rgba(95, 168, 211, .08); }
+.pair { flex: 1; width: 100%; display: flex; gap: 3px; align-items: flex-end; justify-content: center; } .pair i { width: min(14px, 34%); transition: height .3s; }
+.xl { position: absolute; bottom: 3px; font-size: 11.5px; color: var(--c-muted); }
+.tip { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 5; background: #fff; border: 1px solid var(--c-rule-strong); box-shadow: 0 10px 26px rgba(12, 26, 46, .14); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; white-space: nowrap; pointer-events: none; }
+.tip b { font-size: 12.5px; font-weight: 600; } .tip i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .tip .tn { margin-top: 3px; padding-top: 4px; border-top: 1px solid var(--c-rule); font-weight: 500; } .tip .neg { color: var(--c-danger); }
+.src { margin: 0; font-size: 12.5px; color: var(--c-muted); }
+@media (max-width: 960px) { .ov { grid-template-columns: 1fr; } }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .t td { padding: 7px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
 .t .r { text-align: right; } .t .neg { color: var(--c-danger); } .t .pos { color: var(--c-blue-deep); } .t small { display: block; color: var(--c-muted); font-size: 11.5px; margin-top: 2px; } .t .nw { white-space: nowrap; } .t .ds { max-width: 320px; color: var(--c-ink-soft); } .t select { font: inherit; font-size: 12.5px; padding: 3px 5px; border: 1px solid var(--c-rule-strong); background: #fff; max-width: 200px; }
 .t tr.mk td { background: #f7f8fb; } .ac { white-space: nowrap; } .ac .lk + .lk { margin-left: 12px; }
