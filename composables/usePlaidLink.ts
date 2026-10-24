@@ -32,13 +32,21 @@ export function usePlaidLink(changed: () => unknown) {
   }
   // Clear a bank's payments and bring the full history back (categories set by hand are kept).
   async function resync(id: string, name: string | null) {
-    if (!await askConfirm('Payments are reloaded from the bank. Your categories are kept.', { title: 'Resync ' + (name ?? 'this bank') + '?', ok: 'Resync' })) return
+    if (!await askConfirm('Its payments are cleared and brought in again from the bank. Categories you set are kept.', { title: 'Start over with ' + (name ?? 'this bank') + '?', ok: 'Start over' })) return
     msg.value = ''
     try { await $fetch('/api/plaid/items/' + id + '/resync', { method: 'POST' }); msg.value = 'Resyncing. Back in a minute or two.'; setTimeout(() => void changed(), 45000) } catch { msg.value = 'Could not start the resync. Try again in a minute.' }
   }
-  async function disconnect(id: string, name: string | null) {
-    if (!await askConfirm('Its balances stop updating. Payments already in stay.', { title: 'Disconnect ' + (name ?? 'this bank') + '?', ok: 'Disconnect', danger: true })) return
-    await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await changed()
+  // remove: its payments and balances leave Banking too.
+  async function disconnect(id: string, name: string | null, remove = false) {
+    if (!await askConfirm(remove ? 'The connection and every payment and balance it brought in are removed. Connect it again any time to start fresh.' : 'Balances stop updating. Payments already in stay as history.', { title: (remove ? 'Disconnect and delete ' : 'Disconnect ') + (name ?? 'this bank') + '?', ok: remove ? 'Disconnect and delete' : 'Disconnect', danger: true })) return
+    msg.value = ''
+    try { const r = await $fetch<{ removed: number }>('/api/plaid/items/' + id, { method: 'DELETE', query: remove ? { remove: '1' } : {} }); if (remove) msg.value = r.removed.toLocaleString('en-US') + ' payments removed.'; await changed() } catch { msg.value = 'Could not disconnect. Try again.' }
   }
-  return { busy, msg, connect, reconnect, resync, disconnect }
+  // Every live bank: clear and bring the payments in again.
+  async function resetAll() {
+    if (!await askConfirm('Every live bank\'s payments are cleared and brought in again from the banks. Categories you set are kept. It takes a few minutes.', { title: 'Start over with live banks?', ok: 'Start over' })) return
+    msg.value = ''
+    try { const r = await $fetch<{ connections: number }>('/api/plaid/reset', { method: 'POST' }); msg.value = 'Starting over with ' + r.connections + ' bank' + (r.connections === 1 ? '' : 's') + '. Payments come back over the next few minutes.'; setTimeout(() => void changed(), 60000) } catch { msg.value = 'Could not start over. Try again in a minute.' }
+  }
+  return { busy, msg, connect, reconnect, resync, disconnect, resetAll }
 }

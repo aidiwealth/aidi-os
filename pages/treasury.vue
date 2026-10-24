@@ -25,7 +25,7 @@ async function sync() { busy.value = true; msg.value = ''; try { const r = await
 const lk = ref(false)
 const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null, existing: '' })
 // Accounts that come in by statement: shown as cards; a newer statement goes to the same account.
-const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; live_total: number; all_total: number; as_of: string | null; accounts: UpAcc[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
+const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; live_total: number; all_total: number; as_of: string | null; accounts: UpAcc[]; parts?: { label: string; value: number }[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
 // Live accounts (US banks): loaded in the browser so the page never waits for a bank.
 const liveQ = computed(() => (isGroup.value || !entityId.value ? {} : { entity: entityId.value }))
 const { data: live, refresh: refreshLiveData } = await useFetch<LiveData & { total: number; currency: string }>('/api/plaid/accounts', { query: liveQ, server: false, key: 'treasury-live' })
@@ -40,6 +40,9 @@ watch(ok, (v) => { clearTimeout(okT); if (v) okT = setTimeout(() => (ok.value = 
 watch(cust, () => { ok.value = ''; msg.value = '' })
 // The hero: every account's cash in the view's currency, and the last full month.
 const nLive = computed(() => (live.value?.accounts ?? []).filter((a) => !a.debt).length), nUp = computed(() => ua.value?.accounts.length ?? 0)
+// Where the cash sits (by company on the group view): a bar in navy and blues.
+const PAL = ['#0c1a2e', '#5fa8d3', '#2f6494', '#9fb3c8', '#1c3d63']
+const parts = computed(() => ua.value?.parts ?? []), partsTotal = computed(() => parts.value.reduce((t, p) => t + p.value, 0) || 1)
 const lastM = computed(() => d.value?.months[d.value.months.length - 1] ?? null)
 const big = (v: number | null | undefined) => (v === null || v === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: d.value?.currency ?? 'USD', maximumFractionDigits: 0, currencyDisplay: 'narrowSymbol' }).format(v))
 const day = (x: string | null | undefined) => (x ? new Date(x.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
@@ -126,11 +129,13 @@ const today = new Date().toISOString().slice(0, 10)
         <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start them from your bank →</NuxtLink></div>
         <div class="ov">
           <div class="hero">
-            <div class="ht"><span>Cash in the bank</span><svg viewBox="0 0 40 28" class="hchip" aria-hidden="true"><rect x="1" y="1" width="38" height="26" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M14 1v26M26 1v26M1 10h13M26 10h13M1 18h13M26 18h13" fill="none" stroke="currentColor" stroke-width="1.4" /></svg></div>
+            <span class="ht">Cash in the bank</span>
             <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
-            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') + (nLive && nUp ? ' · ' + nLive + ' live, ' + nUp + ' from statements' : nLive ? ' · live' : ' · from statements') : 'Add an account to see your cash' }}</span>
-            <div class="hf"><div><span class="hfl">{{ d.cash_from === 'financials' ? 'In Financials' : 'Month-end' }}</span><span class="fv">{{ m(d.cash) }}{{ d.cash_month ? ' · ' + mon(d.cash_month) : '' }}</span></div>
-              <div class="wr"><b>{{ d.currency }}</b><span v-if="ua?.as_of">as of {{ day(ua.as_of) }}</span></div></div>
+            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}{{ d.cash !== null ? ' · ' + (d.cash_from === 'financials' ? 'Financials shows ' : 'month-end ') + m(d.cash) : '' }}</span>
+            <template v-if="parts.length">
+              <div class="bar" role="img" :aria-label="parts.map((p) => p.label + ' ' + m(p.value)).join(', ')"><i v-for="(p, i) in parts" :key="p.label" :style="{ width: Math.max(1.5, p.value / partsTotal * 100) + '%', background: PAL[i % PAL.length] }" :title="p.label + ': ' + m(p.value)" /></div>
+              <div class="lgd"><span v-for="(p, i) in parts" :key="p.label"><i :style="{ background: PAL[i % PAL.length] }" />{{ p.label }} <b>{{ m(p.value) }}</b></span></div>
+            </template>
           </div>
           <div class="kp">
             <StatTile label="Monthly burn" :value="d.burn === null ? '—' : !d.burn ? 'None' : m(d.burn)" :note="d.burn === null ? 'Add Financials or statements' : !d.burn ? 'Money in covers money out' : d.burn_from === 'bank' ? 'From your bank' : 'As in Financials'" />
@@ -250,11 +255,11 @@ const today = new Date().toISOString().slice(0, 10)
 .card h2 { margin: 0; font-size: 17px; } .card h3 { margin: 16px 0 6px; font-size: 14px; } .ch { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; } .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .mut2 { color: var(--c-muted); } .pad0 { padding: 0; overflow-x: auto; } .padx { padding: 14px; }
 .empty { background: #fff; border: 1px solid var(--c-rule); padding: 18px; } .empty p { margin: 6px 0 12px; color: var(--c-ink-soft); font-size: 14px; }
 .ov { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; }
-.hero { background: linear-gradient(135deg, #0c1a2e 0%, #1c3d63 55%, #2f6494 100%); color: #fff; padding: 24px 26px; display: flex; flex-direction: column; min-height: 228px; }
-.ht { display: flex; justify-content: space-between; align-items: center; } .ht span { font-family: var(--font-heading); font-size: 20px; font-weight: 500; } .hchip { width: 36px; height: 25px; color: rgba(255,255,255,.55); flex: none; }
-.hv { margin-top: 22px; font-size: 40px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; } .hs { margin-top: 6px; font-size: 13px; color: rgba(255,255,255,.72); }
-.hf { margin-top: auto; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; } .hfl { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.58); } .fv { font-size: 14px; }
-.wr { text-align: right; } .wr b { display: block; font-size: 14px; letter-spacing: .06em; } .wr span { font-size: 12px; color: rgba(255,255,255,.7); }
+.hero { background: #fff; border: 1px solid var(--c-rule); padding: 24px 26px; display: flex; flex-direction: column; min-height: 228px; }
+.ht { font-size: 14px; color: var(--c-muted); } .hv { margin-top: 8px; font-size: 44px; font-weight: 600; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
+.hs { margin-top: 6px; font-size: 13px; color: var(--c-ink-soft); }
+.bar { display: flex; gap: 2px; height: 8px; margin-top: auto; padding-top: 0; background: var(--c-paper-2); } .bar i { display: block; height: 100%; }
+.hero .bar { margin-top: auto; } .lgd { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; color: var(--c-ink-soft); } .lgd i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .lgd b { font-weight: 600; color: var(--c-ink); margin-left: 3px; }
 .kp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } .kp > * { margin: 0; }
 .ic { width: 38px; height: 38px; display: grid; place-items: center; background: #fff; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 16px; height: 16px; } .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; right: 24px; bottom: 96px; z-index: 60; display: flex; align-items: center; gap: 14px; margin: 0; padding: 12px 14px 12px 16px; background: var(--c-navy); color: #fff; font-size: 13.5px; max-width: 420px; box-shadow: 0 14px 34px rgba(12, 26, 46, .22); }

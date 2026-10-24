@@ -88,8 +88,9 @@ function add(k: 'bank' | 'statement' | 'sheet') { addOpen.value = false; if (k =
     <div v-if="manage" class="mg">
       <template v-if="live.length">
         <h3>Live connections</h3>
-        <div v-for="it in props.live?.items ?? []" :key="it.id" class="row"><b>{{ it.institution ?? 'Bank' }}</b><span class="mut">{{ it.error ? 'Needs attention' : live.filter((a) => a.item_id === it.id).length + ' accounts' }}{{ it.history_from ? ' · since ' + day(it.history_from) : '' }}</span><button v-if="it.short && !it.error" class="lk" type="button" @click="twoYears(it)">Get 2 years of history</button>
-          <span class="sp" /><button v-if="it.error" class="lk" type="button" @click="pl.reconnect(it.id)">Reconnect</button><button v-else class="lk" type="button" @click="pl.resync(it.id, it.institution)">Resync</button><button class="lk red" type="button" @click="pl.disconnect(it.id, it.institution)">Disconnect</button></div>
+        <div v-for="it in props.live?.items ?? []" :key="it.id" class="row"><b>{{ it.institution ?? 'Bank' }}</b><span class="mut">{{ it.error ? 'Needs attention' : live.filter((a) => a.item_id === it.id).length + (live.filter((a) => a.item_id === it.id).length === 1 ? ' account' : ' accounts') }}{{ it.history_from ? ' · since ' + day(it.history_from) : '' }}</span><button v-if="it.short && !it.error" class="lk" type="button" @click="twoYears(it)">Get 2 years of history</button>
+          <span class="sp" /><button v-if="it.error" class="lk" type="button" @click="pl.reconnect(it.id)">Reconnect</button><button v-else class="lk" type="button" @click="pl.resync(it.id, it.institution)">Start over</button><button class="lk" type="button" @click="pl.disconnect(it.id, it.institution)">Disconnect</button><button class="lk red" type="button" @click="pl.disconnect(it.id, it.institution, true)">Disconnect and delete</button></div>
+        <div v-if="(props.live?.items ?? []).length > 1" class="row all"><span class="mut">Clear every live bank's payments and bring them in again</span><span class="sp" /><button class="lk" type="button" @click="pl.resetAll()">Start over with all</button></div>
       </template>
       <template v-if="ups.length">
         <h3>From statements</h3>

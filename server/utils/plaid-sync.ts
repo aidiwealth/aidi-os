@@ -17,14 +17,29 @@ export const feedLabel = (inst: string | null, a: { name: string; mask: string |
 export async function resyncPlaidItem(id: string): Promise<{ removed: number; added: number }> {
   const it = (await db().query<PItem>(`SELECT ${ITEM_COLS} FROM banking.plaid_items WHERE id = $1`, [id])).rows[0]
   if (!it) return { removed: 0, added: 0 }
-  const labels = (await db().query<{ name: string; mask: string | null }>('SELECT name, mask FROM banking.plaid_accounts WHERE item_id = $1', [id])).rows.map((a) => feedLabel(it.institution, a))
-  const kept = (await db().query<{ source_ref: string; category: string }>("SELECT source_ref, category FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[]) AND category_by = 'manual' AND category IS NOT NULL", [labels])).rows
-  const removed = (await db().query("DELETE FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[])", [labels])).rowCount ?? 0
+  const kept = (await db().query<{ source_ref: string; category: string }>("SELECT source_ref, category FROM banking.ledger WHERE source = 'bank_feed' AND (account_label = ANY($1::text[]) OR ($2::text IS NOT NULL AND account_label LIKE $2)) AND category_by = 'manual' AND category IS NOT NULL", await feedMatch(it))).rows
+  const removed = await clearFeed(it)
   await db().query('UPDATE banking.plaid_items SET tx_cursor = NULL, needs_sync = true WHERE id = $1', [id])
   const r = await syncPlaidItem({ ...it, tx_cursor: null })
   for (const k of kept) await db().query("UPDATE banking.ledger SET category = $2, category_by = 'manual' WHERE source = 'bank_feed' AND source_ref = $1", [k.source_ref, k.category])
   return { removed, added: r.added }
 }
+
+// The account names a connection's payments are kept under; when no other connection is with the same bank, any
+// account name from that bank (so payments under an account the bank has since renamed are included too).
+async function feedMatch(it: PItem): Promise<[string[], string | null]> {
+  const labels = (await db().query<{ name: string; mask: string | null }>('SELECT name, mask FROM banking.plaid_accounts WHERE item_id = $1', [it.id])).rows.map((a) => feedLabel(it.institution, a))
+  const alone = !(await db().query('SELECT 1 FROM banking.plaid_items WHERE id <> $1 AND coalesce(institution, \'\') = coalesce($2, \'\') AND wm_client_id IS NULL', [it.id, it.institution])).rowCount
+  return [labels, alone ? (it.institution ?? 'Bank').replace(/[%_\\]/g, '\\$&') + ' · %' : null]
+}
+// Remove a connection's payments from Banking, and with balances its saved daily balances too (the connection stays).
+export async function clearFeed(it: PItem, balances = false): Promise<number> {
+  const [labels, like] = await feedMatch(it)
+  const n = (await db().query("DELETE FROM banking.ledger WHERE source = 'bank_feed' AND (account_label = ANY($1::text[]) OR ($2::text IS NOT NULL AND account_label LIKE $2))", [labels, like])).rowCount ?? 0
+  if (balances) await db().query("DELETE FROM banking.balances WHERE source = 'bank_feed' AND (account_label = ANY($1::text[]) OR ($2::text IS NOT NULL AND account_label LIKE $2))", [labels, like])
+  return n
+}
+export async function plaidItem(id: string): Promise<PItem | undefined> { return (await db().query<PItem>(`SELECT ${ITEM_COLS} FROM banking.plaid_items WHERE id = $1 AND wm_client_id IS NULL`, [id])).rows[0] }
 
 // A bank connected again to bring in two years of history (history length is fixed when a bank is first connected):
 // the new connection's payments replace the old one's. Only for the same bank; categories set by hand are put back
