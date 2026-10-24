@@ -44,9 +44,9 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
   <section v-if="data">
     <template v-if="me?.org?.kind === 'company'"><ClientTabs /><BillingTabs /></template>
     <h1 class="ttl">Wallet</h1>
-    <p class="lead">Top up once and pay for services, filings and renewals from your balance. Every movement is listed below.</p>
+    <p class="lead">Pay for services, filings and renewals from one balance.</p>
     <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
-    <p v-if="returned && data.pending" class="card note">Payment received; we're confirming it with {{ data.provider }}. Your balance updates in a moment.</p>
+    <p v-if="returned && data.pending" class="card note">Payment received. Your balance updates in a moment.</p>
     <div class="top">
       <WalletCard title="Finvry" label="Available balance" :value="data.balance_minor / 100" :currency="data.currency" :sub="lastMove" foot-label="Workspace" :foot-value="data.company" :tag="PLAN[data.plan] ?? data.plan" />
       <div class="card fund">
@@ -54,27 +54,27 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
         <div v-if="data.transfer" class="tabs2"><button type="button" :class="{ on: tab === 'transfer' }" @click="tab = 'transfer'">Bank transfer</button><button type="button" :class="{ on: tab === 'card' }" @click="tab = 'card'">Card</button></div>
         <template v-if="data.transfer && tab === 'transfer'">
           <template v-if="data.transfer.mode === 'monnify'">
-            <template v-if="acct"><p class="mut">Transfer to this account from any Nigerian bank and your wallet is credited automatically, usually within minutes.</p>
+            <template v-if="acct"><p class="mut">Transfer from any Nigerian bank. Credited automatically, usually in minutes.</p>
               <div class="acct"><span>Bank</span><b>{{ acct.bank_name }}</b><span>Account number</span><b class="mono">{{ acct.account_number }} <button type="button" class="cp" @click="copy(acct?.account_number ?? '')">{{ copied === acct.account_number ? 'Copied' : 'Copy' }}</button></b><span>Account name</span><b>{{ acct.account_name }}</b></div>
               <p v-if="acct.accounts.length > 1" class="mut">Also: {{ acct.accounts.slice(1).map((a) => a.bankName + ' ' + a.accountNumber).join(' · ') }}</p></template>
-            <template v-else><p class="mut">Get a dedicated account number for {{ data.company }}. Bank rules require a BVN or NIN; it is sent to our bank partner only to open the account.</p>
+            <template v-else><p class="mut">Get an account number for {{ data.company }}. A BVN or NIN is required and used only to open it.</p>
               <div class="kyc"><select v-model="kycType"><option value="bvn">BVN</option><option value="nin">NIN</option></select><input v-model="kyc" inputmode="numeric" maxlength="11" placeholder="11 digits"></div>
               <button class="btn" type="button" :disabled="busy || kyc.length !== 11" @click="makeAccount">{{ busy ? 'Creating account…' : 'Generate account number' }}</button></template>
           </template>
-          <template v-else-if="bank"><p class="mut">Transfer to our account, quoting your reference. We credit your wallet when the money arrives (usually the same working day).</p>
+          <template v-else-if="bank"><p class="mut">Quote your reference. Credited when it arrives, usually the same working day.</p>
             <div class="acct"><span>Bank</span><b>{{ bank.bank }}</b><span>Account number</span><b class="mono">{{ bank.account_number }} <button type="button" class="cp" @click="copy(bank?.account_number ?? '')">{{ copied === bank.account_number ? 'Copied' : 'Copy' }}</button></b><span>Account name</span><b>{{ bank.account_name }}</b>
               <template v-if="bank.routing"><span>Routing</span><b class="mono">{{ bank.routing }}</b></template><template v-if="bank.swift"><span>SWIFT</span><b class="mono">{{ bank.swift }}</b></template>
               <span>Your reference</span><b class="mono">{{ data.reference }} <button type="button" class="cp" @click="copy(data.reference)">{{ copied === data.reference ? 'Copied' : 'Copy' }}</button></b></div>
-            <button v-if="!notice.done" class="btn secondary" type="button" @click="notice.open = true">I've sent a transfer</button><p v-else class="okm">Thanks. We'll credit your wallet as soon as it arrives.</p></template>
+            <button v-if="!notice.done" class="btn secondary" type="button" @click="notice.open = true">I've sent a transfer</button><p v-else class="okm">Thanks. We'll credit it when it arrives.</p></template>
         </template>
         <template v-else>
         <div class="quick"><button v-for="a in quick" :key="a" type="button" :class="{ on: amount === a }" @click="amount = a">{{ sym }}{{ a.toLocaleString() }}</button></div>
         <label class="label">Amount ({{ data.currency }})<input v-model.number="amount" type="number" :min="data.min_minor / 100" inputmode="decimal"></label>
         <p class="mut" :class="{ red: below }">Smallest top-up is {{ sym }}{{ (data.min_minor / 100).toLocaleString() }}.</p>
         <button class="btn" type="button" :disabled="busy || !amount || below || !data.canTopup" @click="topup">{{ busy ? 'Redirecting…' : 'Continue with ' + data.provider }}</button>
-        <p class="mut">{{ data.canTopup ? 'Secured by ' + data.provider + '. Card details never reach us.' : 'Card top-ups are being switched on. Contact support to fund your wallet.' }}</p>
-        <p v-if="data.card" class="mut">Card on file: {{ data.card.brand ?? 'Card' }}{{ data.card.last4 ? ' ending ' + data.card.last4 : '' }} · used if your wallet is short at renewal · <button type="button" class="cp" @click="removeCard">Remove</button></p>
-        <p v-else class="mut">The card you use is saved for renewals, so nothing stops if your wallet runs low.</p>
+        <p class="mut">{{ data.canTopup ? 'Secured by ' + data.provider + '. Card details never reach us.' : 'Card top-ups are coming soon. Contact support to fund your wallet.' }}</p>
+        <p v-if="data.card" class="mut">Card on file: {{ data.card.brand ?? 'Card' }}{{ data.card.last4 ? ' ending ' + data.card.last4 : '' }} · used if your wallet is short · <button type="button" class="cp" @click="removeCard">Remove</button></p>
+        <p v-else class="mut">Your card is saved as a backup for renewals.</p>
         </template>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
@@ -85,7 +85,7 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
       <StatTile label="Renewals per year" :value="fmtM(yearly)" note="All services together" icon="billing" tone="c" />
       <StatTile label="Ready for the next renewal?" :value="short ? 'Top up ' + fmtM(short) : 'Covered'" :pos="!short" :note="short ? (data.card ? 'or we charge your card on file' : 'before ' + (nextSub ? dLong(nextSub.next_charge_at) : 'then')) : 'Your balance covers it'" :note-tone="short ? 'warn' : ''" :icon="short ? 'alert' : 'check'" :tone="short ? 'a' : 'g'" />
     </div>
-    <div v-if="data.subscriptions.length" class="card subs"><h3>Renewals</h3><p class="mut">Charged from your wallet on the date shown; if the wallet is short we use your card on file. If both fail we try again after 3 days, then {{ data.subscriptions.some((s) => s.kind === 'plan') ? 'move you to the Free plan or ' : '' }}pause the service, and email you each time.</p>
+    <div v-if="data.subscriptions.length" class="card subs"><h3>Renewals</h3><p class="mut">Charged from your wallet, then your card. If both fail we retry after 3 days, then {{ data.subscriptions.some((s) => s.kind === 'plan') ? 'move you to Free or ' : '' }}pause the service.</p>
       <div class="subg"><RenewalCard v-for="s in data.subscriptions" :key="s.id" :r="{ code: (s as any).code ?? s.kind, name: s.name, amount_minor: s.amount_minor, currency: s.currency, interval: s.interval, status: s.status, next: s.next_charge_at, started: (s as any).started_on, details: (s as any).details, failures: s.failures, last_error: s.last_error }" /></div></div>
     <AppModal :open="notice.open" title="Tell us about your transfer" @close="notice.open = false">
       <form id="ntf" class="nt" @submit.prevent="sendNotice(); notice.open = false"><label class="label">Amount sent ({{ data.currency }})<input v-model="notice.amount" inputmode="decimal" required></label><label class="label">Date sent<input v-model="notice.sent_on" type="date" required></label><label class="label">Note (optional)<input v-model="notice.note" maxlength="500" placeholder="e.g. sent from Zuri Labs GTBank account"></label></form>
@@ -94,7 +94,7 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
     <MoneyFlow v-if="data.ledger.length" class="flow" :rows="rows" :currency="data.currency" />
     <div v-if="byCat.length" class="card mix"><DonutChart title="Where your wallet went" total-label="Spent" :currency="data.currency" :segments="byCat" /></div>
     <div v-if="invoicePays.length" class="card ip"><b>Invoices paid from this wallet</b><div v-for="l in invoicePays" :key="l.id" class="ipr"><span>{{ l.date }} · {{ l.reason }}</span><b>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency }).format(l.amount_minor / 100) }}</b></div><NuxtLink to="/client/invoices">See all invoices →</NuxtLink></div>
-    <TxnTable :rows="rows" :currency="data.currency" title="Transactions"><template #empty>No transactions yet. Add money to get started.</template></TxnTable>
+    <TxnTable :rows="rows" :currency="data.currency" title="Transactions"><template #empty>No transactions yet. Add money to start.</template></TxnTable>
   </section>
 </template>
 <style scoped>

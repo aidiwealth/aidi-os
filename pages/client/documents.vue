@@ -35,7 +35,7 @@ const plain = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/!?\[([^\]]*)\]\
     <div v-for="g in groups" :key="g.label" class="grp"><h2>{{ g.label }} <span>{{ g.items.length }}</span></h2>
       <div class="grid"><button v-for="d in g.items" :key="d.id + d.created_at" type="button" class="card dc" @click="openDoc(d.id)"><FileBadge :name="d.title" :mime="d.mime_type" size="lg" /><span class="dt"><b>{{ d.title.split(' — ').pop() }}</b><em v-if="d.reason" :title="plain(d.reason)">{{ plain(d.reason) }}</em><span class="mt">{{ CATS[d.category] ?? 'Other' }} · {{ d.kind === 'client_document' ? 'Sent by you' : 'From Aidi' }} · {{ day(d.created_at) }} · {{ size(d.size_bytes) }}</span></span><span class="dl">Download</span></button></div>
     </div>
-    <EmptyState v-if="!list.length" card icon="documents" :title="data.length ? 'No documents match' : 'No documents yet'" :text="data.length ? 'Try another filter.' : 'Documents we share with you, and files you send us in messages or requests, appear here.'" />
+    <EmptyState v-if="!list.length" card icon="documents" :title="data.length ? 'No documents match' : 'No documents yet'" :text="data.length ? 'Try another filter.' : 'Shared files and files you send us appear here.'" />
   </section>
 </template>
 <style scoped>

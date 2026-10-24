@@ -19,7 +19,7 @@ const ok = computed(() => dirs.value.length && dirs.value.every((d) => d.name.tr
   <AppModal :open="open" title="Board consent" wide @close="emit('close')">
     <div class="ec">
       <template v-if="!doc">
-        <p class="lead">An action by written consent of the board, approving the grants and share issues below. AI drafts it; every director signs by link. Approved items go on the cap table once their agreements are signed too.</p>
+        <p class="lead">A written board consent for the items below. AI drafts it; directors sign by link.</p>
         <div class="box"><p class="bh">What it approves</p><label v-for="p in pending" :key="p.id" class="chk"><input v-model="pick" type="checkbox" :value="p.id"> {{ p.title }}</label><p v-if="!pending.length" class="mut">No grants or share issues are waiting for approval.</p>
           <label class="label">Anything else to approve (optional)<textarea v-model="also" rows="2" maxlength="3000" placeholder="e.g. Increase the option pool by 500,000 shares; adopt the 2026 Equity Incentive Plan" /></label></div>
         <div class="box"><p class="bh">Directors</p><div v-for="(d, i) in dirs" :key="i" class="dr"><input v-model="d.name" placeholder="Full name" maxlength="200"><input v-model="d.email" type="email" placeholder="Email" maxlength="254"><button class="lk red" :disabled="dirs.length < 2" @click="dirs.splice(i, 1)">Remove</button></div><button class="lk" @click="dirs.push({ name: '', email: '' })">+ Add a director</button></div>

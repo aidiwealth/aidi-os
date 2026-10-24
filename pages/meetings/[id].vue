@@ -27,7 +27,7 @@ async function write() {
   busy.value = 'ai'; msg.value = ''
   try {
     const r = await $fetch<{ summary: string; minutes: string; decisions: string; actions: Act[] }>('/api/meetings/draft', { method: 'POST', body: { title: f.title || 'Meeting', kind: f.kind, entity_id: f.entity_id || null, held_at: new Date(f.held_at).toISOString(), attendees: f.attendees, guests: f.guests, agenda: f.agenda, notes: rough.value || f.notes } })
-    Object.assign(f, { summary: r.summary, notes: r.minutes, decisions: r.decisions, actions: [...f.actions.filter((a) => a.text.trim()), ...r.actions] }); ok.value = 'Minutes written from your notes. Review and edit before saving as final.'
+    Object.assign(f, { summary: r.summary, notes: r.minutes, decisions: r.decisions, actions: [...f.actions.filter((a) => a.text.trim()), ...r.actions] }); ok.value = 'Minutes drafted. Review before saving as final.'
   } catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
 async function del() { if (!await askConfirm('Delete these minutes?')) return; try { await $fetch('/api/meetings/' + id, { method: 'DELETE' }); await navigateTo('/meetings') } catch (e) { msg.value = err(e) } }
@@ -66,7 +66,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
           <div class="label w">Attendees<div class="chips"><button v-for="p in meta.people" :key="p.id" type="button" :class="{ on: f.attendees.includes(p.id) }" @click="toggleA(p.id)">{{ p.name }}</button></div></div>
           <label class="label w">Guests (outside the team)<input v-model="f.guests" maxlength="1000" placeholder="e.g. Ada Obi (Northgate Capital), auditors"></label>
         </div>
-        <div class="card ai2"><div class="aih"><div><h2><AiSpark :size="18" /> Write the minutes with AI</h2><p class="mut">Paste or type rough notes — bullets, half-sentences, anything. AI writes a summary, minutes by topic, decisions and action items from what you wrote. It never adds facts.</p></div></div>
+        <div class="card ai2"><div class="aih"><div><h2><AiSpark :size="18" /> Write the minutes with AI</h2><p class="mut">Paste rough notes. AI writes minutes, decisions and actions without adding facts.</p></div></div>
           <textarea v-model="rough" rows="7" maxlength="60000" placeholder="e.g. Reviewed Kiza Q3 numbers, revenue 120k up 18%. Agreed to extend runway, hire 2 engineers. Tolu to send board pack by Friday 18 Oct. Next call w/ Northgate re bridge…" />
           <div class="row"><button type="button" class="btn" :disabled="busy === 'ai' || (rough + f.notes).replace(/\s/g, '').length < 20" @click="write"><AiSpark v-if="busy === 'ai'" /> {{ busy === 'ai' ? 'Writing…' : 'Write minutes' }}</button><span class="mut sm">Counts towards your AI allowance.</span></div></div>
         <div class="card"><h2>Summary</h2><textarea v-model="f.summary" rows="3" maxlength="4000" placeholder="Two or three sentences" /></div>

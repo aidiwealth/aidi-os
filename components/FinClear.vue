@@ -43,8 +43,8 @@ async function go() {
           <label class="opt"><input v-model="f.what" type="radio" value="pick"> Choose lines</label></div>
         <div v-if="f.what === 'pick'" class="pk"><div v-for="(l, k) in SECT" :key="k" class="pc"><b>{{ l }}</b><label v-for="x in lines.filter((y) => y.section === k)" :key="x.key" class="ck"><input v-model="f.pick" type="checkbox" :value="x.key"> {{ x.label }}</label></div></div>
       </div>
-      <label v-if="linked.length" class="ck sync"><input v-model="f.pause" type="checkbox"> Pause the daily sync of {{ linked.length === 1 ? 'the linked sheet "' + linked[0]!.name + '"' : linked.length + ' linked sheets' }}, so the figures do not come back. You can sync again any time.</label>
-      <div class="sum"><b>{{ summary }}</b><span>This cannot be undone. Your dashboard, analysis, investor page and reports update straight away.</span></div>
+      <label v-if="linked.length" class="ck sync"><input v-model="f.pause" type="checkbox"> Pause the daily sync of {{ linked.length === 1 ? 'the linked sheet "' + linked[0]!.name + '"' : linked.length + ' linked sheets' }}, so the figures do not come back.</label>
+      <div class="sum"><b>{{ summary }}</b><span>This cannot be undone.</span></div>
       <label v-if="needType" class="cf">Type <b>DELETE</b> to confirm<input v-model="f.confirm" autocomplete="off" placeholder="DELETE"></label>
       <p v-if="f.msg" class="error">{{ f.msg }}</p>
     </div>

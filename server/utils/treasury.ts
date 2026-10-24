@@ -93,7 +93,7 @@ export async function notYetIn(txns: RailTxn[], entityId: string | null): Promis
   for (const t of txns) { const x = k(t.account.slice(0, 160), t.date, t.description, t.amount), n = have.get(x) ?? 0; if (n > 0) have.set(x, n - 1); else out.push(t) }
   return out
 }
-export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityId: string | null): Promise<number> {
+export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityId: string | null, uploadId: string | null = null): Promise<number> {
   const txns = source === 'upload' ? await notYetIn(txns0.map((t) => ({ ...t, entity: t.entity ?? entityId })), entityId) : txns0
   const own = await ownNames()
   const org = await currentOrg(), base = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
@@ -105,9 +105,9 @@ export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityI
     const dir = t.amount < 0 ? 'out' : 'in', amt = Math.abs(t.amount), v = vendorKey(t.description, t.vendor)
     const rule = rules.get(v.key), cat = rule ?? t.category ?? (isOwn(own, v.key) ? 'transfer' : autoCategory(v.key, t.description, dir, t.bank_category ?? null))
     const kb = await fx(t.currency, base), ku = await fx(t.currency, 'USD')
-    const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
-      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null, t.spender ?? null])
+    const r = await db().query(`INSERT INTO banking.ledger (entity_id, source, source_ref, account_label, txn_date, description, vendor_key, vendor, direction, amount, currency, amount_base, base_currency, amount_usd, category, category_by, bank_category, spender, upload_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT (organization_id, source, source_ref) DO NOTHING`,
+      [t.entity ?? entityId, source, t.ref.slice(0, 200), t.account.slice(0, 160), t.date, t.description.slice(0, 500), v.key, v.name, dir, amt, t.currency, Math.round(amt * (kb ?? 1) * 100) / 100, kb === null ? t.currency : base, ku === null ? null : Math.round(amt * ku * 100) / 100, cat, rule ? 'rule' : 'auto', t.bank_category ?? null, t.spender ?? null, uploadId])
     n += r.rowCount ?? 0
   }
   return n

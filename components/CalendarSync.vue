@@ -22,11 +22,11 @@ void ok
 </script>
 <template>
   <div v-if="data" class="cs">
-    <section class="blk"><h3>Put pipeline meetings in your calendar</h3><p class="mut">Subscribe once and every meeting you add here appears in your calendar automatically, with its reminder.</p>
+    <section class="blk"><h3>Put pipeline meetings in your calendar</h3><p class="mut">Subscribe once; meetings added here appear in your calendar.</p>
       <div class="row"><a class="btn sm" :href="data.google" target="_blank" rel="noopener">Add to Google Calendar</a><a class="btn secondary sm" :href="data.webcal">Apple / Outlook</a><button type="button" class="btn secondary sm" @click="copy">{{ copied ? 'Copied' : 'Copy feed link' }}</button></div>
       <p class="tiny">Keep this link private: anyone with it can see your meeting times.</p></section>
     <section class="blk"><h3>Find investor meetings in your calendar</h3>
-      <p class="mut">We read your calendar's private iCal address and match events to investors on your pipelines by attendee email, company email domain or name in the title. Nothing is added until you choose.</p>
+      <p class="mut">Matches calendar events to investors on your pipelines. Nothing is added until you choose.</p>
       <template v-if="!data.source_set"><details class="how"><summary>Where do I find my private iCal address?</summary><ul><li><b>Google Calendar:</b> Settings → your calendar → Integrate calendar → <i>Secret address in iCal format</i>.</li><li><b>iCloud:</b> Calendar app → share the calendar as a Public Calendar → copy the link.</li><li><b>Outlook:</b> Settings → Calendar → Shared calendars → Publish a calendar → ICS link.</li></ul></details>
         <div class="row"><input v-model="url" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" aria-label="Calendar address"><button type="button" class="btn sm" :disabled="!url.trim() || busy === 'save'" @click="saveUrl()">Connect</button></div></template>
       <div v-else class="row"><span class="con">Connected: {{ data.source_host }}{{ data.scanned_at ? ' · last checked ' + new Date(data.scanned_at).toLocaleString('en-GB') : '' }}</span><button type="button" class="btn sm" :disabled="busy === 'scan'" @click="scan">{{ busy === 'scan' ? 'Searching…' : 'Find investor meetings' }}</button><button type="button" class="lk" @click="saveUrl(true)">Disconnect</button></div>

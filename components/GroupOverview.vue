@@ -50,7 +50,7 @@ const kpis = computed<Kpi[]>(() => {
   if (d.vc?.pitches) k.push({ label: 'Pitches, last 30 days', value: String(d.vc.pitches.last30), sub: d.vc.pitches.fresh + ' new to review', to: '/deals' })
   if (d.vc?.pipeline) k.push({ label: 'Open deals', value: String(d.vc.pipeline.open), sub: money(d.vc.pipeline.deployed) + ' deployed · ' + d.vc.pipeline.invested + ' invested', to: '/pipeline' })
   if (d.vc?.portfolio) k.push({ label: 'Portfolio revenue', value: money(d.vc.portfolio.revenue), sub: d.vc.portfolio.active + ' companies' + (d.vc.portfolio.revenuePeriod ? ' · ' + month(d.vc.portfolio.revenuePeriod) : ''), to: '/portfolio' })
-  if (d.fo?.cash) { const fc = d.fo.cash as typeof d.fo.cash & { totalUsd?: number }; k.push({ label: 'Group cash', value: fc.byCurrency.length ? (fc.byCurrency.length > 1 && fc.totalUsd != null ? '≈ ' + money(fc.totalUsd, 'USD') : money(fc.byCurrency[0]!.value, fc.byCurrency[0]!.currency)) : '—', sub: fc.byCurrency.length > 1 ? fc.byCurrency.map((c) => money(c.value, c.currency)).join(' + ') + ' (naira converted at today\'s rate)' : 'from tied-out statements', to: '/banking' }) }
+  if (d.fo?.cash) { const fc = d.fo.cash as typeof d.fo.cash & { totalUsd?: number }; k.push({ label: 'Group cash', value: fc.byCurrency.length ? (fc.byCurrency.length > 1 && fc.totalUsd != null ? '≈ ' + money(fc.totalUsd, 'USD') : money(fc.byCurrency[0]!.value, fc.byCurrency[0]!.currency)) : '—', sub: fc.byCurrency.length > 1 ? fc.byCurrency.map((c) => money(c.value, c.currency)).join(' + ') + ' (at today\'s rate)' : 'From tied-out statements', to: '/banking' }) }
   if (d.fo?.compliance) k.push({ label: 'Compliance, next 30 days', value: String(d.fo.compliance.month), sub: d.fo.compliance.overdue ? d.fo.compliance.overdue + ' overdue' : 'nothing overdue', to: '/compliance', tone: d.fo.compliance.overdue ? 'red' : '' })
   if (d.credit) k.push({ label: 'Loan book', value: d.credit.outstanding.length ? money(d.credit.outstanding[0]!.value, d.credit.outstanding[0]!.currency) : '—', sub: d.credit.active + ' active · ' + d.credit.arrears + ' in arrears', to: '/credit', tone: d.credit.arrears ? 'red' : '' })
   if (d.cs) k.push({ label: 'Open client jobs', value: String(d.cs.open), sub: d.cs.week + ' due this week · ' + d.cs.done30 + ' done in 30 days', to: '/services', tone: d.cs.overdue ? 'red' : '' })
@@ -83,7 +83,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
     <div v-else-if="otab === 'cs'" class="ovtab"><CsInsights /></div>
     <div v-else-if="otab === 'wm'" class="ovtab"><WmAnalytics /></div>
     <template v-else>
-    <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Your areas will show their figures here as you add entities, deals, documents and accounts. Use the menu to get started.</p></div>
+    <div v-if="empty" class="card none"><span class="wic"><AppIcon name="home" /></span><h2>Welcome to {{ data.org }}</h2><p class="muted">Use the menu to add entities, deals, documents or accounts.</p></div>
 
     <div v-if="charts.length" class="charts" :class="'n' + charts.length">
       <TrendChart v-for="c in charts" :key="c.title" class="card" :title="c.title" :sub="c.sub" :points="c.points" :unit="c.unit" :symbol="c.symbol" :foot="c.foot" />
@@ -93,7 +93,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
       <div v-if="see('attention')" class="card att">
         <h2>Needs attention</h2>
         <ul v-if="data.attention.length"><li v-for="(a, i) in data.attention" :key="i"><NuxtLink :to="a.to"><span class="dot" :class="a.tone" />{{ a.text }}<AppIcon name="right" class="go" /></NuxtLink></li></ul>
-        <p v-else class="clear">All clear. Nothing needs you right now.</p>
+        <p v-else class="clear">All clear.</p>
         <div v-if="data.vc?.pipeline && Object.keys(data.vc.pipeline.byStage).length" class="stages">
           <p class="kl">Pipeline by stage</p>
           <div class="sbar"><NuxtLink v-for="(n, s) in data.vc.pipeline.byStage" :key="s" to="/pipeline" :style="{ flex: n }" :title="STAGE[s] + ': ' + n"><span>{{ STAGE[s] ?? s }}</span><b>{{ n }}</b></NuxtLink></div>
@@ -115,7 +115,7 @@ const empty = computed(() => !!data.value && !kpis.value.length)
     </div>
     </template>
     <AppModal :open="vis.open" title="Who sees what on the Overview" wide @close="vis.open = false">
-      <p class="muted vh">Tick what each role sees. Admins always see everything, and a role still only sees areas it can use (Modules page).</p>
+      <p class="muted vh">Tick what each role sees. Admins see everything.</p>
       <table v-if="vis.data" class="vt"><thead><tr><th /><th v-for="r in vis.data.roles" :key="r">{{ ROLE_LABEL[r] ?? r }}</th></tr></thead>
         <tbody><tr v-for="sct in vis.data.sections" :key="sct.key" :class="{ tb: sct.tab }"><td>{{ sct.label }}</td><td v-for="r in vis.data.roles" :key="r" class="c"><input type="checkbox" :checked="allowedFor(sct.key, r)" :aria-label="sct.label + ' for ' + (ROLE_LABEL[r] ?? r)" @change="flip(sct.key, r)"></td></tr></tbody></table>
       <p v-if="vis.msg" class="error">{{ vis.msg }}</p>

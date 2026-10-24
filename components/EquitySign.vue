@@ -47,12 +47,12 @@ const ok = computed(() => h.name.trim() && /@/.test(h.email) && co.name.trim() &
   <AppModal :open="open" :title="'Send ' + what + ' for signature'" wide @close="emit('close')">
     <div class="es">
       <template v-if="!doc">
-        <p class="lead">Finvry drafts the {{ what }} from these terms{{ type === 'convertible' ? ' (post-money SAFE, with side letters)' : ' with AI' }}. You can read and edit it before anyone signs. When both sides have signed{{ needsConsent ? ' and the board has approved it' : '' }}, it goes on the cap table by itself.</p>
+        <p class="lead">Finvry drafts the {{ what }} from these terms{{ type === 'convertible' ? ' (post-money SAFE, with side letters)' : ' with AI' }}. You can edit it before anyone signs.</p>
         <div class="box"><p class="bh">{{ type === 'convertible' ? 'Investor' : type === 'grant' ? 'Grantee' : 'Purchaser' }}</p><div class="g3"><label class="label">Full legal name<input v-model="h.name" maxlength="200"></label><label class="label">Email (where the link goes)<input v-model="h.email" type="email" maxlength="254"></label><label class="label">They are a<select v-model="h.kind"><option value="founder">Founder</option><option value="employee">Employee</option><option value="advisor">Advisor</option><option value="investor">Investor</option><option value="other">Other</option></select></label></div></div>
         <div class="box"><p class="bh">Signing for the company</p><div class="g3"><label class="label">Name<input v-model="co.name" maxlength="200"></label><label class="label">Title<input v-model="co.title" maxlength="120"></label><label class="label">Email<input v-model="co.email" type="email" maxlength="254"></label></div></div>
         <div class="tg"><label v-if="type === 'grant' && seed.kind === 'option'" class="chk"><input v-model="opt.iso" type="checkbox"> Incentive stock options (ISO) for an employee; untick for non-qualified (NSO)</label><label v-if="type === 'convertible'" class="chk"><input v-model="opt.pro_rata" type="checkbox"> Include a pro rata side letter</label></div>
         <label v-if="type === 'issuance'" class="label">Vesting and repurchase (leave blank if fully vested)<input v-model="opt.vesting" maxlength="300" placeholder="e.g. 4 years, 1-year cliff, monthly after; company may repurchase unvested shares at cost"></label>
-        <div v-if="needsConsent" class="box"><p class="bh">Board approval</p><p class="mut">Grants and share issues need the board's approval. It goes on the cap table once both the agreement and the approval are signed.</p>
+        <div v-if="needsConsent" class="box"><p class="bh">Board approval</p><p class="mut">Needs board approval before it goes on the cap table.</p>
           <label class="chk"><input v-model="ap.mode" type="radio" value="new"> Draft a board consent with AI next (directors sign by link)</label>
           <label v-if="consents.length" class="chk"><input v-model="ap.mode" type="radio" value="existing"> Covered by a board consent already in Finvry <select v-if="ap.mode === 'existing'" v-model="ap.consent_id"><option v-for="c in consents" :key="c.id" :value="c.id">{{ c.title }} ({{ c.status === 'signed' ? 'signed' : 'waiting' }})</option></select></label>
           <label class="chk"><input v-model="ap.mode" type="radio" value="outside"> Already approved by the board outside Finvry</label></div>
@@ -61,7 +61,7 @@ const ok = computed(() => h.name.trim() && /@/.test(h.email) && co.name.trim() &
         <label class="label">Title<input v-model="doc.title" maxlength="200"></label>
         <label class="label">Document (Markdown; edit anything)<textarea v-model="doc.body" rows="18" class="mono" /></label>
         <p v-if="doc.extra.length" class="mut">Also signed with it: {{ doc.extra.map((x) => x.title).join(', ') }}.</p>
-        <p class="mut">Signers: <b>{{ co.name }}</b> ({{ co.title }}, {{ co.email }}) and <b>{{ h.name }}</b> ({{ h.email }}). Each gets a private link by email. Not legal advice: have your lawyer review templates you rely on.</p>
+        <p class="mut">Signers: <b>{{ co.name }}</b> ({{ co.title }}, {{ co.email }}) and <b>{{ h.name }}</b> ({{ h.email }}). Each gets a private link by email. Not legal advice: have your lawyer review it.</p>
       </template>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>

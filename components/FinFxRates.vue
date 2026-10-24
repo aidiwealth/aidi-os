@@ -33,7 +33,7 @@ async function upload(ev: Event) {
 <template>
   <AppModal :open="open" title="Exchange rates for the group" wide @close="emit('close')">
     <div class="fx">
-      <p class="hint">Units of each currency per 1 USD, as in your books. The group converts each month at your book rate for it; a month without one uses your nearest book rate, else the daily rate. Upload a workbook with an Exchange rates or FX rates tab (a month column and a rate column under a heading like "NGN per 1 USD", or one row per currency with months across), or type the rates in.</p>
+      <p class="hint">Units per 1 USD, as in your books. Upload a workbook with an Exchange rates tab, or type them in.</p>
       <div v-if="canEdit" class="up"><label class="btn secondary sm">Upload rates<input type="file" accept=".xlsx,.csv" hidden :disabled="busy" @change="upload"></label></div>
       <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
       <p v-if="data && !data.quotes.length" class="hint">Every company in the group reports in {{ data.to }}: no rates needed.</p>

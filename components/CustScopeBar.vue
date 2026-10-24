@@ -22,7 +22,7 @@ const mon = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-
 </script>
 <template>
   <div v-if="ents.length > 1" class="csb">
-    <p v-if="!scope" class="mut">Group: {{ withData }} of {{ ents.length }} companies combined in {{ currency }} at book rates. Choose a company to add or change its customers.<template v-if="behind.length">{{ ' ' + behind.map((e) => e.name + ' has figures to ' + mon(e.last!)).join('; ') }}: the group opens on {{ mon(info!.common_last!) }}, the latest month every company has.</template></p>
+    <p v-if="!scope" class="mut">Group: {{ withData }} of {{ ents.length }} companies combined in {{ currency }}. Choose a company to edit its customers.<template v-if="behind.length">{{ ' ' + behind.map((e) => e.name + ' has figures to ' + mon(e.last!)).join('; ') }}: the group opens on {{ mon(info!.common_last!) }}.</template></p>
     <p v-else class="mut">{{ cur?.name }} only{{ cur?.currency ? ', in ' + cur.currency : '' }}.<button v-if="canEdit && cur?.has_data && targets.length" type="button" class="lk" @click="mv.open = !mv.open; mv.to = targets[0]!.id">Belongs to another company?</button></p>
     <div v-if="mv.open" class="mv"><span>Move all of {{ cur?.name }}'s customer revenue, settings and linked sheet to</span><select v-model="mv.to" aria-label="Company"><option v-for="e in targets" :key="e.id" :value="e.id">{{ e.name }}</option></select><button type="button" class="btn sm" :disabled="mv.busy" @click="move">{{ mv.busy ? 'Moving…' : 'Move' }}</button><button type="button" class="btn secondary sm" @click="mv.open = false">Cancel</button><span v-if="mv.msg" class="err">{{ mv.msg }}</span></div>
   </div>

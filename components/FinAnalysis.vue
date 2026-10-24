@@ -98,7 +98,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
       <ul v-if="rw.issues.length" class="iss"><li v-for="(x, i) in rw.issues" :key="i">{{ x }}</li></ul>
       <ul v-if="rw.notes.length" class="nts"><li v-for="(x, i) in rw.notes" :key="i">{{ x }}<template v-if="i === 0 && rw.runway_at_loss"> At the loss rate ({{ short(rw.loss_burn ?? 0) }} a month), runway is {{ rw.runway_at_loss }} months.</template></li></ul>
       <div class="mth"><div v-for="x in rw.methods" :key="x.key" class="mr" :class="{ used: x.label === rw.basis }"><span>{{ x.label }}</span><span class="n">{{ x.value === null ? 'Not in the figures' : short(x.value) + ' / month' }}</span><span class="u">{{ x.label === rw.basis ? 'Used' : '' }}</span></div></div>
-      <p class="mutd">Burn is the {{ rw.months }}-month average. Runway is cash divided by burn. Without a cash flow statement, cash flow is worked out from the loss and the change in payables, receivables and other balance sheet lines.</p>
+      <p class="mutd">Burn is the {{ rw.months }}-month average. Runway is cash divided by burn.</p>
     </div>
 
     <div v-if="groups.length" class="tm">
@@ -106,7 +106,7 @@ const of100 = (v: number) => (v < 0 ? '−' : '') + sym.value.trim() + Math.roun
       <div class="tml"><div v-for="(f, n) in groups.find(([w]) => w === who)?.[1] ?? []" :key="n" class="it"><span class="no">{{ n + 1 }}</span><div><b>{{ f.item }}</b><p :class="{ full: fullW.includes(who + n) }">{{ f.why }}</p><button v-if="f.why.length > 140" type="button" class="more" @click="fullW = fullW.includes(who + n) ? fullW.filter((x) => x !== who + n) : [...fullW, who + n]">{{ fullW.includes(who + n) ? 'Show less' : 'Read more' }}</button></div></div></div>
     </div>
     </template>
-    <p v-if="data?.checks && shown" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up, so some of this may be off. See "Figures to check" below.</p>
+    <p v-if="data?.checks && shown" class="ft"><i>!</i>{{ data.checks }} total{{ data.checks === 1 ? '' : 's' }} in your figures do not add up. See "Figures to check" below.</p>
   </section>
 </template>
 

@@ -12,7 +12,7 @@ const time = (d: string) => new Date(d).toLocaleString('en-GB', { weekday: 'shor
 </script>
 <template>
   <section v-if="data">
-    <div class="hd"><div><h1>Meeting minutes</h1><p class="lead">Log what was discussed, decided and agreed in every meeting, by company. Write rough notes and let AI turn them into clean minutes with decisions and action items.</p></div><NuxtLink to="/meetings/new" class="btn">+ Log a meeting</NuxtLink></div>
+    <div class="hd"><div><h1>Meeting minutes</h1><p class="lead">Minutes, decisions and actions for every meeting, by company.</p></div><NuxtLink to="/meetings/new" class="btn">+ Log a meeting</NuxtLink></div>
     <div class="fx-stats"><StatTile icon="calendar" tone="b" label="Meetings, last 30 days" :value="n.month" /><StatTile icon="check" :tone="n.open ? 'a' : 'g'" label="Open action items" :value="n.open" note="across all meetings" /><StatTile icon="doc" tone="n" label="Drafts" :value="n.drafts" note="not marked final" /></div>
     <div class="bar"><select v-model="entity" aria-label="Company"><option value="">All companies</option><option v-for="e in data.entities" :key="e.id" :value="e.id">{{ e.name }}</option></select>
       <div class="chips"><button :class="{ on: !kind }" @click="kind = ''">All</button><button v-for="(l, k) in data.kinds" :key="k" :class="{ on: kind === k }" @click="kind = String(k)">{{ l }}</button></div>
@@ -24,7 +24,7 @@ const time = (d: string) => new Date(d).toLocaleString('en-GB', { weekday: 'shor
         <span class="fx-pill" :class="m.open_actions ? 'amber' : m.actions ? 'g' : ''">{{ m.open_actions ? m.open_actions + ' open action' + (m.open_actions === 1 ? '' : 's') : m.actions ? 'Actions done' : 'No actions' }}</span>
       </NuxtLink>
     </div>
-    <EmptyState v-else card icon="meetings" title="No meetings logged yet" text="Log your first meeting: who was there, what was decided and who does what next."><NuxtLink to="/meetings/new" class="btn">Log a meeting</NuxtLink></EmptyState>
+    <EmptyState v-else card icon="meetings" title="No meetings logged yet" text="Log your first meeting."><NuxtLink to="/meetings/new" class="btn">Log a meeting</NuxtLink></EmptyState>
   </section>
 </template>
 <style scoped>

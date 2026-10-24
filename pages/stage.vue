@@ -5,7 +5,7 @@ import type { Alive, Score, Mo } from '~/shared/stage'
 useHead({ title: 'Stage monitor' })
 interface Prov { id: string; name: string; kind: string; instrument: 'equity' | 'debt' | 'grant'; countries: string[]; stages: string[]; sectors: string[]; ticket_min: number | null; ticket_max: number | null; currency: string; criteria: string | null; link: string | null; affiliate: boolean; fit: number }
 interface D { company: string; currency: string; region: string; region_label: string; tier: number; country: string | null; as_of: string | null
-  funding: { key: string; label: string; basis: string }; operating: { key: string; label: string; arr_usd: number; basis: string }; health: { key: string; label: string; note: string }
+  funding: { key: string; label: string; basis: string }; operating: { key: string; label: string; note?: string; arr_usd: number; basis: string }; health: { key: string; label: string; note: string }
   runway: { months: number | null; cash_out: string | null; burn: number | null; cash: number | null; cash_at: string | null; basis: string; cut_monthly?: number; if_cut?: number | null }
   alive: Alive | null; months: Mo[]; cap: { name: string; fully_diluted: number; pool_available: number; by_kind: { kind: string; pct: number }[]; safes: number; raised_usd: number } | null
   equity: Score | null; debt: Score | null; moves: { of: string; label: string; fix: string | null; to: string | null; gain: number }[]
@@ -25,6 +25,7 @@ const chart = computed(() => ({
 const tab = ref<'equity' | 'debt' | 'grant'>((['equity', 'debt', 'grant'] as const).find((t) => (data.value?.providers ?? []).some((p) => p.instrument === t)) ?? 'equity')
 const provs = computed(() => (d.value?.providers ?? []).filter((p) => p.instrument === tab.value))
 const KIND: Record<string, string> = { vc: 'Venture fund', angel_network: 'Angel network', accelerator: 'Accelerator', grant: 'Grant', bank: 'Bank', venture_debt: 'Venture debt', revenue_based: 'Revenue-based finance', dfi: 'Development finance', government: 'Government programme', other: 'Investor' }
+const OPL: Record<string, string> = { pre_revenue: 'Pre-revenue', early: 'Early revenue', seed: 'Gaining traction', series_a: 'Scaling', series_b: 'At scale' }
 const STG: Record<string, string> = { pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', growth: 'Growth', bootstrapped: 'Bootstrapped' }
 const ticket = (p: Prov) => (p.ticket_min === null && p.ticket_max === null ? '' : (p.ticket_min !== null ? briefMoney(p.ticket_min, p.currency) : '') + (p.ticket_max !== null ? '–' + briefMoney(p.ticket_max, p.currency) : '+'))
 const busy = ref(''), msg = ref(''), ok = ref('')
@@ -39,22 +40,22 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
 </script>
 <template>
   <section class="sm">
-    <div class="hd"><div><ScopeSwitch page="Stage monitor" /><p class="lead">Where {{ d?.company ?? 'your company' }} stands today, worked out from your Financials, bank and cap table{{ d?.as_of ? ' (latest month ' + mon(d.as_of) + ')' : '' }}. It updates when your figures do.</p></div>
+    <div class="hd"><div><ScopeSwitch page="Stage monitor" /><p class="lead">Where {{ d?.company ?? 'your company' }} stands today{{ d?.as_of ? ', as of ' + mon(d.as_of) : '' }}.</p></div>
       <button class="btn secondary" @click="refresh()">Refresh</button></div>
     <p v-if="error" class="error">Could not load the stage monitor.</p>
     <template v-if="d">
       <div class="fx-stats">
         <StatTile label="Funding stage" :value="d.funding.label" :note="d.cap ? 'About ' + usd(d.cap.raised_usd) + ' raised' : 'From your cap table'" full />
-        <StatTile label="Operating stage" :value="d.operating.label" :note="usd(d.operating.arr_usd) + ' annual run rate'" full />
+        <StatTile label="Revenue stage" :value="d.operating.label" :note="usd(d.operating.arr_usd) + ' a year · ' + (d.operating.note ?? '')" full />
         <StatTile label="Health" :value="d.health.label" :red="tone === 'risk'" full />
         <StatTile label="Runway" :value="d.runway.months === null ? '—' : d.runway.months >= 120 ? '10 years +' : d.runway.months + ' months'" :note="d.runway.cash_out ? 'Cash runs out ' + mon(d.runway.cash_out) : d.runway.burn === 0 ? 'Not burning cash' : 'Add statements to see it'" :red="(d.runway.months ?? 99) < 6" full />
       </div>
       <div class="hb" :class="tone"><b>{{ d.health.label }}.</b> {{ d.health.note }}
-        <template v-if="d.alive"> {{ d.alive.cross ? 'Carrying revenue forward at ' + (d.alive.rev_growth ?? 0) + '% a month and costs at ' + (d.alive.exp_growth ?? 0) + '% a month (the last three months\' trend, within sensible limits), revenue overtakes costs in ' + mon(d.alive.cross) + (d.alive.zero && d.alive.zero > d.alive.cross ? '' : d.alive.zero ? ', after the cash runs out in ' + mon(d.alive.zero) : '') + '.' : 'At today\'s trends revenue does not overtake costs in the next three years: the gap is ' + m(d.alive.shortfall) + ' a month by then.' }}</template></div>
+        <template v-if="d.alive"> {{ d.alive.cross ? 'At current trends (revenue ' + (d.alive.rev_growth ?? 0) + '%, costs ' + (d.alive.exp_growth ?? 0) + '% a month), revenue overtakes costs in ' + mon(d.alive.cross) + (d.alive.zero && d.alive.zero > d.alive.cross ? '' : d.alive.zero ? ', after cash runs out in ' + mon(d.alive.zero) : '') + '.' : 'At current trends revenue does not overtake costs within three years; the gap is ' + m(d.alive.shortfall) + ' a month.' }}</template></div>
 
-      <div class="card"><div class="ch"><h2>Default alive?</h2><span class="mut">Last 12 months, then revenue and costs carried forward at their last three months' trend{{ d.alive?.zero ? '; cash runs out ' + mon(d.alive.zero) : '' }}.</span></div>
+      <div class="card"><div class="ch"><h2>Default alive?</h2><span class="mut">Last 12 months, then the 3-month trend{{ d.alive?.zero ? ' · cash runs out ' + mon(d.alive.zero) : '' }}</span></div>
         <ForecastChart v-if="d.alive" :actual="chart.actual" :forecast="chart.forecast" :currency="d.currency" />
-        <p v-else class="mut">Add at least three months of statements and a cash balance under <NuxtLink to="/financials">Financials</NuxtLink> to see this.</p></div>
+        <p v-else class="mut">Add three months of statements and a cash balance in <NuxtLink to="/financials">Financials</NuxtLink>.</p></div>
 
       <div class="two">
         <div class="card"><div class="ch"><h2>Financials</h2><NuxtLink to="/financials" class="lk">Open</NuxtLink></div>
@@ -69,10 +70,10 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
           <template v-if="d.cap"><p class="mut sm2">{{ d.cap.name }} · {{ d.cap.fully_diluted.toLocaleString('en-US') }} shares fully diluted · {{ d.cap.safes }} SAFE{{ d.cap.safes === 1 ? '' : 's' }} or notes outstanding</p>
             <div v-for="k in d.cap.by_kind" :key="k.kind" class="bar"><span>{{ KINDS[k.kind] ?? k.kind }}</span><i><em :style="{ width: Math.min(100, k.pct) + '%' }" /></i><b>{{ k.pct }}%</b></div>
             <p class="mut sm2">{{ d.funding.basis }}.</p></template>
-          <p v-else class="mut">No cap table yet. <NuxtLink to="/cap-table">Set it up</NuxtLink> to see your funding stage.</p></div>
+          <p v-else class="mut"><NuxtLink to="/cap-table">Set up your cap table</NuxtLink> to see your funding stage.</p></div>
       </div>
 
-      <div class="card"><div class="ch"><h2>Readiness</h2><span class="mut">How ready you look to raise equity or borrow, out of 100.</span></div>
+      <div class="card"><div class="ch"><h2>Readiness</h2><span class="mut">Equity and debt, out of 100</span></div>
         <div v-if="d.equity && d.debt" class="sc">
           <div v-for="[nm, s] in ([['Equity (raising from investors)', d.equity], ['Debt (borrowing)', d.debt]] as const)" :key="nm" class="sco"><div class="sh"><span>{{ nm }}</span><b>{{ s.total }}</b><em>{{ s.likelihood }}</em></div>
             <div v-for="p in s.parts" :key="p.key" class="pt"><div><span>{{ p.label }}</span><small>{{ p.detail }}</small></div><i><em :style="{ width: p.score * 100 + '%' }" /></i></div></div>
@@ -80,7 +81,7 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
         <p v-else class="up">Readiness scores are on the Medium and Scale plans. <NuxtLink to="/settings?s=plan">See plans</NuxtLink></p>
         <div v-if="d.moves.length" class="mv"><h3>What moves you up</h3><ol><li v-for="x in d.moves" :key="x.of + x.label"><NuxtLink v-if="x.to" :to="x.to">{{ x.fix }}</NuxtLink><span v-else>{{ x.fix }}</span><em>+{{ x.gain }} {{ x.of.toLowerCase() }}</em></li></ol></div></div>
 
-      <div class="card"><div class="ch"><h2>Who could fund you</h2><span class="mut">Matched to {{ d.country || 'your country' }}, the round you would raise next and your sector.</span></div>
+      <div class="card"><div class="ch"><h2>Who could fund you</h2><span class="mut">Matched to {{ d.country || 'your country' }}, stage and sector</span></div>
         <template v-if="d.providers">
           <div class="seg"><button v-for="t in (['equity', 'debt', 'grant'] as const)" :key="t" :class="{ on: tab === t }" @click="tab = t">{{ t === 'equity' ? 'Equity' : t === 'debt' ? 'Debt' : 'Grants' }} · {{ d.providers.filter((p) => p.instrument === t).length }}</button></div>
           <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
@@ -88,13 +89,13 @@ const last6 = computed(() => (d.value?.months ?? []).slice(-6))
             <tbody><tr v-for="p in provs" :key="p.id"><td><b>{{ p.name }}</b><span v-if="p.affiliate" class="chip">Aidi affiliate</span><small>{{ KIND[p.kind] }}</small></td><td>{{ (p.countries.length ? p.countries.join(', ') : 'Global') }}<small>{{ p.stages.map((x) => STG[x] ?? x).join(', ') || 'Any stage' }}{{ p.sectors.length ? ' · ' + p.sectors.join(', ') : '' }}</small></td>
               <td>{{ ticket(p) || '—' }}</td><td class="cr">{{ p.criteria || '—' }}<a v-if="p.link" :href="p.link" target="_blank" rel="noopener" class="lk">Website</a></td>
               <td><button v-if="d.can_pipeline" class="btn secondary sm" :disabled="busy === p.id" @click="toPipeline(p)">{{ busy === p.id ? 'Adding…' : 'Add to pipeline' }}</button></td></tr></tbody></table>
-          <p v-else class="mut">No {{ tab === 'grant' ? 'grant providers' : tab + ' providers' }} matched yet. The Finvry team adds more every week.</p>
+          <p v-else class="mut">No {{ tab === 'grant' ? 'grant providers' : tab + ' providers' }} matched yet.</p>
         </template>
         <p v-else class="up">Matched investors, lenders and grants are on the Scale plan. <NuxtLink to="/settings?s=plan">See plans</NuxtLink></p></div>
 
-      <div v-if="d.history.length > 1" class="card"><div class="ch"><h2>History</h2><span class="mut">One snapshot a month.</span></div>
-        <table class="t" data-nosearch><thead><tr><th>Month</th><th>Funding</th><th>Operating</th><th>Health</th><th class="r">Runway</th><th v-if="d.tier >= 2" class="r">Equity</th><th v-if="d.tier >= 2" class="r">Debt</th></tr></thead>
-          <tbody><tr v-for="h in [...d.history].reverse()" :key="h.period"><td>{{ mon(h.period) }}</td><td>{{ STG[h.funding_stage] ?? h.funding_stage }}</td><td>{{ h.operating_stage.replace('_', ' ') }}</td><td>{{ HL[h.health] ?? h.health }}</td><td class="r">{{ h.runway === null ? '—' : h.runway + ' mo' }}</td><td v-if="d.tier >= 2" class="r">{{ h.equity_score ?? '—' }}</td><td v-if="d.tier >= 2" class="r">{{ h.debt_score ?? '—' }}</td></tr></tbody></table></div>
+      <div v-if="d.history.length > 1" class="card"><div class="ch"><h2>History</h2><span class="mut">Monthly</span></div>
+        <table class="t" data-nosearch><thead><tr><th>Month</th><th>Funding</th><th>Revenue stage</th><th>Health</th><th class="r">Runway</th><th v-if="d.tier >= 2" class="r">Equity</th><th v-if="d.tier >= 2" class="r">Debt</th></tr></thead>
+          <tbody><tr v-for="h in [...d.history].reverse()" :key="h.period"><td>{{ mon(h.period) }}</td><td>{{ STG[h.funding_stage] ?? h.funding_stage }}</td><td>{{ OPL[h.operating_stage] ?? h.operating_stage }}</td><td>{{ HL[h.health] ?? h.health }}</td><td class="r">{{ h.runway === null ? '—' : h.runway + ' mo' }}</td><td v-if="d.tier >= 2" class="r">{{ h.equity_score ?? '—' }}</td><td v-if="d.tier >= 2" class="r">{{ h.debt_score ?? '—' }}</td></tr></tbody></table></div>
       <p class="fine">Indicative only — not a valuation, credit decision or investment advice. Stages and scores follow general benchmarks for {{ d.region_label }} and your own figures; investors and lenders decide on their own terms. Providers are listed for information; Finvry does not arrange or recommend funding.</p>
     </template>
   </section>

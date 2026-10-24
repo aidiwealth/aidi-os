@@ -91,16 +91,16 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
     <ClientOnly><CustScopeBar :info="data?.scope" :currency="cur" :can-edit="(me?.roles ?? []).some((r) => ['gp', 'admin'].includes(r))" @moved="(m) => { ok = m }" /></ClientOnly>
     <div class="head"><div />
       <div v-if="cs.length" class="tools"><label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
-        <button v-if="rptOk" class="btn secondary" type="button" title="Customers and revenue retention as a PDF or Excel report, for all customers or one group" @click="rpt = true">Customer report</button>
+        <button v-if="rptOk" class="btn secondary" type="button" title="PDF or Excel report" @click="rpt = true">Customer report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
     <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
     <p v-if="!data && pending" class="mut ld">Loading your customers…</p>
     <div v-else-if="!cs.length" class="start card">
-      <div><h2>Understand your customers</h2><p>Upload what each customer paid each month. You get your top and least performing customers, sectors, revenue concentration, lifetime value (LTV), and, if you add what it cost to win each customer, LTV to CAC and payback.</p>
+      <div><h2>Understand your customers</h2><p>Upload what each customer paid each month to see concentration, sectors and lifetime value.</p>
         <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li><b>Sector</b> for the sector view (Banking, Retail, Telecoms…)</li><li>Optional: Segment, Country, Plan, Start date, Acquisition cost</li></ul>
-        <p class="mut">Read exactly by its headings, with no AI, so every figure lands where it should. We check for the same customer written two ways before saving.</p>
+        <p class="mut">Read by its headings, with no AI.</p>
         <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the template</a></div></div>
     </div>
 
@@ -116,7 +116,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
         </div>
         <div class="kvr"><span><b>{{ S.active.toLocaleString('en-US') }}</b> paying customers</span><span><b>{{ cMoney(S.arpa, cur) }}</b> average a month</span><span><b>{{ cMoney(S.ltv, cur, true) }}</b> lifetime value{{ S.lifetime_months ? ' over ' + yrs(Math.round(S.lifetime_months)) : '' }}</span><span v-if="S.pareto != null"><b>{{ cPct(S.pareto, 1) }}</b> of customers make 80% of revenue</span></div>
       </div>
-      <div class="gbar"><span class="mut">Group by</span><div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: by === k }" @click="by = k">{{ l }}</button></div><span v-if="by === 'sector' && !hasSector" class="mut">Add a Sector column to your file to see revenue by sector.</span></div>
+      <div class="gbar"><span class="mut">Group by</span><div class="seg sm" role="group" aria-label="Group by"><button v-for="[k, l] in GB" :key="k" :class="{ on: by === k }" @click="by = k">{{ l }}</button></div><span v-if="by === 'sector' && !hasSector" class="mut">Add a Sector column to see this.</span></div>
       <div class="charts two">
         <ParetoChart title="How concentrated revenue is" sub="Last 12 months" :shares="st.rows.map((r) => r.ttm)" />
         <FocusBars :title="'Where to focus, by ' + (GB.find(([k]) => k === by)?.[1].toLowerCase() ?? 'group')" sub="Growth against share of revenue" :items="quad" />
@@ -176,7 +176,7 @@ const yrs = (m: number) => (m >= 24 ? (m / 12).toFixed(1) + ' yrs' : m + ' mo')
       <template #foot><button class="lk red" type="button" @click="delCust">Remove customer</button><span class="sp" /><button class="btn secondary" @click="ed.open = false">Cancel</button><button class="btn" :disabled="ed.busy" @click="saveEd">Save</button></template>
     </AppModal>
     <AppModal :open="mg.open" title="Merge customers" @close="mg.open = false">
-      <div class="frm"><p class="mut">Their monthly revenue is added together under one name. Use this for the same customer written two ways.</p>
+      <div class="frm"><p class="mut">Combines their revenue under one name.</p>
         <label class="label">Keep the name<select v-model="mg.keep"><option v-for="id in sel" :key="id" :value="id">{{ cs.find((c) => c.id === id)?.name }}</option></select></label></div>
       <template #foot><button class="btn secondary" @click="mg.open = false">Cancel</button><button class="btn" @click="merge">Merge</button></template>
     </AppModal>

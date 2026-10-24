@@ -18,12 +18,12 @@ const when = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'nume
     <div class="wrap">
       <aside class="hist"><button class="btn sm" @click="fresh">+ New conversation</button><p class="hl">Conversations</p>
         <button v-for="t in data.threads" :key="t.id" class="ti" :class="{ on: data.thread?.id === t.id }" @click="sel = t.id"><b>{{ plain(t.subject) }}</b><span v-if="t.category && t.category !== 'general'" class="ctag" :data-c="t.category">{{ MSG_CATEGORIES[t.category] ?? t.category }}</span><span><i :class="t.status">{{ t.status === 'open' ? 'Open' : 'Closed' }}</i> · {{ when(t.last_message_at) }}</span></button>
-        <p v-if="!data.threads.length" class="mut">Your conversations with us appear here.</p></aside>
+        <p v-if="!data.threads.length" class="mut">No conversations yet.</p></aside>
       <div class="chat">
-        <header><span class="av">A</span><div><b>{{ data.thread ? plain(data.thread.subject) : 'New conversation' }} <span v-if="data.thread?.category && data.thread.category !== 'general'" class="ctag" :data-c="data.thread.category">{{ MSG_CATEGORIES[data.thread.category] }}</span></b><span>{{ data.thread ? (data.thread.status === 'open' ? 'Open · we usually reply within one business day, and by email' : 'Closed ' + (data.thread.closed_at ? when(data.thread.closed_at) : '')) : 'Ask us anything about your company, filings, invoices or an order.' }}</span></div>
+        <header><span class="av">A</span><div><b>{{ data.thread ? plain(data.thread.subject) : 'New conversation' }} <span v-if="data.thread?.category && data.thread.category !== 'general'" class="ctag" :data-c="data.thread.category">{{ MSG_CATEGORIES[data.thread.category] }}</span></b><span>{{ data.thread ? (data.thread.status === 'open' ? 'Open · reply within one business day' : 'Closed ' + (data.thread.closed_at ? when(data.thread.closed_at) : '')) : 'Ask about your company, filings, invoices or orders.' }}</span></div>
           <button v-if="data.thread?.status === 'open'" class="btn secondary sm" @click="resolve">Mark resolved</button></header>
         <ChatThread :messages="data.messages" side="client" :closed="data.thread?.status === 'closed'" :busy="busy" :default-category="data.thread?.category" upload-url="/api/portal/messages/file" download-base="/api/portal/documents/" @send="send">
-          <template #empty><p v-if="!data.messages.length" class="none">Write your message below. You can attach documents with the paperclip or by dragging them here.</p></template></ChatThread>
+          <template #empty><p v-if="!data.messages.length" class="none">Write a message below. Drag files here to attach.</p></template></ChatThread>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
     </div>

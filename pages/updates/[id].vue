@@ -97,7 +97,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       </div>
 
       <div v-else-if="step === 2" class="card rec">
-        <h2>Add recipients to your update</h2><p class="mut">Choose a contact list or pipeline stage, search for a contact, or type in email addresses. Unsubscribed contacts are left out.</p>
+        <h2>Add recipients to your update</h2><p class="mut">Pick a list, stage or contact, or type emails. Unsubscribed contacts are left out.</p>
         <select v-model="pick"><option value="">Select a list, stage or contact…</option><option v-for="o in options" :key="o.v" :value="o.v">{{ o.t }}</option></select>
         <div class="ty"><input v-model="typed" placeholder="Type emails, separated by commas" @keydown.enter.prevent="addTyped"><button class="btn secondary" @click="addTyped">Add</button></div>
         <div class="chips"><span v-for="c in chips" :key="c.k + c.x" class="chip" :class="c.k">{{ c.t }}<button aria-label="Remove" @click="unchip(c.k, c.x)">×</button></span></div>
@@ -108,7 +108,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       <div v-else class="pv">
         <div class="card hdr"><div class="r"><span>Subject:</span><input v-model="f.title" maxlength="200"></div><div class="r"><span>From:</span><select v-model="f.from_name"><option v-for="o in data.from" :key="o">{{ o }}</option></select></div></div>
         <div class="pvbar"><label class="cb"><input v-model="pmode" type="checkbox"> Email preview</label><label class="va">View as<select v-model="asName"><option value="">A recipient</option><option v-for="c in data.contacts.slice(0, 200)" :key="c.id" :value="c.name">{{ c.name }}</option></select></label></div>
-        <p class="note">This is how the email will look. It may appear slightly differently across email apps, so send yourself a test.</p>
+        <p class="note">Email apps vary slightly, so send yourself a test.</p>
         <iframe v-if="pmode" ref="frame" :srcdoc="emailHtml" title="Email preview" class="frame" scrolling="no" :style="{ height: frameH + 'px' }" @load="fit" />
         <UpdateReactions :update-id="id" />
         <div v-if="data.sends.length" class="card opens"><h3>Opens ({{ data.sends.filter((s) => s.opened_at).length }} of {{ data.sends.length }})</h3><div v-for="s in data.sends" :key="s.investor_id" class="li"><span>{{ s.name }} <em>{{ s.email }}</em></span><b :class="{ okk: s.opened_at }">{{ s.opened_at ? 'Opened ' + when(s.opened_at) + (s.opens > 1 ? ' · ' + s.opens + '×' : '') : 'Not opened' }}</b></div></div>

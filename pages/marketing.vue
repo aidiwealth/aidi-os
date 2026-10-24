@@ -69,18 +69,18 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 </script>
 <template>
   <section class="mk">
-    <div class="hd"><div><ScopeSwitch page="Marketing" /><p class="lead">Design your funnel and channels, track each channel's month, run campaigns, and see what a budget should bring in. Spend comes in from Banking and customers from won deals in Sales.</p></div>
+    <div class="hd"><div><ScopeSwitch page="Marketing" /><p class="lead">Track channels and campaigns, and see what a budget should bring in.</p></div>
       <div v-if="canEdit && p" class="tb"><button class="btn" @click="go({ t: 'campaigns' }); editC()">New campaign</button></div></div>
     <p v-if="msg && !cf.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <ClientOnly><PendingUpdates v-if="p" kind="marketing_months" :process-id="p.id" what="channel results" @done="refresh()" /></ClientOnly>
-    <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>A starting funnel (visitors, leads, marketing qualified, sales qualified, customers) and six common channels, ready to rename. Add each channel's budget and the bank vendors you pay for it, and the dashboard works out cost per lead, CAC and return.</p>
+    <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>Start with a standard funnel and six common channels, ready to rename.</p>
       <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <button class="btn" :disabled="!canEdit" @click="create">Set up the standard funnel</button></div>
     <template v-if="p && d && st">
       <nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ isGroup ? x.company + ' · ' + x.name : x.name }}</button></nav>
       <nav class="tabs"><button v-for="[k, l] in ([['dashboard', 'Dashboard'], ['channels', 'Channels by month'], ['campaigns', 'Campaigns'], ['design', 'Process design']] as const)" :key="k" :class="{ on: tab === k }" @click="go({ t: k === 'dashboard' ? undefined : k })">{{ l }}</button></nav>
       <template v-if="tab === 'dashboard'">
-        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Every company's marketing, last three full months, totals in {{ d.rollup.currency }}</span></div>
+        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Last three full months, in {{ d.rollup.currency }}</span></div>
           <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Spend</th><th class="r">Leads</th><th class="r">New customers</th><th class="r">Revenue from them</th></tr></thead>
             <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ briefMoney(r.spend, r.currency) }}</td><td class="r">{{ n(r.leads) }}</td><td class="r">{{ n(r.customers) }}</td><td class="r">{{ briefMoney(r.revenue, r.currency) }}</td></tr>
               <tr class="tot"><td>Group total</td><td /><td class="r">{{ briefMoney(d.rollup.total.spend, d.rollup.currency) }}</td><td class="r">{{ n(d.rollup.total.leads) }}</td><td class="r">{{ n(d.rollup.total.customers) }}</td><td class="r">{{ briefMoney(d.rollup.total.revenue, d.rollup.currency) }}</td></tr></tbody></table>
@@ -89,11 +89,11 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
         <div class="fx-stats"><StatTile label="Spend" :value="m(st.totals.spend)" /><StatTile label="Leads" :value="n(st.totals.leads)" :note="st.totals.cpl ? m(st.totals.cpl) + ' a lead' : ''" /><StatTile label="New customers" :value="n(st.totals.customers)" :note="st.totals.cac ? m(st.totals.cac) + ' to acquire each' : ''" /><StatTile label="Revenue from them" :value="m(st.totals.revenue)" /></div>
         <div class="two">
           <div class="card"><div class="ch"><h2>Funnel</h2></div><div class="fn"><div v-for="f in st.funnel" :key="f.name"><span>{{ f.name }}</span><i><em :style="{ width: f.value / maxF * 100 + '%' }" /></i><b>{{ n(f.value) }}</b><small>{{ f.conv === null ? '' : f.conv + '%' }}</small></div></div></div>
-          <div class="card"><div class="ch"><h2>Plan next month</h2><span class="mut">Budget per channel → what it should bring in</span></div>
+          <div class="card"><div class="ch"><h2>Plan next month</h2><span class="mut">Budget → expected results</span></div>
             <table v-if="pred" class="t" data-nosearch><thead><tr><th>Channel</th><th class="r">Budget</th><th class="r">Leads</th><th class="r">Customers</th><th class="r">Revenue</th></tr></thead>
               <tbody><tr v-for="r in pred.rows" :key="r.key"><td>{{ r.name }}<small>at {{ r.basis }} rates</small></td><td class="r"><input v-model.number="plan[r.key]" type="number" min="0" class="bi" :aria-label="'Budget for ' + r.name"></td><td class="r">{{ n(r.leads) }}</td><td class="r">{{ r.customers }}</td><td class="r">{{ m(r.revenue) }}</td></tr>
                 <tr class="tot"><td>Total</td><td class="r">{{ m(pred.total.budget) }}</td><td class="r">{{ n(pred.total.leads) }}</td><td class="r">{{ pred.total.customers }}</td><td class="r">{{ m(pred.total.revenue) }}</td></tr></tbody></table>
-            <div class="row"><button v-if="canEdit" class="btn secondary sm" @click="saveBudgets">Save as monthly budgets</button><span class="mut">{{ d.avg_deal ? 'Revenue at the average won deal (' + m(d.avg_deal) + ').' : 'Win deals in Sales to estimate revenue.' }}</span></div></div>
+            <div class="row"><button v-if="canEdit" class="btn secondary sm" @click="saveBudgets">Save as monthly budgets</button><span class="mut">{{ d.avg_deal ? 'At ' + m(d.avg_deal) + ' average deal' : 'Win deals in Sales to estimate revenue' }}</span></div></div>
         </div>
         <div class="card"><div class="ch"><h2>By channel</h2></div>
           <table class="t" data-nosearch><thead><tr><th>Channel</th><th class="r">Spend</th><th class="r">Budget a month</th><th class="r">Leads</th><th class="r">Cost a lead</th><th class="r">Customers</th><th class="r">CAC</th><th class="r">Lead → customer</th><th class="r">Return</th></tr></thead>
@@ -104,7 +104,7 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
         <div class="pt"><button v-for="c in p.channels" :key="c.key" :class="{ on: ch === c.key }" @click="ch = c.key">{{ c.name }}</button><span class="sp" /><button v-if="canEdit" class="btn secondary sm" @click="imp = true">Import results</button></div>
         <div class="card pad0"><table class="t" data-nosearch><thead><tr><th>Month</th><th v-for="[k, l] in FIELDS" :key="k" class="r">{{ l }}</th></tr></thead>
           <tbody><tr v-for="r in rowsOf" :key="r.month"><td>{{ mon(r.month) }}</td><td v-for="[k] in FIELDS" :key="k" class="r"><input class="ci" :class="{ au: r.auto.includes(k) }" :value="r[k] ?? ''" inputmode="decimal" :aria-label="k + ' ' + r.month" :title="r.auto.includes(k) ? (k === 'spend' ? 'From Banking' : 'From won deals in Sales') : ''" @change="saveRow(r, k, $event)"></td></tr></tbody></table></div>
-        <p class="mut">Blue figures come in automatically (spend from the bank vendors set for the channel, customers and revenue from won deals with this source). Type over one to replace it.</p>
+        <p class="mut">Blue figures fill in from Banking and Sales. Type over one to replace it.</p>
       </template>
 
       <template v-if="tab === 'campaigns'">
@@ -120,7 +120,7 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
         <label>Starts<input v-model="cf.starts_on" type="date"></label><label>Ends<input v-model="cf.ends_on" type="date"></label>
         <label>Budget<input v-model.number="cf.budget" type="number" min="0"></label><label>Spent so far<input v-model.number="cf.spend" type="number" min="0"></label>
         <label>Leads<input v-model.number="cf.leads" type="number" min="0"></label><label>Customers<input v-model.number="cf.customers" type="number" min="0"></label>
-        <div class="w"><button class="btn secondary sm" :disabled="cBusy || !cf.name.trim()" @click="aiCampaign"><AiSpark /> {{ cBusy ? 'Writing…' : 'Write the goal, checklist and brief with AI' }}</button></div>
+        <div class="w"><button class="btn secondary sm" :disabled="cBusy || !cf.name.trim()" @click="aiCampaign"><AiSpark /> {{ cBusy ? 'Writing…' : 'Draft with AI' }}</button></div>
         <label class="w">Goal<input v-model="cf.goal" maxlength="300" placeholder="e.g. 200 sign-ups from fintech founders in Lagos"></label>
         <label>Status<select v-model="cf.status"><option value="planned">Planned</option><option value="live">Live</option><option value="done">Done</option></select></label><span />
         <div class="w ck"><span>Checklist</span><label v-for="(s, i) in cf.steps" :key="i"><input v-model="s.done" type="checkbox"> {{ s.text }} <button class="lk red" type="button" @click="cf.steps.splice(i, 1)">×</button></label>

@@ -17,7 +17,7 @@ const files = ref<File[]>([]), keep = ref(true), busy = ref(false), msg = ref(''
 const src = ref<'pulley' | 'carta' | 'files'>('files')
 // Permission to attach each source document to the holders it describes (Documents → Financing, data room → Financing).
 const keptDocs = ref<{ name: string; id: string }[]>([]), attachDocs = ref(true), attachRoom = ref(true)
-const SRC = { pulley: { label: 'From Pulley', how: 'Export your cap table and your securities list (shares, options, SAFEs) from Pulley as Excel or CSV, and add any signed SAFE, option grant or stock purchase PDFs. Pulley stops operating on 8 December 2026, so export before then.' }, carta: { label: 'From Carta', how: 'Download your cap table and your securities ledger (certificates, option grants, convertibles) from Carta as Excel or CSV, and add any signed agreements as PDFs.' }, files: { label: 'Lawyer\'s files or other', how: 'Your lawyer\'s cap table or pro forma (Excel or PDF), SAFE and note agreements, share certificates, stock purchase agreements, board consents and option grant letters. Exports from other cap table tools work too.' } } as const
+const SRC = { pulley: { label: 'From Pulley', how: 'Export your cap table and securities from Pulley as Excel or CSV, plus any signed PDFs. Pulley stops operating on 8 December 2026.' }, carta: { label: 'From Carta', how: 'Export your cap table and securities ledger from Carta as Excel or CSV, plus any signed PDFs.' }, files: { label: 'Lawyer\'s files or other', how: 'Your lawyer\'s cap table, agreements, certificates and grant letters, or exports from other tools.' } } as const
 watch(() => props.open, (o) => { if (o) { src.value = props.from ?? 'files'; files.value = [...(props.initial ?? [])]; p.value = null; step.value = 'files'; msg.value = ''; mode.value = props.hasData ? 'add' : 'replace'; newName.value = 'Imported ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) } })
 const MAX = 10
 function add(ev: Event) { const list = Array.from(((ev.target as HTMLInputElement).files ?? []) as ArrayLike<File>); for (const f of list) if (!files.value.some((x) => x.name === f.name && x.size === f.size)) files.value.push(f); if (files.value.length > MAX) { files.value = files.value.slice(0, MAX); msg.value = 'Up to ' + MAX + ' files at a time.' } }
@@ -60,15 +60,15 @@ async function save() {
   <AppModal :open="open" :title="step === 'files' ? (src === 'files' ? 'Build your cap table from documents' : 'Import your cap table ' + (src === 'pulley' ? 'from Pulley' : 'from Carta')) : 'Check your cap table'" wide @close="emit('close')">
     <div v-if="step === 'files'" class="ci">
       <div class="srcs"><button v-for="(v, k) in SRC" :key="k" :class="{ on: src === k }" @click="src = k">{{ v.label }}</button></div>
-      <p class="lead">{{ SRC[src].how }} Drop everything at once: AI reads the files together and builds the cap table, with certificate numbers, vesting, exercises and holder emails. Cancelled and converted securities are left out. You check it before anything is saved.</p>
+      <p class="lead">{{ SRC[src].how }} AI builds the cap table; you check it before saving.</p>
       <DropZone multiple accept=".pdf,.xlsx,.xlsm,.csv,.docx,.txt" :disabled="busy" hint="PDF, Excel, CSV or Word · up to 10 files" @change="add" />
       <ul v-if="files.length" class="fl"><li v-for="(f, i) in files" :key="f.name + f.size"><span class="ext">{{ (f.name.split('.').pop() ?? '').toUpperCase() }}</span><b>{{ f.name }}</b><em>{{ size(f.size) }}</em><button class="lk red" :disabled="busy" @click="files.splice(i, 1)">Remove</button></li></ul>
       <label class="chk"><input v-model="keep" type="checkbox"> Keep copies of these files in Documents</label>
-      <p v-if="busy" class="mut">Reading {{ files.length }} file{{ files.length === 1 ? '' : 's' }}… this can take a minute for long agreements.</p>
+      <p v-if="busy" class="mut">Reading {{ files.length }} file{{ files.length === 1 ? '' : 's' }}…</p>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>
     <div v-else-if="p && t" class="ci">
-      <p class="mut">Read from {{ read.join(', ') }}{{ p.as_of ? ' · as of ' + p.as_of : '' }}. Fix anything that is wrong below, then save.</p>
+      <p class="mut">Read from {{ read.join(', ') }}{{ p.as_of ? ' · as of ' + p.as_of : '' }}. Check below, then save.</p>
       <div class="fx-stats"><StatTile label="Fully diluted" :value="n(t.fd)" full /><StatTile label="Shares issued" :value="n(t.issued)" full /><StatTile label="Option pool available" :value="n(t.pool)" :note="n(t.granted) + ' granted'" full /><StatTile label="SAFEs and notes" :value="briefMoney(p.convertibles.reduce((s, v) => s + Number(v.amount || 0), 0), p.currency)" :note="p.convertibles.length + ' outstanding'" /></div>
       <div v-if="checks.length" class="ck"><p class="bh">Checked against the totals in your documents</p><div v-for="c in checks" :key="c.label" class="cr"><span class="dot" :class="c.ok ? 'ok' : 'red'" /><b>{{ c.label }}</b><span>Documents say {{ n(c.stated) }}</span><span>{{ c.ok ? 'Matches' : 'We have ' + n(c.ours) + ' (' + (c.ours > c.stated ? '+' : '') + n(c.ours - c.stated) + ')' }}</span></div></div>
       <div v-if="p.notes.length" class="nt"><p class="bh">Notes from reading your files</p><ul><li v-for="(x, i) in p.notes" :key="i">{{ x }}</li></ul></div>
@@ -94,8 +94,8 @@ async function save() {
         </template>
       </div>
       <div v-if="hasData" class="md"><label><input v-model="mode" type="radio" value="add"> Add to "{{ ctName }}" <em>(rows already there are skipped)</em></label><label><input v-model="mode" type="radio" value="replace"> Replace "{{ ctName }}"</label><label><input v-model="mode" type="radio" value="new"> Save as a new cap table</label><input v-if="mode === 'new'" v-model="newName" class="nn" maxlength="120" aria-label="New cap table name"></div>
-      <div v-if="keptDocs.length" class="att"><label><input v-model="attachDocs" type="checkbox"> Attach each document ({{ keptDocs.length }}) to the SAFE holder or shareholder it belongs to, and file it in Documents under Financing</label>
-        <label v-if="attachDocs" class="sub2"><input v-model="attachRoom" type="checkbox"> Also add them to the data room, in the Financing room by funding round</label></div>
+      <div v-if="keptDocs.length" class="att"><label><input v-model="attachDocs" type="checkbox"> Attach each document ({{ keptDocs.length }}) to its holder and file it in Documents</label>
+        <label v-if="attachDocs" class="sub2"><input v-model="attachRoom" type="checkbox"> Also add them to the data room</label></div>
       <p class="mut sm2">AI can misread documents. Check share counts against your lawyer's records; this is not legal advice.</p>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>

@@ -21,12 +21,12 @@ const has = computed(() => !!props.el?.items.length)
         <div><span>Sales between companies</span><b>{{ m(el.income) }}</b><em>taken out of revenue</em></div>
         <div><span>Costs between companies</span><b>{{ m(el.costs) }}</b><em>taken out of costs</em></div>
       </div>
-      <p v-if="off" class="warn" role="note"><b>The companies' books do not agree by {{ m(Math.abs(el.unreconciled)) }}.</b> One side records {{ m(el.receivables) }} owed within the group, the other {{ m(el.payables) }}{{ el.equity ? ' (and ' + m(el.equity) + ' in equity)' : '' }}. Until they agree, the difference is taken through group equity. It is usually a payment one company has booked and the other has not, a different exchange rate, or a balance under another name.</p>
+      <p v-if="off" class="warn" role="note"><b>The companies' books do not agree by {{ m(Math.abs(el.unreconciled)) }}.</b> One side records {{ m(el.receivables) }} owed within the group, the other {{ m(el.payables) }}{{ el.equity ? ' (and ' + m(el.equity) + ' in equity)' : '' }}. Until they agree, the difference goes through group equity.</p>
       <details><summary>{{ el.items.length }} intercompany item{{ el.items.length === 1 ? '' : 's' }}</summary>
         <table class="t" data-nosearch><thead><tr><th>Company</th><th>Category</th><th>Line</th><th class="r">Amount ({{ currency }})</th></tr></thead>
           <tbody><tr v-for="(x, i) in el.items" :key="i"><td>{{ x.who || '—' }}</td><td>{{ x.name }}</td><td>{{ LINE[x.line] ?? x.line }}</td><td class="r">{{ m(x.value) }}</td></tr></tbody></table></details>
     </template>
-    <p v-else class="mut">No intercompany balances or sales found for {{ period }}. Categories named like "Intercompany receivable", "Inter-company payable", "Due from parent" or "Intra-group loan" are taken out automatically; mark any others in Your categories.</p>
+    <p v-else class="mut">No intercompany balances or sales found for {{ period }}. Mark intercompany items in Your categories.</p>
   </div>
 </template>
 <style scoped>

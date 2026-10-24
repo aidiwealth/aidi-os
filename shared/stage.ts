@@ -21,7 +21,17 @@ export const regionOf = (country: string | null | undefined): Region => (!countr
 export const FUNDING = ['bootstrapped', 'pre_seed', 'seed', 'series_a', 'series_b', 'growth'] as const
 export type Funding = (typeof FUNDING)[number]
 export const FUNDING_LABEL: Record<Funding, string> = { bootstrapped: 'Bootstrapped', pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A', series_b: 'Series B', growth: 'Series C and later' }
-export const OPERATING_LABEL = { pre_revenue: 'Pre-revenue', early: 'Early revenue', seed: 'Seed-level traction', series_a: 'Series A-level traction', series_b: 'Series B-level and beyond' } as const
+// Where revenue puts the business, in plain words; the note says which round that revenue usually goes with (by the
+// region's benchmarks), since "Series A" is a funding round, not a revenue level.
+export const OPERATING_LABEL = { pre_revenue: 'Pre-revenue', early: 'Early revenue', seed: 'Gaining traction', series_a: 'Scaling', series_b: 'At scale' } as const
+export function operatingNote(op: keyof typeof OPERATING_LABEL, rr: RegionRules): string {
+  const m = (v: number) => '$' + (v >= 1e6 ? (v / 1e6).toFixed(v % 1e6 ? 1 : 0).replace(/\.0$/, '') + 'M' : Math.round(v / 1e3) + 'k')
+  return op === 'pre_revenue' ? 'No revenue yet'
+    : op === 'early' ? 'Below the ' + m(rr.arr.seed) + ' a year seed investors look for'
+    : op === 'seed' ? 'Typical of seed-stage companies (' + m(rr.arr.seed) + '–' + m(rr.arr.series_a) + ')'
+    : op === 'series_a' ? 'Typical of Series A companies (' + m(rr.arr.series_a) + '–' + m(rr.arr.series_b) + ')'
+    : 'Typical of Series B companies and later (' + m(rr.arr.series_b) + '+)'
+}
 export type Operating = keyof typeof OPERATING_LABEL
 export const HEALTH = ['profitable', 'default_alive', 'fixable', 'default_dead', 'struggling', 'critical', 'unknown'] as const
 export type Health = (typeof HEALTH)[number]

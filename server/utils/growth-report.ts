@@ -10,7 +10,7 @@ export const GROWTH_SECTIONS: { key: string; module: string; title: string; desc
   { key: 'sales', module: 'sales', title: 'Sales pipeline', desc: 'Open pipeline, expected wins, win rate and cycle by process, the pipeline by stage and won by month' },
   { key: 'marketing', module: 'marketing', title: 'Marketing', desc: 'Spend, leads, new customers, cost per lead and CAC by channel over the last three full months, and live campaigns' },
   { key: 'banking', module: 'banking_treasury', title: 'Banking and spend', desc: 'Money in and out from the bank, spend by category against budget, the biggest payments and recurring costs' },
-  { key: 'stage', module: 'stage_monitor', title: 'Stage and readiness', desc: 'Funding and operating stage, health, runway, and equity and debt readiness (indicative only)' },
+  { key: 'stage', module: 'stage_monitor', title: 'Stage and readiness', desc: 'Funding and revenue stage, health, runway, and equity and debt readiness (indicative only)' },
 ]
 
 // The report's subject as the scope the Growth pages use: the group, or one of the company's own companies.
@@ -114,7 +114,7 @@ export async function growthSections(event: H3Event, subject: string, keys: stri
   if (want('stage')) {
     const s = await stageMonitor(event, sc).catch(() => null)
     if (s) {
-      const facts: [string, string][] = [['Funding stage', s.funding.label], ['Operating stage', s.operating.label + (s.operating.arr_usd ? ' (about $' + Math.round(s.operating.arr_usd).toLocaleString('en-US') + ' a year)' : '')], ['Health', s.health.label],
+      const facts: [string, string][] = [['Funding stage', s.funding.label], ['Revenue stage', s.operating.label + (s.operating.arr_usd ? ', about $' + Math.round(s.operating.arr_usd).toLocaleString('en-US') + ' a year' : '') + '. ' + s.operating.note], ['Health', s.health.label],
         ['Runway', s.runway.months === null ? '–' : s.runway.months + ' months' + (s.runway.cash_out ? ', to ' + ML(s.runway.cash_out) : '')]]
       if (s.alive?.cross) facts.push(['Revenue overtakes costs', ML(s.alive.cross) + ' at today\'s trends'])
       if (s.equity) facts.push(['Equity readiness', s.equity.total + ' / 100 · ' + s.equity.likelihood])

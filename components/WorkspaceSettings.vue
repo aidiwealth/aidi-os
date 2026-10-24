@@ -37,18 +37,18 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
       <form class="card frm" @submit.prevent="save">
         <h2>Workspace</h2>
         <label class="label">Name<input v-model="f.name" required maxlength="200"></label>
-        <label class="label">Name founders see<input v-model="f.public_name" maxlength="120" :placeholder="f.name"><span class="hint">Used on pitch receipts and monthly report requests, for example your fund's name.</span></label>
+        <label class="label">Name founders see<input v-model="f.public_name" maxlength="120" :placeholder="f.name"><span class="hint">Shown on pitch receipts and report requests.</span></label>
         <label class="label">Default vehicle for new deals and companies<select v-model="f.default_vehicle_id"><option value="">First fund</option><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
-        <label class="label">Who receives pitch, report and reminder emails<input v-model="f.notify" placeholder="partners@yourfirm.com, ops@yourfirm.com"><span class="hint">Separate addresses with commas. Leave empty to notify your admins.</span></label>
+        <label class="label">Who receives pitch, report and reminder emails<input v-model="f.notify" placeholder="partners@yourfirm.com, ops@yourfirm.com"><span class="hint">Comma-separated. Empty means your admins.</span></label>
         <h2 class="mt">Pitch screening</h2>
         <label class="label">Firm name used in screening<input v-model="f.investor_name" maxlength="200" :placeholder="data.org.name"></label>
-        <label class="label">Investment thesis<textarea v-model="f.thesis" rows="9" maxlength="6000" placeholder="Stages, sectors, geographies, cheque size, what you look for and what you avoid." /><span class="hint">AI screening scores each pitch against this. It advises; your partners decide.</span></label>
+        <label class="label">Investment thesis<textarea v-model="f.thesis" rows="9" maxlength="6000" placeholder="Stages, sectors, geographies, cheque size, what you look for and what you avoid." /><span class="hint">AI scores pitches against this. Partners decide.</span></label>
         <div class="row"><button class="btn" type="submit" :disabled="busy">Save</button><span v-if="ok" class="ok">{{ ok }}</span><span v-if="msg" class="error">{{ msg }}</span></div>
       </form>
       <div class="col">
         <div v-if="data.org.kind === 'company'" class="card"><CompanyProfile /></div>
         <div v-if="rai !== null" class="card">
-          <div class="rai"><div><h2>Read receipts with AI</h2><p class="muted small">When a receipt or invoice is attached to a payment or a rental expense, AI reads it, fills in the amount, date and vendor, and flags a mismatch. Each read counts as an AI run.</p></div><button type="button" class="switch" role="switch" :aria-checked="rai" aria-label="Read receipts with AI" @click="toggleRai"><span /></button></div>
+          <div class="rai"><div><h2>Read receipts with AI</h2><p class="muted small">AI fills amount, date and vendor from attached receipts. Each read is an AI run.</p></div><button type="button" class="switch" role="switch" :aria-checked="rai" aria-label="Read receipts with AI" @click="toggleRai"><span /></button></div>
         </div>
         <div class="card">
           <h2>Plan and usage</h2>
@@ -63,7 +63,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
           <p v-if="billing?.subscription" class="plan"><b>{{ billing.subscription.plan }}</b> · {{ usd(billing.subscription.amount_usd) }} / {{ billing.subscription.billing === 'annual' ? 'year' : 'month' }} · renews {{ billing.subscription.renews }}</p>
           <EmptyState v-else compact icon="empty" :title="`No subscription on file${data.org.status === 'trial' ? ' yet: you are on a trial' : ''}`" />
           <ul v-if="billing?.invoices.length" class="invs"><li v-for="i in billing.invoices" :key="i.id"><a :href="'/invoice/' + i.id" target="_blank">{{ i.number }}</a><span>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) }} · <b :class="{ red: i.overdue, ok: i.status === 'paid' }">{{ i.overdue ? 'overdue' : i.status === 'sent' ? 'due ' + i.due_date : i.status }}</b><a v-if="i.payUrl" :href="i.payUrl" class="payl">Pay</a></span></li></ul>
-          <p v-if="billing?.card" class="muted small">Card on file: {{ billing.card.brand ?? 'card' }} •••• {{ billing.card.last4 }}. Renewals are charged to it automatically.</p>
+          <p v-if="billing?.card" class="muted small">Card on file: {{ billing.card.brand ?? 'card' }} •••• {{ billing.card.last4 }}. Used for renewals.</p>
         </div>
         <div id="vehicles" class="card"><VehicleManager /></div>
         <div class="card">
@@ -71,7 +71,7 @@ async function copy() { if (!data.value) return; await navigator.clipboard.write
           <p class="muted small">The page where founders pitch you. Share this link.</p>
           <div class="link"><input v-model="pf.url" class="pfi" placeholder="https://yourwebsite.com/pitch"><a v-if="pf.url" :href="pf.url" target="_blank" class="btn secondary sm">Open</a><button type="button" class="btn sm" :disabled="pf.busy" @click="savePf">{{ pf.saved ? 'Saved' : 'Save' }}</button></div>
           <p v-if="pf.msg" class="muted small err">{{ pf.msg }}</p>
-          <p class="muted small dev">For your developer: the form sends each pitch (POST) to <code>{{ data.pitchUrl }}</code> <button type="button" class="lnk" @click="copy">{{ copied ? 'Copied' : 'Copy' }}</button>. Opening that address in a browser takes you to the form page above.</p>
+          <p class="muted small dev">Developers: POST pitches to <code>{{ data.pitchUrl }}</code> <button type="button" class="lnk" @click="copy">{{ copied ? 'Copied' : 'Copy' }}</button>.</p>
           <p class="muted small">Workspace link name: <b>{{ data.org.slug }}</b></p>
         </div>
       </div>

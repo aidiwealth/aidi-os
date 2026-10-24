@@ -14,7 +14,7 @@ async function renew(id: string, on: boolean) { await $fetch('/api/storage/addon
     <div class="sh"><b>Storage</b><span>{{ gb(data.used) }}{{ data.limit_gb != null ? ' of ' + data.limit_gb + ' GB' : ' used (no limit)' }}</span></div>
     <div v-if="data.limit_gb != null" class="bar"><i :style="{ width: pct + '%' }" :class="{ warn: pct >= 80, full: pct >= 100 }" /></div>
     <template v-if="!props.compact">
-      <p v-if="data.limit_gb != null" class="mut">Plan {{ data.plan_gb }} GB<template v-if="data.addon_gb"> + {{ data.addon_gb }} GB in packs</template><template v-if="data.extra_gb"> + {{ data.extra_gb }} GB from Finvry</template>. Files, decks, data room and generated documents all count.</p>
+      <p v-if="data.limit_gb != null" class="mut">Plan {{ data.plan_gb }} GB<template v-if="data.addon_gb"> + {{ data.addon_gb }} GB in packs</template><template v-if="data.extra_gb"> + {{ data.extra_gb }} GB from Finvry</template>. All files count.</p>
       <div v-for="a in data.addons" :key="a.id" class="pk"><span>+{{ a.gb }} GB · renews {{ new Date(a.expires_at).toLocaleDateString('en-GB') }}</span><label><input type="checkbox" :checked="a.auto_renew" @change="renew(a.id, ($event.target as HTMLInputElement).checked)"> Renew automatically</label></div>
       <div v-if="data.can_buy && data.limit_gb != null" class="row"><button class="btn secondary" :disabled="busy" @click="buy">Add {{ data.pack.gb }} GB · {{ price }}/month</button><span class="mut">Paid from your wallet.</span></div>
       <p v-if="msg" class="mut">{{ msg }}</p>

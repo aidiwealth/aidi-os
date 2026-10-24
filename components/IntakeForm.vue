@@ -14,7 +14,7 @@ async function submit() {
   busy.value = true; msg.value = ''; ok.value = ''
   const fd = new FormData(); fd.append('answers', JSON.stringify(a))
   for (const [k, list] of Object.entries(picked)) for (const file of list) fd.append(k, file)
-  try { await $fetch('/api/portal/jobs/' + props.jobId + '/intake', { method: 'POST', body: fd }); ok.value = 'Thank you. Our team has your details.'; editing.value = false; for (const k of Object.keys(picked)) delete picked[k]; a.ssn = ''; await refresh() }
+  try { await $fetch('/api/portal/jobs/' + props.jobId + '/intake', { method: 'POST', body: fd }); ok.value = 'Thanks. We have your details.'; editing.value = false; for (const k of Object.keys(picked)) delete picked[k]; a.ssn = ''; await refresh() }
   catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send. Try again.' } finally { busy.value = false }
 }
 </script>
@@ -22,7 +22,7 @@ async function submit() {
   <div v-if="data?.kind && data.form" class="card ik">
     <template v-if="data.submitted && !editing">
       <IntakeSummary :form="data.form" :answers="data.submitted.answers" :files="data.submitted.files" :ssn-last4="data.submitted.ssn_last4" :at="data.submitted.updated_at" client />
-      <div class="ifoot"><span class="mut">Need to change something or add a document? Send an update — our team sees it straight away.</span><button class="btn secondary sm" @click="editing = true">Update or add files</button></div>
+      <div class="ifoot"><span class="mut">Need a change or another file? Send an update.</span><button class="btn secondary sm" @click="editing = true">Update or add files</button></div>
       <p v-if="ok" class="ok">{{ ok }}</p></template>
     <form v-else class="ifm" @submit.prevent="submit"><div class="ih"><div><b>{{ data.form.title }}</b><p class="mut">{{ data.form.intro }}</p></div></div>
       <template v-for="f in data.form.fields" :key="f.key"><div v-if="visible(f)" class="fq"><span class="ql">{{ f.label }}<em v-if="f.required"> *</em></span><span v-if="f.help" class="mut">{{ f.help }}</span>

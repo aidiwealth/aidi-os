@@ -7,7 +7,7 @@ useHead({ title: 'Data sources' })
 </script>
 <template>
   <section class="ds">
-    <div><h1>Data sources</h1><p class="lead">Everything that feeds your figures, in one place: banks, linked sheets, CRMs and accounting software, with any updates waiting for you to accept. Each is managed where it is used.</p></div>
+    <div><h1>Data sources</h1><p class="lead">Banks, sheets, CRMs and accounting software that feed your figures.</p></div>
     <div v-for="s in data?.sections ?? []" :key="s.key" class="card"><div class="ch"><h2>{{ s.title }}</h2><span v-if="s.items.length" class="mut">{{ s.items.length }}</span></div>
       <p v-if="!s.items.length" class="mut pad">{{ s.empty }}</p>
       <div v-for="(x, i) in s.items" :key="i" class="row"><div class="nm"><b>{{ x.name }}</b><small>{{ [x.company, x.detail].filter(Boolean).join(' · ') }}</small></div>

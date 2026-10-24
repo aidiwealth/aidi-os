@@ -38,10 +38,10 @@ const checks = computed(() => [
 ])
 const done = computed(() => checks.value.filter((c) => c.ok).length)
 const STEPS = [
-  { h: 'Share your brief', p: 'Tell us how much you are raising, on what terms, and why. You can edit it any time.' },
-  { h: 'We build your list', p: 'Our team matches you with investors who back your stage, sector and cheque size.' },
-  { h: 'Intros and meetings', p: 'We make warm introductions and book meetings. You see each one here, with reminders.' },
-  { h: 'Close the round', p: 'We help with follow-ups, terms and paperwork until the money lands.' },
+  { h: 'Share your brief', p: 'Amount, terms and why. Edit any time.' },
+  { h: 'We build your list', p: 'Investors matched to your stage and sector.' },
+  { h: 'Intros and meetings', p: 'Warm intros and booked meetings.' },
+  { h: 'Close the round', p: 'Follow-ups, terms and paperwork.' },
 ]
 const day = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numeric' })
 const mon = (s: string) => new Date(s).toLocaleDateString('en-GB', { month: 'short' })
@@ -53,32 +53,32 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
     <p class="label">Investors</p>
     <div class="hd"><div><h1>Fundraise with us</h1><p class="lead">A team that runs your raise end to end, while you keep building.</p></div><button v-if="data.enabled && !editing && data.programs?.length" class="btn" @click="start">+ Start a new raise</button></div>
     <p v-if="msg" class="error">{{ msg }}</p>
-    <div v-if="!data.enabled" class="card off"><h2>Managed fundraising is not on for your company yet</h2><p>Message our team from Inbox and we will switch it on and set up a call about your round.</p><NuxtLink to="/client/messages" class="btn secondary">Message our team</NuxtLink></div>
+    <div v-if="!data.enabled" class="card off"><h2>Managed fundraising is not on for your company yet</h2><p>Message us to switch it on and book a call.</p><NuxtLink to="/client/messages" class="btn secondary">Message our team</NuxtLink></div>
     <template v-else-if="editing || !data.programs?.length">
       <div v-if="!f.id" class="hero">
-        <div class="hx"><h2>How it works</h2><p>You tell us about the round. We find the right investors, make introductions, book meetings and help you close. Every investor and meeting shows up on this page as it happens.</p></div>
+        <div class="hx"><h2>How it works</h2><p>We find investors, make intros, book meetings and help you close.</p></div>
         <ol class="steps"><li v-for="(s, i) in STEPS" :key="s.h"><span class="no">{{ i + 1 }}</span><b>{{ s.h }}</b><p>{{ s.p }}</p></li></ol>
-        <div class="fee"><b>{{ data.fee_pct }}%</b><span>success fee, only on money you close through us. Nothing to pay up front.</span></div>
+        <div class="fee"><b>{{ data.fee_pct }}%</b><span>success fee on money closed through us. Nothing up front.</span></div>
       </div>
       <div class="lay">
         <form class="frm" @submit.prevent="submit">
-          <div class="sec"><div class="sh"><span class="no">1</span><div><h3>{{ f.id ? 'Edit your round' : 'The round' }}</h3><p>The headline numbers investors ask about first.</p></div></div>
+          <div class="sec"><div class="sh"><span class="no">1</span><div><h3>{{ f.id ? 'Edit your round' : 'The round' }}</h3><p>The headline numbers.</p></div></div>
             <div class="g3"><label class="label">Amount you are raising *<input v-model="f.target" inputmode="decimal" required placeholder="e.g. 500000"></label><label class="label">Currency<select v-model="f.currency"><option>USD</option><option>NGN</option><option>GBP</option><option>EUR</option></select></label>
               <label class="label">Round *<select v-model="f.round"><option>Pre-seed</option><option>Seed</option><option>Series A</option><option>Bridge</option><option>Debt</option></select></label>
               <label class="label">Instrument *<select v-model="f.instrument"><option>SAFE</option><option>Priced equity</option><option>Convertible note</option><option>Debt</option></select></label><label class="label">Valuation or cap<input v-model="f.valuation" inputmode="decimal" placeholder="Optional"></label><label class="label">Raised so far<input v-model="f.raised_so_far" inputmode="decimal" placeholder="Committed or in the bank"></label></div></div>
-          <div class="sec"><div class="sh"><span class="no">2</span><div><h3>Use of funds *</h3><p>Where the money goes and what it gets you. Investors want to see the milestones this round buys, e.g. hires, product, markets and runway in months.</p></div></div>
+          <div class="sec"><div class="sh"><span class="no">2</span><div><h3>Use of funds *</h3><p>Where the money goes and the milestones it buys.</p></div></div>
             <AiWrite v-model="f.use_of_funds" purpose="raise" field="use_of_funds" :context="{ ...f, id: '', deck_url: '' }" />
             <ClientOnly><RichEditor v-model="f.use_of_funds" :min-height="180" :max-length="3000" placeholder="e.g. 40% engineering (3 hires), 30% growth in Lagos and Nairobi, 30% working capital. 18 months of runway." /></ClientOnly></div>
-          <div class="sec"><div class="sh"><span class="no">3</span><div><h3>Traction</h3><p>Proof it is working: revenue, users, growth rate, retention, key customers or partners. Numbers beat adjectives.</p></div></div>
+          <div class="sec"><div class="sh"><span class="no">3</span><div><h3>Traction</h3><p>Revenue, users, growth, retention, key customers.</p></div></div>
             <AiWrite v-model="f.traction" purpose="raise" field="traction" :context="{ ...f, id: '', deck_url: '' }" />
             <ClientOnly><RichEditor v-model="f.traction" :min-height="180" :max-length="3000" placeholder="e.g. $40k MRR, growing 15% month on month. 1,200 paying users, 92% retained after 3 months." /></ClientOnly></div>
-          <div class="sec"><div class="sh"><span class="no">4</span><div><h3>Investors and timing</h3><p>Who you would like to meet, and when you need to close. We add our own matches on top.</p></div></div>
+          <div class="sec"><div class="sh"><span class="no">4</span><div><h3>Investors and timing</h3><p>Who you want to meet and when you need to close.</p></div></div>
             <AiWrite v-model="f.target_investors" purpose="raise" field="target_investors" :context="{ ...f, id: '', deck_url: '' }" />
             <ClientOnly><RichEditor v-model="f.target_investors" :min-height="140" :max-length="3000" placeholder="Funds or angels you would like an intro to, one per line, and any you have already spoken to." /></ClientOnly>
             <div class="g2"><div class="label">Deck<select v-model="deckPick"><option value="">No deck yet</option><option v-for="d in decks" :key="d.id" :value="d.id">{{ d.primary_deck ? '★ ' : '' }}{{ d.title }}</option><option value="link">Paste a link instead…</option></select>
                 <input v-if="deckPick === 'link'" v-model="f.deck_url" maxlength="500" placeholder="https://">
-                <span class="hint">{{ f.deck_id ? 'We share your tracked deck link, so you see every investor who opens it in Decks.' : decks.length ? 'Pick one of your decks to track who opens it.' : '' }}<NuxtLink v-if="!decks.length" to="/decks">Upload a deck in Decks →</NuxtLink></span></div><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div></div>
-          <div class="sec agreebox"><label class="agree"><input v-model="f.agree_fee" type="checkbox"> <span>I agree to a success fee of <b>{{ data.fee_pct }}%</b> of the money closed through this service. No fee is due if nothing closes.</span></label>
+                <span class="hint">{{ f.deck_id ? 'We share your tracked link.' : decks.length ? 'Pick a deck to track opens.' : '' }}<NuxtLink v-if="!decks.length" to="/decks">Upload a deck in Decks →</NuxtLink></span></div><label class="label">Timeline<input v-model="f.timeline" maxlength="200" placeholder="e.g. close by March"></label></div></div>
+          <div class="sec agreebox"><label class="agree"><input v-model="f.agree_fee" type="checkbox"> <span>I agree to a success fee of <b>{{ data.fee_pct }}%</b> of the money closed through this service. No fee if nothing closes.</span></label>
             <div class="row"><button class="btn" :disabled="busy || !f.agree_fee">{{ busy ? 'Saving…' : f.id ? 'Save changes' : 'Start my raise' }}</button><button v-if="editing && data.programs?.length" type="button" class="btn secondary" @click="editing = false">Cancel</button></div></div>
         </form>
         <aside class="side">
@@ -102,9 +102,9 @@ const ST: Record<string, string> = { intake: 'Getting started', active: 'In prog
         <StatTile icon="calendar" tone="n" label="Meetings booked" :value="upcoming.length" :note="past.length + ' held'" />
         <StatTile icon="billing" tone="a" :label="'Success fee (' + cur.totals.fee_pct + '%)'" :value="money(cur.totals.fee)" note="on money closed" />
       </div>
-      <div class="cols"><div class="card"><h2>Investors</h2><p class="s">Everyone we are talking to for this round and where each conversation stands.</p><RaiseTable :investors="cur.investors" :labels="data.labels ?? {}" :currency="cur.program.currency" /></div>
+      <div class="cols"><div class="card"><h2>Investors</h2><p class="s">Where each conversation stands.</p><RaiseTable :investors="cur.investors" :labels="data.labels ?? {}" :currency="cur.program.currency" /></div>
         <aside class="card"><h2>Meetings</h2><div v-for="m in upcoming" :key="m.id" class="mt"><span class="fx-cal"><em>{{ mon(m.starts_at) }}</em><b>{{ day(m.starts_at) }}</b></span><div class="mb"><b>{{ m.title }}</b><span class="s">{{ time(m.starts_at) }} · {{ m.minutes }} min{{ m.investor ? ' · ' + m.investor : '' }}</span><a v-if="m.location && /^https?:/.test(m.location)" :href="m.location" target="_blank">Join link →</a><span v-else-if="m.location" class="s">{{ m.location }}</span><div v-if="m.agenda" class="s ag mdb" v-html="mdRender(m.agenda)" /></div></div>
-          <p v-if="!upcoming.length" class="s empty">No meetings scheduled yet. You get an email when we book one, and reminders a day and an hour before.</p>
+          <p v-if="!upcoming.length" class="s empty">No meetings yet. We email you when one is booked.</p>
           <details v-if="past.length"><summary>Past meetings ({{ past.length }})</summary><div v-for="m in past" :key="m.id" class="mt past"><span class="fx-cal"><em>{{ mon(m.starts_at) }}</em><b>{{ day(m.starts_at) }}</b></span><div class="mb"><b>{{ m.title }}</b><span class="s">{{ m.investor ?? '' }}</span></div></div></details></aside></div>
     </template>
   </section>

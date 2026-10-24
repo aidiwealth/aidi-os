@@ -55,9 +55,9 @@ const secMiss = (s: string) => ({ company: ['legal_name', 'incorporated_on', 'ju
 <template>
   <AppModal :open="open" title="Report details" wide @close="emit('close')">
     <div v-if="f" class="rd">
-      <p class="hint">What the annual report needs that only you know. Saved for next time.{{ saved ? '' : ' We filled in what we could from your settings and cap table; please check it.' }}</p>
-      <div v-if="stillMissing.length" class="need"><b>{{ stillMissing.length }} to fill in:</b> {{ stillMissing.map((m) => m.label).join(', ') }}. Anything left empty is left out of the report.</div>
-      <div class="aif"><div class="ait"><AiSpark :size="18" /><span><b>Fill the empty details with AI</b><em>From your account (companies, people, banks, documents, cap table){{ ai.web ? ' and online (your website, company registries, press)' : '' }}. Only empty fields are filled; check them, then save.</em></span></div>
+      <p class="hint">Saved for next time.{{ saved ? '' : ' Pre-filled from your settings; please check.' }}</p>
+      <div v-if="stillMissing.length" class="need"><b>{{ stillMissing.length }} to fill in:</b> {{ stillMissing.map((m) => m.label).join(', ') }}. Empty items are left out.</div>
+      <div class="aif"><div class="ait"><AiSpark :size="18" /><span><b>Fill the empty details with AI</b><em>From your account{{ ai.web ? ' and online' : '' }}. Only empty fields are filled; check them.</em></span></div>
         <label class="wb"><input v-model="ai.web" type="checkbox"> Also search online</label>
         <button type="button" class="btn sm" :disabled="ai.busy" @click="fillAi"><AiSpark v-if="ai.busy" :size="14" /> {{ ai.busy ? (ai.web ? 'Searching…' : 'Reading…') : 'Fill with AI' }}</button></div>
       <AiThinking v-if="ai.busy" compact :steps="ai.web ? ['Reading your account…', 'Searching your website…', 'Checking company registries…', 'Matching what was found…'] : ['Reading your account…', 'Matching what was found…']" />
@@ -114,7 +114,7 @@ const secMiss = (s: string) => ({ company: ['legal_name', 'incorporated_on', 'ju
       </div>
 
       <div v-show="sec === 'notes'" class="g1">
-        <p class="hint">Optional notes that appear after the statements. Share capital and SAFEs are filled in from your cap table.</p>
+        <p class="hint">Optional notes after the statements.</p>
         <label class="label">Going concern and management's plans<textarea v-model="f.notes.going_concern" rows="2" maxlength="4000" placeholder="e.g. plans to raise further equity to fund growth" /></label>
         <label class="label">Property and equipment<textarea v-model="f.notes.property" rows="2" maxlength="4000" placeholder="Main items, cost, depreciation for the year" /></label>
         <label class="label">Leases<textarea v-model="f.notes.leases" rows="2" maxlength="4000" placeholder="Offices leased, terms and rent for the year" /></label>

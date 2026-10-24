@@ -68,7 +68,7 @@ const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.m
       <EmptyState v-if="!P.rows.length" compact icon="equity" title="No holders yet" /></div>
 
     <div class="card"><div class="ch"><h3>Rights from side letters</h3><div class="row"><button class="btn secondary sm" @click="edit()">Add a right</button><button class="btn sm" @click="openRead">Read letters (AI)</button></div></div>
-      <p class="mut">Upload side letters, pro rata letters and investor rights agreements. AI reads only those, lists each right and who holds it; you confirm the holder before anything is saved. Letters are filed with the holder in Documents and the data room's Financing room.</p>
+      <p class="mut">Upload side letters and rights agreements. AI lists each right; you confirm before saving.</p>
       <table v-if="rights.length" class="t" data-nosearch><thead><tr><th>Right</th><th>Holder</th><th>What it means</th><th>Letter</th><th /></tr></thead>
         <tbody><tr v-for="r in rights" :key="r.id"><td><b>{{ RIGHT_LABEL[r.kind] }}</b><span class="sub">{{ r.summary }}</span><span v-if="termsText(r.terms)" class="sub">{{ termsText(r.terms) }}</span></td>
           <td><select :value="r.holder_id ?? ''" aria-label="Holder" @change="remap(r, ($event.target as HTMLSelectElement).value)"><option value="">{{ r.party ? r.party + ' (not on the cap table / all investors)' : 'All investors' }}</option><option v-for="h in data.holders" :key="h.id" :value="h.id">{{ h.name }}</option></select></td>
@@ -81,7 +81,7 @@ const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.m
       <table class="t" data-nosearch><thead><tr><th>Holder</th><th>Right</th><th class="r">Share of the round</th><th class="r">They may invest</th></tr></thead>
         <tbody><tr v-for="(x, i) in take" :key="i"><td>{{ x.holder }}</td><td>{{ RIGHT_LABEL[x.kind] }}</td><td class="r">{{ pct(x.pct) }}</td><td class="r">{{ usd(x.amount) }}</td></tr>
           <tr class="tot"><td colspan="2">Reserved for pro rata</td><td class="r">{{ pct(nextRound ? takeTotal / nextRound * 100 : 0) }}</td><td class="r">{{ usd(takeTotal) }}</td></tr></tbody></table>
-      <p class="fine">If every holder takes up their right, {{ usd(Math.max(0, nextRound - takeTotal)) }} is left for new investors{{ takeTotal > nextRound ? ': the rights are larger than the round, so they will be cut back pro rata' : '' }}. Stakes as converted today; the letters decide the exact amounts.</p></div>
+      <p class="fine">If every holder takes up their right, {{ usd(Math.max(0, nextRound - takeTotal)) }} is left for new investors{{ takeTotal > nextRound ? ': the rights are larger than the round, so they will be cut back pro rata' : '' }}. The letters decide the exact amounts.</p></div>
 
     <AppModal :open="rd.open" title="Read side letters and pro rata letters" xl @close="rd.open = false">
       <div class="fm">
@@ -89,7 +89,7 @@ const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.m
         <p v-if="job.busy.value" class="mut">{{ job.stage.value === 'store' ? 'Filing the letters…' : 'Reading the letters…' }} This can take a minute.</p>
         <div v-if="job.fail.value" class="error"><b>{{ job.fail.value.message }}</b><ul><li v-for="a in job.fail.value.advice" :key="a">{{ a }}</li></ul></div>
         <template v-if="rd.rows.length">
-          <p class="mut">{{ rd.rows.length }} right{{ rd.rows.length === 1 ? '' : 's' }} found. Check each holder: AI matches by name, so pick the right one if it chose wrong.{{ unmatched ? ' ' + unmatched + ' still need a holder.' : '' }}</p>
+          <p class="mut">{{ rd.rows.length }} right{{ rd.rows.length === 1 ? '' : 's' }} found. Check each holder.{{ unmatched ? ' ' + unmatched + ' still need a holder.' : '' }}</p>
           <table class="t" data-nosearch><thead><tr><th /><th>Right</th><th>In the letter</th><th>Holder on the cap table</th><th>What it means</th></tr></thead>
             <tbody><tr v-for="(x, i) in rd.rows" :key="i" :class="{ off: !x.on }"><td><input v-model="x.on" type="checkbox" aria-label="Keep"></td>
               <td><select v-model="x.kind" aria-label="Type"><option v-for="(l, k) in RIGHT_LABEL" :key="k" :value="k">{{ l }}</option></select><span class="sub">{{ x.summary }}</span><span v-if="termsText(x.terms)" class="sub">{{ termsText(x.terms) }}</span></td>

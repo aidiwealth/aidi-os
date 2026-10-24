@@ -1,7 +1,7 @@
 // Venture & Business Stage Monitor (Finvry): gathers the company's own figures — monthly statements, burn and runway,
 // cap table, customer retention, data room and bank history — and works out its stage, health and readiness with the
 // rules in shared/stage.ts. The current month is kept as a snapshot so the history builds up.
-import { DEFAULT_RULES, regionOf, fundingStage, classStage, operatingStage, defaultAlive, health, equityScore, debtScore, movesUp, FUNDING_LABEL, OPERATING_LABEL, HEALTH_LABEL, HEALTH_NOTE, type StageRules, type Inputs, type Mo, type CapFacts, type Funding } from '~/shared/stage'
+import { operatingNote, DEFAULT_RULES, regionOf, fundingStage, classStage, operatingStage, defaultAlive, health, equityScore, debtScore, movesUp, FUNDING_LABEL, OPERATING_LABEL, HEALTH_LABEL, HEALTH_NOTE, type StageRules, type Inputs, type Mo, type CapFacts, type Funding } from '~/shared/stage'
 import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
 import { table as capTable } from '~/shared/captable'
 import { retention, span } from '~/shared/customer-metrics'
@@ -85,7 +85,7 @@ export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<ty
   return {
     company: sc.group ? org.name + ' group' : sc.name, group: sc.group, currency: cur, region, region_label: rr.label, tier, country: (s.country as string) || null, as_of: months[months.length - 1]?.month ?? null,
     funding: { key: fund, label: FUNDING_LABEL[fund], basis: cap.priced_round ? 'Your latest priced round on the cap table' : cap.has ? 'Money raised on your cap table (SAFEs, notes and preferred shares): about $' + cap.raised_usd.toLocaleString('en-US') : 'No cap table yet' },
-    operating: { key: op, label: OPERATING_LABEL[op], arr_usd: Math.round(arrUsd), basis: 'Annual run rate from the latest month of revenue, against ' + rr.label + ' benchmarks' },
+    operating: { key: op, label: OPERATING_LABEL[op], note: operatingNote(op, rr), arr_usd: Math.round(arrUsd), basis: 'Annual run rate from the latest month of revenue, against ' + rr.label + ' benchmarks' },
     health: { key: hl, label: HEALTH_LABEL[hl], note: HEALTH_NOTE[hl] },
     runway: { months: burn.runway, cash_out: cashOut, burn: burn.burn, cash: i.cash, cash_at: burn.cash_at, basis: burn.basis, cut_monthly: Math.round(cutMonthly), if_cut: cutMonthly && burn.burn && i.cash !== null ? (burn.burn - cutMonthly <= 0 ? null : Math.round(i.cash / (burn.burn - cutMonthly) * 10) / 10) : null },
     alive, months, cap: capView,

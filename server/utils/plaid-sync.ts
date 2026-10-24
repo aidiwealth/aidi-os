@@ -9,6 +9,23 @@ interface SyncPage { added: STxn[]; modified: STxn[]; removed: { transaction_id:
 export interface PItem { id: string; access_token_enc: string; institution: string | null; entity_id: string | null; tx_cursor: string | null }
 const ITEM_COLS = 'id, access_token_enc, institution, entity_id, tx_cursor'
 
+// The account name the feed's transactions are kept under.
+export const feedLabel = (inst: string | null, a: { name: string; mask: string | null }) => (inst ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : '')
+
+// Clear a connection's transactions and bring them all back from the bank (the full history Plaid has, as when it was
+// first linked). Categories the founder set by hand are put back on the same transactions; "always" rules apply anyway.
+export async function resyncPlaidItem(id: string): Promise<{ removed: number; added: number }> {
+  const it = (await db().query<PItem>(`SELECT ${ITEM_COLS} FROM banking.plaid_items WHERE id = $1`, [id])).rows[0]
+  if (!it) return { removed: 0, added: 0 }
+  const labels = (await db().query<{ name: string; mask: string | null }>('SELECT name, mask FROM banking.plaid_accounts WHERE item_id = $1', [id])).rows.map((a) => feedLabel(it.institution, a))
+  const kept = (await db().query<{ source_ref: string; category: string }>("SELECT source_ref, category FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[]) AND category_by = 'manual' AND category IS NOT NULL", [labels])).rows
+  const removed = (await db().query("DELETE FROM banking.ledger WHERE source = 'bank_feed' AND account_label = ANY($1::text[])", [labels])).rowCount ?? 0
+  await db().query('UPDATE banking.plaid_items SET tx_cursor = NULL, needs_sync = true WHERE id = $1', [id])
+  const r = await syncPlaidItem({ ...it, tx_cursor: null })
+  for (const k of kept) await db().query("UPDATE banking.ledger SET category = $2, category_by = 'manual' WHERE source = 'bank_feed' AND source_ref = $1", [k.source_ref, k.category])
+  return { removed, added: r.added }
+}
+
 export async function syncPlaidItem(it: PItem): Promise<{ added: number; modified: number; removed: number }> {
   const accts = new Map((await db().query<{ account_id: string; name: string; mask: string | null; type: string | null; subtype: string | null }>('SELECT account_id, name, mask, type, subtype FROM banking.plaid_accounts WHERE item_id = $1', [it.id])).rows.map((a) => [a.account_id, a]))
   const cardKeys = await cardIssuerKeys(), token = decryptText(it.access_token_enc)
@@ -29,7 +46,7 @@ export async function syncPlaidItem(it: PItem): Promise<{ added: number; modifie
     if (t.pending || !a || (isDebt(a) && !isCard(a))) return null
     const card = isCard(a), cardPay = card ? t.amount < 0 && CARD_PAY.test(t.name) : t.amount > 0 && cardKeys.some((k) => vendorKey(t.name, t.merchant_name).key.startsWith(k)) && (CARD_PAY.test(t.name) || ['LOAN_PAYMENTS', 'TRANSFER_OUT'].includes(t.personal_finance_category?.primary ?? ''))
     // The bank reports money out as a positive amount.
-    return { entity: it.entity_id, ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: (it.institution ?? 'Bank') + ' · ' + a.name + (a.mask ? ' ··' + a.mask : ''), bank_category: t.personal_finance_category?.primary ?? null, category: cardPay ? 'transfer' : card && t.amount < 0 ? 'other_income' : undefined }
+    return { entity: it.entity_id, ref: t.transaction_id, date: t.date, description: t.name, vendor: t.merchant_name ?? null, amount: -t.amount, currency: t.iso_currency_code || t.unofficial_currency_code || 'USD', account: feedLabel(it.institution, a), bank_category: t.personal_finance_category?.primary ?? null, category: cardPay ? 'transfer' : card && t.amount < 0 ? 'other_income' : undefined }
   }
   const added = await addToLedger('bank_feed', p.added.map(toRail).filter((x): x is RailTxn => !!x), it.entity_id ?? await companyEntityId())
   let modified = 0

@@ -36,7 +36,7 @@ const kpi = computed(() => { const g = grp.value; return [['Revenue', g.revenue]
 <template>
   <div v-if="row" class="card cs">
     <div class="ch"><div><span class="eyebrow">Consolidated · {{ currency }}</span><h2>{{ name }}, {{ mon(row.period_end) }}</h2>
-      <p class="mut">The {{ cols.length }} companies added together after taking out what they owe and bill each other.</p></div>
+      <p class="mut">The {{ cols.length }} companies combined, less intercompany amounts.</p></div>
       <div class="tools"><select v-model="month" aria-label="Month"><option v-for="r in [...withParts].reverse()" :key="r.period_end" :value="r.period_end">{{ mon(r.period_end) }}</option></select>
         <button type="button" class="btn secondary sm" @click="emit('rates')">Exchange rates</button></div></div>
     <div class="kp"><div v-for="[l, v] in kpi" :key="l"><span>{{ l }}</span><b :class="{ neg: (v ?? 0) < 0 }">{{ m(v) }}</b></div></div>

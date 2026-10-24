@@ -8,14 +8,14 @@ async function set(body: Record<string, unknown>) { busy.value = true; try { awa
 </script>
 <template>
   <div v-if="data?.company" class="card fv">
-    <div><h3>What investors see</h3><p class="hint">Your choice. Shown on your data room, investor page and investor updates; nothing is shown until you turn it on.</p></div>
+    <div><h3>What investors see</h3><p class="hint">Hidden from investors until you turn it on.</p></div>
     <label class="row"><input type="checkbox" :checked="data.summary" :disabled="busy" @change="set({ summary: ($event.target as HTMLInputElement).checked })"><span><b>A short financial summary</b><em>Revenue (last 12 months and quarter), growth, gross margin, net income, cash and runway.</em></span></label>
-    <div v-if="data.has_securities" class="srcs"><span class="lbl">Treasury bills and other securities, for investors (Financials always shows the bank balance)</span>
+    <div v-if="data.has_securities" class="srcs"><span class="lbl">Treasury bills and other securities, for investors</span>
       <label class="row"><input type="radio" name="fvsec" :checked="data.securities === true" :disabled="busy" @change="set({ investor_cash_with_securities: true })"><span><b>With cash, as "Cash and marketable securities"</b></span></label>
       <label class="row"><input type="radio" name="fvsec" :checked="data.securities === false" :disabled="busy" @change="set({ investor_cash_with_securities: false })"><span><b>Cash is the bank balance only</b></span></label>
-      <p v-if="data.securities === null" class="hint ask">Choose one: your investor page, updates and data room use it. Reports ask each time.</p></div>
+      <p v-if="data.securities === null" class="hint ask">Used on your investor page, updates and data room.</p></div>
     <div v-if="data.links.length" class="srcs"><span class="lbl">Show where the figures come from</span>
-      <label v-for="l in data.links" :key="l.id" class="row"><input type="checkbox" :checked="l.show_source" :disabled="busy" @change="set({ link_id: l.id, show_source: ($event.target as HTMLInputElement).checked })"><span><b>{{ l.name }}</b><em>Investors get this sheet's link: anyone with it can open the sheet, so share it as view-only.</em></span></label></div>
+      <label v-for="l in data.links" :key="l.id" class="row"><input type="checkbox" :checked="l.show_source" :disabled="busy" @change="set({ link_id: l.id, show_source: ($event.target as HTMLInputElement).checked })"><span><b>{{ l.name }}</b><em>Anyone with the link can open the sheet, so share it view-only.</em></span></label></div>
     <p v-else class="hint">Link your sheet (above) to show investors where the figures come from.</p>
     <details v-if="data.preview" class="pv"><summary>Preview</summary><FinSummary :fin="data.preview as any" /></details>
   </div>

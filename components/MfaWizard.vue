@@ -33,27 +33,27 @@ const APPS = ['Google Authenticator', 'Microsoft Authenticator', '1Password', 'A
     <div v-if="step === 0" class="pane">
       <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3z" /><path d="M9 12l2 2 4-4" /></svg></div>
       <h2>Protect your account</h2>
-      <p class="lead">Two-step verification adds a 6-digit code from an app on your phone to your sign-in. Even if someone gets into your email, they cannot get into {{ brand.name }}.</p>
+      <p class="lead">Add a 6-digit code from your phone to every {{ brand.name }} sign-in.</p>
       <div class="apps"><span v-for="a in APPS" :key="a">{{ a }}</span><span class="more">or any authenticator app</span></div>
       <button class="btn big" :disabled="busy" @click="start">{{ busy ? 'Preparing…' : 'Get started' }}</button>
     </div>
 
     <div v-else-if="step === 1 && setup" class="pane">
       <h2>Scan, then enter the code</h2>
-      <p class="lead">Open your authenticator app, add an account, and scan this code.</p>
+      <p class="lead">In your authenticator app, add an account and scan this code.</p>
       <div class="scan"><div class="qr" v-html="setup.qr" /></div>
       <p class="key">Can't scan? Enter this key: <code>{{ setup.secret }}</code> <button class="lk" type="button" @click="copy(setup.secret.replace(/\s/g, ''), 'key')">{{ copied === 'key' ? 'Copied' : 'Copy' }}</button></p>
       <label class="cl">The 6-digit code from the app</label>
       <CodeBoxes ref="boxes" v-model="code" :disabled="busy" :invalid="!!msg" @complete="enable" />
       <p v-if="msg" class="error">{{ msg }}</p>
-      <p v-else class="hint">{{ busy ? 'Checking…' : 'The code changes every 30 seconds; it is checked as soon as all six digits are in.' }}</p>
+      <p v-else class="hint">{{ busy ? 'Checking…' : 'Checked once all six digits are in.' }}</p>
       <button class="lk back" type="button" @click="step = 0; code = ''; msg = ''">Back</button>
     </div>
 
     <div v-else-if="step === 2" class="pane">
       <div class="ic ok" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></div>
       <h2>Two-step verification is on</h2>
-      <p class="lead">If you lose your phone, sign in with one of these recovery codes. Each works once, and they will not be shown again.</p>
+      <p class="lead">Use these if you lose your phone. Each works once; they are shown only now.</p>
       <div class="codes"><code v-for="c in codes" :key="c">{{ c }}</code></div>
       <div class="acts"><button class="btn secondary" type="button" @click="copy(codes.join('\n'), 'codes')">{{ copied === 'codes' ? 'Copied' : 'Copy all' }}</button><button class="btn secondary" type="button" @click="download">Download</button></div>
       <label class="chk"><input v-model="saved" type="checkbox"> I have saved my recovery codes somewhere safe</label>

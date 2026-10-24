@@ -65,16 +65,16 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
         <div class="secs">
           <label v-for="s in opts.sections" :key="s.key" class="sec" :class="{ on: f.picked.includes(s.key), off: !s.available }"><input v-model="f.picked" type="checkbox" :value="s.key" :disabled="!s.available"><span><b>{{ s.title }}</b><em>{{ s.available ? s.desc : 'Add your customer data on the Customers page to include this.' }}</em></span></label>
         </div>
-        <label v-if="opts.groups?.length && (f.picked.includes('retention') || f.picked.includes('customers'))" class="label">Customers in the retention and customer sections<select v-model="grp"><option value="">All customers</option><option v-for="g in opts.groups" :key="g.by + g.value" :value="g.by + '|' + g.value">{{ g.value }} only{{ g.by === 'size' ? ', by revenue size' : '' }} ({{ g.customers }} customers)</option></select><span class="sm">Retention for one group is the customers in it a year ago and now; Financials revenue is not compared for a group.</span></label>
-        <label v-if="f.picked.includes('intro')" class="label">Company introduction<textarea v-model="f.about" rows="4" maxlength="4000" placeholder="What the company does, for whom, where it operates and what makes it different" /><span class="sm">Taken from your investor page and report details; your edits here are kept for next month. Founded, head office, website and leadership are added from your report details.</span></label>
+        <label v-if="opts.groups?.length && (f.picked.includes('retention') || f.picked.includes('customers'))" class="label">Customers in the retention and customer sections<select v-model="grp"><option value="">All customers</option><option v-for="g in opts.groups" :key="g.by + g.value" :value="g.by + '|' + g.value">{{ g.value }} only{{ g.by === 'size' ? ', by revenue size' : '' }} ({{ g.customers }} customers)</option></select><span class="sm">Financials revenue is not compared for a group.</span></label>
+        <label v-if="f.picked.includes('intro')" class="label">Company introduction<textarea v-model="f.about" rows="4" maxlength="4000" placeholder="What the company does and for whom" /><span class="sm">From your investor page; edits are kept for next month.</span></label>
         <template v-if="f.picked.includes('comments')">
-          <label class="label">Your comments<textarea v-model="f.comments" rows="4" maxlength="8000" placeholder="What happened this month, what drove the numbers" /><button type="button" class="lk dr" @click="draft">Draft from the analysis</button></label>
+          <label class="label">Your comments<textarea v-model="f.comments" rows="4" maxlength="8000" placeholder="What happened this month" /><button type="button" class="lk dr" @click="draft">Draft from the analysis</button></label>
           <label class="label">Priorities for next month<textarea v-model="f.priorities" rows="3" maxlength="4000" placeholder="The three or four things the team will focus on" /></label>
         </template>
         <CompanyLogo :company="company" note="The logo on the report is the one set in Settings." />
         <label class="chk"><input v-model="f.room" type="checkbox"> Also add it to the data room (Financials folder)</label>
-        <label v-if="canUpd" class="chk"><input v-model="f.update" type="checkbox"> Also start a draft investor update with these numbers (key metrics, revenue chart and, with customer data, retention and sectors)</label>
-        <p class="sm">Any of these metrics, including retention, customers, sectors and your KPIs, can also go on your <NuxtLink to="/investor-page">investor page</NuxtLink> and in <NuxtLink to="/updates">investor updates</NuxtLink>.</p>
+        <label v-if="canUpd" class="chk"><input v-model="f.update" type="checkbox"> Also start a draft investor update with these numbers</label>
+        <p class="sm">These metrics can also go on your <NuxtLink to="/investor-page">investor page</NuxtLink> and in <NuxtLink to="/updates">investor updates</NuxtLink>.</p>
       </template>
       <p v-if="f.msg" class="error">{{ f.msg }}</p>
     </div>

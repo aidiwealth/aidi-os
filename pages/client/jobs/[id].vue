@@ -37,7 +37,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
 const { data: wal, refresh: rwal } = await useFetch<{ currency: string; balance_minor: number } | null>('/api/portal/wallet', { key: 'portal:wallet' })
 const paying = ref('')
 const walletCovers = (i: Inv) => !!wal.value && wal.value.currency === i.currency && wal.value.balance_minor >= Math.round(Number(i.amount) * 100)
-async function payWallet(i: Inv) { if (!await askConfirm('Pay ' + new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) + ' from your wallet?')) return; paying.value = i.id; msg.value = ''; try { await $fetch('/api/portal/invoices/' + i.id + '/pay-wallet', { method: 'POST' }); ok.value = 'Paid from your wallet. Your receipt is on its way.'; await refresh(); await rwal() } catch (e) { msg.value = portalErr(e) } finally { paying.value = '' } }
+async function payWallet(i: Inv) { if (!await askConfirm('Pay ' + new Intl.NumberFormat('en-US', { style: 'currency', currency: i.currency }).format(Number(i.amount)) + ' from your wallet?')) return; paying.value = i.id; msg.value = ''; try { await $fetch('/api/portal/invoices/' + i.id + '/pay-wallet', { method: 'POST' }); ok.value = 'Paid from your wallet.'; await refresh(); await rwal() } catch (e) { msg.value = portalErr(e) } finally { paying.value = '' } }
 async function delJob() { if (!data.value || !await askConfirm('Delete this request? This removes the request and its messages.')) return; try { await $fetch('/api/portal/jobs/' + data.value.job.id, { method: 'DELETE' }); await navigateTo('/client') } catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not delete.') } }
 
 const files = computed(() => (data.value?.events ?? []).filter((e) => e.document_id))
@@ -72,9 +72,9 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
     <ol v-if="job.status !== 'cancelled'" class="steps">
       <li v-for="([k, l], i) in STEPS" :key="k" :class="{ done: i < stepAt || job.status === 'completed', now: i === stepAt && job.status !== 'completed' }"><span class="dot">{{ i < stepAt || job.status === 'completed' ? '✓' : i + 1 }}</span><b>{{ l }}</b></li>
     </ol>
-    <div v-if="job.status === 'waiting_client'" class="need"><b>We need something from you.</b> Please read the latest message from our team below, then send what is needed.</div>
+    <div v-if="job.status === 'waiting_client'" class="need"><b>We need something from you.</b> See the latest message below.</div>
     <ServiceNotice v-else-if="job.status !== 'completed'" compact />
-    <div v-for="a in pending" :key="a.id" class="sign"><div><b>Please sign: {{ a.title }}</b><span>Effective {{ day(a.effective_date) }}. Our agreement for this request: service levels, fees and refunds.</span></div><button type="button" class="btn" @click="signing = a; sErr = ''">Review and sign</button></div>
+    <div v-for="a in pending" :key="a.id" class="sign"><div><b>Please sign: {{ a.title }}</b><span>Effective {{ day(a.effective_date) }}. Service levels, fees and refunds.</span></div><button type="button" class="btn" @click="signing = a; sErr = ''">Review and sign</button></div>
     <p v-if="ok" class="flash ok" role="status">{{ ok }}</p><p v-if="msg" class="flash error" role="alert">{{ msg }}</p>
 
     <div class="grid">
@@ -97,7 +97,7 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
               <button v-if="e.document_id" type="button" class="doc" @click="openDoc(e.document_id)"><FileBadge :name="fname(e)" size="sm" />{{ fname(e) }}</button>
             </li>
           </ul>
-          <p v-else class="muted">No updates yet. We will post every step here and email you.</p>
+          <p v-else class="muted">No updates yet.</p>
         </div>
       </div>
 
@@ -119,7 +119,7 @@ const rich = (s: string) => mdRender(s.includes('\n\n') || /^\s*([-*]|\d+\.|#|>)
         </div>
         <form class="card" @submit.prevent="send">
           <h2>Message our team</h2>
-          <div @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send"><ClientOnly><RichEditor v-model="text" compact minimal :min-height="110" :max-length="5000" placeholder="Ask a question or tell us something about this request" /><template #fallback><textarea rows="4" disabled /></template></ClientOnly></div>
+          <div @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send"><ClientOnly><RichEditor v-model="text" compact minimal :min-height="110" :max-length="5000" placeholder="Ask a question about this request" /><template #fallback><textarea rows="4" disabled /></template></ClientOnly></div>
           <button class="btn" type="submit" :disabled="busy || !hasText">Send message</button>
         </form>
       </aside>

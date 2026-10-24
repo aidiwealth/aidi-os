@@ -59,7 +59,7 @@ async function addKeyAccounts() {
 const wc = reactive({ open: false, picked: [] as string[] })
 async function toCustomers() {
   busy.value = true; msg.value = ''
-  try { const r = await sf<{ added: number }>('/api/sales/to-customers', { method: 'POST', body: { deal_ids: wc.picked } }); wc.open = false; ok.value = r.added + ' customer' + (r.added === 1 ? '' : 's') + ' added to Financials. Their revenue comes in with your customer revenue data.'; await loadCs(); await refresh() }
+  try { const r = await sf<{ added: number }>('/api/sales/to-customers', { method: 'POST', body: { deal_ids: wc.picked } }); wc.open = false; ok.value = r.added + ' customer' + (r.added === 1 ? '' : 's') + ' added to Financials.'; await loadCs(); await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 async function delDeal() { if (!await askConfirm('Delete the deal "' + f.name + '"?')) return; await sf('/api/sales/deal', { method: 'POST', body: { id: f.id, delete: true } }); f.open = false; await refresh() }
@@ -76,11 +76,11 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 </script>
 <template>
   <section class="sl">
-    <div class="hd"><div><ScopeSwitch page="Sales" /><p class="lead">Design your sales process, move deals through it, and see what it will close. Conversion, cycle and forecasts come from your own deals as they move.</p></div>
+    <div class="hd"><div><ScopeSwitch page="Sales" /><p class="lead">Run deals through your sales process and see what it will close.</p></div>
       <div v-if="canEdit" class="tb"><button v-if="p" class="btn secondary" @click="imp = true">Import deals</button><button v-if="p && cs?.customers.length" class="btn secondary" @click="ka.open = true">Key accounts</button><button class="btn secondary" @click="nw.open = true">New process</button><button v-if="p" class="btn" @click="go({ t: 'pipeline' }); edit()">Add a deal</button></div></div>
     <p v-if="msg && !f.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <ClientOnly><PendingUpdates v-if="p" kind="sales_deals" :process-id="p.id" what="deals" @done="refresh()" /></ClientOnly>
-    <div v-if="d && !p" class="empty"><h2>Set up your sales process</h2><p>Start from a template and make it yours: the stages a deal goes through, how many should move on at each, how long each takes, and the steps that move them on. Several processes are fine (for example SMB and Enterprise).</p>
+    <div v-if="d && !p" class="empty"><h2>Set up your sales process</h2><p>Draft one with AI or start from a template, then adjust the stages.</p>
       <div class="aic"><b><AiSpark /> Describe how you sell and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. We sell a messaging API to banks and fintechs in Nigeria. Leads come from referrals and outbound; a technical demo, then a pilot, then procurement and a contract." /><div><button class="btn" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <p class="or">Or start from a template</p>
       <div class="tpl"><button v-for="t in d.templates" :key="t.key" class="opt" :disabled="!canEdit" @click="nw.template = t.key; create()"><b>{{ t.label }}</b><span>{{ t.key === 'b2b' ? 'Lead, qualified, demo, proposal, negotiation' : t.key === 'self_serve' ? 'Sign-up, activated, trial, paying' : 'Target account, meeting, pilot, commercials, contract' }}</span></button></div></div>
@@ -89,30 +89,30 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
         <nav class="tabs"><button v-for="[k, l] in ([['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['design', 'Process design']] as const)" :key="k" :class="{ on: tab === k }" @click="go({ t: k === 'dashboard' ? undefined : k })">{{ l }}</button></nav></div>
 
       <template v-if="tab === 'dashboard'">
-        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Every company's sales processes, totals in {{ d.rollup.currency }}</span></div>
+        <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Totals in {{ d.rollup.currency }}</span></div>
           <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Deals</th><th class="r">Open pipeline</th><th class="r">Weighted</th><th class="r">Won, last 90 days</th><th class="r">Win rate</th></tr></thead>
             <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ r.deals }}</td><td class="r">{{ briefMoney(r.open, r.currency) }}</td><td class="r">{{ briefMoney(r.weighted, r.currency) }}</td><td class="r">{{ briefMoney(r.won_90d, r.currency) }}</td><td class="r">{{ r.win_rate === null ? '—' : r.win_rate + '%' }}</td></tr>
               <tr class="tot"><td>Group total</td><td /><td /><td class="r">{{ briefMoney(d.rollup.total.open, d.rollup.currency) }}</td><td class="r">{{ briefMoney(d.rollup.total.weighted, d.rollup.currency) }}</td><td class="r">{{ briefMoney(d.rollup.total.won_90d, d.rollup.currency) }}</td><td /></tr></tbody></table>
-          <p class="mut">Below: {{ p.company }} · {{ p.name }}. Pick another process above.</p></div>
+          <p class="mut">Below: {{ p.company }} · {{ p.name }}</p></div>
         <div class="fx-stats">
           <StatTile label="Open pipeline" :value="m(st.open_value)" :note="st.stages.filter((s) => s.kind === 'open').reduce((t, s) => t + s.now, 0) + ' open deals'" />
-          <StatTile label="Expected to close" :value="m(st.weighted)" note="Each deal at its chance from its stage" />
+          <StatTile label="Expected to close" :value="m(st.weighted)" note="Weighted by stage" />
           <StatTile label="Win rate" :value="st.win_rate === null ? '—' : st.win_rate + '%'" :note="st.won + ' won · ' + st.lost + ' lost'" />
           <StatTile label="Average deal" :value="m(st.avg_won)" :note="st.cycle_days ? 'Closes in about ' + Math.round(st.cycle_days) + ' days' : ''" />
         </div>
         <div v-if="d.split && (d.split.expansion || d.split.renewal)" class="hb">Open pipeline: <b>{{ m(d.split.new) }}</b> new business · <b>{{ m(d.split.expansion + d.split.renewal) }}</b> from existing customers (growing spend {{ m(d.split.expansion) }}, renewals {{ m(d.split.renewal) }}).</div>
-        <div v-if="canEdit && cs?.won_not_customers.length" class="hb">{{ cs.won_not_customers.length }} won deal{{ cs.won_not_customers.length === 1 ? ' is' : 's are' }} not in your customers in Financials yet. <button class="lk" @click="wc.picked = cs!.won_not_customers.map((x) => x.id); wc.open = true">Review and add</button></div>
+        <div v-if="canEdit && cs?.won_not_customers.length" class="hb">{{ cs.won_not_customers.length }} won deal{{ cs.won_not_customers.length === 1 ? ' is' : 's are' }} not in Financials yet. <button class="lk" @click="wc.picked = cs!.won_not_customers.map((x) => x.id); wc.open = true">Review and add</button></div>
         <div v-if="p.target_monthly" class="hb"><b>Target: {{ p.target_kind === 'revenue' ? m(p.target_monthly) + ' of new revenue' : p.target_monthly + ' deals' }} a month.</b>
           <template v-if="st.to_target?.deals_needed"> That takes about <b>{{ st.to_target.deals_needed }} won deals</b> a month, so roughly <b>{{ st.to_target.leads_needed }} new deals entering "{{ p.stages.find((s) => s.kind === 'open')?.name }}"</b> each month ({{ st.to_target.note }}).</template><template v-else> {{ st.to_target?.note ?? 'Win a few deals so the win rate is known.' }}</template>
           <template v-if="st.velocity_per_month"> At today's pace the pipeline closes about <b>{{ m(st.velocity_per_month) }}</b> a month.</template></div>
-        <div v-else-if="canEdit" class="hb">Set a monthly target in <a href="#" @click.prevent="go({ t: 'design' })">Process design</a> to see what it needs at the top of the funnel.</div>
-        <div class="card"><div class="ch"><h2>Conversion by stage</h2><span class="mut">Actual (from deals that moved) against your target. Actual shows once three deals have passed a stage.</span></div>
+        <div v-else-if="canEdit" class="hb">Set a monthly target in <a href="#" @click.prevent="go({ t: 'design' })">Process design</a>.</div>
+        <div class="card"><div class="ch"><h2>Conversion by stage</h2><span class="mut">Actual vs target · shows after three deals pass a stage</span></div>
           <table class="t" data-nosearch><thead><tr><th>Stage</th><th class="r">Reached</th><th class="r">In it now</th><th>Moves on: actual vs target</th><th class="r">Days: actual vs target</th></tr></thead>
             <tbody><tr v-for="s in st.stages.filter((x) => x.kind === 'open')" :key="s.key"><td>{{ s.name }}</td><td class="r">{{ s.reached }}</td><td class="r">{{ s.now }}<small>{{ m(s.value_now) }}</small></td>
               <td><div class="cv"><i><em :style="{ width: (s.actual_pct ?? 0) + '%' }" :class="{ lo: s.actual_pct !== null && s.target_pct !== null && s.actual_pct < s.target_pct }" /><b v-if="s.target_pct !== null" :style="{ left: s.target_pct + '%' }" /></i><span>{{ s.actual_pct === null ? '—' : s.actual_pct + '%' }} / {{ s.target_pct ?? '—' }}%</span></div></td>
               <td class="r" :class="{ neg: s.avg_days !== null && s.target_days !== null && s.avg_days > s.target_days }">{{ s.avg_days ?? '—' }} / {{ s.target_days ?? '—' }}</td></tr></tbody></table></div>
         <div class="two">
-          <div class="card"><div class="ch"><h2>Expected wins</h2><span class="mut">Open deals at their chance, by expected close month</span></div>
+          <div class="card"><div class="ch"><h2>Expected wins</h2><span class="mut">Weighted, by close month</span></div>
             <div v-if="st.forecast.length" class="fc"><div v-for="x in st.forecast" :key="x.month"><span>{{ mon(x.month) }}</span><i><em :style="{ width: x.expected / maxFc * 100 + '%' }" /></i><b>{{ m(x.expected) }}</b></div></div><p v-else class="mut">No open deals yet.</p></div>
           <div class="card"><div class="ch"><h2>Won by month</h2></div>
             <div v-if="Object.keys(st.won_value_month).length" class="fc"><div v-for="k in Object.keys(st.won_value_month).sort().slice(-6)" :key="k"><span>{{ mon(k) }}</span><i><em :style="{ width: st.won_value_month[k]! / Math.max(...Object.values(st.won_value_month)) * 100 + '%' }" /></i><b>{{ m(st.won_value_month[k]) }}</b></div></div><p v-else class="mut">No deals won yet.</p></div>
@@ -124,7 +124,7 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
           <div v-for="x in c.deals" :key="x.id" class="dc" draggable="true" @dragstart="drag = x.id" @click="edit(x)"><b>{{ x.name }}</b><em v-if="x.deal_type && x.deal_type !== 'new'" class="ex">{{ x.deal_type === 'renewal' ? 'Renewal' : 'Existing customer' }}</em><span>{{ m(x.value) }}{{ x.recurring ? ' a month' : '' }}</span><small>{{ [who(x.owner_id), x.expected_close ? 'close ' + x.expected_close : ''].filter(Boolean).join(' · ') }}<em v-if="late(x)"> · late</em></small>
             <small v-if="c.kind === 'open' && c.steps.length" class="pg">{{ (x.steps_done[c.key] ?? []).length }}/{{ c.steps.length }} steps</small></div>
           <button v-if="c.kind === 'open'" class="lk add" @click="edit(undefined, c.key)">+ Add</button></div></div>
-        <p class="mut">Drag a card to move it, or open it to tick its steps. <button v-if="canEdit" class="lk" @click="imp = true">Import deals from Excel, CSV or a Google Sheet</button></p>
+        <p class="mut">Drag a card to move it. <button v-if="canEdit" class="lk" @click="imp = true">Import deals</button></p>
       </template>
       <ProcessEditor v-if="tab === 'design'" :process="p" kind="sales" :can-edit="canEdit" @saved="refresh()" @deleted="go({ p: undefined, t: undefined }); refresh()" />
     </template>
@@ -147,14 +147,14 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
       <template #foot><button v-if="f.id" class="btn secondary" @click="delDeal">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button class="btn" :disabled="busy || !f.name.trim()" @click="saveDeal">{{ busy ? 'Saving…' : 'Save' }}</button></template>
     </AppModal>
     <AppModal :open="ka.open" title="Key accounts from your customers" wide @close="ka.open = false">
-      <div class="frm"><p class="w mut">Customers from Financials{{ cs?.as_of ? ' (revenue to ' + cs.as_of + ')' : '' }}. Each one picked becomes a deal in {{ p?.name }}: growing their spend by the share below, or renewing what they pay a year.</p>
+      <div class="frm"><p class="w mut">Each customer picked becomes a deal in {{ p?.name }}{{ cs?.as_of ? ' (revenue to ' + cs.as_of + ')' : '' }}.</p>
         <label>Deal type<select v-model="ka.type"><option value="expansion">Grow spend</option><option value="renewal">Renewal</option></select></label><label v-if="ka.type === 'expansion'">Grow spend by (%)<input v-model.number="ka.uplift" type="number" min="0" max="1000"></label>
         <label class="w">Find<input v-model="ka.q" placeholder="Customer name"></label>
         <div class="w kl"><label v-for="c in kaList" :key="c.key" class="kr"><input v-model="ka.picked" type="checkbox" :value="c.key" :disabled="c.open_deals > 0"><span><b>{{ c.name }}</b><small>{{ cm(c.monthly) }} a month · {{ cm(c.year) }} last 12 months{{ c.segment ? ' · ' + c.segment : '' }}{{ c.open_deals ? ' · already in the pipeline' : '' }}</small></span></label></div></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="ka.open = false">Cancel</button><button class="btn" :disabled="busy || !ka.picked.length" @click="addKeyAccounts">Add {{ ka.picked.length || '' }} to the pipeline</button></template>
     </AppModal>
     <AppModal :open="wc.open" title="Add won deals to your customers" @close="wc.open = false">
-      <div class="frm"><p class="w mut">These won new-business deals become customers in Financials, starting the month they were won. Untick any that should not.</p>
+      <div class="frm"><p class="w mut">Added from the month they were won. Untick any to skip.</p>
         <div class="w kl"><label v-for="x in cs?.won_not_customers ?? []" :key="x.id" class="kr"><input v-model="wc.picked" type="checkbox" :value="x.id"><span><b>{{ x.customer_name ?? x.name }}</b><small>{{ x.process }}{{ x.value ? ' · ' + m(x.value) : '' }}{{ x.closed_at ? ' · won ' + x.closed_at.slice(0, 10) : '' }}</small></span></label></div></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="wc.open = false">Not now</button><button class="btn" :disabled="busy || !wc.picked.length" @click="toCustomers">Add {{ wc.picked.length }} customer{{ wc.picked.length === 1 ? '' : 's' }}</button></template>
     </AppModal>

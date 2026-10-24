@@ -20,7 +20,7 @@ const people = (l: L) => new Set(l.visits.map((v) => v.email ?? '')).size
 <template>
   <AppModal :open="open" :title="'Share ' + title" wide @close="emit('close')">
     <div class="sl">
-      <p class="mut">Make a private link for each investor, board member or adviser, so you can see who opened it and for how long. People with the link see a read-only view that stays up to date.</p>
+      <p class="mut">A private link per person, so you see who opened it. Read-only.</p>
       <form class="nl" @submit.prevent="create"><label class="label">Who is it for?<input v-model="nf.label" maxlength="120" placeholder="e.g. Ventures Platform, or Board"></label>
         <label class="label">Expires<select v-model.number="nf.expires_days"><option :value="0">Never</option><option :value="7">In 7 days</option><option :value="30">In 30 days</option><option :value="90">In 90 days</option></select></label>
         <div class="ck"><label><input v-model="nf.require_email" type="checkbox"> Ask for their email first</label><label><input v-model="nf.notify" type="checkbox"> Email me when it is opened</label></div>

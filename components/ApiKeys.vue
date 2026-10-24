@@ -13,9 +13,9 @@ const day = (d: string | null) => (d ? new Date(d).toLocaleString('en-GB', { day
 </script>
 <template>
   <div class="ak">
-    <div v-if="res && !res.company" class="card sw"><div><h2>API access</h2><p class="mut">Off by default for Aidi workspaces. Switch it on only if a system needs to read or write this workspace's data.</p></div><label class="tg"><input type="checkbox" :checked="res.enabled" @change="setEnabled(($event.target as HTMLInputElement).checked)"><span class="sl" /><span>{{ res.enabled ? 'On' : 'Off' }}</span></label></div>
+    <div v-if="res && !res.company" class="card sw"><div><h2>API access</h2><p class="mut">Off by default. Turn on only if a system needs this workspace's data.</p></div><label class="tg"><input type="checkbox" :checked="res.enabled" @change="setEnabled(($event.target as HTMLInputElement).checked)"><span class="sl" /><span>{{ res.enabled ? 'On' : 'Off' }}</span></label></div>
     <template v-if="res?.enabled">
-    <div class="card"><h2>Data API</h2><p class="mut">Connect your own systems: push figures and contacts in as they change, and pull your data out. Keys belong to this workspace; read keys can only read.</p>
+    <div class="card"><h2>Data API</h2><p class="mut">Connect your own systems to push and pull data. Read keys can only read.</p>
       <form class="row" @submit.prevent="create"><input v-model="f.name" placeholder="Key name, e.g. Accounting sync" maxlength="80" required><label class="cb"><input v-model="f.write" type="checkbox"> Allow writing</label><button class="btn" type="submit">Create key</button></form>
       <div v-if="fresh" class="new"><b>Copy your key now. It won't be shown again.</b><code>{{ fresh }}</code><button class="btn secondary sm" @click="copy">{{ copied ? 'Copied' : 'Copy' }}</button></div>
       <p v-if="msg" class="error">{{ msg }}</p>

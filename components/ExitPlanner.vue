@@ -67,7 +67,7 @@ const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./,
 <template>
   <div v-if="plan" class="xp">
     <div class="card">
-      <div class="xh"><div><h3>Exit scenarios</h3><p class="mut">What the company could sell for, and what each holder would receive, in worst, base and best cases.</p></div><span class="mut">{{ saving ? 'Saving…' : '' }}</span></div>
+      <div class="xh"><div><h3>Exit scenarios</h3><p class="mut">Sale value and what each holder receives, by case.</p></div><span class="mut">{{ saving ? 'Saving…' : '' }}</span></div>
       <div class="xa">
         <label class="label">Exit value based on<select v-model="a.basis"><option value="arr">ARR{{ plan.basis.arr ? ': ' + money(plan.basis.arr) : '' }}</option><option value="revenue_ttm">Revenue, last 12 months{{ plan.basis.revenue_ttm ? ': ' + money(plan.basis.revenue_ttm) : '' }}</option><option v-if="plan.basis.ebitda_ttm != null" value="ebitda_ttm">EBITDA, last 12 months: {{ money(plan.basis.ebitda_ttm) }}</option><option value="manual">A figure I enter (e.g. ARR at exit)</option></select></label>
         <label v-if="a.basis === 'manual'" class="label">Figure<input v-model.number="a.basis_value" type="number" min="0" step="10000"></label>
@@ -78,26 +78,26 @@ const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./,
       <div v-if="a.basis !== 'manual'" class="xg"><label class="chk"><input v-model="a.project" type="checkbox"> Grow it to the exit year</label>
         <template v-if="a.project"><label class="label">Years to exit<input v-model.number="a.years" type="number" min="0" max="15" step="1"></label><label class="label">Growth a year (%)<input v-model.number="a.growth" type="number" min="-90" max="1000" step="5" :placeholder="plan.basis.growth_pct != null ? String(plan.basis.growth_pct) : 'e.g. 40'"></label></template>
         <span class="mut">{{ basisNote ? 'From your Financials: ' + basisNote + '.' : '' }}{{ a.project ? (projFromModel != null ? ' Using your projection for ' + exitYear + ': ' + money(projFromModel) + '.' : ' ' + money(nowVal) + ' today, growing ' + growthUsed + '% a year → ' + money(basisVal) + ' in ' + exitYear + '.') : '' }}{{ plan.basis.growth_pct != null ? ' Growth in your figures: ' + plan.basis.growth_pct + '% a year (' + plan.basis.growth_source.toLowerCase() + ').' : '' }}</span></div>
-      <p v-if="a.basis === 'ebitda_ttm' && (plan.basis.ebitda_ttm ?? 0) <= 0" class="warn">EBITDA is not positive yet, so an EBITDA multiple gives no value: use revenue or ARR.</p>
+      <p v-if="a.basis === 'ebitda_ttm' && (plan.basis.ebitda_ttm ?? 0) <= 0" class="warn">EBITDA is not positive yet: use revenue or ARR.</p>
       <p v-if="!basisVal" class="warn">No {{ a.basis === 'arr' ? 'ARR' : a.basis === 'revenue_ttm' ? 'revenue' : a.basis === 'ebitda_ttm' ? 'EBITDA' : 'figure' }} to work from{{ a.basis !== 'manual' ? ': ' + ((plan.basis as any).note || 'add revenue in Financials.') + ' Or choose "A figure I enter".' : '.' }}</p>
       <p v-else-if="(plan.basis as any).note" class="mut sm">{{ (plan.basis as any).note }}</p>
       <div v-if="plan.assumptions.ai_multiples" class="aim"><span><b>Suggested multiples: {{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}×</b> {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}<span class="why" :class="{ clip: !aiMore }">{{ plan.assumptions.ai_multiples.rationale }}</span><button v-if="plan.assumptions.ai_multiples.rationale.length > 160" class="lk sm" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Less' : 'Why these' }}</button></span><button class="btn secondary sm" type="button" @click="useAi">Use these</button></div>
       <label class="own">Or try your own sale price<input v-model.number="own" type="number" min="0" step="1000000" placeholder="e.g. 25000000"><span v-if="Number(own) > 0" class="mut sm">Added as a column below</span></label>
-      <p v-if="!hasShares" class="warn">Issue the shares first (Shareholders) to see what each holder receives.</p>
+      <p v-if="!hasShares" class="warn">Issue shares first to see what each holder receives.</p>
       <div v-if="basisVal && hasShares" class="tw"><table class="t" data-nosearch>
         <thead><tr><th /><th v-for="s in scen" :key="s.k" class="r" :class="{ ownc: s.k === 'own' }">{{ s.label }}<em>{{ s.mult != null ? s.mult + '×' : 'Your figure' }}</em></th></tr></thead>
         <tbody><tr class="tot"><td><b>Exit value</b></td><td v-for="s in scen" :key="s.k" class="r"><b>{{ money(s.value) }}</b></td></tr>
           <tr v-for="r in rows" :key="r.name"><td>{{ r.name }}<span v-if="r.how" class="sub">{{ r.how }}</span></td><td v-for="(v, i) in r.v" :key="i" class="r">{{ money(v) }}<span class="sub">{{ scen[i]!.value ? Math.round(v / scen[i]!.value * 1000) / 10 + '%' : '' }}</span></td></tr>
           <tr><td>Per common share</td><td v-for="s in scen" :key="s.k" class="r">{{ s.wf ? '$' + s.wf.per_common.toLocaleString('en-US', { maximumFractionDigits: s.wf.per_common < 1 ? 4 : 2 }) : '—' }}</td></tr></tbody></table></div>
-      <p class="fine">Before fees, taxes, earn-outs and escrow. Preferred classes take their preference or convert, whichever pays more; SAFEs and notes are paid back or convert at their cap or discount, whichever is worth more; options receive the price less their strike. An estimate, not financial advice.</p>
+      <p class="fine">Before fees, taxes, earn-outs and escrow. An estimate, not financial advice.</p>
     </div>
 
     <div class="card">
-      <div class="xh"><div><h3>Potential buyers</h3><p class="mut">Companies and funds likely to buy a business like yours, with why, what they have bought before and how to reach them.</p></div>
+      <div class="xh"><div><h3>Potential buyers</h3><p class="mut">Likely buyers, their past deals and how to reach them.</p></div>
         <span class="row"><button class="btn secondary sm" type="button" @click="nb.open = !nb.open">Add a buyer</button><button class="btn sm" type="button" :disabled="searching" @click="find">{{ searching ? 'Searching…' : plan.buyers.length ? 'Find more with AI' : 'Find buyers with AI' }}</button></span></div>
       <div class="xa"><label class="label w2">What the company does (for the search)<input v-model="a.about" maxlength="600" placeholder="e.g. Messaging and fraud-prevention APIs for African banks and fintechs" @change="save()"></label>
         <label class="label w2">Focus (optional)<input v-model="a.focus" maxlength="300" placeholder="e.g. telecoms and payments companies expanding into Africa" @change="save()"></label></div>
-      <p v-if="searching" class="mut">Searching for buyers, their past deals and contact routes. This takes a minute or two; you can leave this page.</p>
+      <p v-if="searching" class="mut">Searching for buyers, their past deals and contact routes. This takes a minute or two.</p>
       <p v-else-if="plan.search.error" class="error">{{ plan.search.error }}</p>
       <p v-else-if="plan.search.note && plan.buyers.length" class="mut">{{ plan.search.note }}</p>
       <div v-if="nb.open" class="nb"><input v-model="nb.name" placeholder="Name" maxlength="160"><input v-model="nb.website" placeholder="Website" maxlength="300"><input v-model="nb.why" placeholder="Why they would buy" maxlength="600"><button class="btn sm" type="button" :disabled="!nb.name.trim()" @click="addBuyer">Add</button></div>

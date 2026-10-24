@@ -24,7 +24,7 @@ async function save() {
   <section>
     <p class="label">Family Office</p>
     <div class="head"><h1>Entities</h1><button v-if="isAdmin" class="btn" type="button" @click="edit()">Add entity</button></div>
-    <p class="lead">The group's companies, funds and trusts. Deals are tagged to the vehicle that invests, portfolio companies to the entity that holds them, and documents to the entity they belong to.</p>
+    <p class="lead">The group's companies, funds and trusts.</p>
     <form v-if="open" class="card frm" @submit.prevent="save">
       <label class="label">Name<input v-model="form.name" required maxlength="200"></label>
       <label class="label">Legal name<input v-model="form.legal_name" maxlength="300"></label>

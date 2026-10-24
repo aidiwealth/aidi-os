@@ -112,7 +112,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
     <template v-if="tab === 'people'">
       <div v-if="!current.length" class="card setup">
         <h2>Start the register</h2>
-        <p class="mut">{{ isTrust ? 'Record who set up the trust, who runs it and who it is for. Trustees and the protector approve papers by signing in with the email you record; beneficiaries can receive distributions.' : 'Record who runs and owns this company. Directors, members and signatories approve papers by signing in with the email you record.' }}</p>
+        <p class="mut">{{ isTrust ? 'Add the settlor, trustees and beneficiaries. Signers approve with the email you record.' : 'Add who runs and owns this company. Signers approve with the email you record.' }}</p>
         <div v-if="canManageParties" class="qk"><button v-for="r in QUICK" :key="r" type="button" class="btn secondary" @click="editParty(undefined, r)">Add {{ ROLE[r]!.toLowerCase() }}</button></div>
       </div>
       <div v-else class="pp">
@@ -141,7 +141,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
             <p v-if="Math.round(ownedPct) !== 100" class="mut sm">Recorded interests add up to {{ ownedPct.toLocaleString('en-US', { maximumFractionDigits: 2 }) }}%, not 100%.</p></div>
           <div class="card who">
             <h3>Who approves papers</h3>
-            <p class="mut sm">{{ signers.length ? 'Papers need a majority (' + majority + ' of ' + signers.length + ') unless you set a number.' : 'No one yet. Papers can be drafted but not approved.' }}</p>
+            <p class="mut sm">{{ signers.length ? 'Majority (' + majority + ' of ' + signers.length + ') unless set per paper.' : 'No one yet. Papers can be drafted, not approved.' }}</p>
             <div v-for="s in signers" :key="s.email" class="sr"><span>{{ s.name }}</span><em :class="{ warn: !s.user_id }">{{ s.user_id ? 'Can sign in' : 'Needs an account' }}</em></div>
           </div>
         </aside>
@@ -164,7 +164,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
       </div>
       <div v-else class="card setup">
         <h2>No papers yet</h2>
-        <p class="mut">Draft a resolution, minutes of a meeting, a written consent or a distribution{{ isTrust ? ' to a beneficiary' : '' }}. Describe it in a sentence and AI writes it from the register; then circulate it for approval.</p>
+        <p class="mut">Draft a paper, then circulate it for approval.</p>
         <div class="qk"><button v-for="(l, k) in RK" :key="k" type="button" class="btn secondary" @click="rf.kind = k; newPaper()">New {{ l.toLowerCase() }}</button></div>
       </div>
     </template>
@@ -173,7 +173,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
       <form id="pform" class="frm" @submit.prevent="saveParty">
         <label class="lb">Name<input v-model="pf.name" required maxlength="200"></label>
         <label class="lb">Role<select v-model="pf.role"><option v-for="(l, k) in ROLE" :key="k" :value="k">{{ l }}</option></select></label>
-        <label class="lb full">Email<input v-model="pf.email" type="email" maxlength="254"><em>{{ SIGN.includes(pf.role) ? 'Required to approve papers: they sign in with this email.' : 'Optional.' }}</em></label>
+        <label class="lb full">Email<input v-model="pf.email" type="email" maxlength="254"><em>{{ SIGN.includes(pf.role) ? 'Needed to approve papers.' : 'Optional.' }}</em></label>
         <label class="lb">{{ isTrust ? 'Interest' : 'Ownership' }} (%)<input v-model="pf.share_pct" inputmode="decimal" placeholder="Optional"></label>
         <span />
         <label class="lb">From<input v-model="pf.start_date" type="date"></label>
@@ -195,11 +195,11 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
         <label v-if="rf.kind === 'minutes'" class="lb">Meeting date<input v-model="rf.meeting_date" type="date"></label>
         <label class="lb">Approvals needed<input v-model="rf.required_approvals" type="number" min="1" :max="signers.length" :placeholder="'Majority (' + majority + ')'"></label>
         <label class="lb">Supporting document<select v-model="rf.document_id"><option value="">None</option><option v-for="d in docs ?? []" :key="d.id" :value="d.id">{{ d.title }}</option></select></label>
-        <div class="aib full"><b>✦ Write with AI</b><span>Say what it should cover; AI drafts it from this entity's register{{ rf.kind === 'distribution' ? ', the beneficiary and amount' : rf.kind === 'minutes' ? ' and the meeting date' : '' }}. Gaps show as [brackets].</span>
+        <div class="aib full"><b>✦ Write with AI</b><span>Say what it should cover. Gaps show as [brackets].</span>
           <textarea v-model="ai.brief" rows="2" maxlength="4000" :placeholder="BRIEF[rf.kind]" />
           <div class="aia"><button class="btn secondary sm" type="button" :disabled="ai.busy || (!ai.brief.trim() && !rf.body.trim() && !rf.title.trim())" @click="aiDraft"><AiSpark v-if="ai.busy" /> {{ ai.busy ? 'Writing…' : rf.body.trim() ? 'Improve with AI' : 'Draft with AI' }}</button><span v-if="ai.err" class="error">{{ ai.err }}</span></div></div>
         <label class="lb full">Text<textarea v-model="rf.body" rows="12" required maxlength="20000" placeholder="RESOLVED, that…" /></label>
-        <p class="mut sm full">This saves a draft. You circulate it to {{ signers.length ? 'the ' + signers.length + ' signator' + (signers.length === 1 ? 'y' : 'ies') : 'the signatories' }} from the next page.</p>
+        <p class="mut sm full">Saves a draft. Circulate it to {{ signers.length ? signers.length + ' signator' + (signers.length === 1 ? 'y' : 'ies') : 'the signatories' }} on the next page.</p>
         <p v-if="msg" class="error full">{{ msg }}</p>
       </form>
       <template #foot><button class="btn secondary" type="button" @click="resOpen = false">Cancel</button><button class="btn" type="submit" form="rform">Save draft</button></template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { UpAcc } from '~/components/UploadedAccounts.vue'
 // Banking: every bank transaction in one ledger (bank feed and uploaded statements; Fincra later), where the
 // money goes by category and vendor, and the cut list — recurring payments ranked by the runway they would give back.
 // Read-only: Finvry never holds or moves money.
@@ -22,13 +23,19 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function sync() { busy.value = true; msg.value = ''; try { const r = await sf<D>('/api/treasury', { query: { sync: '1' } }); data.value = r; ok.value = r.added ? r.added + ' new transactions from the bank feed.' : 'Up to date.' } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 // Upload a statement.
 const lk = ref(false)
-const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null })
+const up = reactive({ open: false, account: '', currency: 'NGN', entity: '', file: null as File | null, existing: '' })
+// Accounts that come in by statement: shown as cards; a newer statement goes to the same account.
+const { data: ua, refresh: refreshUa } = await useFetch<{ currency: string; total: number; accounts: UpAcc[] }>('/api/treasury/accounts', { query: computed(() => ({ cust: cust.value })) })
+const upAcc = computed(() => ua.value?.accounts.find((a) => a.key === up.existing) ?? null)
+function openUpload(a: UpAcc | null) { up.existing = a?.key ?? ''; up.file = null; up.open = true }
+watch(upAcc, (a) => { if (a) { up.account = a.label; up.currency = a.currency; up.entity = a.entity_id && !companies.value.find((c) => c.id === a.entity_id)?.main ? a.entity_id : '' } else if (up.open) up.account = '' })
+async function changed() { await Promise.all([refreshUa(), refresh()]) }
 // The statement's currency starts as the company's own (Naira for a Nigerian subsidiary, dollars for a US company).
-watch(() => up.open, (o) => { if (o && d.value?.currency) up.currency = d.value.currency })
+watch(() => up.open, (o) => { if (o && d.value?.currency && !upAcc.value) up.currency = d.value.currency })
 async function upload() {
   if (!up.file) return; busy.value = true; msg.value = ''
   const fd = new FormData(); fd.append('file', up.file, up.file.name); fd.append('account', up.account); fd.append('currency', up.currency); if (isGroup.value && up.entity) fd.append('entity_id', up.entity)
-  try { const r = await sf<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
+  try { const r = await sf<{ read: number; added: number; tie: { ok: boolean; difference: number } | null }>('/api/treasury/upload', { method: 'POST', body: fd }); up.open = false; up.file = null; void refreshUa(); ok.value = r.added + ' of ' + r.read + ' transactions added' + (r.tie ? (r.tie.ok ? '; the statement balances.' : '; the statement is off by ' + r.tie.difference.toLocaleString('en-US') + ' — check it is complete.') : '.'); await refresh() }
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 // Transactions.
@@ -75,18 +82,19 @@ const today = new Date().toISOString().slice(0, 10)
 </script>
 <template>
   <section class="tr">
-    <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and transaction in one place, where the money goes, and what to cut to stay alive longer. Read-only: Finvry never holds or moves your money.</p></div>
-      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="up.open = true">Upload bank statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
+    <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and payment in one place. Read-only: Finvry never holds or moves your money.</p></div>
+      <div class="tb"><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn secondary" :disabled="busy" @click="openUpload(null)">Upload bank statement</button><button v-if="!d?.ng" class="btn" :disabled="busy" @click="sync">{{ busy ? 'Working…' : 'Refresh bank feed' }}</button></div></div>
     <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['reconcile', 'Reconcile']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
     <ClientOnly><BankFeeds v-if="!data?.ng" class="feeds" :entity="isGroup ? null : entityId" @changed="sync" /></ClientOnly>
+    <UploadedAccounts :data="ua ?? null" :group="isGroup" @upload="openUpload" @changed="changed" />
     <template v-if="d">
-      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>{{ d.ng ? 'Live connections for Nigerian banks are coming soon. For now, drag in' : 'Connect a US bank above for a live feed, drag in' }} CSV or PDF statements (PDFs are read with AI) for banks the feed does not reach, or link a Google Sheet of transactions. Twelve months gives the best picture.</p>
-        <div class="tb"><button class="btn" @click="up.open = true">Upload bank statement</button></div></div>
+      <div v-if="!d.ledger.count" class="empty"><b>No transactions yet.</b><p>{{ d.ng ? 'Upload a statement in any format, or link a sheet.' : 'Connect a bank, upload a statement, or link a sheet.' }} Twelve months works best.</p>
+        <div class="tb"><button class="btn" @click="openUpload(null)">Upload bank statement</button></div></div>
 
       <template v-if="tab === 'overview'">
-        <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start your Financials from your bank</NuxtLink>: receipts, costs and month-end cash, cash basis, for you to review.</div>
+        <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start your Financials from your bank</NuxtLink> for you to review.</div>
         <div class="fx-stats">
           <StatTile label="Cash" :value="m(d.cash)" :note="d.cash_from === 'bank' ? 'From your bank, end of ' + mon(d.cash_month) : d.cash_from === 'financials' ? 'Latest, from Financials' : 'Add month-end balances or Financials'" />
           <StatTile label="Monthly burn" :value="m(d.burn)" :note="!d.burn ? 'Not burning' : d.burn_from === 'bank' ? 'From your bank: money out less money in' : 'Same basis as Financials'" />
@@ -135,13 +143,13 @@ const today = new Date().toISOString().slice(0, 10)
             <td class="r"><input class="bi pc" :value="v.saving_pct ?? (v.status === 'downgrade' ? 50 : ['to_cancel', 'personal'].includes(v.status) ? 100 : '')" inputmode="decimal" :disabled="['keep', 'review', 'cancelled'].includes(v.status)" :aria-label="'Saving % for ' + v.name" @change="setPct(v, $event)"></td>
             <td class="r">{{ v.saving ? m(v.saving) : '—' }}</td><td class="r">{{ v.runway_gain === null || v.runway_gain === 0 ? '—' : typeof v.runway_gain === 'number' ? '+' + v.runway_gain + ' mo' : v.runway_gain }}</td>
             <td><input class="nt" :value="v.note ?? ''" :placeholder="v.suggest?.why ?? 'What to do'" maxlength="500" :aria-label="'Action for ' + v.name" @change="setNote(v, $event)"></td></tr></tbody></table>
-          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments found yet: they show once a payee is paid in three of the last four months.</p></div>
+          <p v-if="!d.cut_list.length" class="mut padx">No recurring payments yet.</p></div>
         <div v-if="d.checks.length" class="card"><div class="ch"><h2>Worth a look</h2><span class="mut">Payments in the last 90 days that stand out</span></div>
           <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th>Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
             <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
       </template>
       <template v-if="tab === 'reconcile'">
-        <div class="hb">Your bank against Financials, month by month. <b>Cash</b> is the exact check: the bank's month-end balance (from statements, a sheet's balance column or the live feed) against the cash on your balance sheet. Receipts against revenue and spend against costs differ by timing (invoices not yet paid, bills paid later), so they are a guide. Transfers between your own accounts and companies are left out.</div>
+        <div class="hb">Your bank against Financials, month by month. <b>Cash</b> must match; receipts and spend differ by timing.</div>
         <p v-if="!rc" class="mut">Loading…</p>
         <template v-else>
           <div class="card pad0"><table class="t rc" data-nosearch><thead><tr><th>Month</th><th class="r">Bank cash</th><th class="r">Financials cash</th><th class="r">Gap</th><th class="r">Receipts / revenue</th><th class="r">Spend / costs</th><th>Status</th><th /></tr></thead>
@@ -156,25 +164,27 @@ const today = new Date().toISOString().slice(0, 10)
                     <tr><td>Customer receipts / revenue</td><td class="r">{{ rm(r.receipts.bank) }}</td><td class="r">{{ rm(r.receipts.fin) }}</td><td class="r">{{ r.receipts.fin === null ? '—' : rm(r.receipts.bank - r.receipts.fin) }}</td></tr>
                     <tr v-for="x in r.spend" :key="x.key"><td>{{ x.label }}</td><td class="r">{{ rm(x.bank) }}</td><td class="r">{{ rm(x.fin) }}</td><td class="r">{{ x.fin === null ? '—' : rm(x.bank - x.fin) }}</td></tr>
                     <tr class="mut2"><td>Also in the bank: funding and loans {{ rm(r.other.financing) }} · other money in {{ rm(r.other.other_in) }} · transfers between own accounts {{ rm(r.other.transfers) }}</td><td colspan="3" /></tr></tbody></table>
-                <p v-if="r.status === 'partial'" class="mut">Not every account has a balance for this month: upload its statement (or a sheet with a balance column) so cash can be checked in full.</p>
+                <p v-if="r.status === 'partial'" class="mut">Some accounts have no balance this month.</p>
                 <p v-else-if="r.status === 'gap'" class="mut">Cash differs by {{ rm(Math.abs(r.cash.gap ?? 0)) }}. Common reasons: an account missing from Banking (or from Financials), a statement month not uploaded, money in transit between accounts at month end, or a figure keyed into Financials by mistake.</p>
                 <div v-if="r.reconciled" class="rcd">Reconciled{{ r.reconciled.by ? ' by ' + r.reconciled.by : '' }} on {{ r.reconciled.at.slice(0, 10) }}{{ r.reconciled.note ? ': ' + r.reconciled.note : '' }} <button class="lk" @click.stop="markRc(r, false)">Undo</button></div>
                 <div v-else-if="r.status !== 'no_financials' && r.status !== 'no_bank'" class="rcd"><input v-model="rcNote" maxlength="1000" placeholder="Note (e.g. difference is card payments in transit)" @click.stop><button class="btn sm" @click.stop="markRc(r, true)">Mark reconciled</button></div>
               </div></td></tr></template></tbody></table></div>
           <div v-if="rc.accounts.length" class="card"><div class="ch"><h2>Accounts</h2><span class="mut">Where month-end balances come from</span></div>
-            <table class="t" data-nosearch><tbody><tr v-for="a in rc.accounts" :key="a.name"><td>{{ a.name }}</td><td class="mut2">{{ a.currency }}</td><td class="r">{{ a.live ? a.balances + ' balance' + (a.balances === 1 ? '' : 's') + ' known' : 'No balance yet: upload a statement or a sheet with a balance column' }}</td></tr></tbody></table></div>
+            <table class="t" data-nosearch><tbody><tr v-for="a in rc.accounts" :key="a.name"><td>{{ a.name }}</td><td class="mut2">{{ a.currency }}</td><td class="r">{{ a.live ? a.balances + ' balance' + (a.balances === 1 ? '' : 's') + ' known' : 'No balance yet' }}</td></tr></tbody></table></div>
         </template>
       </template>
-      <p class="fine">Read-only. Categories are suggestions until you set them; amounts in other currencies are converted at the daily rate. Not financial advice.</p>
+      <p class="fine">Read-only. Other currencies at the daily rate. Not financial advice.</p>
     </template>
     <p v-else-if="pending" class="mut">Loading…</p>
 
     <SheetImport :open="lk" kind="bank_txns" :currency="d?.currency" @close="lk = false" @done="refresh()" />
     <AppModal :open="up.open" title="Upload a bank statement" @close="up.open = false">
-      <div class="frm"><label v-if="isGroup">Company<select v-model="up.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
-        <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label>
-        <p class="w mut">Best: your bank's CSV export (or the PDF statement). If you put one together yourself, use the <button type="button" class="lk" @click="downloadTemplate('bank_txns')">template</button>: one row per transaction, the date as 2026-09-30, money in and money out as plain numbers, and the balance after each transaction (it lets Finvry reconcile month-end cash with Financials).</p>
-        <DropZone accept=".csv,.pdf" :label="up.file ? up.file.name : 'Drop the statement here'" hint="CSV (best) or PDF, up to 20 MB · overlapping statements are fine: payments already in are skipped" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
+      <div class="frm"><TemplateCard class="w" title="Any bank export works" text="CSV, Excel, PDF or a photo. Making one yourself? Use the template." @download="downloadTemplate('bank_txns')" />
+        <label v-if="ua?.accounts.length">Account<select v-model="up.existing"><option value="">A new account</option><option v-for="a in ua.accounts" :key="a.key" :value="a.key">{{ a.label }}{{ isGroup && a.entity ? ' · ' + a.entity : '' }} ({{ a.currency }})</option></select></label>
+        <template v-if="!upAcc"><label v-if="isGroup">Company<select v-model="up.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Account name<input v-model="up.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label>
+        <label>Currency<select v-model="up.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></template>
+        <p v-else class="hint">Has payments up to {{ upAcc.to ? new Date(upAcc.to + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'now' }}. Overlaps are skipped.</p>
+        <DropZone no-tip accept=".csv,.xlsx,.pdf,.png,.jpg,.jpeg" :label="up.file ? up.file.name : 'Drop the statement here'" hint="Up to 20 MB" @change="(e: Event) => (up.file = (e.target as HTMLInputElement).files?.[0] ?? null)" /></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="up.open = false">Cancel</button><button class="btn" :disabled="busy || !up.file" @click="upload">{{ busy ? 'Reading…' : 'Add to the ledger' }}</button></template>
     </AppModal>
   </section>
@@ -198,7 +208,7 @@ i.in { background: var(--c-navy); } i.out { background: #aab4c2; } .lg { display
 .fl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .fl input:not([type="checkbox"]), .fl select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .fl input[placeholder] { min-width: 240px; } .al { font-size: 12.5px; color: var(--c-muted); display: flex; gap: 6px; align-items: center; }
 .pg { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk:disabled { color: var(--c-muted); cursor: default; }
 .hb { border: 1px solid var(--c-rule); background: #fff; padding: 12px 16px; font-size: 14px; color: var(--c-ink-soft); line-height: 1.55; }
-.frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm input, .frm select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
+.hint { margin: 0; font-size: 13px; color: var(--c-muted); } .frm { display: flex; flex-direction: column; gap: 12px; } .frm label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; } .frm input, .frm select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .sp { flex: 1; }
 .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
 .fs { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-rule-strong); background: #fff; border-radius: 0; } .sg { display: block; color: var(--c-blue-deep); font-size: 11.5px; margin-top: 3px; }
 .bi.pc { width: 64px; } .nt { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--c-rule); width: 100%; min-width: 180px; } .nw { white-space: nowrap; }

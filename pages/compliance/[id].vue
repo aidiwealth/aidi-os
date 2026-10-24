@@ -20,7 +20,7 @@ async function complete() {
   busy.value = true; msg.value = ''; ok.value = ''
   try {
     const r = await $fetch<{ next_due: string | null }>('/api/compliance/' + id + '/complete', { method: 'POST', body: { ...done, note: done.note || undefined } })
-    ok.value = r.next_due ? 'Done. Next due ' + day(r.next_due) + '.' : 'Done. This one-off obligation is now finished.'
+    ok.value = r.next_due ? 'Done. Next due ' + day(r.next_due) + '.' : 'Done. This one-off item is closed.'
     done.note = ''; done.document_id = ''; await refresh()
   } catch (e) { msg.value = errText(e) } finally { busy.value = false }
 }
@@ -59,7 +59,7 @@ const day = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB'
           <label class="label">Proof (optional)<select v-model="done.document_id"><option value="">No document</option><option v-for="d in docs ?? []" :key="d.id" :value="d.id">{{ d.title }}</option></select></label>
           <label class="label">Note<textarea v-model="done.note" rows="2" maxlength="2000" placeholder="Confirmation number, amount paid" /></label>
           <button class="btn" type="submit" :disabled="busy">Mark done{{ data.obligation.recurrence !== 'none' ? ' and roll to next date' : '' }}</button>
-          <p class="hint">Upload the receipt or filing on Documents first to attach it here.</p>
+          <p class="hint">Upload proof to Documents first to attach it.</p>
         </form>
         <div class="card">
           <h2>History</h2>

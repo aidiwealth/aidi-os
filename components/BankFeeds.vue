@@ -30,6 +30,12 @@ async function reconnect(id: string) {
     P.create({ token: link_token, onSuccess: async () => { try { await $fetch('/api/plaid/items/' + id + '/reconnected', { method: 'POST' }); emit('changed'); await refresh() } catch { msg.value = 'Reconnected, but the balances could not load yet. Refresh in a minute.' } finally { busy.value = false } }, onExit: () => { busy.value = false } }).open()
   } catch { msg.value = 'Could not start reconnecting. Try again in a minute.'; busy.value = false }
 }
+// Clear a bank's transactions and bring the full history back from the bank (categories set by hand are kept).
+async function resync(id: string, name: string | null) {
+  if (!await askConfirm('Payments are reloaded from the bank. Your categories are kept.', { title: 'Resync ' + (name ?? 'this bank') + '?', ok: 'Resync' })) return
+  msg.value = ''
+  try { await $fetch('/api/plaid/items/' + id + '/resync', { method: 'POST' }); msg.value = 'Resyncing. Back in a minute or two.'; setTimeout(() => emit('changed'), 45000) } catch { msg.value = 'Could not start the resync. Try again in a minute.' }
+}
 async function disconnect(id: string, name: string | null) { if (!await askConfirm('Disconnect ' + (name ?? 'this bank') + '?')) return; await $fetch('/api/plaid/items/' + id, { method: 'DELETE' }); await refresh() }
 const manage = ref(false)
 // Cards and loans are money owed: shown after the bank accounts, marked as owed, and not in the balance.
@@ -49,7 +55,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
     <div class="top">
       <div class="tt"><span class="live"><i />Live</span><b>Bank balances</b>
         <template v-if="data.accounts.length"><span class="tot">{{ fmt(data.total, data.currency) }}</span><span class="mut">{{ cash.length }} account{{ cash.length === 1 ? '' : 's' }}{{ data.owed ? ' · cards and loans owed ' + fmt(data.owed, data.currency) : '' }}{{ newest ? ' · updated ' + ago(newest) : '' }}{{ data.env === 'sandbox' ? ' · sandbox' : '' }}</span></template>
-        <span v-else class="mut">{{ data.enabled ? 'Connect a US bank account to see balances update automatically.' : data.ng ? 'Bank connections for Nigerian banks are coming soon.' : 'Bank connections are not set up yet.' }}</span></div>
+        <span v-else class="mut">{{ data.enabled ? 'Connect a US bank for live balances.' : data.ng ? 'Bank connections for Nigerian banks are coming soon.' : 'Bank connections are not set up yet.' }}</span></div>
       <div class="acts"><button v-if="data.accounts.length" class="ic" type="button" title="Refresh balances" aria-label="Refresh balances" @click="refresh()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg></button>
         <button v-if="data.items.length && data.manage" class="lk" type="button" @click="manage = !manage">{{ manage ? 'Done' : 'Manage' }}</button>
         <button v-if="data.enabled && data.manage" class="btn sm" :class="{ secondary: data.accounts.length }" :disabled="busy" @click="connect">{{ busy ? 'Opening…' : data.accounts.length ? '+ Add bank' : 'Connect a bank' }}</button></div>
@@ -62,7 +68,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
         <div class="av">{{ a.available !== null && a.available !== a.current ? (a.debt ? 'Credit available ' : 'Available ') + fmt(a.available, a.currency) : a.error ? 'Needs attention' : '\u00a0' }}</div>
       </div>
     </div>
-    <div v-if="manage" class="mg"><div v-for="it in data.items" :key="it.id" class="mi"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button v-if="it.error" class="lk" type="button" :disabled="busy" @click="reconnect(it.id)">Reconnect</button><button class="lk red" type="button" @click="disconnect(it.id, it.institution)">Disconnect</button></div></div>
+    <div v-if="manage" class="mg"><div v-for="it in data.items" :key="it.id" class="mi"><b>{{ it.institution ?? 'Bank' }}</b><span v-if="it.error" class="err">Needs attention: {{ it.error }}</span><button v-if="it.error" class="lk" type="button" :disabled="busy" @click="reconnect(it.id)">Reconnect</button><button v-if="!it.error" class="lk rs" type="button" @click="resync(it.id, it.institution)">Resync</button><button class="lk red" type="button" @click="disconnect(it.id, it.institution)">Disconnect</button></div></div>
     <p v-else-if="data.items.some((i) => i.error)" class="err">{{ data.items.filter((i) => i.error).map((i) => (i.institution ?? 'A bank') + ' needs attention').join(' · ') }}. <button v-if="data.manage" class="lk" type="button" :disabled="busy" @click="reconnect(data.items.find((i) => i.error)!.id)">Reconnect</button> <button class="lk" type="button" @click="manage = true">Manage</button></p>
     <p v-if="data.coverage?.partial" class="cov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg><span>US accounts only{{ data.coverage.reported ? ': ' + short(data.total, data.currency) + ' of the ' + short(data.coverage.reported, data.currency) + ' cash in Financials' + (data.coverage.as_of ? ' (' + new Date(data.coverage.as_of + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) + ')' : '') : '' }}. Cash, runway and forecasts use Financials.</span></p>
     <p v-if="msg" class="error">{{ msg }}</p>
@@ -81,7 +87,7 @@ const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getT
 .tot { font-size: 18px; font-weight: 600; color: var(--c-navy); font-variant-numeric: tabular-nums; } .mut { color: var(--c-muted); font-size: 12.5px; }
 .acts { display: flex; align-items: center; gap: 12px; } .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
 .ic { width: 30px; height: 30px; display: grid; place-items: center; background: none; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 15px; height: 15px; }
-.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); margin-left: auto; }
+.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); margin-left: auto; } .lk.rs { margin-left: auto; } .lk.rs + .lk.red { margin-left: 12px; }
 .cards { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
 .bc { position: relative; flex: 0 0 216px; height: 128px; padding: 8px 13px; display: flex; flex-direction: column; color: #fff; overflow: hidden;
   background: linear-gradient(135deg, #0c1a2e 0%, #183456 100%); }

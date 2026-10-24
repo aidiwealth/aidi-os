@@ -13,7 +13,7 @@ void props
 </script>
 <template>
   <div class="card sa">
-    <div><b>Is {{ name }} one company, or a group with subsidiaries?</b><span>A group (for example a US parent with companies in Nigeria or Kenya) keeps each subsidiary's figures in its own currency and shows the group together in one currency. Bank connections cover US accounts only, so a group's cash comes from its figures.</span></div>
+    <div><b>Is {{ name }} one company, or a group with subsidiaries?</b><span>A group keeps each subsidiary in its own currency. Bank connections cover US accounts only.</span></div>
     <div class="ab"><button class="btn secondary sm" type="button" :disabled="busy" @click="answer('single')">One company</button><button class="btn sm" type="button" :disabled="busy" @click="answer('group')">A group with subsidiaries</button></div>
     <p v-if="msg" class="error">{{ msg }}</p>
   </div>

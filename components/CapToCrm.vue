@@ -48,11 +48,11 @@ async function go() {
       <div class="opt"><label class="cb"><input v-model="f.toPipe" type="checkbox"> Add to a fundraising pipeline</label>
         <div v-if="f.toPipe" class="g2"><label class="label">Pipeline<select v-model="f.pipe"><option v-for="p in o.pipelines" :key="p.id" :value="p.id">{{ p.name }}</option><option value="new">+ New pipeline</option></select></label>
           <label v-if="f.pipe === 'new'" class="label">New pipeline name<input v-model="f.pipeName" maxlength="120"></label>
-          <label class="cb w"><input v-model="f.closed" type="checkbox"> Mark those who invested as closed, with their amount and SAFE / note terms (they stay linked to the cap table, so they are not added twice)</label></div></div>
+          <label class="cb w"><input v-model="f.closed" type="checkbox"> Mark those who invested as closed, with their amount and terms</label></div></div>
       <div class="opt"><label class="cb"><input v-model="f.toContacts" type="checkbox"> Add to Contacts so they receive investor updates</label>
         <div v-if="f.toContacts" class="g2"><label class="label">Updates list<select v-model="f.list"><option value="">No list</option><option v-for="l in o.lists" :key="l.id" :value="l.id">{{ l.name }}</option><option value="new">+ New list</option></select></label>
           <label v-if="f.list === 'new'" class="label">List name<input v-model="f.listName" maxlength="80"></label>
-          <p v-if="noEmail" class="mut w">{{ noEmail }} chosen holder{{ noEmail === 1 ? ' has' : 's have' }} no email; add one above or they go into the pipeline only.</p></div></div>
+          <p v-if="noEmail" class="mut w">{{ noEmail }} chosen holder{{ noEmail === 1 ? ' has' : 's have' }} no email; they go into the pipeline only.</p></div></div>
     </div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <template #foot><button class="btn secondary" @click="emit('close')">{{ res ? 'Close' : 'Cancel' }}</button><button v-if="!res" class="btn" :disabled="busy || !chosen.length || (!f.toPipe && !f.toContacts)" @click="go">{{ busy ? 'Adding…' : 'Add ' + chosen.length + ' holder' + (chosen.length === 1 ? '' : 's') }}</button></template>

@@ -36,7 +36,7 @@ function state(d: EDoc) {
             <button v-if="d.status === 'sent'" class="lk red" :disabled="busy === d.id" @click="act({ action: 'void', id: d.id }, d.id)">Withdraw</button></span></div>
         <div class="sg"><span v-for="s in d.signers" :key="s.id" :class="{ ok: s.signed_at }"><b>{{ s.name }}</b><em>{{ s.role === 'company' ? 'Company' : s.role === 'holder' ? 'Holder' : 'Director' }} · {{ s.signed_at ? 'signed ' + day(s.signed_at) : s.viewed_at ? 'opened, not signed' : 'not opened' }}</em><button v-if="!s.signed_at && d.status === 'sent'" class="lk" :disabled="busy === s.id" @click="act({ action: 'remind', signer_id: s.id }, s.id)">Remind</button></span></div>
       </div>
-      <EmptyState v-if="!docs.length" compact icon="sign" title="Nothing sent for signature yet" text="Send a SAFE, option grant or share purchase to sign. Once signed and approved, the cap table updates itself." />
+      <EmptyState v-if="!docs.length" compact icon="sign" title="Nothing sent for signature yet" text="Send a SAFE, option grant or share purchase to sign." />
     </div>
   </div>
 </template>

@@ -30,7 +30,7 @@ const gr = (v: number | null) => (v == null ? '—' : (v >= 0 ? '+' : '−') + M
       </div>
     </div>
     <p v-else class="fb-empty">Needs customer groups with revenue.</p>
-    <p class="fb-foot">Growth: the last 12 months against the 12 before. Big means more than its even share of revenue.</p>
+    <p class="fb-foot">Growth: last 12 months against the 12 before. Big: above an even share of revenue.</p>
   </div>
 </template>
 

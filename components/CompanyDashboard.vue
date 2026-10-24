@@ -36,17 +36,17 @@ function hide() { hidden.value = true; try { localStorage.setItem('finvry-setup-
     </div>
 
     <template v-if="fin">
-    <p v-if="data.group" class="grp">Group figures: {{ data.group.companies }} companies consolidated in {{ data.currency }}.</p>
+    <p v-if="data.group" class="grp">{{ data.group.companies }} companies consolidated in {{ data.currency }}</p>
     <div class="fx-stats">
-      <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Month-on-month growth appears after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
+      <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Growth shows after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
       <StatTile label="Net income" icon="chart" tone="n" :note="'Gross margin ' + (data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%')"><Money :value="data.last?.net_income" :currency="data.currency" /></StatTile>
-      <StatTile label="Cash" icon="billing" tone="b" :note="data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Runway appears with cash and burn'"><Money :value="data.last?.cash" :currency="data.currency" /></StatTile>
+      <StatTile label="Cash" icon="billing" tone="b" :note="data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Add cash and burn for runway'"><Money :value="data.last?.cash" :currency="data.currency" /></StatTile>
       <StatTile label="Monthly burn" icon="flag" tone="n"><Money :value="data.last?.burn" :currency="data.currency" /><template #note>Operating costs <Money :value="data.last?.opex_total" :currency="data.currency" /></template></StatTile>
     </div>
 
-    <p v-if="data.series.length" class="tofin"><NuxtLink :to="data.group ? { path: '/financials', query: { s: 'group' } } : '/financials'">Charts, statements and what to do next are in Financials →</NuxtLink></p>
+    <p v-if="data.series.length" class="tofin"><NuxtLink :to="data.group ? { path: '/financials', query: { s: 'group' } } : '/financials'">Charts and statements in Financials →</NuxtLink></p>
     <div v-else class="preview"><div class="pv-art" aria-hidden="true"><div class="pv-k" v-for="k in ['Revenue', 'Gross margin', 'Cash', 'Runway']" :key="k"><span>{{ k }}</span><b /></div><svg viewBox="0 0 600 140" preserveAspectRatio="none"><path d="M0 120 C60 112 100 104 160 96 S260 90 300 74 S400 58 440 46 S540 22 600 14" fill="none" stroke="#0c1a2e" stroke-width="3"/><path d="M0 120 C60 112 100 104 160 96 S260 90 300 74 S400 58 440 46 S540 22 600 14 L600 140 L0 140Z" fill="rgba(95,168,211,.18)"/></svg></div>
-      <div class="pv-cta"><p class="ol">Your dashboard</p><h3>Your numbers will fill this in.</h3><p>Add one month of figures and you get revenue, growth, margins, burn, runway and trend charts, ready to share with investors.</p><div class="pv-acts"><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink><NuxtLink to="/integrations/quickbooks/connect" class="btn secondary">Connect QuickBooks</NuxtLink></div></div></div>
+      <div class="pv-cta"><p class="ol">Your dashboard</p><h3>Your numbers will fill this in.</h3><p>Add one month of figures to see revenue, margins, burn and runway.</p><div class="pv-acts"><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink><NuxtLink to="/integrations/quickbooks/connect" class="btn secondary">Connect QuickBooks</NuxtLink></div></div></div>
     </template>
 
     <ClientOnly><BankFeeds v-if="fin" compact class="feeds" :link="canPath('/treasury') ? '/treasury' : null" /></ClientOnly>

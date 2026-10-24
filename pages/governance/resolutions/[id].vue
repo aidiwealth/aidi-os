@@ -13,7 +13,7 @@ async function act(action: 'circulate' | 'withdraw' | 'approve' | 'reject') {
   busy.value = true; msg.value = ''; ok.value = ''
   try {
     const r = await $fetch<{ status?: string }>('/api/governance/resolutions/' + id + '/action', { method: 'POST', body: { action, note: note.value || undefined } })
-    ok.value = action === 'circulate' ? 'Circulated. The signatories have been emailed.' : action === 'withdraw' ? 'Withdrawn.' : r.status === 'approved' ? 'Recorded. This is now approved.' : r.status === 'rejected' ? 'Recorded. This can no longer pass and is rejected.' : 'Your response is recorded.'
+    ok.value = action === 'circulate' ? 'Circulated. The signatories have been emailed.' : action === 'withdraw' ? 'Withdrawn.' : r.status === 'approved' ? 'Recorded. This is now approved.' : r.status === 'rejected' ? 'Recorded. This is now rejected.' : 'Your response is recorded.'
     note.value = ''; await refresh()
   } catch (e) { msg.value = errText(e) } finally { busy.value = false }
 }

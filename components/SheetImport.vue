@@ -54,24 +54,29 @@ async function connect() {
   catch (e) { msg.value = err(e) } finally { busy.value = false }
 }
 const template = () => downloadTemplate(props.kind)
+const TNAME: Record<string, string> = { sales_deals: 'deals', marketing_months: 'marketing results', bank_txns: 'bank transactions' }
+const TTEXT: Record<string, string> = {
+  sales_deals: 'One row per deal. Example rows are skipped.',
+  marketing_months: 'One row per channel and month. Example rows are skipped.',
+  bank_txns: "Your bank's export works as it is. Otherwise one row per transaction, with the balance after each." }
 const LABEL: Record<string, string> = { name: 'Deal', account: 'Customer', status: 'Won or lost', external_id: 'Record ID', contact: 'Contact', value: 'Value', stage: 'Stage', expected_close: 'Expected close', source: 'Source', owner: 'Owner', notes: 'Notes', month: 'Month', channel: 'Channel', spend: 'Spend', visitors: 'Visitors', leads: 'Leads', mqls: 'Marketing qualified', sqls: 'Sales qualified', customers: 'Customers', revenue: 'Revenue', date: 'Date', description: 'Description', spender: 'Who spent', amount: 'Amount', debit: 'Money out', credit: 'Money in' }
 const srcLabel = (l: L) => (l.source === 'hubspot' ? 'HubSpot' : l.source === 'pipedrive' ? 'Pipedrive' : 'Sheet')
 </script>
 <template>
   <AppModal :open="open" :title="'Bring in ' + WHAT[kind]" wide @close="emit('close')">
     <div class="si">
-      <p class="lead">One row per {{ kind === 'sales_deals' ? 'deal' : kind === 'marketing_months' ? 'channel and month' : 'transaction' }}, headings in the first row. Headings are matched for you, with AI filling in what they leave open{{ kind === 'sales_deals' ? ' (including your sheet\'s stage names)' : kind === 'marketing_months' ? ' (including your channel names)' : '' }}. <button class="lk" type="button" @click="template">Download a template</button> (with example rows showing the format).</p>
-      <p v-if="kind === 'bank_txns'" class="mut">Best: your bank's own CSV or Excel export. With the template: one row per transaction, the date as 2026-09-30, money in and money out as plain numbers (no currency signs), and the balance after each transaction so month-end cash can be reconciled with Financials. Card exports (Brex, Ramp, Amex) can go in as they are.</p>
+      <TemplateCard :title="'Start from the Finvry ' + TNAME[kind] + ' template'" :text="TTEXT[kind]!" @download="template" />
+      <p class="lead">Headings are matched for you, with AI help.</p>
       <label v-if="kind === 'bank_txns' && isGroup">Company<select v-model="f.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
       <div v-if="kind === 'bank_txns'" class="g2"><label>Account<input v-model="f.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label><label>Currency<select v-model="f.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></div>
       <DropZone accept=".xlsx,.csv" :disabled="busy" hint="Excel or CSV · brought in once" @change="fromFile" />
       <label v-if="kind === 'bank_txns'" class="cb"><input type="checkbox" :checked="f.all_out === 'true'" @change="f.all_out = ($event.target as HTMLInputElement).checked ? 'true' : ''"> A card or expense export (Brex, Ramp, Amex…): every row is a payment</label>
       <div class="or"><span>or link a sheet</span></div>
       <div class="lnk"><input v-model="f.url" placeholder="Paste a Google Sheets, Excel online or Dropbox share link" aria-label="Sheet link"><input v-model="f.name" maxlength="120" placeholder="Name (optional)" aria-label="Name" class="nm"><button class="btn" :disabled="busy || f.url.length < 10" @click="fromLink">{{ busy ? 'Reading…' : 'Bring in' }}</button></div>
-      <label class="cb"><input v-model="f.link" type="checkbox"> Keep in step (checked when this page opens, at most every six hours; changes wait for you to accept)</label>
+      <label class="cb"><input v-model="f.link" type="checkbox"> Keep in sync (changes wait for you to accept)</label>
       <template v-if="kind === 'sales_deals' && processId">
         <div class="or"><span>or connect your CRM</span></div>
-        <p class="mut">Read-only, to build the pipeline and the reports investors expect; your CRM stays where the team works. Salesforce, Zoho, Close, Attio and others: export your deals or opportunities report to Excel or CSV and drop it above, or link it; their headings are recognised.</p>
+        <p class="mut">Read-only. Other CRMs: export deals to Excel or CSV and drop it above.</p>
         <div class="crm"><button v-for="(c, k) in CRM" :key="k" type="button" class="opt" :class="{ on: crm.source === k }" @click="crm.source = crm.source === k ? '' : (k as 'hubspot' | 'pipedrive')">{{ c.label }}</button></div>
         <div v-if="crm.source" class="ck2"><p class="mut">{{ CRM[crm.source]!.help }}</p><div class="lnk"><input v-model="crm.token" type="password" autocomplete="off" :placeholder="CRM[crm.source]!.key" :aria-label="CRM[crm.source]!.key"><span /><button class="btn" :disabled="busy || crm.token.length < 10" @click="connect">{{ busy ? 'Reading deals…' : 'Connect' }}</button></div></div>
       </template>

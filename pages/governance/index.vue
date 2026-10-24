@@ -30,11 +30,11 @@ const howOpen = ref(false)
   <section class="gv">
     <p class="label">Family Office</p>
     <div class="hd"><h1>Trusts &amp; governance</h1><button type="button" class="lk" :aria-expanded="howOpen" @click="howOpen = !howOpen">How this works</button></div>
-    <p class="lead">Keep a register of who holds each role in our trusts and companies (trustees, directors, beneficiaries), and get their written approval on resolutions, minutes, consents and distributions.</p>
+    <p class="lead">Who holds each role in our trusts and companies, and their written approvals.</p>
     <div v-if="howOpen" class="how">
-      <div><b>1. Register</b><span>Open an entity and add its people and roles. Trustees, directors, members and signatories approve papers; beneficiaries receive distributions.</span></div>
-      <div><b>2. Draft</b><span>Write a resolution, minutes, consent or distribution, or describe it and AI drafts it from the register.</span></div>
-      <div><b>3. Approve</b><span>Circulate it. Each signatory signs in with the email on the register and approves; once enough approve it is final and kept with the entity.</span></div>
+      <div><b>1. Register</b><span>Add each entity's people and roles.</span></div>
+      <div><b>2. Draft</b><span>Write a paper, or let AI draft it from the register.</span></div>
+      <div><b>3. Approve</b><span>Circulate it. Once enough signatories approve, it is final.</span></div>
     </div>
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Trusts & governance is limited to family members and GPs.' : 'Could not load.' }}</p>
     <template v-else-if="data">
@@ -63,7 +63,7 @@ const howOpen = ref(false)
               <div><em>Beneficiaries</em><b>{{ e.beneficiaries || '—' }}</b></div>
               <div><em>Open papers</em><b :class="{ hot: e.open }">{{ e.open || '—' }}</b></div>
             </div>
-            <span class="wh">{{ e.signers.length ? who(e) : 'No register yet: add the settlor, trustees and beneficiaries' }}</span>
+            <span class="wh">{{ e.signers.length ? who(e) : 'No register yet' }}</span>
           </NuxtLink>
         </div>
       </template>
@@ -83,7 +83,7 @@ const howOpen = ref(false)
           </table>
         </div>
       </template>
-      <EmptyState v-if="!shown.length" card icon="entities" :title="filter === 'active' ? 'No active entities' : filter === 'forming' ? 'Nothing being set up' : 'No dormant or closed entities'" text="Entities and their status are managed under Entities." />
+      <EmptyState v-if="!shown.length" card icon="entities" :title="filter === 'active' ? 'No active entities' : filter === 'forming' ? 'Nothing being set up' : 'No dormant or closed entities'" text="Manage entities and their status under Entities." />
     </template>
   </section>
 </template>

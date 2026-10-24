@@ -19,14 +19,14 @@ async function buy(k: string) { busy.value = k; msg.value = ''; ok.value = ''; t
 </script>
 <template>
   <div v-if="data" class="au">
-    <div class="card"><h2>AI usage</h2><p class="mut">AI drafts your investor updates, memos and documents and reads your spreadsheets. Your plan includes an allowance per 5-hour session and per week. When you reach either, AI credits keep you going; without credits, AI pauses until the reset.</p>
+    <div class="card"><h2>AI usage</h2><p class="mut">Your plan includes an allowance per 5-hour session and per week. Credits cover any overage.</p>
       <template v-if="data.limited">
         <div class="meter"><div class="mh"><b>Current session</b><span>{{ left(data.session.resets_at) }}</span></div><div class="bar"><i :class="{ hot: pct(data.session.used, data.session.limit) >= 90 }" :style="{ width: pct(data.session.used, data.session.limit) + '%' }" /></div><span class="pc">{{ pct(data.session.used, data.session.limit) }}% used</span></div>
         <div class="meter"><div class="mh"><b>Weekly limit</b><span>{{ wkday(data.weekly.resets_at) }}</span></div><div class="bar"><i :class="{ hot: pct(data.weekly.used, data.weekly.limit) >= 90 }" :style="{ width: pct(data.weekly.used, data.weekly.limit) + '%' }" /></div><span class="pc">{{ pct(data.weekly.used, data.weekly.limit) }}% used</span></div>
-        <p v-if="data.blocked" class="warn">AI is paused until your allowance resets. Buy credits below to continue now.</p><p v-else-if="data.over" class="note">You are over your plan allowance; AI is now using your credits.</p>
+        <p v-if="data.blocked" class="warn">AI is paused until your allowance resets. Buy credits to continue.</p><p v-else-if="data.over" class="note">Over your allowance; using credits.</p>
       </template>
       <p v-else class="okm">Unlimited AI on your plan.</p></div>
-    <div v-if="data.limited" class="card"><div class="ch"><h3>AI credits</h3><b class="cr">{{ tok(data.credits) }} tokens</b></div><p class="mut">Used only after your plan allowance runs out. Credits don't expire. Paid from your wallet ({{ SYM[data.currency] ?? '' }}{{ (data.wallet_minor / 100).toLocaleString('en-US') }} available · <NuxtLink to="/wallet">top up</NuxtLink>).</p>
+    <div v-if="data.limited" class="card"><div class="ch"><h3>AI credits</h3><b class="cr">{{ tok(data.credits) }} tokens</b></div><p class="mut">Used after your allowance. Never expire. Paid from your wallet ({{ SYM[data.currency] ?? '' }}{{ (data.wallet_minor / 100).toLocaleString('en-US') }} · <NuxtLink to="/wallet">top up</NuxtLink>).</p>
       <div class="packs"><div v-for="p in data.packs" :key="p.key" class="pk"><b>{{ p.label }}</b><span class="pr">{{ price(p) }}</span><span class="mut">≈ {{ Math.round(p.tokens / 8000) }} drafts</span><button class="btn" :disabled="!!busy" @click="buy(p.key)">{{ busy === p.key ? 'Buying…' : 'Buy' }}</button></div></div>
       <p v-if="ok" class="okm">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p></div>
     <div class="card"><h3>Last 30 days</h3><div v-if="data.days.length" class="bars"><div v-for="d in slots" :key="d.day" class="bc" :title="d.day + ': ' + tok(d.tokens) + ' tokens'"><i :style="{ height: (d.tokens / max) * 100 + '%' }" /></div></div><p v-else class="mut">No AI used yet.</p>

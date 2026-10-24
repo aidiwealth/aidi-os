@@ -91,24 +91,24 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <div v-if="cs.length" class="tools">
         <label class="sel">To<select v-model="asOf"><option v-for="m in [...months].reverse()" :key="m" :value="m">{{ cMon(m, true) }}</option></select></label>
         <div class="seg" role="group" aria-label="Basis"><button v-for="[k, l] in [['month', 'Monthly'], ['quarter', 'Quarterly'], ['year', 'Annual']]" :key="k" :class="{ on: basis === k }" :title="k === 'month' ? 'This month vs the same month last year' : k === 'quarter' ? 'Last 3 months vs the same 3 months last year' : 'Last 12 months vs the 12 before'" @click="basis = k as Basis">{{ l }}</button></div>
-        <button v-if="canEdit" class="btn secondary" type="button" title="How customers pay: subscription, pay as you go or prepaid credits" @click="openBill">How customers pay</button>
-        <button v-if="rptOk" class="btn secondary" type="button" title="Revenue retention and customers as a PDF or Excel report, for all customers or one group" @click="rpt = true">Retention report</button>
+        <button v-if="canEdit" class="btn secondary" type="button" title="Subscription, pay as you go or prepaid" @click="openBill">How customers pay</button>
+        <button v-if="rptOk" class="btn secondary" type="button" title="PDF or Excel report" @click="rpt = true">Retention report</button>
         <button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button></div></div>
     <ClientOnly><CustomerLink :can-edit="canEdit" class="clink" @changed="uploaded('')" /></ClientOnly>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
 
     <p v-if="!data && pending" class="mut ld">Loading your customers…</p>
     <div v-else-if="!cs.length" class="start card">
-      <div><h2>Measure retention and churn</h2><p>Upload what each customer paid each month. We work out net and gross revenue retention, customer churn, expansion and retention by customer group and cohort, the numbers investors ask for.</p>
-        <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, so this year can be compared with last</li></ul>
-        <p class="mut">Read exactly by its headings, with no AI, so every figure lands where it should. We check for the same customer written two ways before saving.</p>
+      <div><h2>Measure retention and churn</h2><p>Upload what each customer paid each month to see retention, churn and cohorts.</p>
+        <ul><li><b>The Finvry customer revenue template</b>: one row per customer with its Currency, months across</li><li>Optional: Segment, Sector, Country, Plan, Start date, Acquisition cost</li><li>13 months or more, for year-on-year</li></ul>
+        <p class="mut">Read by its headings, with no AI.</p>
         <div class="row"><button v-if="canEdit" class="btn" type="button" @click="up = true">Add customer revenue</button><a class="btn secondary" href="/api/financials/customers/template">Download the template</a></div></div>
     </div>
 
     <template v-else>
-      <p v-if="!enough" class="note">You have {{ months.length }} month{{ months.length === 1 ? '' : 's' }} of customer revenue. Year-on-year retention needs 13 or more; add earlier months for NRR and GRR.</p>
+      <p v-if="!enough" class="note">You have {{ months.length }} month{{ months.length === 1 ? '' : 's' }} of customer revenue. NRR and GRR need 13 or more.</p>
       <div class="dir card">
-        <div class="dh"><span class="eyebrow">Where you stand{{ billing !== 'subscription' ? ' · ' + (billing === 'prepaid' ? 'prepaid credits' : 'pay as you go') + ', lost after ' + grace + ' quiet month' + (grace === 1 ? '' : 's') : '' }}</span><p v-if="!verdict" class="vd">Add 13 months or more of customer revenue to see where retention stands.</p></div>
+        <div class="dh"><span class="eyebrow">Where you stand{{ billing !== 'subscription' ? ' · ' + (billing === 'prepaid' ? 'prepaid credits' : 'pay as you go') + ', lost after ' + grace + ' quiet month' + (grace === 1 ? '' : 's') : '' }}</span><p v-if="!verdict" class="vd">Needs 13 months or more of customer revenue.</p></div>
         <div class="sc">
           <BenchBar label="Net revenue retention" :value="P1(r12.nrr)" :prev="P1(r12prev.nrr)" :bands="[90, 100]" :max="150" hint="110%+ is strong" />
           <BenchBar label="Gross revenue retention" :value="P1(r12.grr)" :prev="P1(r12prev.grr)" :bands="[80, 90]" :max="100" hint="Losses only" />
@@ -132,7 +132,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
         <div class="card"><DonutChart :title="'Revenue by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" total-label="Last month" :currency="cur" :segments="groups.map((g) => ({ label: g.group, value: Math.round(g.share * 1000) / 10 }))" percent sub="Share of revenue" /></div>
         <HBars :title="'Customers lost by ' + (GB.find(([k]) => k === groupBy)?.[1].toLowerCase() ?? 'group')" sub="Share who stopped paying in 12 months" :rows="groups.filter((g) => g.logo_churn !== null).map((g) => ({ label: g.group, value: Math.round(g.logo_churn! * 1000) / 10, note: g.customers + ' customers' }))" />
       </div>
-      <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers, credits or revenue recorded differently.</p>
+      <p v-if="recon && Math.abs(recon.gap) > 0.05" class="warn">Customer revenue for the last three months ({{ cMoney(recon.cust, cur) }}) is {{ cPct(Math.abs(recon.gap), 1) }} {{ recon.gap > 0 ? 'above' : 'below' }} the revenue in your Financials ({{ cMoney(recon.fin, cur) }}). Check for missing customers or credits.</p>
       <ClientOnly><ShareTo v-if="canEdit" :sections="['intro', 'retention']" what="revenue retention" /></ClientOnly>
 
       <details class="card flat tbl"><summary>Table: retention by {{ GB.find(([k]) => k === groupBy)?.[1].toLowerCase() }}</summary>
@@ -161,7 +161,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
         <div class="scroll"><table class="table"><thead><tr><th>Month</th><th class="n">Start</th><th class="n">+ New</th><th class="n">+ Expansion</th><th class="n">+ Returned</th><th class="n">− Downgrades</th><th class="n">− Lost</th><th class="n">End</th><th class="n">Customers (+/−)</th></tr></thead>
           <tbody><tr v-for="x in [...br].reverse()" :key="x.month"><td><b>{{ cMon(x.month) }}</b></td><td class="n">{{ cMoney(x.start, cur) }}</td><td class="n pos">{{ x.new ? cMoney(x.new, cur) : '—' }}</td><td class="n pos">{{ x.expansion ? cMoney(x.expansion, cur) : '—' }}</td><td class="n pos">{{ x.reactivated ? cMoney(x.reactivated, cur) : '—' }}</td><td class="n neg">{{ x.contraction ? cMoney(-x.contraction, cur) : '—' }}</td><td class="n neg">{{ x.churned ? cMoney(-x.churned, cur) : '—' }}</td><td class="n"><b>{{ cMoney(x.end, cur) }}</b></td><td class="n">{{ x.active }}<span class="sub">+{{ x.new_logos }} / −{{ x.lost_logos }}</span></td></tr></tbody></table></div></details>
 
-      <div v-if="coh.length" class="card flat"><div class="ch"><div><h3>Cohorts</h3><p class="mut">Revenue later as a share of each quarter's first three months. Above 100% means they grew.</p></div></div>
+      <div v-if="coh.length" class="card flat"><div class="ch"><div><h3>Cohorts</h3><p class="mut">Revenue against each cohort's first quarter. Above 100% means growth.</p></div></div>
         <div class="scroll"><table class="table coh"><thead><tr><th>First paid</th><th class="n">Customers</th><th v-for="k in COHORT_AT" :key="k" class="n">{{ k === 0 ? 'Start' : 'Month ' + k }}</th></tr></thead>
           <tbody><tr v-for="c in [...coh].reverse()" :key="c.cohort"><td><b>{{ c.cohort }}</b></td><td class="n">{{ c.size }}</td><td v-for="(v, i) in c.cells" :key="i" class="n hc" :style="{ background: heat(v), color: v !== null && v > 0.75 ? '#fff' : '' }">{{ v === null ? '' : cPct(v) }}</td></tr></tbody></table></div></div>
 
@@ -182,11 +182,11 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
     </AppModal>
     <AppModal :open="bill.open" title="How customers pay" wide @close="bill.open = false">
       <div class="frm bl">
-        <p class="mut">This changes how retention and churn are counted, so a quiet month or a season does not look like customers leaving.</p>
+        <p class="mut">Sets how retention and churn are counted.</p>
         <label v-for="o in ([['subscription', 'Subscription', 'Customers pay every month or year (software, memberships). A month without revenue means they left.'], ['usage', 'Pay as you go', 'Customers pay for what they use each month (API calls, transactions). Some months are quiet without the customer leaving.'], ['prepaid', 'Prepaid credits', 'Customers buy credit or units ahead (SMS units, wallet top-ups) and use them over the following months.']] as const)" :key="o[0]" class="opt" :class="{ on: bill.billing === o[0] }"><input type="radio" :checked="bill.billing === o[0]" @change="pickBilling(o[0])"><span><b>{{ o[1] }}</b><em>{{ o[2] }}</em></span></label>
         <div class="g2"><label class="label">Count a customer as lost after<select v-model.number="bill.dormant"><option v-for="n in [1, 2, 3, 4, 6, 9, 12]" :key="n" :value="n">{{ n }} month{{ n === 1 ? '' : 's' }} without revenue</option></select></label>
-          <label class="label">Compare retention<select v-model="bill.basis"><option value="month">Month against the same month last year</option><option value="quarter">Last 3 months against the same 3 last year (evens out quiet months)</option><option value="year">Last 12 months against the 12 before (evens out seasons)</option></select></label></div>
-        <div v-if="bill.billing === 'prepaid'" class="pp"><b>Prepaid credits and deferred revenue</b><p>Customer revenue here should be credit <i>used</i> each month, not credit bought: that is your revenue. Credit customers have bought but not used yet is deferred revenue, a liability on your balance sheet (put it in Other liabilities in Financials). Top-ups bring in cash before revenue, so cash can look better than profit; when customers stop topping up, cash falls before revenue does.</p></div>
+          <label class="label">Compare retention<select v-model="bill.basis"><option value="month">Month against the same month last year</option><option value="quarter">Last 3 months against the same 3 last year</option><option value="year">Last 12 months against the 12 before</option></select></label></div>
+        <div v-if="bill.billing === 'prepaid'" class="pp"><b>Prepaid credits and deferred revenue</b><p>Enter credit <i>used</i> each month, not credit bought. Unused credit is deferred revenue: put it in Other liabilities in Financials.</p></div>
         <p v-if="bill.msg" class="error">{{ bill.msg }}</p>
       </div>
       <template #foot><button class="btn secondary" @click="bill.open = false">Cancel</button><button class="btn" :disabled="bill.busy" @click="saveBill">{{ bill.busy ? 'Saving…' : 'Save' }}</button></template>
@@ -196,7 +196,7 @@ const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: stri
       <template #foot><button class="btn secondary" @click="bands.open = false">Cancel</button><button class="btn" @click="saveBands">Save</button></template>
     </AppModal>
     <AppModal :open="clr.open" title="Delete all customer data" @close="clr.open = false">
-      <div class="frm"><p>This removes every customer and their monthly revenue. Your Financials are not affected.</p><label class="label">Type DELETE to confirm<input v-model="clr.confirm" autocomplete="off"></label></div>
+      <div class="frm"><p>Removes every customer and their revenue. Financials are not affected.</p><label class="label">Type DELETE to confirm<input v-model="clr.confirm" autocomplete="off"></label></div>
       <template #foot><button class="btn secondary" @click="clr.open = false">Cancel</button><button class="btn danger" :disabled="clr.confirm !== 'DELETE'" @click="clearAll">Delete</button></template>
     </AppModal>
   </section>

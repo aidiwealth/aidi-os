@@ -16,7 +16,7 @@ const VIA: Record<string, string> = { wallet: 'from wallet', stripe: 'by card', 
     <div class="box"><table v-if="data.length"><thead><tr><th>Job</th><th>Status</th><th>Billing</th></tr></thead><tbody>
       <tr v-for="j in data" :key="j.id"><td><NuxtLink :to="'/client/jobs/' + j.id" class="t">{{ j.title }}</NuxtLink><span class="s">{{ j.company ?? 'General' }} · {{ day(j.created_at) }}</span></td><td><span class="pill" :class="j.status">{{ ST[j.status] ?? j.status }}</span></td>
         <td><div v-for="i in j.invoices" :key="i.id" class="iv"><a :href="i.link">{{ i.number }}</a> · <Money :value="i.amount" :currency="i.currency" /> · <span :class="i.overdue ? 'over' : i.status">{{ i.status === 'paid' ? 'Paid ' + (VIA[i.paid_via ?? ''] ?? '') : i.overdue ? 'Overdue' : 'To pay' }}</span><NuxtLink v-if="i.status === 'sent'" to="/client/invoices" class="pay">Pay</NuxtLink></div><span v-if="!j.invoices.length" class="s">No invoice yet</span></td></tr>
-    </tbody></table><EmptyState v-else icon="company_services" title="No service jobs yet" text="Order a service and it shows here with its invoice."><NuxtLink to="/client/order" class="btn">Order a service</NuxtLink></EmptyState></div>
+    </tbody></table><EmptyState v-else icon="company_services" title="No service jobs yet" text="Order a service to see it here."><NuxtLink to="/client/order" class="btn">Order a service</NuxtLink></EmptyState></div>
   </section>
 </template>
 <style scoped>

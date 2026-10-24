@@ -43,11 +43,11 @@ const FEAT = PLAN_FEATS
           <label class="label wide">Company name<input v-model="f.name" required maxlength="200"></label>
           <label class="label wide">Website<input v-model="f.website" maxlength="300" placeholder="https://"></label>
           <label class="label">Country<CountrySelect v-model="f.country" required /></label>
-          <label class="label">Billing currency<select v-model="f.currency" disabled><option value="USD">US dollar (USD)</option><option value="NGN">Nigerian naira (NGN)</option></select><span class="hint">Set by your country: naira for Nigeria, US dollars elsewhere.</span></label>
-          <label class="label">Reporting currency<select v-model="f.reporting_currency"><option value="">Same as my figures</option><option v-for="c in ['USD', 'NGN', 'GBP', 'EUR', 'CAD', 'KES', 'GHS', 'ZAR', 'EGP', 'RWF', 'AED']" :key="c" :value="c">{{ c }}</option></select><span class="hint">Show your figures to you and investors in this currency, at the latest daily rate. Billing is not affected.</span></label>
+          <label class="label">Billing currency<select v-model="f.currency" disabled><option value="USD">US dollar (USD)</option><option value="NGN">Nigerian naira (NGN)</option></select><span class="hint">Set by your country.</span></label>
+          <label class="label">Reporting currency<select v-model="f.reporting_currency"><option value="">Same as my figures</option><option v-for="c in ['USD', 'NGN', 'GBP', 'EUR', 'CAD', 'KES', 'GHS', 'ZAR', 'EGP', 'RWF', 'AED']" :key="c" :value="c">{{ c }}</option></select><span class="hint">Figures shown in this currency at the daily rate.</span></label>
           <label class="label">Legal form<select v-model="f.entity_type"><option value="">Not set</option><option v-for="(l, k) in data.types" v-show="k !== 'ng_ltd' || ngCo" :key="k" :value="k">{{ l }}</option></select></label>
           <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option v-for="s in data.states" :key="s">{{ s }}</option></select></label>
-          <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders for this legal form to Compliance</label>
+          <label v-if="f.entity_type && f.entity_type !== 'other'" class="chk wide"><input v-model="f.seed" type="checkbox"> Add standard filing reminders to Compliance</label>
           <div class="wide"><button class="btn" type="submit" :disabled="busy">Save changes</button></div>
         </form></template>
         <div v-else-if="sec === 'sharing'"><SharingSettings /></div>
@@ -55,7 +55,7 @@ const FEAT = PLAN_FEATS
         <div v-else-if="sec === 'api'"><ApiKeys /></div>
         <div v-else-if="sec === 'notifications'" class="card frm">
           <h2>Notifications</h2>
-          <p class="muted wide">Filing reminders, investor page views and service updates go to these addresses. Leave empty to email your admins.</p>
+          <p class="muted wide">Where Finvry sends emails. Leave empty to email your admins.</p>
           <div class="wide chips"><span v-for="(e, i) in emails" :key="e" class="chip">{{ e }}<button type="button" aria-label="Remove" @click="emails.splice(i, 1)">×</button></span><span v-if="!emails.length" class="muted">Your admins</span></div>
           <div class="wide add"><input v-model="newEmail" type="email" placeholder="name@company.com" @keydown.enter.prevent="addEmail"><button type="button" class="btn secondary" @click="addEmail">Add</button></div>
           <div class="wide"><button class="btn" type="button" :disabled="busy" @click="saveEmails">Save</button></div>
@@ -65,15 +65,15 @@ const FEAT = PLAN_FEATS
           <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><div class="pay"><span class="muted">{{ data.price?.free ? 'Free of charge' : data.price ? 'You pay ' + (ngn ? '₦' : '$') + data.price.list.toLocaleString('en-US', { maximumFractionDigits: 2 }) + (data.price.interval === 'month' ? ' a month' : ' a year') + (data.price.override ? ' (your own price)' : '') : '' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span>
             <div v-if="data.billing?.cycles === 'both' && !data.price?.override && !data.price?.free" class="cyc"><button type="button" :class="{ on: data.cycle !== 'year' }" :disabled="busy" @click="setCycle('month')">Pay monthly</button><button type="button" :class="{ on: data.cycle === 'year' }" :disabled="busy" @click="setCycle('year')">Pay yearly{{ data.billing.annual_discount_pct ? ' · save ' + data.billing.annual_discount_pct + '%' : '' }}</button></div></div></div>
           <div class="card pcard"><div class="pch"><b>Partner discount</b><span v-if="pd?.discount" class="pon">{{ pd.discount.pct }}% off · {{ pd.discount.name }}{{ pd.discount.until ? ' · until ' + pd.discount.until : '' }}</span></div>
-            <p class="muted">Backed by or part of a VC, incubator, accelerator or startup community on our <a href="/partners" target="_blank">partner list</a>? Enter the code they gave you.</p>
+            <p class="muted">Enter a code from a <a href="/partners" target="_blank">partner</a>.</p>
             <form class="prow" @submit.prevent="redeem"><input v-model="pcode" maxlength="40" placeholder="Partner code" aria-label="Partner code"><button class="btn secondary" :disabled="pbusy || pcode.trim().length < 4">{{ pbusy ? 'Applying…' : 'Apply code' }}</button></form>
             <p v-if="pok" class="ok">{{ pok }}</p><p v-if="pmsg" class="error">{{ pmsg }}</p></div>
           <div class="plans"><div v-for="p in data.plans" :key="p.code" class="card pl" :class="{ on: p.code === data.plan }"><b>{{ p.name }}</b><span class="pr">{{ price(p) }}<em v-if="(ngn ? p.ngn : p.usd)"> / month</em></span><small v-if="data.cycle === 'year' && (ngn ? p.ngn_year : p.usd_year)" class="yr">{{ (ngn ? '₦' : '$') + (ngn ? p.ngn_year : p.usd_year)!.toLocaleString('en-US', { maximumFractionDigits: 2 }) }} billed yearly</small>
             <ul><li v-for="x in FEAT[p.code] ?? []" :key="x">{{ x }}</li><li v-if="p.ai_w">AI: {{ Math.round((p.ai_w ?? 0) / 1000) }}K tokens a week</li></ul>
             <button v-if="p.code !== data.plan" type="button" class="btn" :disabled="busy" @click="choose(p.code)">{{ !data.trial_used ? 'Start 14-day free trial' : 'Switch to ' + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
-          <p class="muted">Card billing (Stripe, or Paystack in naira) at the end of a trial is being switched on; until then we will email you before anything is charged.</p>
+          <p class="muted">Card billing after trials is coming soon. We will email you before any charge.</p>
         </div>
-        <div v-else class="card frm"><h2>Team</h2><p class="muted wide">Invite co-founders, your accountant or advisers. You have {{ data.members }} member{{ data.members === 1 ? '' : 's' }}.</p><div class="wide"><NuxtLink to="/team" class="btn">Manage team</NuxtLink></div></div>
+        <div v-else class="card frm"><h2>Team</h2><p class="muted wide">{{ data.members }} member{{ data.members === 1 ? '' : 's' }}.</p><div class="wide"><NuxtLink to="/team" class="btn">Manage team</NuxtLink></div></div>
       </div>
     </div>
   </section>

@@ -51,7 +51,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
   <section>
     <p class="label">Administration</p>
     <h1>Team</h1>
-    <p class="lead">{{ isCo ? 'Who can sign in to this workspace, and what they can see. Changes take effect immediately and are logged.' : 'Your people, their contracts and pay, and who can sign in. Changes are logged.' }}</p>
+    <p class="lead">{{ isCo ? 'Who can sign in and what they see. Changes are logged.' : 'People, contracts, pay and sign-in access. Changes are logged.' }}</p>
 
     <nav v-if="!isCo" class="ttabs"><button :class="{ on: ttab === 'people' }" @click="ttab = 'people'">People, contracts &amp; pay</button><button :class="{ on: ttab === 'access' }" @click="ttab = 'access'">Access</button></nav>
     <TeamPeople v-if="!isCo && ttab === 'people'" />
@@ -72,7 +72,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 
     <p v-if="error" class="error" role="alert">{{ error.statusCode === 403 ? 'Only admins can manage the team.' : 'Could not load the team.' }}</p>
     <table v-else-if="users?.length" class="table">
-      <caption class="scopehint">A role given for one company (for example Team · Aidi Haven LLC) means the person only sees that company, and its subsidiaries only when you tick "+ subsidiaries". Add the role again for each company they should see: its documents, financials, bank accounts, compliance, funds, governance, investments and loans. Roles without an entity, and admins, see the whole group.</caption>
+      <caption class="scopehint">A company role limits access to that company (and its subsidiaries if ticked). Admins and group-wide roles see everything.</caption>
       <thead><tr><th>Person</th><th>Roles</th><th>Last sign-in</th><th>Access</th></tr></thead>
       <tbody>
         <tr v-for="u in users" :key="u.id" :class="{ off: u.status === 'disabled' }">
@@ -80,7 +80,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
             <b v-else>{{ u.full_name }} <button type="button" class="lk nme" title="Edit name" @click="nameEd.id = u.id; nameEd.value = u.full_name">Edit</button></b><span class="sub">{{ u.email }}<template v-if="u.email === me?.email"> · you</template></span></td>
           <td>
             <span v-for="r in u.roles" :key="r.role + (r.entity_id ?? '')" class="chip">
-              {{ label(r.role) }}<template v-if="r.entity_name"> · {{ r.entity_name }} <button type="button" class="subs" :class="{ on: r.subsidiaries }" :title="r.subsidiaries ? 'Includes its subsidiaries. Click to limit to this company only.' : 'This company only. Click to include its subsidiaries.'" :disabled="busy" @click="setRole(u, 'subsidiaries', r.role, r.entity_id, !r.subsidiaries)">{{ r.subsidiaries ? '+ subsidiaries' : 'only' }}</button></template>
+              {{ label(r.role) }}<template v-if="r.entity_name"> · {{ r.entity_name }} <button type="button" class="subs" :class="{ on: r.subsidiaries }" :title="r.subsidiaries ? 'Includes subsidiaries. Click to limit.' : 'This company only. Click to add subsidiaries.'" :disabled="busy" @click="setRole(u, 'subsidiaries', r.role, r.entity_id, !r.subsidiaries)">{{ r.subsidiaries ? '+ subsidiaries' : 'only' }}</button></template>
               <button type="button" :aria-label="'Remove ' + label(r.role)" :disabled="busy" @click="setRole(u, 'remove', r.role, r.entity_id)">×</button>
             </span>
             <span class="add">

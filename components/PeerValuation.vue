@@ -71,7 +71,7 @@ async function sendToExit() {
 <template>
   <div v-if="v && c && res" class="pv">
     <div class="card">
-      <div class="hh"><div><h3>What the business could be worth</h3><p class="mut">Your figures from Financials against what similar listed companies trade at and what similar private companies were priced at. {{ saving ? 'Saving…' : '' }}</p></div>
+      <div class="hh"><div><h3>What the business could be worth</h3><p class="mut">Your figures against similar listed and private companies. {{ saving ? 'Saving…' : '' }}</p></div>
         <label class="label sel">Value on<select v-model="a.basis"><option value="revenue_ttm">Revenue, last 12 months{{ c.revenue_ttm ? ': ' + money(c.revenue_ttm) : '' }}</option><option value="run_rate">Run rate (latest month × 12){{ c.run_rate ? ': ' + money(c.run_rate) : '' }}</option><option v-if="c.arr" value="arr">ARR: {{ money(c.arr) }}</option></select></label></div>
       <div class="kp">
         <div><span>Revenue, 12 months</span><b>{{ money(c.revenue_ttm) }}</b><em>{{ c.ttm_source || 'From Financials' }}</em></div>
@@ -91,7 +91,7 @@ async function sendToExit() {
             <div class="fv">{{ money(m.ev[0] + res.net_cash) }} – {{ money(m.ev[2] + res.net_cash) }}</div>
           </div>
         </div>
-        <p class="mut sm">Equity value after a {{ res.discount }}% discount ({{ a.private_discount }}% for being private, {{ a.market_discount }}% for market risk). Low and high are the peers' 25th and 75th percentile multiples; the middle is the median.</p>
+        <p class="mut sm">Equity value after a {{ res.discount }}% discount ({{ a.private_discount }}% for being private, {{ a.market_discount }}% for market risk). Range: peers' 25th to 75th percentile; middle is the median.</p>
       </template>
       <EmptyState v-else compact icon="chart" title="No range yet" :text="res.warnings[0] || 'Find peers with AI, or add peers you know, to see a range.'" />
       <ul v-if="res.warnings.length && res.equity" class="wr"><li v-for="w in res.warnings" :key="w">{{ w }}</li></ul>
@@ -99,7 +99,7 @@ async function sendToExit() {
     </div>
 
     <div class="card">
-      <div class="hh"><div><h3>Discounts</h3><p class="mut">Listed companies can be sold any day; private shares cannot, and some markets carry more risk. Both lower what a buyer or investor would pay.</p></div></div>
+      <div class="hh"><div><h3>Discounts</h3><p class="mut">Private shares and riskier markets lower what a buyer would pay.</p></div></div>
       <div class="ds"><label class="label">Private company (%)<input v-model.number="a.private_discount" type="number" min="0" max="90" step="5"></label><label class="label">Market risk (%)<input v-model.number="a.market_discount" type="number" min="0" max="90" step="5"></label>
         <div v-if="a.ai" class="sug"><span><b>Suggested: {{ a.ai.private_discount }}% and {{ a.ai.market_discount }}%</b> {{ a.ai.rationale }}</span><button class="lk" type="button" @click="useAi">Use these</button></div></div>
       <table v-if="res.compare.some((r) => r.peers != null)" class="t cmp" data-nosearch><thead><tr><th /><th class="r">You</th><th class="r">Peer median</th></tr></thead>
@@ -107,11 +107,11 @@ async function sendToExit() {
     </div>
 
     <div class="card">
-      <div class="hh"><div><h3>Trading peers and deals</h3><p class="mut">Tick the companies that are truly like yours. Correct any figure; the range updates as you go.</p></div>
+      <div class="hh"><div><h3>Trading peers and deals</h3><p class="mut">Tick the companies truly like yours.</p></div>
         <span class="row"><button class="btn secondary sm" type="button" @click="np.open = !np.open">Add a peer</button><button class="btn sm" type="button" :disabled="searching" @click="find">{{ searching ? 'Searching…' : peers.length ? 'Refresh with AI' : 'Find peers with AI' }}</button></span></div>
       <div class="ab"><label class="label w2">What the company does<input v-model="a.about" maxlength="600" placeholder="e.g. Messaging, voice and fraud-prevention APIs for banks and fintechs in Africa" @change="save()"></label>
         <label class="label">Focus (optional)<input v-model="a.focus" maxlength="300" placeholder="e.g. CPaaS, emerging markets" @change="save()"></label></div>
-      <p v-if="searching" class="mut">Looking for listed peers, their latest multiples and similar deals. This takes a minute or two; you can leave this page.</p>
+      <p v-if="searching" class="mut">Looking for listed peers, their latest multiples and similar deals. This takes a minute or two.</p>
       <p v-else-if="v.search.error" class="error">{{ v.search.error }}</p>
       <p v-else-if="v.search.note && peers.length" class="mut">{{ v.search.note }}</p>
       <div v-if="np.open" class="np"><input v-model="np.name" placeholder="Company" maxlength="120"><select v-model="np.kind"><option value="public">Listed</option><option value="private">Private round</option><option value="acquisition">Acquisition</option></select>
@@ -127,8 +127,8 @@ async function sendToExit() {
           <td class="r"><input class="nm" :value="p.gross_margin_pct ?? ''" type="number" step="1" :aria-label="'Gross margin for ' + p.name" @change="setNum(p, 'gross_margin_pct', ($event.target as HTMLInputElement).value)"></td>
           <td class="ao">{{ p.as_of || '—' }}<a v-if="p.source && webUrl(p.source)" :href="webUrl(p.source)" target="_blank" rel="noopener noreferrer" class="lk">{{ host(p.source) }}</a><span v-else-if="p.added === 'founder'" class="sub">Added by you</span></td>
           <td><button class="lk" type="button" @click="remove(p)">Remove</button></td></tr></tbody></table></div>
-      <EmptyState v-else-if="!searching" compact icon="pipeline" title="No peers yet" text="Find peers with AI: listed companies like yours with their latest multiples, and similar private rounds and acquisitions." />
-      <p class="fine">AI research: multiples move with the markets, so check each figure against its page before you use the range with investors. An estimate, not financial advice.</p>
+      <EmptyState v-else-if="!searching" compact icon="pipeline" title="No peers yet" text="Find listed peers and similar deals with AI." />
+      <p class="fine">AI research: check each figure before using it with investors. An estimate, not financial advice.</p>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>
   </div>

@@ -28,7 +28,7 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
     <InvestorTabs />
     <div class="hd"><h1>Investor page</h1><div class="row"><a v-if="data.page.published" :href="data.base + data.page.slug" target="_blank" rel="noopener" class="btn secondary">View live page</a>
       <button class="btn" type="button" :disabled="busy" @click="save(!f.published)">{{ f.published ? 'Unpublish' : 'Publish' }}</button></div></div>
-    <p class="lead">A public page for {{ data.company }}, like the investor relations page of a listed company: your story and your key numbers, updated automatically from Financials. Share the link with investors, put it on your website, or add it to your deck. {{ data.page.published ? data.page.views + ' views so far.' : '' }}</p>
+    <p class="lead">A public page for {{ data.company }}, updated from Financials. {{ data.page.published ? data.page.views + ' views so far.' : '' }}</p>
     <p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p>
     <form class="grid" @submit.prevent="save()">
       <div class="card frm">
@@ -42,21 +42,21 @@ async function setRoom(on: boolean) { busy.value = true; msg.value = ''; try { a
         <label v-if="!deckList?.decks.length" class="label">Or a deck link<input v-model="f.deck_url" maxlength="500" placeholder="https://"></label></div>
         <label class="label">Contact email for investors<input v-model="f.contact_email" type="email" maxlength="254"></label>
         <div v-if="data.room?.available" class="room"><label class="chk"><input type="checkbox" :checked="data.room.on" :disabled="busy" @change="setRoom(($event.target as HTMLInputElement).checked)"> Show an “Open data room” button</label>
-          <span class="muted">{{ data.room.files ? data.room.files + ' file' + (data.room.files === 1 ? '' : 's') + ' in your data room.' : 'Your data room is empty.' }} Investors give their email to open it; your NDA applies and you are notified, like any data room link.{{ data.room.on ? ' ' + data.room.views + ' views so far.' : '' }} <NuxtLink to="/fundraising">Manage the data room</NuxtLink></span></div>
+          <span class="muted">{{ data.room.files ? data.room.files + ' file' + (data.room.files === 1 ? '' : 's') + ' in your data room.' : 'Your data room is empty.' }} Investors give their email to open it; your NDA applies.{{ data.room.on ? ' ' + data.room.views + ' views so far.' : '' }} <NuxtLink to="/fundraising">Manage the data room</NuxtLink></span></div>
       </div>
       <div class="card frm">
         <b>Numbers to show</b>
         <label v-if="canPath('/financials/boards')" class="label">Source<select v-model="f.board_id"><option :value="null">Choose metrics here</option><option v-for="b in boards?.boards ?? []" :key="b.id" :value="b.id">{{ b.name }} board (same figures and charts)</option></select></label>
-        <p v-if="f.board_id && canPath('/financials/boards')" class="muted">The page shows this board exactly as in <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards">Boards</NuxtLink><template v-else>Boards</template>. Change its figures and charts there.</p>
-        <template v-else><p class="muted">Pick up to 8. Investors see the latest value, the change and a trend chart.</p>
+        <p v-if="f.board_id && canPath('/financials/boards')" class="muted">The page shows this board exactly as in <NuxtLink v-if="canPath('/financials/boards')" to="/financials/boards">Boards</NuxtLink><template v-else>Boards</template>.</p>
+        <template v-else><p class="muted">Pick up to 8.</p>
         <template v-for="(m, mi) in data.metrics" :key="m.key"><b v-if="m.group && m.group !== data.metrics[mi - 1]?.group" class="mgh">{{ m.group }}</b><label class="chk"><input v-model="f.metrics" type="checkbox" :value="m.key" :disabled="!f.metrics.includes(m.key) && f.metrics.length >= 8"> {{ m.label }}</label></template>
-        <label v-if="data.metrics.some((m) => m.group === 'Customers and retention')" class="chk"><input v-model="f.show_sectors" type="checkbox"> Revenue by customer sector (shares only, no customer names)</label>
+        <label v-if="data.metrics.some((m) => m.group === 'Customers and retention')" class="chk"><input v-model="f.show_sectors" type="checkbox"> Revenue by customer sector (no names)</label>
         <label class="label">Show figures<select v-model="f.period_type"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label></template>
         <template v-if="canPath('/forecast') || canPath('/cap-table')"><b class="sb">Forecast and ownership</b>
           <label v-if="canPath('/forecast')" class="label">Forecast<select v-model="f.forecast_id"><option :value="null">Don't show a forecast</option><option v-for="x in fcs?.forecasts ?? []" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
           <template v-if="canPath('/cap-table')"><label class="label">Cap table<select v-model="f.captable_id"><option :value="null">Don't show ownership</option><option v-for="x in cts?.captables ?? []" :key="x.id" :value="x.id">{{ x.name }}</option></select></label>
-            <label v-if="f.captable_id" class="label">Show<select v-model="f.captable_detail"><option value="summary">Ownership by group only (founders, investors, team, pool)</option><option value="holders">Every holder, with shares and SAFEs</option></select></label>
-            <p v-if="f.captable_id" class="muted">The page is public{{ f.captable_detail === 'holders' ? ': everyone who opens it sees each holder by name. For named holders, a private link from Cap table → Share is usually better.' : '. Names are not shown.' }}</p></template></template>
+            <label v-if="f.captable_id" class="label">Show<select v-model="f.captable_detail"><option value="summary">Ownership by group only</option><option value="holders">Every holder, with shares and SAFEs</option></select></label>
+            <p v-if="f.captable_id" class="muted">The page is public{{ f.captable_detail === 'holders' ? ': anyone can see each holder by name. Consider a private link from Cap table → Share.' : '. Names are not shown.' }}</p></template></template>
         <button class="btn" type="submit" :disabled="busy">Save</button>
       </div>
     </form>

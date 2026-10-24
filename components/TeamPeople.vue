@@ -45,7 +45,7 @@ function startDraft(k: string) {
   const pre: Record<string, string> = { employee: p.name, candidate: p.name, consultant: p.name, contractor: p.name, advisor: p.name, person: p.name, party: p.name, role: p.title ?? '', scope: p.title ?? '', services: p.title ?? '', salary: pay, fees: pay, payment: pay, start: p.start_date ?? '', location: p.location ?? '', term: p.contract_end ?? '' }
   dr.a = Object.fromEntries((docT.value?.fields ?? []).map((f) => [f.key, pre[f.key] ?? ''])); if (k === 'ip_assignment') dr.a.role = p.kind === 'employee' ? 'Employee' : 'Contractor'
 }
-async function draft() { busy.value = true; msg.value = ''; try { await $fetch('/api/hr/agreements', { method: 'POST', body: { person_id: cur.value!.id, kind: dr.kind, answers: dr.a } }); dr.kind = ''; ok.value = 'Drafted and saved as a PDF in Documents. Open it, check it, then send it for signing.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
+async function draft() { busy.value = true; msg.value = ''; try { await $fetch('/api/hr/agreements', { method: 'POST', body: { person_id: cur.value!.id, kind: dr.kind, answers: dr.a } }); dr.kind = ''; ok.value = 'Drafted as a PDF in Documents. Review it before sending for signing.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = false } }
 async function setAg(a: Ag, status: string, extra: Record<string, string> = {}) { try { await $fetch('/api/hr/agreements', { method: 'POST', body: { id: a.id, status, ...extra } }); await refresh() } catch (e) { msg.value = err(e) } }
 async function delAg(a: Ag) { if (!await askConfirm('Remove "' + a.title + '"? The PDF stays in Documents.')) return; await $fetch('/api/hr/agreements', { method: 'POST', body: { id: a.id, delete: true } }); await refresh() }
 const up = reactive({ kind: 'employment', signed_on: new Date().toISOString().slice(0, 10), ends_on: '' })
@@ -93,7 +93,7 @@ function logFromBank(s: { txn_id: string; person_id: string; amount: number; cur
         <select v-model="hp.bank"><option value="">Any bank status</option><option v-for="(l, k) in BANK" :key="k" :value="k">{{ l }}</option></select>
         <span class="sp" /><details class="dd"><summary class="btn secondary sm">Export</summary><div class="ddm"><a :href="hExport('xlsx')">Excel (.xlsx)</a><a :href="hExport('csv')">CSV</a><span>{{ rangeLabel(hp.preset, hRange) }}, with the filters above</span></div></details></div>
       <div class="hs"><div><em>Paid</em><b>{{ Object.entries(hTot).map(([c, v]) => money(v, c)).join(' · ') || '—' }}</b><i>{{ hRows.length }} payment{{ hRows.length === 1 ? '' : 's' }}</i></div><div><em>In bank</em><b>{{ hCount('matched') }}</b><i>Matched to a bank line</i></div><div><em>Not in bank</em><b :class="{ red: hCount('missing') }">{{ hCount('missing') }}</b><i>Statement has no matching line</i></div><div><em>Awaiting statement</em><b>{{ hCount('no_statement') + hCount('no_account') }}</b><i>Import statements in Banking</i></div></div>
-      <div v-if="hist?.suggestions.length" class="card pad0"><div class="ch"><h3>Bank payments that look like team pay</h3><span class="mut">Not logged yet; the line carries a team member's name</span></div>
+      <div v-if="hist?.suggestions.length" class="card pad0"><div class="ch"><h3>Bank payments that look like team pay</h3><span class="mut">Not logged; names a team member</span></div>
         <div v-for="s in hist.suggestions" :key="s.txn_id" class="sg"><span><b>{{ s.person }}</b><em>{{ day(s.date) }} · {{ s.account }} · {{ s.description }}</em></span><span class="am">{{ money(s.amount, s.currency) }}</span><button class="btn sm secondary" @click="logFromBank(s)">Log as pay</button></div></div>
       <div class="card pad0">
         <table v-if="hRows.length" class="t" data-nosearch><thead><tr><th>Paid on</th><th>Person</th><th>For</th><th class="r">Amount</th><th>Bank</th><th>Records</th></tr></thead>
@@ -103,14 +103,14 @@ function logFromBank(s: { txn_id: string; person_id: string; amount: number; cur
             <td><a v-if="r.voucher_id" :href="'/api/expenses/doc/' + r.voucher_id" target="_blank" class="lk">Voucher</a><span v-else class="sub">Not on Payments</span></td></tr></tbody></table>
         <p v-else class="mut pad">{{ histBusy ? 'Loading…' : 'No team payments in this period.' }}</p></div>
       <AppModal :open="!!linking" :title="linking ? 'Find ' + linking.person + '\'s payment in the bank' : ''" @close="linking = null">
-        <div v-if="linking" class="ef"><p class="mut">{{ money(linking.amount, linking.currency) }} paid {{ day(linking.paid_on) }} for {{ per(linking.period) }}. Bank lines not yet explained, closest first:</p>
+        <div v-if="linking" class="ef"><p class="mut">{{ money(linking.amount, linking.currency) }} paid {{ day(linking.paid_on) }} for {{ per(linking.period) }}. Unmatched bank lines, closest first:</p>
           <button v-for="c in candidates" :key="c.id" class="cand" @click="link(linking, c.id)"><span><b>{{ money(c.amount, c.currency) }}</b> · {{ day(c.date) }}<em>{{ c.account }} · {{ c.description }}</em></span><span class="lk">Link</span></button>
-          <p v-if="!candidates.length" class="mut">No unexplained {{ linking.currency }} money out around that date. Import the bank statement in Banking first.</p></div>
+          <p v-if="!candidates.length" class="mut">No unmatched {{ linking.currency }} payments near that date. Import the statement in Banking first.</p></div>
       </AppModal>
     </template>
     <template v-else>
     <div v-if="data.people.length" class="two">
-      <div class="card pad0"><div class="ch"><h3>Pay due</h3><span class="mut">Last 3 months and the next 3 weeks</span></div>
+      <div class="card pad0"><div class="ch"><h3>Pay due</h3><span class="mut">Last 3 months, next 3 weeks</span></div>
         <div v-for="d in data.due.slice(0, 12)" :key="d.person_id + d.period" class="dr"><span class="dt" :class="{ red: d.overdue }"><b>{{ day(d.due) }}</b><em>{{ d.overdue ? 'Overdue' : 'Due' }}</em></span><span class="dn"><b>{{ d.name }}</b><em>{{ per(d.period) }}</em></span><span class="am">{{ money(d.amount, d.currency) }}</span><button class="btn secondary sm" @click="logPay(pOf(d.person_id), d)">Log payment</button></div>
         <p v-if="!data.due.length" class="mut pad">Nothing due.</p></div>
       <div class="card pad0"><div class="ch"><h3>Contracts to sort out</h3></div>
@@ -124,7 +124,7 @@ function logFromBank(s: { txn_id: string; person_id: string; amount: number; cur
           <td>{{ p.pay_amount ? money(p.pay_amount, p.currency) : '—' }}<span class="sub">{{ FREQ[p.pay_frequency] }}</span></td>
           <td>{{ contract(p.id) }}<span v-for="(x, i) in data.flags[p.id] ?? []" :key="i" class="sub" :class="x.level">{{ x.text }}</span></td>
           <td>{{ payOf(p.id)[0] ? day(payOf(p.id)[0]!.paid_on) : '—' }}<span v-if="payOf(p.id)[0]" class="sub">{{ per(payOf(p.id)[0]!.period) }}</span></td><td class="r"><button class="lk" @click.stop="logPay(p)">Log payment</button></td></tr></tbody></table>
-      <EmptyState v-if="!list.length" compact icon="team" title="No one here yet" text="Add staff and consultants to track their agreements and pay." />
+      <EmptyState v-if="!list.length" compact icon="team" title="No one here yet" text="Add staff and consultants." />
     </div>
 
     </template>
@@ -137,7 +137,7 @@ function logFromBank(s: { txn_id: string; person_id: string; amount: number; cur
         <div class="g3"><label class="label">Started<input v-model="pf.d.start_date" type="date"></label><label class="label">Contract ends (if fixed term)<input v-model="pf.d.contract_end" type="date"></label><label class="label">Left on<input v-model="pf.d.end_date" type="date"></label></div>
         <div class="g3"><label class="label">Pay<input v-model="pf.d.pay_amount" type="number" min="0"></label><label class="label">Currency<select v-model="pf.d.currency"><option v-for="c in ['NGN', 'USD', 'GBP', 'EUR', 'KES', 'GHS', 'ZAR']" :key="c">{{ c }}</option></select></label><label class="label">Paid<select v-model="pf.d.pay_frequency"><option v-for="(l, k) in FREQ" :key="k" :value="k">{{ l }}</option></select></label></div>
         <div class="g3"><label v-if="['monthly', 'quarterly'].includes(pf.d.pay_frequency ?? '')" class="label">Pay day (of the month)<input v-model="pf.d.pay_day" type="number" min="1" max="31"></label></div>
-        <label class="label">Notes<textarea v-model="pf.d.notes" rows="3" maxlength="4000" placeholder="Bank details are best kept in the agreement or your bank, not here." /></label>
+        <label class="label">Notes<textarea v-model="pf.d.notes" rows="3" maxlength="4000" placeholder="Keep bank details out of notes." /></label>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
       <div v-else-if="view === 'agreements' && cur" class="ef">
@@ -145,9 +145,9 @@ function logFromBank(s: { txn_id: string; person_id: string; amount: number; cur
           <span class="aa"><button v-if="a.document_id" class="lk" @click="openDoc(a.document_id)">Open PDF</button><button v-if="a.status === 'draft'" class="lk" @click="setAg(a, 'sent')">Mark sent</button><button v-if="a.status !== 'signed' && a.status !== 'ended'" class="lk" @click="setAg(a, 'signed')">Mark signed</button><button v-if="a.status === 'signed'" class="lk" @click="setAg(a, 'ended')">Mark ended</button><button class="lk red" @click="delAg(a)">Remove</button></span></div>
         <p v-if="!agOf(cur.id).length" class="mut">No agreements yet.</p>
         <div class="box"><p class="bh">Draft an agreement with AI</p><div class="chips"><button v-for="d in data.docs" :key="d.key" :class="{ on: dr.kind === d.key }" @click="startDraft(d.key)">{{ d.name }}</button></div>
-          <template v-if="docT"><p class="mut">{{ docT.blurb }} Filled in from {{ cur.name }}'s profile; check each field.</p>
+          <template v-if="docT"><p class="mut">{{ docT.blurb }} Check each pre-filled field.</p>
             <div class="g2"><label v-for="fl in docT.fields" :key="fl.key" class="label" :class="{ w: fl.type === 'textarea' }">{{ fl.label }}{{ fl.required ? ' *' : '' }}<textarea v-if="fl.type === 'textarea'" v-model="dr.a[fl.key]" rows="2" maxlength="4000" :placeholder="fl.placeholder" /><select v-else-if="fl.type === 'select'" v-model="dr.a[fl.key]"><option v-for="o in fl.options" :key="o">{{ o }}</option></select><input v-else v-model="dr.a[fl.key]" :type="fl.type === 'date' ? 'date' : 'text'" :placeholder="fl.placeholder" maxlength="4000"></label></div>
-            <div class="ar"><button class="btn" :disabled="busy" @click="draft"><AiSpark v-if="busy" /> {{ busy ? 'Drafting…' : 'Draft ' + docT.name.toLowerCase() }}</button><span class="mut">Saved as a PDF on Aidi letterhead under {{ cur.entity ?? 'the group' }} in Documents. Not legal advice: have it reviewed.</span></div></template></div>
+            <div class="ar"><button class="btn" :disabled="busy" @click="draft"><AiSpark v-if="busy" /> {{ busy ? 'Drafting…' : 'Draft ' + docT.name.toLowerCase() }}</button><span class="mut">Saved as a PDF in Documents ({{ cur.entity ?? 'the group' }}). Not legal advice: have it reviewed.</span></div></template></div>
         <div class="box"><p class="bh">Add a signed agreement</p><div class="g3"><label class="label">Type<select v-model="up.kind"><option v-for="d in data.docs" :key="d.key" :value="d.key">{{ d.name }}</option></select></label><label class="label">Signed on<input v-model="up.signed_on" type="date"></label><label class="label">Ends on (optional)<input v-model="up.ends_on" type="date"></label></div>
           <DropZone compact accept=".pdf,application/pdf" label="Drop the signed PDF here" @change="upload" /></div>
         <p v-if="msg" class="error">{{ msg }}</p>

@@ -38,7 +38,7 @@ async function doAdd() {
   <section v-if="data" class="pz">
     <div class="hd"><div><h1>Fundraising</h1></div></div>
     <nav class="tabs"><NuxtLink v-for="[k, l] in FTABS" :key="k" :to="k === 'find' ? '/fundraising/prospects' : '/fundraising?t=' + k" :class="{ on: k === 'find' }">{{ l }}</NuxtLink></nav>
-    <div class="hd"><div><h2 class="h2">Find investors and grants</h2><p class="lead">Funds, accelerators and non-dilutive grants that fit {{ data.company }}: where you are, your stage and sector, and how much you are raising. Add the ones you like to a pipeline and track every conversation.</p></div></div>
+    <div class="hd"><div><h2 class="h2">Find investors and grants</h2><p class="lead">Funds, accelerators and grants that fit {{ data.company }}.</p></div></div>
     <div class="fx-stats">
       <StatTile icon="users" tone="b" label="Investors that fit" :value="counts.investor" clickable :on="f.kind === 'investor'" @click="f.kind = f.kind === 'investor' ? '' : 'investor'" />
       <StatTile icon="money" tone="g" label="Grants and programs" :value="counts.grant" note="non-dilutive" clickable :on="f.kind === 'grant'" @click="f.kind = f.kind === 'grant' ? '' : 'grant'" />
@@ -63,12 +63,12 @@ async function doAdd() {
       </article>
       <EmptyState v-if="!items.length" card icon="fundraising" title="No matches yet" text="Try another location or stage, or clear the sector filters." />
     </div>
-    <p class="note">This list is kept by the Finvry team and updated as programs change. Check eligibility and deadlines on each official site before applying.</p>
+    <p class="note">Check eligibility and deadlines on each official site before applying.</p>
     <div v-if="sel.length" class="act"><span><b>{{ sel.length }}</b> selected</span><button type="button" class="btn secondary" @click="sel = []">Clear</button><button type="button" class="btn" @click="openAdd">Add to pipeline</button></div>
     <AppModal :open="add.open" title="Add to a pipeline" @close="add.open = false">
       <div class="am"><label class="label">Pipeline<select v-model="add.to"><option v-for="p in data.pipelines" :key="p.id" :value="p.id">{{ p.name }}{{ p.status === 'closed' ? ' (closed)' : '' }}</option><option value="new">+ Create a new pipeline</option></select></label>
         <template v-if="add.to === 'new'"><label class="label">Pipeline name<input v-model="add.name" maxlength="120"></label><label class="label">Target ({{ data.currency === 'NGN' ? 'NGN' : 'USD' }})<input v-model="add.target" inputmode="decimal" placeholder="Optional"></label></template>
-        <p class="s">They are added at the first stage, with their website and how to apply in the notes.</p><p v-if="add.msg" class="error">{{ add.msg }}</p></div>
+        <p class="s">Added at the first stage, with how to apply in the notes.</p><p v-if="add.msg" class="error">{{ add.msg }}</p></div>
       <template #foot><button type="button" class="btn secondary" @click="add.open = false">Cancel</button><button type="button" class="btn" :disabled="add.busy || (add.to === 'new' && !add.name.trim())" @click="doAdd">{{ add.busy ? 'Adding…' : 'Add ' + sel.length }}</button></template>
     </AppModal>
   </section>

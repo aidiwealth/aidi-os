@@ -103,10 +103,10 @@ async function saveFields() { try { await $fetch('/api/crm/fields', { method: 'P
       <template #foot><button class="btn secondary" @click="nc.open = false">Cancel</button><button class="btn" type="submit" form="ncf" :disabled="busy">Add contact</button></template>
     </AppModal>
     <AppModal :open="im.open" title="Import contacts" @close="im.open = false">
-      <div class="frm"><DropZone accept=".csv,.tsv,.txt,.xlsx" :label="pz.busy ? 'Reading…' : 'Drop a CSV or Excel file'" hint="Columns like Name, Email, Company and Title are recognised · or click to choose" @change="parseFile" />
+      <div class="frm"><DropZone accept=".csv,.tsv,.txt,.xlsx" :label="pz.busy ? 'Reading…' : 'Drop a CSV or Excel file'" hint="Name, Email, Company, Title · or click to choose" @change="parseFile" />
         <div class="gs"><input v-model="pz.url" placeholder="Or paste a Google Sheets link" aria-label="Google Sheets link"><button type="button" class="btn secondary" :disabled="!pz.url.trim() || pz.busy" @click="parseSheet">Load sheet</button></div>
         <p v-if="pz.note" class="ok">{{ pz.note }}</p>
-        <p class="mut">Review below, one per line: <code>Name &lt;email&gt;</code>, or <code>Name, email, firm, title</code>. You can also paste straight from a spreadsheet. Existing contacts are kept.</p><textarea v-model="im.lines" rows="8" placeholder="Amara Obi, amara@vc.africa, Ventures Africa, Partner" />
+        <p class="mut">Review below, one per line: <code>Name &lt;email&gt;</code>, or <code>Name, email, firm, title</code>. Existing contacts are kept.</p><textarea v-model="im.lines" rows="8" placeholder="Amara Obi, amara@vc.africa, Ventures Africa, Partner" />
         <label class="label">Add them to a list<select v-model="im.list_id"><option value="">No list</option><option v-for="l in data.lists" :key="l.id" :value="l.id">{{ l.name }}</option></select></label></div>
       <template #foot><button class="btn secondary" @click="im.open = false">Cancel</button><button class="btn" :disabled="busy || !im.lines.trim()" @click="doImport">Import</button></template>
     </AppModal>
@@ -115,7 +115,7 @@ async function saveFields() { try { await $fetch('/api/crm/fields', { method: 'P
       <template #foot><button class="btn secondary" @click="nl.open = false">Cancel</button><button class="btn" type="submit" form="nlf">Create list</button></template>
     </AppModal>
     <AppModal :open="fl.open" title="Custom properties" @close="fl.open = false">
-      <div class="frm"><p class="mut">Extra details you track for each contact, like cheque size or region.</p>
+      <div class="frm"><p class="mut">Extra fields, like cheque size or region.</p>
         <div v-for="(f, i) in fl.fields" :key="i" class="fr"><input v-model="f.label" placeholder="Property name" maxlength="60"><select v-model="f.type"><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option><option value="url">Link</option><option value="select">Choice</option></select><input v-if="f.type === 'select'" v-model="f.options" placeholder="Choices, comma separated"><button type="button" class="x" aria-label="Remove" @click="fl.fields.splice(i, 1)">×</button></div>
         <button type="button" class="btn secondary sm" @click="fl.fields.push({ label: '', type: 'text', options: '' })">+ Add property</button></div>
       <template #foot><button class="btn secondary" @click="fl.open = false">Cancel</button><button class="btn" @click="saveFields">Save</button></template>

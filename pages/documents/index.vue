@@ -97,7 +97,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
           <li v-for="(f, i) in files" :key="f.name + i">{{ f.name }} <span>{{ size(String(f.size)) }}</span>
             <button type="button" class="x" :aria-label="'Remove ' + f.name" @click.stop="files.splice(i, 1)">×</button></li>
         </ul>
-        <p class="drop-hint">PDF, Word, Excel, PowerPoint, CSV, text or images · up to 25 MB each</p>
+        <p class="drop-hint">PDF, Office, CSV, text or images · up to 25 MB each</p>
       </div>
       <label class="label">Title<input v-model="form.title" maxlength="200" :disabled="files.length > 1" :placeholder="files.length > 1 ? 'Each file keeps its own name' : 'Defaults to the file name'"></label>
       <label class="label">Type<select v-model="form.kind"><option v-for="k in KINDS" :key="k" :value="k">{{ k[0]!.toUpperCase() + k.slice(1) }}</option></select></label>
@@ -121,7 +121,7 @@ const date = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'nume
       </tbody>
     </table>
     <template v-if="svc.length">
-      <div class="svh"><h2>From Finvry services</h2><p class="muted">Documents our team shared with you and files you sent us on your requests and in messages.</p></div>
+      <div class="svh"><h2>From Finvry services</h2><p class="muted">Files shared on your requests and in messages.</p></div>
       <table class="table">
         <thead><tr><th>Title</th><th>Request</th><th>From</th><th>Size</th><th>Added</th></tr></thead>
         <tbody><tr v-for="d in svc" :key="d.id"><td><span class="dn"><FileBadge :name="d.title" :mime="d.mime_type" size="sm" /><span><button class="link" :disabled="svcBusy === d.id" @click="openSvc(d.id)">{{ d.title.split(' — ').pop() }}</button><span v-if="d.reason" class="sub">{{ d.reason.replace(/[#*_>`]/g, '').slice(0, 120) }}</span></span></span></td>

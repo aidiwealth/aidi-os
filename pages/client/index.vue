@@ -51,12 +51,12 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
 
     <div v-if="todo" class="todo card">
       <h2>Needs your attention</h2>
-      <div v-for="j in cap(waiting, more.todo, 3)" :key="j.id" class="ti"><span class="tdot red" /><div><b>{{ j.company ?? j.title }}</b><span>We need something from you to continue.</span></div><NuxtLink :to="'/client/jobs/' + j.id" class="btn sm">Open request</NuxtLink></div>
+      <div v-for="j in cap(waiting, more.todo, 3)" :key="j.id" class="ti"><span class="tdot red" /><div><b>{{ j.company ?? j.title }}</b><span>Waiting on you.</span></div><NuxtLink :to="'/client/jobs/' + j.id" class="btn sm">Open request</NuxtLink></div>
       <button v-if="waiting.length > 3" type="button" class="link ml" @click="more.todo = !more.todo">{{ more.todo ? 'Show less' : 'Show ' + (waiting.length - 3) + ' more waiting on you' }}</button>
-      <div v-for="f in data.forms" :key="f.id" class="ti"><span class="tdot blue" /><div><b>{{ f.tax_year }} tax filing information{{ f.company ? ' · ' + f.company : '' }}</b><span>A few details and documents so we can prepare your filing.</span></div><button class="btn sm" type="button" @click="openForm(f.id)">{{ f.status === 'sent' ? 'Start' : 'Continue' }}</button></div>
+      <div v-for="f in data.forms" :key="f.id" class="ti"><span class="tdot blue" /><div><b>{{ f.tax_year }} tax filing information{{ f.company ? ' · ' + f.company : '' }}</b><span>Details and documents for your filing.</span></div><button class="btn sm" type="button" @click="openForm(f.id)">{{ f.status === 'sent' ? 'Start' : 'Continue' }}</button></div>
       <div v-if="dueTotal" class="ti"><span class="tdot amber" /><div><b>{{ dueTotal }} invoice{{ dueTotal === 1 ? '' : 's' }} to pay</b><span><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template> outstanding</span></div><NuxtLink to="/client/invoices" class="btn sm">Pay now</NuxtLink></div>
     </div>
-    <div v-else class="allset"><span class="ck">✓</span><div><b>You're all set</b><span>Nothing needs your attention right now. We'll email you when something does.</span></div></div>
+    <div v-else class="allset"><span class="ck">✓</span><div><b>You're all set</b><span>Nothing needs you now. We'll email you when it does.</span></div></div>
 
     <div class="fx-stats">
       <StatTile to="/client/invoices" label="Amount due" icon="billing" tone="b"><template v-if="data.due.length"><template v-for="(d, i) in data.due" :key="d.currency"><template v-if="i"> + </template><Money :value="d.amount" :currency="d.currency" /></template></template><template v-else>$0</template></StatTile>
@@ -85,7 +85,7 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
           <div class="sh"><h2>Upcoming deadlines</h2><NuxtLink to="/compliance" class="link">Compliance calendar →</NuxtLink></div>
           <div v-for="o in cap(data.deadlines, more.deadlines, 4)" :key="o.id" class="dl"><span class="cal" :class="tone(o.days_left)"><em>{{ mon(o.next_due) }}</em><b>{{ dd(o.next_due) }}</b></span><div><b>{{ o.title }}</b><span class="mut">{{ o.service_code ? 'We handle this for you' : 'Reminder' }}</span></div><span class="pill d" :class="tone(o.days_left)">{{ dleft(o.days_left) }}</span></div>
           <button v-if="data.deadlines.length > 4" type="button" class="link sa" @click="more.deadlines = !more.deadlines">{{ more.deadlines ? 'Show less' : 'Show all ' + data.deadlines.length }}</button>
-          <p v-if="!data.deadlines.length" class="mut">No deadlines on your calendar yet.</p>
+          <p v-if="!data.deadlines.length" class="mut">No deadlines yet.</p>
         </div>
       </div>
       <div class="col">
@@ -101,23 +101,23 @@ const ext = (n: string) => { const e = (n.split('.').pop() ?? '').toLowerCase();
           <div v-if="coOpen === c.id" class="cob"><dl class="kv"><template v-if="c.ein"><dt>EIN</dt><dd class="mono2">{{ c.ein }}</dd></template>
             <template v-if="c.address"><dt>{{ c.virtual_office || c.mailbox ? 'Business address' : 'Registered address' }}</dt><dd class="pre">{{ c.address }}</dd></template></dl>
           <div class="svc">
-            <div v-if="c.agent_resigned_on" class="sv off"><span class="si">✕</span><div><b>Registered agent resigned</b><span>{{ day(c.agent_resigned_on) }} · renewal unpaid · message us to restore it</span></div></div>
+            <div v-if="c.agent_resigned_on" class="sv off"><span class="si">✕</span><div><b>Registered agent resigned</b><span>{{ day(c.agent_resigned_on) }} · unpaid · message us to restore</span></div></div>
             <div v-else class="sv" :class="{ on: c.registered_agent === 'ours' }"><span class="si">{{ c.registered_agent === 'ours' ? '✓' : '—' }}</span><div><b>Registered agent</b><template v-if="c.registered_agent === 'ours'"><span v-if="c.agent_name">{{ c.agent_name }}</span><span v-if="c.agent_renewal">Renews {{ day(c.agent_renewal) }}</span></template><span v-else>{{ c.registered_agent === 'theirs' ? 'Your own agent' : 'Not with us' }}</span></div></div>
             <div class="sv" :class="{ on: c.virtual_office || c.mailbox }"><span class="si">{{ c.virtual_office || c.mailbox ? '✓' : '—' }}</span><div><b>Virtual office</b><span v-if="!(c.virtual_office || c.mailbox)">Not with us</span></div></div></div></div>
           </div>
           <button v-if="me.companies.length > 5" type="button" class="link sa" @click="more.companies = !more.companies">{{ more.companies ? 'Show less' : 'Show all ' + me.companies.length }}</button>
         </div>
-        <div v-if="!me.companies.length" class="card empty"><p>Your companies appear here once we form or add them for you.</p><button class="btn secondary sm" type="button" @click="open('llc_formation')">Form a company</button></div>
+        <div v-if="!me.companies.length" class="card empty"><p>Your companies appear here once added.</p><button class="btn secondary sm" type="button" @click="open('llc_formation')">Form a company</button></div>
         <div class="card">
           <div class="sh"><h2>Recent documents</h2><NuxtLink to="/client/documents" class="link">All →</NuxtLink></div>
           <button v-for="d in data.documents" :key="d.id + d.created_at" type="button" class="doc" @click="openDoc(d.id)"><FileBadge :name="d.title" :mime="(d as any).mime_type" /><span class="dt"><b>{{ d.title.split(' — ').pop() }}</b><em>{{ d.reason || d.job }} · {{ day(d.created_at) }}</em></span><span class="dlx">↓</span></button>
-          <p v-if="!data.documents.length" class="mut">Documents we share with you appear here.</p>
+          <p v-if="!data.documents.length" class="mut">No documents yet.</p>
         </div>
       </div>
     </div>
 
     <div class="more">
-      <div class="mh"><h2>Services by Finvry</h2><p class="mut">Done for you by our team. Order here, pay online, and follow every step.</p></div>
+      <div class="mh"><h2>Services by Finvry</h2><p class="mut">Done for you by our team.</p></div>
       <div class="tiles"><button v-for="(t, i) in TILES" :key="t.code" type="button" class="tile" @click="open(t.code)"><span class="ti2"><AppIcon :name="['customers', 'professionals', 'compliance', 'entities'][i] ?? 'company_services'" /></span><b>{{ t.t }}</b><span class="td">{{ t.d }}</span><em>Get started →</em></button></div>
     </div>
     <AppModal :open="wizard" title="Order a service" wide @close="wizard = false"><OrderWizard :key="preset + String(wizard)" :preset="preset" /></AppModal>

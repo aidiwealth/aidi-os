@@ -31,14 +31,14 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
 <template>
   <section v-if="data">
     <p class="label">Investors</p>
-    <div class="head"><div><h1>Decks</h1><p class="lead">Keep a deck for each purpose — your main pitch deck, a demo day version, a one-pager. Each one has its own private link and viewer analytics. The ★ main deck is used on your investor page and in investor updates.</p></div>
+    <div class="head"><div><h1>Decks</h1><p class="lead">One tracked link per deck. The ★ main deck shows on your investor page.</p></div>
       <button class="btn" @click="startNew">+ New deck</button></div>
-    <div class="fx-stats"><StatTile label="Decks" :value="data.decks.length" icon="doc" tone="n" :note="data.decks.some((d) => d.primary_deck) ? 'Main deck set' : 'No main deck yet'" /><StatTile label="Total visits" :value="totals.visits" icon="chart" tone="b" :note="lastView ? 'Last ' + ago(lastView) : 'No visits yet'" /><StatTile label="Unique visitors" :value="totals.unique" icon="users" tone="c" note="people who opened a link" /><StatTile label="Avg time on deck" :value="mmss(avgAll)" icon="clock" tone="a" note="per visit" /><StatTile label="Downloads" :value="totals.downloads" icon="inbox" tone="g" note="PDF downloads" /></div>
+    <div class="fx-stats"><StatTile label="Decks" :value="data.decks.length" icon="doc" tone="n" :note="data.decks.some((d) => d.primary_deck) ? 'Main deck set' : 'No main deck yet'" /><StatTile label="Total visits" :value="totals.visits" icon="chart" tone="b" :note="lastView ? 'Last ' + ago(lastView) : 'No visits yet'" /><StatTile label="Unique visitors" :value="totals.unique" icon="users" tone="c" note="people who opened it" /><StatTile label="Avg time on deck" :value="mmss(avgAll)" icon="clock" tone="a" note="per visit" /><StatTile label="Downloads" :value="totals.downloads" icon="inbox" tone="g" note="PDF downloads" /></div>
     <div v-if="!data.decks.length" class="empty">
       <div class="et"><span class="eic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6V3Zm8 0v4h4M9 12h6m-6 4h6" /></svg></span>
-        <h2>Add your first deck</h2><p>Upload your pitch deck as a PDF. You get a private link to share with investors, and you see who opened it, for how long and which slides they spent time on.</p>
+        <h2>Add your first deck</h2><p>Upload a PDF to get a tracked link for investors.</p>
         <button class="btn" @click="startNew">+ Upload a deck</button></div>
-      <ul class="ep"><li><b>Private tracked link</b><span>One link per deck. Turn on email capture or downloads when you need them.</span></li><li><b>Viewer analytics</b><span>Visits, time spent and per-slide engagement for every viewer.</span></li><li><b>Versions</b><span>Upload a new version anytime; the link stays the same.</span></li><li><b>Investor page</b><span>Your ★ main deck shows on your investor page and in updates.</span></li></ul>
+      <ul class="ep"><li><b>Private tracked link</b><span>Optional email capture and downloads.</span></li><li><b>Viewer analytics</b><span>Visits, time and per-slide views.</span></li><li><b>Versions</b><span>New uploads keep the same link.</span></li><li><b>Investor page</b><span>Your ★ main deck shows there and in updates.</span></li></ul>
     </div>
     <template v-else>
       <div class="grid">
@@ -47,7 +47,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
           <h3>{{ d.title }}</h3>
           <p class="desc"><template v-if="d.entity">{{ d.entity }} · </template>{{ d.description || d.current || 'PDF deck' }}</p>
           <div class="nums"><div><b>{{ d.stats.total }}</b><span>Visits</span></div><div><b>{{ d.stats.unique }}</b><span>Unique</span></div><div><b>{{ mmss(d.stats.avg_seconds) }}</b><span>Avg time</span></div><div><b>{{ d.stats.downloads }}</b><span>Downloads</span></div></div>
-          <div class="foot"><span v-if="!d.versions" class="nofile">No file yet: open it and upload the PDF, the link shows nothing until then</span><span v-else>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
+          <div class="foot"><span v-if="!d.versions" class="nofile">No file yet: upload a PDF</span><span v-else>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
             <button class="lk" @click.prevent.stop="copy(d)">{{ copied === d.id ? 'Copied' : 'Copy link' }}</button></div>
         </NuxtLink>
         <button class="dk add" @click="startNew"><span>+</span>New deck</button>

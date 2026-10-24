@@ -22,9 +22,9 @@ const dirty = (a: Acc) => edit[a.id] && (edit[a.id]!.name !== a.name || edit[a.i
 <template>
   <AppModal :open="open" title="Your categories" wide @close="emit('close')">
     <div v-if="data" class="coa">
-      <p class="hint">Your chart of accounts: items in your sheets that are not one of the standard lines (for example Consultants, Software &amp; apps, Loans receivable, Paid-in capital). Each is added into the line it belongs to when your figures do not give that line, so uploads and linked sheets never fail on a row we do not know.</p>
+      <p class="hint">Items that are not a standard line, such as Consultants or Paid-in capital.</p>
       <div v-if="canEdit" class="add"><input v-model="add.name" maxlength="80" placeholder="New category, e.g. Consultants"><select v-model="add.parent" aria-label="Belongs to"><option value="">No line (detail only)</option><option v-for="l in data.lines" :key="l.key" :value="l.key">In {{ l.label }}</option></select><button class="btn sm" type="button" :disabled="!add.name.trim() || busy === 'new'" @click="create">Add</button></div>
-      <p v-if="!data.accounts.length" class="empty">No categories yet. They are added when a sheet has rows that are not a standard line, or here.</p>
+      <p v-if="!data.accounts.length" class="empty">No categories yet. Add one above.</p>
       <div v-for="[sec, list] in groups" :key="sec" class="grp"><h4>{{ SEC[sec] ?? sec }}</h4>
         <div v-for="a in list" :key="a.id" class="row">
           <template v-if="canEdit && edit[a.id]"><input v-model="edit[a.id]!.name" maxlength="80"><select v-model="edit[a.id]!.parent" aria-label="Belongs to"><option value="">No line (detail only)</option><option v-for="l in data.lines" :key="l.key" :value="l.key">In {{ l.label }}</option></select></template>

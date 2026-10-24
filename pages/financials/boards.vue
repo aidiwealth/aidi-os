@@ -23,7 +23,7 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
 <template>
   <section v-if="data">
     <p class="label">Financials</p>
-    <div class="head"><div><h1>Boards</h1><p class="lead">The same figures, set up for each audience. Share any board with a private link.</p></div><NuxtLink to="/financials" class="btn secondary">Back to Financials</NuxtLink></div>
+    <div class="head"><div><h1>Boards</h1><p class="lead">Your figures, set up for each audience.</p></div><NuxtLink to="/financials" class="btn secondary">Back to Financials</NuxtLink></div>
     <nav class="bt"><button v-for="b in data.boards" :key="b.id" :class="{ on: sel === b.id }" @click="sel = b.id">{{ b.name }}<i v-if="b.share_enabled" title="Shared">●</i></button><button v-if="canEdit" class="add" @click="newBoard">+ New board</button></nav>
     <template v-if="board">
       <div class="bh"><p class="mut">{{ board.note }}</p><div class="tools">
@@ -31,7 +31,7 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
         <button v-if="canEdit" class="btn secondary" @click="openEdit">Edit board</button><button v-if="canEdit" class="btn" @click="sh.open = true">{{ board.share_enabled ? 'Shared · ' + board.views + ' views' : 'Share' }}</button></div></div>
       <BoardView :data="board.data" :metrics="data.metrics" :editable="canEdit" @type="setType" />
       <div v-if="board.forecast" class="bf"><div class="bfh"><h2>Forecast · {{ board.forecast.name }}</h2><NuxtLink :to="'/forecast?f=' + board.forecast.id" class="lk2">Open forecast</NuxtLink></div><ForecastSummary :assumptions="board.forecast.assumptions" compact /></div>
-      <p v-else-if="canEdit && data.forecasts.length" class="mut addf">Add one of your forecasts to this board under Edit board.</p>
+      <p v-else-if="canEdit && data.forecasts.length" class="mut addf">Add a forecast under Edit board.</p>
     </template>
     <p v-if="msg" class="error">{{ msg }}</p>
     <AppModal :open="ed.open" title="Edit board" wide @close="ed.open = false">
@@ -42,7 +42,7 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
       <template #foot><DeleteButton v-if="board?.audience === 'custom'" type="board" :id="board.id" :name="board.name" @deleted="ed.open = false; sel = ''; refresh()" /><button class="btn secondary" @click="ed.open = false">Cancel</button><button class="btn" @click="saveEdit">Save</button></template>
     </AppModal>
     <AppModal :open="sh.open" :title="'Share ' + (board?.name ?? '') + ' board'" @close="sh.open = false">
-      <div v-if="board" class="ef"><p class="mut">Anyone with the link can view this board (read-only). It updates as your figures change. Turn it off at any time.</p>
+      <div v-if="board" class="ef"><p class="mut">Read-only. Anyone with the link can view it; it stays up to date.</p>
         <template v-if="board.share_enabled && board.share_url"><div class="lnk"><code>{{ board.share_url }}</code><button class="btn secondary sm" @click="copy">{{ sh.copied ? 'Copied' : 'Copy' }}</button></div>
           <p class="mut">{{ board.views }} view{{ board.views === 1 ? '' : 's' }}{{ board.last_viewed_at ? ', last ' + new Date(board.last_viewed_at).toLocaleString('en-GB') : '' }}{{ board.share_expires ? ' · expires ' + new Date(board.share_expires).toLocaleDateString('en-GB') : '' }}</p>
           <div class="row"><button class="btn secondary" @click="share(false)">Turn off link</button><button class="lk" @click="share(true, true)">Make a new link (old one stops working)</button></div></template>

@@ -121,7 +121,7 @@ async function aiRead() {
     const status = (e as { status?: number; statusCode?: number }).status ?? (e as { statusCode?: number }).statusCode
     fail.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message
       ? { message: err(e, ''), advice: [] }
-      : { message: status === 504 || status === 502 ? 'The server took too long to answer.' : 'We lost contact with the server while reading.', advice: ['Try again in a minute.', 'Or download the workbook as Excel and upload it under Financials → Add figures.'] }
+      : { message: status === 504 || status === 502 ? 'The server took too long to answer.' : 'We lost contact with the server while reading.', advice: ['Try again in a minute.', 'Or upload the workbook under Financials → Add figures.'] }
   } finally { busy.value = false; prog.value = '' }
 }
 function next() { fail.value = null; read() }
@@ -132,7 +132,7 @@ async function saveAi() {
     try {
       const r = await $fetch<{ months: number; skipped: string[] }>('/api/sheet-links/ai-import', { method: 'POST', body: { document_id: ai.value.document_id, subject: props.subject, currency: f.currency, map: ai.value.map } })
       open.value = false; noteErr.value = false; upFile.value = null
-      note.value = 'Brought in ' + r.months + ' period' + (r.months === 1 ? '' : 's') + ' from ' + (ai.value.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. An uploaded file does not stay in step; upload it again or link the sheet to keep it current.'
+      note.value = 'Brought in ' + r.months + ' period' + (r.months === 1 ? '' : 's') + ' from ' + (ai.value.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. Link the sheet to keep it current.'
       emit('synced')
     } catch (e) { msg.value = err(e, 'Could not bring the figures in.') } finally { busy.value = false }
     return
@@ -166,7 +166,7 @@ async function save() {
     try {
       const r = await $fetch<{ months: number; skipped: string[] }>('/api/sheet-links/rows-import', { method: 'POST', body: { document_id: prev.value.document_id, subject: props.subject, currency: f.currency, sheet: tab.value?.sheet ?? '', mapping } })
       open.value = false; noteErr.value = false; upFile.value = null
-      note.value = 'Brought in ' + r.months + ' month' + (r.months === 1 ? '' : 's') + ' from ' + (prev.value?.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. An uploaded file does not stay in step; upload it again or link the sheet to keep it current.'
+      note.value = 'Brought in ' + r.months + ' month' + (r.months === 1 ? '' : 's') + ' from ' + (prev.value?.file ?? 'the file') + (r.skipped.length ? '; skipped ' + r.skipped.join(', ') : '') + '. Link the sheet to keep it current.'
       emit('synced')
     } catch (e) { msg.value = err(e, 'Could not bring the figures in.') } finally { busy.value = false }
     return
@@ -185,26 +185,25 @@ defineExpose({ start })
   <!-- With sheets linked, the section can be rolled up to one line (remembered on this browser). -->
   <div v-if="rolled && shown.length && !note" class="sl rl"><button type="button" class="rlb" :aria-expanded="false" @click="rolled = false"><b>Linked sheets</b><span class="sub">{{ shown.map((l) => l.name).join(', ') }} · synced {{ ago(shown.reduce((m, l) => (l.last_synced_at && (!m || l.last_synced_at > m) ? l.last_synced_at : m), '' as string) || null) }}</span><span v-if="shown.some((l) => l.last_error)" class="rle">Needs attention</span><span class="rls">Show<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg></span></button></div>
   <div v-else class="sl">
-    <div class="slh"><div><b>Linked sheets</b><span class="sub">{{ target === 'forecast' ? 'Months from your sheet become figures in a forecast' : 'Rows from your sheet fill these statements' }}, kept in step automatically.</span></div>
+    <div class="slh"><div><b>Linked sheets</b><span class="sub">Kept in sync automatically.</span></div>
       <div class="slr"><button v-if="shown.length" type="button" class="link rlh" :aria-expanded="true" @click="rolled = true">Hide<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15l6-6 6 6" /></svg></button><button v-if="canEdit && (target === 'forecast' || (subject && subject !== 'group'))" class="btn secondary sm" type="button" @click="start()">Link a sheet</button></div></div>
     <p v-if="note" :class="noteErr ? 'error' : 'okm'">{{ note }}</p>
     <ul v-if="shown.length" class="sll">
       <li v-for="l in shown" :key="l.id">
         <div class="slm"><b>{{ l.name }}</b><span>{{ l.target === 'forecast' ? 'Forecast: ' + (l.forecast ?? '—') : l.mode === 'ai' ? 'Read with AI · ' + l.currency : (l.sheet ? 'Tab ' + l.sheet + ' · ' : '') + l.currency }} · {{ l.mode === 'ai' ? (l.ai_map?.blocks.length ?? 0) + ' table' + (l.ai_map?.blocks.length === 1 ? '' : 's') : l.mapping.length + ' row' + (l.mapping.length === 1 ? '' : 's') }} · synced {{ ago(l.last_synced_at) }}{{ l.last_result?.months !== undefined && !l.last_error ? ' (' + l.last_result.months + (l.mode === 'ai' ? ' periods' : ' months') + ')' : '' }}{{ l.auto ? '' : ' · manual only' }}</span>
           <span v-if="l.last_error" class="slx">{{ l.last_error }}</span><span v-if="l.mode === 'ai' && l.ai_map?.suggestions?.length" class="sgl">Worth adding to the sheet: {{ l.ai_map.suggestions.slice(0, 4).map((x) => x.metric).join(', ') }}</span></div>
-        <label v-if="canEdit && l.target === 'financials'" class="shs" title="Investors see this sheet's link as the source of the figures (data room, investor page, updates)"><input type="checkbox" :checked="!!l.show_source" @change="showSource(l, ($event.target as HTMLInputElement).checked)"> Show investors this as the source</label><div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">{{ l.mode === 'ai' ? 'Read again with AI' : 'Edit' }}</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
+        <label v-if="canEdit && l.target === 'financials'" class="shs" title="Investors see this sheet as the source"><input type="checkbox" :checked="!!l.show_source" @change="showSource(l, ($event.target as HTMLInputElement).checked)"> Show investors this as the source</label><div v-if="canEdit" class="sla"><button class="link" type="button" :disabled="busyId === l.id" @click="syncNow(l)">{{ busyId === l.id ? 'Syncing…' : 'Sync now' }}</button><button class="link" type="button" @click="start(l)">{{ l.mode === 'ai' ? 'Read again with AI' : 'Edit' }}</button><button class="link" type="button" @click="unlink(l)">Unlink</button></div>
       </li>
     </ul>
     <p v-else-if="target === 'financials' && (!subject || subject === 'group')" class="sub">Choose a company or entity to link a sheet.</p>
     <AppModal :open="open" :title="f.id ? 'Edit linked sheet' : 'Link a sheet'" wide @close="open = false">
       <div v-if="step === 1" class="slf">
-        <div v-if="target === 'financials' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry template</b><span class="sub">Months across, our line names down the side, totals worked out for you. Finvry reads it exactly, with no AI, so nothing can land in the wrong line. Fill it in, open it in Google Sheets, and link it here (or drop the file below).</span></div><a class="btn secondary sm" href="/api/financials/template">Download template</a></div>
-        <div v-if="target === 'forecast' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry forecast template</b><span class="sub">Months across, the forecast's lines down the side, totals and closing cash worked out for you. Each row is matched by its name, with no AI. Fill it in, open it in Google Sheets, and link it here.</span></div><a class="btn secondary sm" :href="'/api/forecast/template' + (scopeQuery?.cust ? '?cust=' + encodeURIComponent(scopeQuery.cust) : '')">Download template</a></div>
+        <div v-if="target === 'financials' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry template</b><span class="sub">Read exactly, with no AI. Fill it in, then link it here or drop it below.</span></div><a class="btn secondary sm" href="/api/financials/template">Download template</a></div>
+        <div v-if="target === 'forecast' && !f.id" class="tpl"><div><b>Easiest: start from the Finvry forecast template</b><span class="sub">Read exactly, with no AI. Fill it in, then link it here.</span></div><a class="btn secondary sm" :href="'/api/forecast/template' + (scopeQuery?.cust ? '?cust=' + encodeURIComponent(scopeQuery.cust) : '')">Download template</a></div>
         <label class="fl">Share link<input v-model="f.url" type="url" maxlength="600" placeholder="https://docs.google.com/spreadsheets/d/… or an Excel online / Dropbox link"></label>
-        <DropZone v-if="target === 'financials' && !f.id" accept=".xlsx,.csv" no-tip :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv · you choose the rows the same way, brought in once · or click to choose'" @change="pickFile" />
-        <p class="sub">One tab with the months across one heading row (Jan 2026, Feb 2026…) and line names down a column. You choose where each row goes; figures are read straight from your cells, with no AI.</p>
-        <p class="sub">Share the file so anyone with the link can view it.</p>
-        <p v-if="prog" class="prg">{{ prog }} <span class="sub">Big workbooks take a minute or two; you can keep this open.</span></p>
+        <DropZone v-if="target === 'financials' && !f.id" accept=".xlsx,.csv" no-tip :disabled="busy" :label="upFile ? upFile.name : 'Or drop the workbook here'" :hint="upFile ? 'Drop another file to replace it' : '.xlsx or .csv · brought in once · or click to choose'" @change="pickFile" />
+        <p class="sub">Months across one row, line names down a column. Share it so anyone with the link can view.</p>
+        <p v-if="prog" class="prg">{{ prog }} <span class="sub">Big workbooks take a minute or two.</span></p>
         <div v-if="fail" class="fl2"><b>{{ fail.message }}</b><ul v-if="fail.advice.length"><li v-for="a in fail.advice" :key="a">{{ a }}</li></ul>
           <span class="fla"><button class="link" type="button" :disabled="busy" @click="next">Try again</button></span></div>
       </div>
@@ -226,8 +225,8 @@ defineExpose({ start })
           <div class="tw sm"><table class="mt" data-nosearch><thead><tr><th>Month</th><th class="n">Revenue</th><th class="n">Net income</th><th class="n">Cash</th><th class="n">Total assets</th><th class="n">Liabilities + equity</th></tr></thead>
             <tbody><tr v-for="p in recent" :key="p.period_end"><td>{{ perLabel('month', p.period_end) }}</td><td class="n">{{ money0(p.revenue) }}</td><td class="n">{{ money0(p.net_income) }}</td><td class="n">{{ money0(p.cash) }}</td><td class="n">{{ money0(p.total_assets ?? null) }}</td><td class="n">{{ p.total_liabilities == null && p.equity == null ? '—' : money0((p.total_liabilities ?? 0) + (p.equity ?? 0)) }}</td></tr></tbody></table></div>
           <label class="ck cf"><input v-model="confirmed" type="checkbox"> These match my sheet</label>
-          <span class="sub">If one is wrong, open the table above to see which row went where, read it again, or use "Choose rows myself". A row in the wrong line can still add up, so this check matters.</span></div>
-        <div v-if="(ai.preview as any).checks?.length" class="chk2"><b>{{ (ai.preview as any).checks.length }} figure{{ (ai.preview as any).checks.length === 1 ? '' : 's' }} in the sheet do not add up</b><span class="sub">They come in as they are; fix them in the sheet and sync again.</span>
+          <span class="sub">If one is wrong, check the table above or use "Choose rows myself".</span></div>
+        <div v-if="(ai.preview as any).checks?.length" class="chk2"><b>{{ (ai.preview as any).checks.length }} figure{{ (ai.preview as any).checks.length === 1 ? '' : 's' }} in the sheet do not add up</b><span class="sub">Fix them in the sheet and sync again.</span>
           <ul><li v-for="(c, i) in (ai.preview as any).checks.slice(-8).reverse()" :key="i" :class="c.severity"><b>{{ perLabel(c.period_type, c.period_end) }} · {{ c.what }}</b> {{ c.detail }}</li></ul></div>
         <p v-if="ai.map.notes" class="sub">{{ ai.map.notes }}</p>
         <p v-if="ai.preview.missing.length" class="sub">Not found in the cells: {{ ai.preview.missing.slice(0, 6).join('; ') }}{{ ai.preview.missing.length > 6 ? '…' : '' }}</p>
@@ -250,7 +249,7 @@ defineExpose({ start })
               <optgroup v-if="target === 'financials' && fresh.length" label="New categories (added when you save)"><option v-for="c in fresh" :key="c.to" :value="c.to">{{ catLabel(c) }}</option></optgroup>
               <option v-if="target === 'financials'" value="__new">+ New category…</option></select>
               <div v-if="nc.row === r.label" class="nc"><input v-model="nc.name" maxlength="80" placeholder="Category name"><select v-model="nc.parent" aria-label="Belongs to"><option value="">No line (keep as a detail)</option><option v-for="k in prev.keys.filter((x) => x.key !== 'kpi')" :key="k.key" :value="k.key">In {{ k.label }}</option></select><button type="button" class="btn sm" :disabled="nc.busy || !nc.name.trim()" @click="addCat">Add</button><button type="button" class="lnk" @click="nc.row = ''">Cancel</button><span v-if="nc.msg" class="error">{{ nc.msg }}</span></div></td></tr></tbody></table></div>
-        <p v-if="target === 'financials'" class="sub">Rows that are not a standard line can go into your own categories (your chart of accounts). A category is added into its line when the sheet does not give that line; rows sent to the same line are added together.{{ summed ? ' Some rows here go to the same line and will be added together.' : '' }}</p>
+        <p v-if="target === 'financials'" class="sub">Rows sent to the same line are added together.{{ summed ? ' Some rows here will be.' : '' }}</p>
         <label v-if="!prev.document_id" class="ck"><input v-model="f.auto" type="checkbox"> Keep in step automatically (daily, and when this page opens)</label>
         <p v-else class="sub">An uploaded file is brought in once. To keep figures in step, link the sheet instead.</p>
       </div>

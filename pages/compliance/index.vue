@@ -73,7 +73,7 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
 <template>
   <section class="cp">
     <p class="label">{{ company ? 'Company' : 'Family Office' }}</p>
-    <div class="head"><div><h1>Compliance</h1><p class="lead">{{ company ? 'Your filings and renewals. We email you before each deadline.' : 'Filings, renewals and deadlines for every entity. Owners are emailed before each one.' }}</p></div>
+    <div class="head"><div><h1>Compliance</h1><p class="lead">{{ company ? 'Your filings and renewals. We email you before each deadline.' : 'Filings and renewals for every entity. Owners are emailed before each.' }}</p></div>
       <div class="tools"><NuxtLink v-if="company" to="/client/order" class="btn secondary">Get help filing</NuxtLink><button v-if="canEdit" class="btn" type="button" @click="openAdd">Add reminder</button></div></div>
 
     <div class="fx-stats">
@@ -97,7 +97,7 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
               <span class="pill" :class="tone(o)">{{ when(o.days_left) }}</span>
               <button v-if="canEdit" type="button" class="btn secondary sm" @click="openDone(o)">Mark done</button></div>
           </div></div>
-        <EmptyState v-if="!shown.length" card icon="compliance" :title="items.length ? 'Nothing here' : 'No reminders yet'" :text="items.length ? 'Pick another tab or day.' : company ? 'Set your company type in Settings to add the usual filings automatically, or add one yourself.' : 'Add your first filing, for example Delaware franchise tax.'">
+        <EmptyState v-if="!shown.length" card icon="compliance" :title="items.length ? 'Nothing here' : 'No reminders yet'" :text="items.length ? 'Pick another tab or day.' : company ? 'Set your company type to add the usual filings, or add one.' : 'Add your first filing.'">
           <NuxtLink v-if="company && !items.length" to="/settings" class="btn secondary">Set company type</NuxtLink><button v-if="canEdit && !items.length" class="btn" @click="openAdd">Add reminder</button></EmptyState>
       </div>
       <aside class="side">
@@ -118,7 +118,7 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
         <label class="label wide">Start from a common filing<select v-model="tpl"><option value="">— Blank —</option>
           <optgroup v-if="svcTemplates.length" label="Finvry services"><option v-for="(t, i) in svcTemplates" :key="'s' + i" :value="'s' + i">{{ t.label }}</option></optgroup>
           <optgroup :label="svcTemplates.length ? 'Other deadlines' : 'Common filings'"><option v-for="(t, i) in TEMPLATES" v-show="(showNg || !t.jurisdiction.startsWith('NG')) && (!svcTemplates.length || !t.jurisdiction.startsWith('US') || t.title.startsWith('Form 1099'))" :key="i" :value="String(i)">{{ t.label }}</option></optgroup></select></label>
-        <div v-if="pickedSvc" class="svh wide"><span>{{ pickedSvc.description }}</span><span>Finvry can do this for you: <b>{{ svcPrice(pickedSvc) }}</b>. <NuxtLink :to="{ path: '/client/order', query: { service: pickedSvc.code } }">Order it →</NuxtLink></span></div>
+        <div v-if="pickedSvc" class="svh wide"><span>{{ pickedSvc.description }}</span><span>Finvry can file this: <b>{{ svcPrice(pickedSvc) }}</b>. <NuxtLink :to="{ path: '/client/order', query: { service: pickedSvc.code } }">Order it →</NuxtLink></span></div>
         <label v-if="!company" class="label wide">Entity<select v-model="form.entity_id" required><option v-for="e in entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label class="label wide">Title<input v-model="form.title" required maxlength="200"></label>
         <label class="label">Type<select v-model="form.category"><option v-for="(l, k) in CAT" :key="k" :value="k">{{ l }}</option></select></label>
@@ -133,7 +133,7 @@ async function markDone() { if (!doneFor.value) return; err.value = ''; try { aw
     </AppModal>
     <AppModal :open="!!doneFor" :title="doneFor ? 'Mark done: ' + doneFor.title : ''" @close="doneFor = null">
       <div class="frm"><label class="label">Done on<input v-model="doneForm.completed_on" type="date"></label><label class="label wide">Note (optional)<textarea v-model="doneForm.note" rows="2" maxlength="2000" placeholder="e.g. Filed online, confirmation number" /></label>
-        <p class="muted wide">{{ doneFor?.recurrence !== 'none' ? 'The next ' + (REC[doneFor?.recurrence ?? ''] ?? '').toLowerCase() + ' deadline is set automatically.' : 'This one-off item will be marked finished.' }}</p><p v-if="err" class="error wide">{{ err }}</p></div>
+        <p class="muted wide">{{ doneFor?.recurrence !== 'none' ? 'The next ' + (REC[doneFor?.recurrence ?? ''] ?? '').toLowerCase() + ' deadline is set automatically.' : 'This one-off item will be closed.' }}</p><p v-if="err" class="error wide">{{ err }}</p></div>
       <template #foot><button class="btn secondary" type="button" @click="doneFor = null">Cancel</button><button class="btn" type="button" @click="markDone">Mark done</button></template>
     </AppModal>
   </section>

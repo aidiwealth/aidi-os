@@ -308,6 +308,12 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   const csv = 'Date,Description,Money in,Money out,Balance,Who spent\n2026-09-01,EXAMPLE Acme Ltd invoice 1042 (delete this row),2500.00,,12500.00,\n2026-09-02,Acme Ltd invoice 7,1000,,11000,\n2026-09-03,AWS,,250.50,10749.50,Ada\n'
   const r = BP.parseCsv(csv, 'USD')
   check('bank template: example rows skipped, money in and out and balance read', r.txns.length === 2 && r.txns[0].amount === 1000 && r.txns[1].amount === -250.5 && r.txns[1].balance === 10749.5, JSON.stringify(r.txns))
+  // Any other layout: title rows above the headings, a DR/CR type column, Excel serial dates; read with the AI's map.
+  const rows = [['GTBank Statement of Account'], ['Account', '0123'], [], ['Tran Date', 'Ref', 'Narration', 'Amount', 'Type', 'Bal'], ['46266', 'R1', 'NIP FROM ACME', '1,000.00', 'CR', '5,000.00'], ['46267', 'R2', 'AWS', '250.50', 'DR', '4,749.50'], ['', '', 'Closing balance', '', '', '4,749.50']]
+  const mr = BP.parseRows(rows, 'NGN', { header_row: 3, date: 0, description: [2, 1], amount: 3, debit: null, credit: null, direction: 4, out_words: ['DR'], balance: 5, date_order: null })
+  check('bank statement in any layout: read with the column map (type column, serial dates, title rows)', mr.txns.length === 2 && mr.txns[0].amount === 1000 && mr.txns[1].amount === -250.5 && mr.txns[0].date === '2026-09-01' && mr.opening === 4000 && mr.closing === 4749.5 && mr.txns[1].description === 'AWS · R2', JSON.stringify(mr))
+  let fell = false; try { BP.parseRows(rows, 'NGN') } catch { fell = true }
+  check('bank statement in another layout: the fixed headings do not guess', fell || BP.parseRows(rows, 'NGN').txns.length === 0)
   const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
   const t = GI.tableOf([{ name: 'S', rows: csv.trim().split('\n').map((l) => l.split(',')) }])
   const m = await GI.mapTable('bank_txns', t, {})

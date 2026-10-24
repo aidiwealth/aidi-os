@@ -26,7 +26,7 @@ const pc = (v: number) => (v < 0.01 ? (Math.round(v * 1000) / 10) : Math.round(v
       <path :d="path + ' L' + X(1) + ' ' + Y(0) + ' L' + X(0) + ' ' + Y(0) + ' Z'" class="ar" /><path :d="path" class="ln" />
       <line :x1="X(p80)" :x2="X(p80)" :y1="Y(0)" :y2="Y(0.8)" class="mk" /><circle :cx="X(p80)" :cy="Y(0.8)" r="4" class="dt" />
     </svg>
-    <p class="pc-foot"><b>{{ pc(p50) }}</b> of customers make half the revenue; <b>{{ pc(p80) }}</b> make 80%. The dashed line is what an even spread would look like.</p>
+    <p class="pc-foot"><b>{{ pc(p50) }}</b> of customers make half the revenue; <b>{{ pc(p80) }}</b> make 80%. Dashed line: an even spread.</p>
   </div>
 </template>
 

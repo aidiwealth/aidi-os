@@ -28,17 +28,17 @@ const bankLink = computed(() => props.bank?.enabled && !props.bank.connected)
 <template>
   <AppModal :open="open" title="Build a forecast from your numbers" wide @close="emit('close')">
     <div class="fb">
-      <p class="lead">Finvry starts from what has actually happened: revenue, costs and growth from the statements in Financials, and cash from your bank accounts today. Change anything after it is made.</p>
+      <p class="lead">Starts from your statements and today's cash. Change anything after.</p>
       <div class="two">
         <div class="src"><p class="h">From Financials</p>
           <template v-if="fin"><div class="kv"><span>Statements</span><b>{{ fin.months }} month{{ fin.months === 1 ? '' : 's' }}, to {{ mon(fin.latest) }}</b></div><div class="kv"><span>Revenue a month (last 3)</span><b>{{ m(fin.revenue) }}</b></div><div class="kv"><span>Costs a month (last 3)</span><b>{{ m(fin.costs) }}</b></div><div class="kv"><span>Revenue growth (last 6)</span><b>{{ fin.growth === null ? '—' : fin.growth + '% a month' }}</b></div><div class="kv"><span>Cash in the last statement</span><b>{{ m(fin.cash) }}</b></div></template>
-          <p v-else class="mut">No monthly statements yet. <NuxtLink to="/financials">Add them in Financials</NuxtLink> (QuickBooks, Google Sheets or a file) for revenue and cost structure.</p></div>
+          <p v-else class="mut">No monthly statements yet. <NuxtLink to="/financials">Add them in Financials</NuxtLink>.</p></div>
         <div class="src"><p class="h">From your bank</p>
           <template v-if="bank?.connected"><div class="kv"><span>Cash now</span><b>{{ m(bank.cash) }}</b></div><div class="kv"><span>Accounts</span><b>{{ bank.accounts.filter((a) => !a.debt).length }} · {{ [...new Set(bank.accounts.map((a) => a.institution))].join(', ') }}</b></div>
             <template v-if="bank.full_months"><div class="kv"><span>Money in a month (last {{ bank.full_months }})</span><b>{{ m(bank.avg_in) }}</b></div><div class="kv"><span>Money out a month</span><b>{{ m(bank.avg_out) }}</b></div><div class="kv"><span>Net burn a month</span><b :class="{ red: bank.burn > 0 }">{{ bank.burn > 0 ? m(bank.burn) : 'None' }}</b></div></template>
-            <p v-else class="mut">Money in and out will show once a full month of activity is available.</p>
+            <p v-else class="mut">Shows after a full month of activity.</p>
             <div v-if="bank.spend.length" class="sp"><span v-for="s in bank.spend" :key="s.label">{{ s.label }} <b>{{ m(s.amount) }}</b></span></div></template>
-          <p v-else-if="ngBank" class="mut">Live connections for Nigerian banks are coming soon. Cash comes from your statements for now.</p><template v-else><p class="mut">Connect your business bank for today's cash and what actually goes in and out each month. Read-only; we never move money.</p><BankFeeds v-if="bankLink" compact @changed="emit('refresh')" /></template></div>
+          <p v-else-if="ngBank" class="mut">Nigerian bank connections are coming soon. Cash comes from your statements.</p><template v-else><p class="mut">Connect your bank for today's cash and monthly flows. Read-only. Finvry never holds or moves money.</p><BankFeeds v-if="bankLink" compact @changed="emit('refresh')" /></template></div>
       </div>
       <div class="opts">
         <label class="chk"><input v-model="o.bankCash" type="checkbox" :disabled="!bank?.connected"> Start from today's bank balance <em>{{ bank?.connected ? m(bank.cash) + (bank.partial ? ': connected US accounts only' + (bank.reported ? ', against ' + m(bank.reported) + ' cash in Financials' : '') + ', so the forecast starts from Financials unless you tick this' : '') : 'connect a bank first' }}</em></label>

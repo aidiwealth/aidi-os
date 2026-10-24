@@ -9,7 +9,7 @@ async function save() { msg.value = ''; ok.value = ''; try { const r = await $fe
 <template>
   <form v-if="data" class="cp" @submit.prevent="save">
     <h2>Company profile</h2>
-    <p class="muted">Your legal form sets up the usual filing deadlines (federal and state tax, annual reports, registered agent, or CAC and FIRS in Nigeria) on your Compliance calendar, with email reminders before each one.</p>
+    <p class="muted">Your legal form sets your usual filing deadlines in Compliance.</p>
     <label class="label">Company type<select v-model="f.entity_type" required><option value="" disabled>Choose</option><option v-for="(l, k) in data.types" :key="k" :value="k">{{ l }}</option></select></label>
     <label v-if="f.entity_type === 'us_llc' || f.entity_type === 'us_corp'" class="label">State of formation<select v-model="f.state"><option v-for="s in data.states" :key="s">{{ s }}</option></select></label>
     <label class="chk"><input v-model="f.seed" type="checkbox"> Add the standard filing reminders</label>

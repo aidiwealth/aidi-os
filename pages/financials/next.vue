@@ -34,10 +34,10 @@ const mon = (d: string | null) => (d ? new Date(d.slice(0, 7) + '-01T00:00:00Z')
       <div v-if="data?.advice" class="tools"><select v-model="team" aria-label="Team"><option value="">All teams</option><option v-for="t in teams" :key="t" :value="t">{{ t }}</option></select><button class="btn secondary" type="button" :disabled="pending" @click="again"><AiSpark v-if="pending" :size="14" /> {{ pending ? 'Working…' : 'Refresh' }}</button></div></div>
 
 
-    <p class="disc1" role="note"><b>Guidance, not professional advice.</b> Worked out from your figures; check anything financial, legal, tax or about people with your advisers.</p>
+    <p class="disc1" role="note"><b>Guidance, not professional advice.</b> Check financial, legal, tax and people matters with your advisers.</p>
     <AiThinking v-if="pending && data" compact :steps="['Checking your latest figures…', 'Updating the advice…']" />
     <AiThinking v-if="pending && !data" :steps="['Reading your figures…', 'Checking revenue, costs and cash…', 'Looking at customers and retention…', 'Working out what each team should do…', 'Writing it up…']" :skeleton="3" />
-    <EmptyState v-else-if="data && !data.advice" card icon="chart" title="Add your figures first" text="Advice needs at least three months of figures in Financials, or your customer revenue." />
+    <EmptyState v-else-if="data && !data.advice" card icon="chart" title="Add your figures first" text="Add three months of figures or customer revenue." />
     <template v-else-if="data?.advice">
       <div class="top">
         <div class="cnt"><div v-for="s in SECT" :key="s.k" :class="s.k"><b>{{ of(s.k).length }}</b><span>{{ s.t }}</span></div></div>

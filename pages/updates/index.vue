@@ -37,7 +37,7 @@ const tpl = ref(false)
       <template #foot><button class="btn secondary" @click="nu.open = false">Cancel</button><button class="btn" @click="create">Create</button></template>
     </AppModal>
     <AppModal :open="tpl" title="Templates" @close="tpl = false">
-      <p v-if="!templates.length" class="mut">No templates yet. Open any update's ⋯ menu and choose "Save as template" to reuse its layout, charts and recipients.</p>
+      <p v-if="!templates.length" class="mut">No templates yet. Use "Save as template" in any update's ⋯ menu.</p>
       <div v-for="t in templates" :key="t.id" class="tp"><span>{{ t.title }}</span><span class="row"><button class="btn sm" @click="nu.template = t.id; tpl = false; create()">Use</button><NuxtLink :to="'/updates/' + t.id" class="btn secondary sm">Edit</NuxtLink></span></div>
     </AppModal>
     <AppModal :open="sig" title="Report footer & sign-off" wide @close="sig = false"><ReportSignoff v-if="sig" @close="sig = false" /></AppModal>

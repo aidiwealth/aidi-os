@@ -43,7 +43,7 @@ async function save() {
       <label class="label">Funding round<select v-model="f.round"><option v-for="r in ROUNDS" :key="r" :value="r">{{ r || 'Work it out (from the class or document)' }}</option></select></label></div>
       <DropZone accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.xlsx" multiple :disabled="f.busy" label="Drop the signed document here" hint="PDF, Word or image · or click to choose" @change="pick" />
       <ul v-if="files.length" class="fl"><li v-for="(x, i) in files" :key="x.name + x.size"><span>{{ x.name }}</span><button type="button" class="lk" @click="files.splice(i, 1)">Remove</button></li></ul>
-      <label class="ck"><input v-model="f.room" type="checkbox"> Also add it to the data room (Financing room, in a folder for its round)</label>
+      <label class="ck"><input v-model="f.room" type="checkbox"> Also add it to the data room</label>
       <p class="mut">It is filed in Documents under Financing either way.</p>
       <p v-if="f.msg" class="error">{{ f.msg }}</p>
     </div>

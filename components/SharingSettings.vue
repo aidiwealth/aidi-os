@@ -15,16 +15,16 @@ const { data: clogo } = await useFetch<{ id: string | null; url: string | null; 
       <CompanyLogo edit class="lgc" />
       <div class="cols"><label class="cl"><input v-model="f.bg" type="color"> Viewer background</label><label class="cl"><input v-model="f.fg" type="color"> Viewer text colour</label></div>
       <div class="prev" :style="{ background: f.bg, color: f.fg }"><img v-if="clogo?.url" :src="clogo.url" alt=""><b>Data room</b><span>Preview of your viewer colours</span></div>
-      <label class="tg" :class="{ dis: !data.paid }"><input v-model="f.hide_finvry" type="checkbox" :disabled="!data.paid"><span class="sw" /><span><b>Remove Finvry branding</b><em>{{ data.paid ? 'From your investor page, data room and update emails.' : 'Available on Startup and Scale.' }}</em></span></label></div>
-    <div class="card sec"><h2>Your Finvry address</h2><p class="mut">One address for your investor page, with short links for each data room link you share. No setup needed.</p>
+      <label class="tg" :class="{ dis: !data.paid }"><input v-model="f.hide_finvry" type="checkbox" :disabled="!data.paid"><span class="sw" /><span><b>Remove Finvry branding</b><em>{{ data.paid ? 'From your investor page, data room and emails.' : 'Available on Startup and Scale.' }}</em></span></label></div>
+    <div class="card sec"><h2>Your Finvry address</h2><p class="mut">Your investor page and short links for data rooms.</p>
       <label class="addr"><span>{{ data.base }}</span><input v-model="f.handle" required maxlength="41"></label>
-      <p class="mut">Example: <code>{{ data.base }}{{ f.handle }}/bridge-deck</code>{{ data.published ? '' : ' · Publish your investor page to show it at this address.' }}</p></div>
+      <p class="mut">Example: <code>{{ data.base }}{{ f.handle }}/bridge-deck</code>{{ data.published ? '' : ' · Publish your investor page to use it.' }}</p></div>
     <div class="card sec"><h2>Protection</h2>
-      <label class="tg"><input v-model="f.watermark" type="checkbox"><span class="sw" /><span><b>Watermark documents</b><em>Stamps the viewer's email and the date on every page of PDFs in your data room, including downloads. Images show it on screen. Other file types must be shared as PDF while this is on.</em></span></label>
-      <label class="tg"><input v-model="f.nda_enabled" type="checkbox"><span class="sw" /><span><b>Require an NDA before viewing</b><em>Visitors read your NDA and sign by typing their name. You see every signature under Fundraising → NDAs ({{ data.signatures.length }} so far).</em></span></label>
+      <label class="tg"><input v-model="f.watermark" type="checkbox"><span class="sw" /><span><b>Watermark documents</b><em>Stamps viewer email and date on PDFs. Other files must be PDF while on.</em></span></label>
+      <label class="tg"><input v-model="f.nda_enabled" type="checkbox"><span class="sw" /><span><b>Require an NDA before viewing</b><em>Visitors sign by typing their name. {{ data.signatures.length }} signed so far, under Fundraising → NDAs.</em></span></label>
       <div v-if="f.nda_enabled" class="scopes"><span class="mut">Ask for it on:</span><label v-for="[k, l] in [['room', 'Data room and deck links'], ['page', 'Investor page'], ['updates', 'Investor updates']]" :key="k" class="cb"><input v-model="f.nda_scopes" type="checkbox" :value="k"> {{ l }}</label>
         <button type="button" class="lk" @click="showNda = !showNda">{{ showNda ? 'Hide NDA text' : 'Edit NDA text' }}</button>
-        <ClientOnly v-if="showNda"><RichEditor v-model="f.nda_text" compact :min-height="280" :max-length="20000" /></ClientOnly><p v-if="showNda" class="mut">A standard mutual NDA is filled in for you. Have your lawyer review it if you change it. Signers are shown the exact text, and it is kept with their signature.</p></div></div>
+        <ClientOnly v-if="showNda"><RichEditor v-model="f.nda_text" compact :min-height="280" :max-length="20000" /></ClientOnly><p v-if="showNda" class="mut">A standard mutual NDA. Have a lawyer review any changes.</p></div></div>
     <div class="act"><button class="btn" type="submit" :disabled="busy">Save</button><p v-if="ok" class="ok">{{ ok }}</p><p v-if="msg" class="error">{{ msg }}</p></div>
   </form>
 </template>

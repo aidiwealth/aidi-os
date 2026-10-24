@@ -17,18 +17,18 @@ const since = computed(() => (st.value?.enabled_at ? new Date(st.value.enabled_a
 </script>
 <template>
   <section class="acc">
-    <div><h1>Account security</h1><p class="lead">Signed in as <b>{{ me?.email }}</b>. You sign in with a code sent to your email, plus a code from an authenticator app.</p></div>
+    <div><h1>Account security</h1><p class="lead">Signed in as <b>{{ me?.email }}</b>. Email code plus authenticator app.</p></div>
     <div v-if="!st?.enabled" class="card pad"><MfaWizard :framed="false" @done="refresh()" /></div>
     <div v-else class="card">
       <div class="st"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3z" /><path d="M9 12l2 2 4-4" /></svg></div>
         <div class="tx"><h2>Two-step verification is on</h2><p>Since {{ since }} · authenticator app</p></div><span class="pill">On</span></div>
       <div class="rows">
         <div class="row"><div><b>Recovery codes</b><p>{{ st.recovery_left }} of 10 left. Each works once if you lose your phone.</p><div class="meter"><i :style="{ width: st.recovery_left * 10 + '%' }" /></div></div><button class="btn secondary" @click="mode = mode === 'recovery' ? '' : 'recovery'; msg = ''; codes = []">New codes</button></div>
-        <div class="row"><div><b>Turn off</b><p>{{ brand.key === 'finvry' ? 'Finvry asks you to set it up again straight away (for example on a new phone).' : 'You will sign in with your email code only.' }}</p></div><button class="btn secondary" @click="mode = mode === 'disable' ? '' : 'disable'; msg = ''; codes = []">Turn off</button></div>
+        <div class="row"><div><b>Turn off</b><p>{{ brand.key === 'finvry' ? 'You will need to set it up again right away.' : 'You will sign in with your email code only.' }}</p></div><button class="btn secondary" @click="mode = mode === 'disable' ? '' : 'disable'; msg = ''; codes = []">Turn off</button></div>
       </div>
-      <div v-if="mode" class="confirm"><label>{{ mode === 'disable' ? 'To turn it off, enter' : 'To make new codes, enter' }} a current code from your app (or a recovery code)</label>
+      <div v-if="mode" class="confirm"><label>Enter a code from your app or a recovery code</label>
         <div class="in"><input v-model="code" maxlength="20" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" @keyup.enter="act"><button class="btn" :class="{ danger: mode === 'disable' }" :disabled="busy || code.replace(/\s/g, '').length < 6" @click="act">{{ busy ? 'Checking…' : mode === 'disable' ? 'Turn off' : 'Make new codes' }}</button></div></div>
-      <div v-if="codes.length" class="codes"><p><b>Your new recovery codes.</b> The old ones no longer work. Save these now; they will not be shown again.</p><div class="grid"><code v-for="c in codes" :key="c">{{ c }}</code></div><button class="btn secondary" @click="copyCodes">{{ copied ? 'Copied' : 'Copy all' }}</button></div>
+      <div v-if="codes.length" class="codes"><p><b>New recovery codes.</b> Old ones no longer work. Save these now; they are shown once.</p><div class="grid"><code v-for="c in codes" :key="c">{{ c }}</code></div><button class="btn secondary" @click="copyCodes">{{ copied ? 'Copied' : 'Copy all' }}</button></div>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>
   </section>

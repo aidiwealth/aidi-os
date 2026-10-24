@@ -75,7 +75,7 @@ function csv() {
 
 <template>
   <div class="gf">
-    <p class="lead">Each company's forecast in {{ cur }}, added together. Build, import and change a forecast on its company; pick which one counts here.</p>
+    <p class="lead">Each company's forecast in {{ cur }}, added together.</p>
     <div class="card pad0"><table class="t sm co" data-nosearch><thead><tr><th>Company</th><th>Forecast used</th><th>Months</th><th>Cash at the end</th><th /></tr></thead>
       <tbody><tr v-for="c in data.companies" :key="c.id">
         <td><b>{{ c.name }}</b><span class="mut"> · {{ c.currency }}</span></td>
@@ -87,10 +87,10 @@ function csv() {
     <div v-if="curs.length" class="rates">
       <span class="kl">Plan rates</span>
       <label v-for="q in curs" :key="q"><span>{{ q }} per 1 {{ cur }}</span><input v-model.number="rates[q]" type="number" min="0" step="any" :disabled="!canEdit"><em>{{ SRC[srcOf(q)] }}</em><button v-if="canEdit" type="button" class="lk" @click="saveRate(q)">Save</button></label>
-      <span class="hint">One rate for every month of the forecast. Your latest book rate unless you set a plan rate.</span>
+      <span class="hint">One rate for every month. Your latest book rate by default.</span>
     </div>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
-    <p v-if="!runs.length" class="note">No company has a forecast yet. Open a company to build one from its numbers or import its forecast template; the group forecast adds them together here.</p>
+    <p v-if="!runs.length" class="note">No company has a forecast yet. Open a company to build one.</p>
     <p v-else-if="missingRate.length" class="note">Set a plan rate for {{ missingRate.map((c) => c.currency).join(', ') }} to add {{ missingRate.map((c) => c.name).join(', ') }} to the group.</p>
     <template v-if="sum && months.length">
       <div class="tb"><div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div><span class="sp" /><button class="btn secondary" @click="csv">Export CSV</button></div>
@@ -108,7 +108,7 @@ function csv() {
           <template v-for="{ c } in ready" :key="c.id"><tr><td class="st">Revenue · {{ c.name }}</td><td v-for="x in g" :key="x.month">{{ full(x.by[c.id]?.revenue) }}</td></tr>
             <tr><td class="st">Net income · {{ c.name }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (x.by[c.id]?.net ?? 0) < 0 }">{{ full(x.by[c.id]?.net) }}</td></tr>
             <tr><td class="st">Cash · {{ c.name }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (x.by[c.id]?.cash ?? 0) < 0 }">{{ full(x.by[c.id]?.cash) }}</td></tr></template></tbody></table></div></div>
-      <p class="fine">Money between the companies (such as one company settling what it owes the other) cancels out when both forecasts carry it, so it does not change the group's cash. A forecast is an estimate from the assumptions entered, not a promise of results. Figures in {{ cur }}.</p>
+      <p class="fine">Money between the companies cancels out. A forecast is an estimate from the assumptions entered, not a promise of results. Figures in {{ cur }}.</p>
     </template>
   </div>
 </template>

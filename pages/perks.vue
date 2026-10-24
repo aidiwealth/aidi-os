@@ -19,7 +19,7 @@ async function copy(c: string) { try { await navigator.clipboard.writeText(c); c
 <template>
   <section class="pk">
     <div class="hd">
-      <div class="in"><p class="eb">Perks</p><h1>Save on the tools <span>your company runs on.</span></h1><p class="lead">Credits and discounts from Finvry partners, free for companies on Finvry. Claim one to get the code and how to redeem it.</p></div>
+      <div class="in"><p class="eb">Perks</p><h1>Save on the tools <span>your company runs on.</span></h1><p class="lead">Partner credits and discounts, free for Finvry companies.</p></div>
       <div class="st"><div><b>{{ data?.perks.length ?? 0 }}</b><span>perks available</span></div><div><b>{{ claimed }}</b><span>claimed by you</span></div><div v-if="total"><b>{{ k(total) }}+</b><span>in savings</span></div></div>
     </div>
     <p v-if="error" class="error">Could not load perks.</p>

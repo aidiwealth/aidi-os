@@ -24,7 +24,7 @@ const doPrint = () => downloadPdf({ kind: 'doc', title: f.title || 'Deal memo', 
         <button class="btn" :disabled="!!busy" @click="generate"><AiSpark v-if="busy === 'ai'" /> {{ busy === 'ai' ? 'Writing…' : f.body ? 'Rewrite with AI' : 'Write the memo with AI' }}</button></div>
       <div class="card doc"><div class="vt noprint"><button :class="{ on: view === 'preview' }" @click="view = 'preview'">Preview</button><button :class="{ on: view === 'edit' }" @click="view = 'edit'">Edit</button></div>
         <ClientOnly v-if="view === 'edit'"><RichEditor v-model="f.body" :min-height="560" :max-length="40000" placeholder="Write your memo…" /></ClientOnly>
-        <article v-else><h1 class="pt">{{ f.title }}</h1><div v-if="f.body" class="md" v-html="html" /><p v-else class="mut">Add your notes and press "Write the memo with AI", or write it yourself in Edit.</p></article></div>
+        <article v-else><h1 class="pt">{{ f.title }}</h1><div v-if="f.body" class="md" v-html="html" /><p v-else class="mut">Add notes and write it with AI, or write it in Edit.</p></article></div>
     </div>
   </section>
 </template>
