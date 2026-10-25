@@ -223,10 +223,15 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   const toolDefs = tools.map((t: { name: string; description: string; input_schema: unknown }, i) => ({ name: t.name, description: t.description, input_schema: t.input_schema, ...(i === tools.length - 1 ? { cache_control: { type: 'ephemeral' } } : {}) }))
   const actions: unknown[] = []; let inTok = 0, outTok = 0, text = ''
   const model = String((useRuntimeConfig() as unknown as Record<string, string>).aiModelAnalyst || '') || MODEL_DEFAULT
-  for (let round = 0; round < 8; round++) {
+  // Text from every round is kept: a model that writes its answer next to a last tool call (a link to the page, say) and
+  // then ends with nothing more must not lose it. With no answer yet after the tools, or on the last round, the model is
+  // asked to answer from what it has, with tools switched off.
+  const said: string[] = []; let force = false
+  for (let round = 0; round < 9; round++) {
+    const noTools = force || round === 8
     // Busy or briefly unavailable (429, 5xx, overloaded): wait and try again, up to three times. Anything else is
     // reported with the service's own reason, so it can be fixed rather than guessed at.
-    const payload = JSON.stringify({ model, max_tokens: 1600, system: [{ type: 'text', text: system + (isCo ? GROWTH_NOTE : ''), cache_control: { type: 'ephemeral' } }], tools: toolDefs, messages: msgs })
+    const payload = JSON.stringify({ model, max_tokens: 1600, system: [{ type: 'text', text: system + (isCo ? GROWTH_NOTE : ''), cache_control: { type: 'ephemeral' } }], tools: toolDefs, ...(noTools ? { tool_choice: { type: 'none' } } : {}), messages: msgs })
     let res: Response | null = null, why = ''
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt))
@@ -243,9 +248,18 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
     }
     const body = await res.json() as { content: any[]; stop_reason: string; usage?: Record<string, number> }
     const u = body.usage ?? {}; inTok += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0); outTok += u.output_tokens ?? 0
-    text = body.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim()
+    const roundText = body.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim()
+    if (roundText) said.push(roundText)
     const calls = body.content.filter((c) => c.type === 'tool_use')
-    if (body.stop_reason !== 'tool_use' || !calls.length) break
+    if (noTools || body.stop_reason !== 'tool_use' || !calls.length) {
+      if (said.length || noTools || !used.length) break
+      // Tools ran but no answer was written: ask for it once, from what the tools returned.
+      if (body.content.length) msgs.push({ role: 'assistant', content: body.content })
+      const nudge = { type: 'text', text: 'Answer my question now from what the tools returned: the figures, what they mean, and what to do. If something is missing, say what and where to add it.' }
+      const last = msgs[msgs.length - 1]
+      if (last?.role === 'user' && Array.isArray(last.content)) last.content.push(nudge); else msgs.push({ role: 'user', content: [nudge] })
+      force = true; continue
+    }
     msgs.push({ role: 'assistant', content: body.content })
     const results = []
     for (const c of calls) {
@@ -261,7 +275,10 @@ export async function analystReply(event: H3Event, history: { role: 'user' | 'as
   const price = priceOf(model), cost = (inTok * price.input + outTok * price.output) / 1_000_000
   await db().query("INSERT INTO core.ai_runs (task, model, prompt_version, input_ref, output, valid, error, input_tokens, output_tokens, cost_usd, billed_to) VALUES ('analyst',$1,'analyst-v3',$2,$3,true,null,$4,$5,$6,$7)", [model, path.slice(0, 120), JSON.stringify({ chars: text.length, tools: [...new Set(used)] }), inTok, outTok, cost, gate.billed]).catch(() => {})
   if (gate.billed === 'credits' && gate.orgId) await aiChargeCredits(gate.orgId, inTok + outTok)
-  return { text: text || 'I could not find an answer to that.', actions, tokens: inTok + outTok }
+  // The answer is the last thing written; a short closing line after a longer answer ("Here is the page.") keeps both.
+  const lastSaid = said[said.length - 1] ?? '', before = said[said.length - 2] ?? ''
+  text = (lastSaid.length < 160 && before.length > lastSaid.length ? before + '\n\n' + lastSaid : lastSaid).trim()
+  return { text: text || 'I could not answer that from your data. Try asking it another way, or open the page it is about.', actions, tokens: inTok + outTok }
 }
 
 // The same read-only company data for the Data API and the MCP server (company workspaces only; module must be on).

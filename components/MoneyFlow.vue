@@ -25,10 +25,10 @@ const label = computed(() => new Date(cur.value + '-01T00:00:00Z').toLocaleDateS
   </div>
 </template>
 <style scoped>
-.mh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; } .mh h2 { margin: 0; }
-.nav { display: flex; align-items: center; gap: 14px; font-size: 15px; } .nav button { width: 34px; height: 34px; background: #fff; border: 1px solid var(--c-rule); font-size: 18px; cursor: pointer; color: var(--c-ink); } .nav button:disabled { opacity: .35; cursor: default; }
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } .c { background: #fff; border: 1px solid var(--c-rule); display: flex; flex-direction: column; }
-.l { padding: 18px 22px 0; font-size: 14px; color: var(--c-ink-soft); } .c > b { padding: 10px 22px 22px; font-size: 38px; font-weight: 600; letter-spacing: -0.02em; color: var(--c-ink); } .c > b.in { color: var(--c-ok); }
-.r { display: flex; justify-content: space-between; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--c-rule); font-size: 14px; color: var(--c-ink-soft); }
-@media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
+.mh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; } .mh h2 { margin: 0; font-size: 16px; }
+.nav { display: flex; align-items: center; gap: 10px; font-size: 13.5px; } .nav button { width: 28px; height: 28px; background: #fff; border: 1px solid var(--c-rule); font-size: 18px; cursor: pointer; color: var(--c-ink); } .nav button:disabled { opacity: .35; cursor: default; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; background: #fff; border: 1px solid var(--c-rule); } .c { display: flex; flex-direction: column; } .c + .c { border-left: 1px solid var(--c-rule); }
+.l { padding: 14px 20px 0; font-size: 13px; color: var(--c-muted); } .c > b { padding: 4px 20px 12px; font-size: 24px; font-weight: 500; letter-spacing: -0.02em; color: var(--c-ink); font-variant-numeric: tabular-nums; } .c > b.in { color: var(--c-ok); }
+.r { display: flex; justify-content: space-between; gap: 10px; padding: 8px 20px; border-top: 1px solid var(--c-rule); font-size: 12.5px; color: var(--c-muted); }
+@media (max-width: 800px) { .cards { grid-template-columns: 1fr; } .c + .c { border-left: 0; border-top: 1px solid var(--c-rule); } }
 </style>

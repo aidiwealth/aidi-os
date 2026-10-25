@@ -48,6 +48,12 @@ async function confirm() {
     preview.value = null; await refresh()
   } catch (e) { state.msg = errText(e) } finally { state.busy = false }
 }
+// The closing balance by statement, as a small line beside the balance.
+const spark = computed(() => { const p = series.value; if (p.length < 2) return null
+  const vs = p.map((x) => x.value), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1
+  const pts = p.map((x, i) => [i / (p.length - 1) * 400, 52 - ((x.value - lo) / span) * 46] as const)
+  const line = pts.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ')
+  return { line, area: line + ' L400 56 L0 56 Z', from: p[0]!.label, to: p[p.length - 1]!.label } })
 async function openDoc(docId: string) { try { const r = await $fetch<{ url: string }>('/api/documents/' + docId + '/download'); window.location.href = r.url } catch (e) { state.msg = errText(e) } }
 </script>
 
@@ -58,9 +64,10 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
     <div class="dh"><h1>{{ data.account.bank_name }} · {{ data.account.account_name }}</h1><DeleteButton type="bank_account" :id="id" :name="data.account.bank_name + ' · ' + data.account.account_name" to="/banking" /></div>
 
     <div class="top">
-      <WalletCard :title="data.account.bank_name" label="Balance" :value="data.statements[0]?.closing ?? null" :currency="data.account.currency"
-        :sub="data.statements[0] ? 'per statement ending ' + day(data.statements[0].period_end) : 'Import a statement to see the balance'" foot-label="Account" :foot-value="data.account.account_name + (data.account.last4 ? ' ··' + data.account.last4 : '')" :tag="data.account.entity" />
-      <TrendChart title="Closing balance" sub="By statement" unit="usd" :symbol="({ USD: '$', NGN: '₦', GBP: '£', EUR: '€' } as Record<string, string>)[cur] ?? cur + ' '" :points="series" :foot="data.statements.length + ' statements'" />
+      <div class="bal"><span class="bl">Balance</span><b class="bv"><Money :value="data.statements[0]?.closing ?? null" :currency="data.account.currency" /></b>
+        <span class="bs">{{ data.statements[0] ? 'Statement ending ' + day(data.statements[0].period_end) : 'Import a statement to see the balance' }}</span></div>
+      <div v-if="spark" class="trend"><div class="th"><span>Closing balance · {{ data.statements.length }} statement{{ data.statements.length === 1 ? '' : 's' }}</span><span>{{ spark.from }} – {{ spark.to }}</span></div>
+        <svg viewBox="0 0 400 56" preserveAspectRatio="none" aria-hidden="true"><path :d="spark.area" fill="#0c1a2e" opacity=".05" /><path :d="spark.line" fill="none" stroke="#2f6494" stroke-width="1.6" vector-effect="non-scaling-stroke" /></svg></div>
     </div>
     <MoneyFlow v-if="data.transactions.length" class="flow" :rows="data.transactions" :currency="cur" />
 
@@ -117,7 +124,7 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
 <style scoped>
 .back { display: inline-block; margin-bottom: 16px; color: var(--c-muted); text-decoration: none; }
 h1 { margin-bottom: 18px; } h2 { margin-bottom: 12px; }
-.top { display: grid; grid-template-columns: minmax(320px, 1fr) 1.4fr; gap: 16px; margin-bottom: 22px; } .flow { margin-bottom: 22px; } .txn { margin-bottom: 22px; }
+.top { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; background: #fff; border: 1px solid var(--c-rule); margin-bottom: 22px; } .bal { padding: 18px 22px; display: flex; flex-direction: column; gap: 4px; } .bl { font-size: 13px; color: var(--c-muted); } .bv { font-size: 30px; font-weight: 500; letter-spacing: -.02em; color: var(--c-ink); font-variant-numeric: tabular-nums; } .bs { font-size: 12.5px; color: var(--c-muted); } .trend { padding: 16px 22px; border-left: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 8px; } .th { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--c-muted); } .trend svg { width: 100%; height: 56px; display: block; } .flow { margin-bottom: 22px; } .txn { margin-bottom: 22px; }
 .bal { display: flex; flex-direction: column; gap: 6px; justify-content: center; } .bal b { font-weight: 500; letter-spacing: -0.02em; font-size: 34px; color: var(--c-navy); }
 .card { margin-bottom: 16px; }
 .drop { border: 1px dashed var(--c-rule-strong); background: var(--c-paper); padding: 20px; text-align: center; cursor: pointer; } .drop p { margin: 0; font-size: 13px; color: var(--c-muted); } .drop b { color: var(--c-navy); }
@@ -135,5 +142,5 @@ td { padding: 10px 12px; border-bottom: 1px solid var(--c-rule); vertical-align:
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .search { max-width: 280px; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 0; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
-@media (max-width: 1000px) { .top { grid-template-columns: 1fr; } .grid4 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1000px) { .top { grid-template-columns: 1fr; } .trend { border-left: 0; border-top: 1px solid var(--c-rule); } .grid4 { grid-template-columns: 1fr 1fr; } }
 </style>
