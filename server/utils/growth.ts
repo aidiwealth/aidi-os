@@ -9,7 +9,7 @@ const StageIn = z.object({ key: z.string().max(40).optional(), name: z.string().
 const ChannelIn = z.object({ key: z.string().max(40).optional(), name: z.string().trim().min(1).max(60), monthly_budget: z.coerce.number().min(0).max(1e12).nullable().optional(), vendor_keys: z.array(z.string().max(80)).max(10).default([]) })
 export const ProcessIn = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), name: z.string().trim().min(1).max(80).optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(),
   target_monthly: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().min(0).max(1e12).nullable()).optional(), target_kind: z.enum(['revenue', 'deals', 'leads', 'customers']).optional(),
-  stages: z.array(StageIn).max(15).optional(), channels: z.array(ChannelIn).max(20).optional(), template: z.string().max(30).optional() })
+  stages: z.array(StageIn).max(15).optional(), channels: z.array(ChannelIn).max(20).optional(), template: z.string().max(30).optional(), strategy: z.string().max(40000).nullable().optional() })
 
 // Keys stay as they were (deals and results point at them); new stages and channels get one from their name.
 const keyed = <T extends { key?: string; name: string }>(xs: T[]) => { const seen = new Set<string>(); return xs.map((x) => { let k = x.key && /^[a-z0-9_]{1,40}$/.test(x.key) ? x.key : slug(x.name); while (seen.has(k)) k = k.slice(0, 36) + '_' + (seen.size + 1); seen.add(k); return { ...x, key: k } }) }
@@ -33,13 +33,13 @@ export async function saveProcess(event: H3Event, kind: 'sales' | 'marketing', u
     if (!ex) throw apiError('not_found', 'Not found', 404)
     // A stage that still holds deals cannot be removed.
     if (stages && kind === 'sales') { const gone = ex.stages.filter((s) => !stages!.some((x) => x.key === s.key)).map((s) => s.key); if (gone.length) { const n = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM growth.deals WHERE process_id = $1 AND stage_key = ANY($2::text[])', [d.id, gone])).rows[0]!.n; if (n) throw apiError('in_use', 'Move the ' + n + ' deal' + (n === 1 ? '' : 's') + ' out of the stages you removed first.') } }
-    await db().query('UPDATE growth.processes SET name = coalesce($2, name), currency = coalesce($3, currency), target_monthly = CASE WHEN $4::boolean THEN $5 ELSE target_monthly END, target_kind = coalesce($6, target_kind), stages = coalesce($7, stages), channels = coalesce($8, channels), updated_at = now() WHERE id = $1',
-      [d.id, d.name ?? null, d.currency ?? null, d.target_monthly !== undefined, d.target_monthly ?? null, d.target_kind ?? null, stages ? JSON.stringify(stages) : null, channels ? JSON.stringify(channels) : null])
+    await db().query('UPDATE growth.processes SET name = coalesce($2, name), currency = coalesce($3, currency), target_monthly = CASE WHEN $4::boolean THEN $5 ELSE target_monthly END, target_kind = coalesce($6, target_kind), strategy = CASE WHEN $9::boolean THEN $10 ELSE strategy END, stages = coalesce($7, stages), channels = coalesce($8, channels), updated_at = now() WHERE id = $1',
+      [d.id, d.name ?? null, d.currency ?? null, d.target_monthly !== undefined, d.target_monthly ?? null, d.target_kind ?? null, stages ? JSON.stringify(stages) : null, channels ? JSON.stringify(channels) : null, d.strategy !== undefined, d.strategy || null])
     await audit({ event, actorUserId: userId, action: kind + '.process_update', objectType: 'growth_process', objectId: d.id })
     return { ok: true, id: d.id }
   }
-  const id = (await one<{ id: string }>('INSERT INTO growth.processes (kind, name, currency, target_monthly, target_kind, stages, channels, created_by, entity_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
-    [kind, name, cur, d.target_monthly ?? null, d.target_kind ?? (kind === 'marketing' ? 'customers' : 'revenue'), JSON.stringify(stages ?? []), JSON.stringify(channels ?? []), userId, sc.group ? null : sc.entity])).id
+  const id = (await one<{ id: string }>('INSERT INTO growth.processes (kind, name, currency, target_monthly, target_kind, stages, channels, created_by, entity_id, strategy) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+    [kind, name, cur, d.target_monthly ?? null, d.target_kind ?? (kind === 'marketing' ? 'customers' : 'revenue'), JSON.stringify(stages ?? []), JSON.stringify(channels ?? []), userId, sc.group ? null : sc.entity, d.strategy || null])).id
   await audit({ event, actorUserId: userId, action: kind + '.process_create', objectType: 'growth_process', objectId: id })
   return { ok: true, id }
 }
@@ -48,7 +48,7 @@ type PRow = Process & { target_monthly: number | null }
 // The company chosen at the top sees its own processes and those used across the group; the group view sees them all.
 export interface GScope { group: boolean; entity: string | null; currency: string; companies: { id: string; name: string }[] }
 async function processes(kind: 'sales' | 'marketing', sc?: GScope): Promise<(PRow & { entity_id: string | null })[]> {
-  return (await db().query<PRow & { entity_id: string | null }>('SELECT id, kind, name, currency, target_monthly::float AS target_monthly, target_kind, stages, channels, entity_id FROM growth.processes WHERE kind = $1 AND ($2::uuid IS NULL OR entity_id IS NULL OR entity_id = $2) ORDER BY sort, created_at', [kind, sc && !sc.group ? sc.entity : null])).rows
+  return (await db().query<PRow & { entity_id: string | null }>('SELECT id, kind, name, currency, target_monthly::float AS target_monthly, target_kind, stages, channels, strategy, entity_id FROM growth.processes WHERE kind = $1 AND ($2::uuid IS NULL OR entity_id IS NULL OR entity_id = $2) ORDER BY sort, created_at', [kind, sc && !sc.group ? sc.entity : null])).rows
 }
 const ownerName = (sc: GScope | undefined, id: string | null) => (id ? sc?.companies.find((c) => c.id === id)?.name ?? 'A company' : 'The whole group')
 // Group view: each process (each company's and the group-wide ones), its pipeline and wins, and the total in the

@@ -37,6 +37,12 @@ async function aiCampaign() {
     cf.goal = r.goal.slice(0, 300); cf.steps = r.steps.map((t) => ({ text: t.slice(0, 200), done: false })); cf.notes = (r.brief + (cf.notes ? '\n\n' + cf.notes : '')).slice(0, 20000) }
   catch (e) { msg.value = err(e) } finally { cBusy.value = false }
 }
+// Build the page from a brief or files (MarketingPlanBuilder), and the strategy shown on the dashboard.
+const pb = ref(false), stratAll = ref(false)
+async function planDone(id: string) { pb.value = false; ok.value = 'Your marketing page is ready.'; await go({ p: id, t: undefined }); await refresh() }
+const se = reactive({ open: false, text: '', busy: false })
+function stratEdit() { se.text = p.value?.strategy ?? ''; se.open = true }
+async function stratSave() { if (!p.value) return; se.busy = true; try { await sf('/api/marketing/process', { method: 'POST', body: { id: p.value.id, strategy: se.text } }); se.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { se.busy = false } }
 async function create() { try { const r = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: {} }); await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Plan next month: a budget per channel, defaulting to the channel's budget or its average spend.
 const plan = reactive<Record<string, number>>({})
@@ -70,16 +76,19 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 <template>
   <section class="mk">
     <div class="hd"><div><ScopeSwitch page="Marketing" /><p class="lead">Track channels and campaigns, and see what a budget should bring in.</p></div>
-      <div v-if="canEdit && p" class="tb"><button class="btn" @click="go({ t: 'campaigns' }); editC()">New campaign</button></div></div>
+      <div v-if="canEdit && p" class="tb"><button class="btn secondary" @click="pb = true"><AiSpark /> Build from a brief</button><button class="btn" @click="go({ t: 'campaigns' }); editC()">New campaign</button></div></div>
+    <ClientOnly><MarketingPlanBuilder :open="pb" :process-id="p?.id ?? null" :cust="cust" @close="pb = false" @done="planDone" /></ClientOnly>
     <p v-if="msg && !cf.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <ClientOnly><PendingUpdates v-if="p" kind="marketing_months" :process-id="p.id" what="channel results" @done="refresh()" /></ClientOnly>
     <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>Start with a standard funnel and six common channels, ready to rename.</p>
-      <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="12000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
+      <div class="aic"><b><AiSpark /> Build it from your own material</b><span class="mut">Paste a detailed brief or drop your strategy, plan or budget (PDF, Word, Excel). AI builds the strategy, funnel, channels and campaigns for you to check.</span><div class="row"><button class="btn secondary" :disabled="!canEdit" @click="pb = true">Build from a brief or files</button></div></div>
       <button class="btn" :disabled="!canEdit" @click="create">Set up the standard funnel</button></div>
     <template v-if="p && d && st">
       <nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ isGroup ? x.company + ' · ' + x.name : x.name }}</button></nav>
       <nav class="tabs"><button v-for="[k, l] in ([['dashboard', 'Dashboard'], ['channels', 'Channels by month'], ['campaigns', 'Campaigns'], ['design', 'Process design']] as const)" :key="k" :class="{ on: tab === k }" @click="go({ t: k === 'dashboard' ? undefined : k })">{{ l }}</button></nav>
       <template v-if="tab === 'dashboard'">
+        <div v-if="p.strategy || canEdit" class="card strat"><div class="ch"><h2>Strategy</h2><div class="sa"><button v-if="p.strategy" type="button" class="lk" @click="stratAll = !stratAll">{{ stratAll ? 'Show less' : 'Show all' }}</button><button v-if="canEdit" type="button" class="lk" @click="stratEdit()">{{ p.strategy ? 'Edit' : 'Write one' }}</button></div></div>
+          <div v-if="p.strategy" class="md" :class="{ clip: !stratAll }" v-html="renderMarkdown(p.strategy)" /><p v-else class="mut">No strategy yet. Build one from a brief or files, or write it here.</p></div>
         <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Last three full months, in {{ d.rollup.currency }}</span></div>
           <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Spend</th><th class="r">Leads</th><th class="r">New customers</th><th class="r">Revenue from them</th></tr></thead>
             <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ briefMoney(r.spend, r.currency) }}</td><td class="r">{{ n(r.leads) }}</td><td class="r">{{ n(r.customers) }}</td><td class="r">{{ briefMoney(r.revenue, r.currency) }}</td></tr>
@@ -128,6 +137,8 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
         <div class="label w">Brief and notes<ClientOnly><RichEditor v-model="cf.notes" compact :min-height="160" :max-length="20000" placeholder="Audience, message, offer, budget, timeline. Tables welcome." /></ClientOnly></div><p v-if="msg" class="error w">{{ msg }}</p></div>
       <template #foot><button v-if="cf.id" class="btn secondary" @click="saveC(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="cf.open = false">Cancel</button><button class="btn" :disabled="!cf.name.trim()" @click="saveC()">Save</button></template>
     </AppModal>
+    <AppModal :open="se.open" title="Strategy" xl @close="se.open = false"><ClientOnly><RichEditor v-model="se.text" :min-height="420" :max-length="40000" /></ClientOnly>
+      <template #foot><button class="btn secondary" type="button" @click="se.open = false">Cancel</button><button class="btn" type="button" :disabled="se.busy" @click="stratSave">{{ se.busy ? 'Saving…' : 'Save' }}</button></template></AppModal>
   </section>
 </template>
 <style scoped>
@@ -148,4 +159,8 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 .aic { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 14px; margin-bottom: 12px; } .aic b { display: flex; gap: 6px; align-items: center; font-weight: 600; } .aic textarea, .aic input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .aic .sm { display: flex; gap: 8px; align-items: center; font-size: 13px; } .aic .sm input { width: 120px; } .pt { align-items: center; }
 .t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
 .frm div.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.strat { margin-bottom: 16px; } .strat .sa { display: flex; gap: 14px; } .strat .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
+.strat .md { font-size: 14px; line-height: 1.55; } .strat .md.clip { max-height: 260px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.strat .md :deep(h2), .strat .md :deep(h3), .strat .md :deep(h4) { font-size: 15px; margin: 14px 0 6px; } .strat .md :deep(p) { margin: 0 0 8px; } .strat .md :deep(table) { font-size: 13px !important; }
+.aic .mut { display: block; font-size: 13px; color: var(--c-muted); margin: 4px 0 10px; }
 </style>

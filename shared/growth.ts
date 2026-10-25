@@ -4,7 +4,7 @@
 
 export interface Stage { key: string; name: string; kind: 'open' | 'won' | 'lost'; target_pct: number | null; days: number | null; steps: string[] }
 export interface Channel { key: string; name: string; monthly_budget: number | null; vendor_keys: string[] }
-export interface Process { id: string; kind: 'sales' | 'marketing'; name: string; currency: string; target_monthly: number | null; target_kind: 'revenue' | 'deals' | 'leads' | 'customers'; stages: Stage[]; channels: Channel[] }
+export interface Process { id: string; kind: 'sales' | 'marketing'; name: string; currency: string; target_monthly: number | null; target_kind: 'revenue' | 'deals' | 'leads' | 'customers'; stages: Stage[]; channels: Channel[]; strategy?: string | null }
 export interface Deal { id: string; stage_key: string; value: number | null; recurring: boolean; created_at: string; closed_at: string | null; expected_close: string | null; source_channel: string | null; owner_id: string | null }
 export interface Move { deal_id: string; from_stage: string | null; to_stage: string; at: string }
 
