@@ -7,7 +7,7 @@ useHead({ title: 'Marketing' })
 type Row = ChannelMonth & { auto: string[] }
 interface Stats { channels: ChannelStat[]; totals: { spend: number; visitors: number; leads: number; mqls: number; sqls: number; customers: number; revenue: number; cpl: number | null; cac: number | null }; funnel: { name: string; value: number; conv: number | null }[]; months: number }
 interface Camp { id: string; name: string; channel_key: string | null; status: 'planned' | 'live' | 'done'; starts_on: string | null; ends_on: string | null; budget: number | null; spend: number | null; leads: number | null; customers: number | null; goal: string | null; steps: { text: string; done: boolean }[]; notes: string | null }
-interface D { processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; spend: number; leads: number; customers: number; revenue: number }[]; total: { spend: number; leads: number; customers: number; revenue: number } } | null; process: (Process & { company?: string }) | null; campaigns: Camp[]; rows: Row[]; months: string[]; stats: Stats | null; stats6: Stats | null; avg_deal: number | null; vendors: { vendor_key: string; vendor: string }[] }
+interface D { processes: { id: string; name: string; company: string }[]; rollup: { currency: string; rows: { id: string; name: string; company: string; currency: string; spend: number; leads: number; customers: number; revenue: number }[]; total: { spend: number; leads: number; customers: number; revenue: number } } | null; process: (Process & { company?: string }) | null; campaigns: Camp[]; rows: Row[]; months: string[]; stats: Stats | null; stats6: Stats | null; avg_deal: number | null; actual?: { months: string[]; spend: number; spend_from: 'bank' | 'channels'; bank_spend: number; channel_spend: number; customers: number; customers_from: 'financials' | 'sales' | 'channels'; cac: number | null; channel_cac: number | null } | null; alignment?: { text: string | null; at: string | null } | null; vendors: { vendor_key: string; vendor: string }[] }
 const route = useRoute(), router = useRouter()
 const pid = computed(() => (typeof route.query.p === 'string' ? route.query.p : undefined))
 const tab = computed(() => (['channels', 'campaigns', 'design'].includes(String(route.query.t)) ? String(route.query.t) : 'dashboard'))
@@ -43,6 +43,15 @@ async function planDone(id: string) { pb.value = false; ok.value = 'Your marketi
 const se = reactive({ open: false, text: '', busy: false })
 function stratEdit() { se.text = p.value?.strategy ?? ''; se.open = true }
 async function stratSave() { if (!p.value) return; se.busy = true; try { await sf('/api/marketing/process', { method: 'POST', body: { id: p.value.id, strategy: se.text } }); se.open = false; await refresh() } catch (e) { msg.value = err(e) } finally { se.busy = false } }
+// Actual CAC and how activity is tracking against the strategy: each channel's plan a month against what it spent a
+// month (last three full months), the campaigns, and an AI review kept on the page.
+const act = computed(() => d.value?.actual ?? null)
+const track = computed(() => (st.value?.channels ?? []).map((c) => { const plan = p.value?.channels.find((x) => x.key === c.key)?.monthly_budget ?? null, spent = c.spend / 3; return { name: c.name, plan, spent, pct: plan ? Math.round((spent / plan) * 100) : null } }).filter((x) => x.plan || x.spent))
+const today = new Date().toISOString().slice(0, 10)
+const campCount = computed(() => { const cs = (d.value?.campaigns ?? []) as Camp[]; return { done: cs.filter((c) => c.status === 'done').length, live: cs.filter((c) => c.status === 'live').length, planned: cs.filter((c) => c.status === 'planned' && !(c.starts_on && c.starts_on < today)).length, late: cs.filter((c) => c.status === 'planned' && !!c.starts_on && c.starts_on < today).length } })
+const alJob = useAiJob<{ review: string }>()
+async function align() { if (!p.value) return; msg.value = ''; try { const { job } = await sf<{ job: string }>('/api/growth/align', { method: 'POST', body: { process_id: p.value.id } }); const r = await alJob.follow(job); if (r) await refresh(); else if (alJob.fail.value) msg.value = alJob.fail.value.message } catch (e) { msg.value = err(e) } }
+const SRC: Record<string, string> = { bank: 'Banking, Sales & marketing', channels: 'channel results', financials: 'Financials customers', sales: 'deals won in Sales' }
 async function create() { try { const r = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: {} }); await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Plan next month: a budget per channel, defaulting to the channel's budget or its average spend.
 const plan = reactive<Record<string, number>>({})
@@ -89,6 +98,17 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
       <template v-if="tab === 'dashboard'">
         <div v-if="p.strategy || canEdit" class="card strat"><div class="ch"><h2>Strategy</h2><div class="sa"><button v-if="p.strategy" type="button" class="lk" @click="stratAll = !stratAll">{{ stratAll ? 'Show less' : 'Show all' }}</button><button v-if="canEdit" type="button" class="lk" @click="stratEdit()">{{ p.strategy ? 'Edit' : 'Write one' }}</button></div></div>
           <div v-if="p.strategy" class="md" :class="{ clip: !stratAll }" v-html="renderMarkdown(p.strategy)" /><p v-else class="mut">No strategy yet. Build one from a brief or files, or write it here.</p></div>
+        <div class="two trk">
+          <div class="card cac"><div class="ch"><h2>Actual CAC</h2><span class="mut">Last 3 full months</span></div>
+            <template v-if="act && act.cac !== null"><b class="big">{{ m(act.cac) }}</b><p class="mut">{{ m(act.spend) }} spent on sales and marketing ÷ {{ n(act.customers) }} new paying customer{{ act.customers === 1 ? '' : 's' }}</p>
+              <div class="kv"><span>Spend from</span><b>{{ SRC[act.spend_from] }}</b><span>Customers from</span><b>{{ SRC[act.customers_from] }}</b><template v-if="act.channel_cac !== null"><span>Paid channels only</span><b>{{ m(act.channel_cac) }}</b></template></div></template>
+            <p v-else class="mut">Needs sales and marketing spend (Banking or channel results) and new customers (Financials customers, Sales or channel results).</p></div>
+          <div class="card"><div class="ch"><h2>Against the strategy</h2><button v-if="canEdit" type="button" class="lk2" :disabled="alJob.busy.value" @click="align"><AiSpark v-if="alJob.busy.value" /> {{ alJob.busy.value ? 'Checking…' : 'Check with AI' }}</button></div>
+            <table v-if="track.length" class="t" data-nosearch><thead><tr><th>Channel</th><th class="r">Plan a month</th><th class="r">Spent a month</th><th class="r">Of plan</th></tr></thead>
+              <tbody><tr v-for="t in track" :key="t.name"><td>{{ t.name }}</td><td class="r">{{ m(t.plan) }}</td><td class="r">{{ m(Math.round(t.spent)) }}</td><td class="r" :class="{ neg: t.pct !== null && (t.pct > 125 || t.pct < 50) }">{{ t.pct === null ? '—' : t.pct + '%' }}</td></tr></tbody></table>
+            <p class="mut cc">Campaigns: {{ campCount.done }} done · {{ campCount.live }} live · {{ campCount.planned }} planned<template v-if="campCount.late"> · <b class="neg">{{ campCount.late }} late</b></template></p></div>
+        </div>
+        <div v-if="d.alignment?.text" class="card strat"><div class="ch"><h2>AI review</h2><span class="mut">{{ d.alignment.at ? 'Checked ' + new Date(d.alignment.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '' }}</span></div><div class="md" v-html="renderMarkdown(d.alignment.text)" /></div>
         <div v-if="isGroup && d.rollup" class="card"><div class="ch"><h2>Across the group</h2><span class="mut">Last three full months, in {{ d.rollup.currency }}</span></div>
           <table class="t" data-nosearch><thead><tr><th>Process</th><th>Company</th><th class="r">Spend</th><th class="r">Leads</th><th class="r">New customers</th><th class="r">Revenue from them</th></tr></thead>
             <tbody><tr v-for="r in d.rollup.rows" :key="r.id" class="cl" @click="go({ p: r.id })"><td><b>{{ r.name }}</b></td><td>{{ r.company }}</td><td class="r">{{ briefMoney(r.spend, r.currency) }}</td><td class="r">{{ n(r.leads) }}</td><td class="r">{{ n(r.customers) }}</td><td class="r">{{ briefMoney(r.revenue, r.currency) }}</td></tr>
@@ -163,4 +183,6 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 .strat .md { font-size: 14px; line-height: 1.55; } .strat .md.clip { max-height: 260px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .strat .md :deep(h2), .strat .md :deep(h3), .strat .md :deep(h4) { font-size: 15px; margin: 14px 0 6px; } .strat .md :deep(p) { margin: 0 0 8px; } .strat .md :deep(table) { font-size: 13px !important; }
 .aic .mut { display: block; font-size: 13px; color: var(--c-muted); margin: 4px 0 10px; }
+.trk { margin-bottom: 16px; align-items: start; } .cac .big { display: block; font-size: 34px; font-weight: 600; letter-spacing: -.02em; margin: 2px 0 4px; } .cac .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; margin-top: 10px; } .cac .kv span { color: var(--c-muted); } .cac .kv b { font-weight: 500; }
+.lk2 { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; } .cc { margin-top: 10px; } .neg { color: var(--c-danger); }
 </style>

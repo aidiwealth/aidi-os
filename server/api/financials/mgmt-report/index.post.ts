@@ -5,7 +5,7 @@ import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx } from '~
 import { customerFacts, analyseCustomers } from '~/server/utils/customer-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
-const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
+const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), period: z.enum(['month', 'quarter', 'year']).default('month'), sections: z.array(z.enum(MR_SECTIONS.map((s) => s.key) as [string, ...string[]])).min(1).max(20),
   format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
   cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional(), cash_with_securities: z.boolean().nullable().optional() })
 export default defineEventHandler(async (event) => {
@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean }> | undefined) ?? {})[d.subject]
   const chart = d.chart ?? prevSaved?.chart ?? 'area', pies = d.pies ?? prevSaved?.pies ?? true
   let r
-  try { r = buildMgmtReport(rows as never, { company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, analysis, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
+  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Sales, Marketing, Banking and Stage, for the same company (or the group), in the report's order.
   const extra = await growthSections(event, d.subject, d.sections).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
   if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()
   const bytes = d.format === 'xlsx' ? await mgmtXlsx(r, logo) : Buffer.from(await mgmtPdf(r, logo))
-  const fname = (name + ' monthly management report ' + r.label).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
+  const fname = (name + ' ' + (d.period === 'year' ? 'annual' : d.period === 'quarter' ? 'quarterly' : 'monthly') + ' management report ' + r.label).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
   const mime = d.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
   if (d.room || d.deliver === 'room') {
     const id = randomUUID(), key = 'documents/' + id + '.' + d.format

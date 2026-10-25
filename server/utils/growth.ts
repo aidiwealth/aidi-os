@@ -125,5 +125,25 @@ export async function marketingView(pid?: string, monthsBack = 6, sc?: GScope) {
     }
     rollup = { currency: sc.currency, rows: out, total: { spend: Math.round(ts), leads: tl, customers: tc, revenue: Math.round(tr) } }
   }
-  return { processes: list.map((x) => ({ id: x.id, name: x.name, company: ownerName(sc, x.entity_id) })), process: { ...p, company: ownerName(sc, p.entity_id) }, campaigns, rows, months, stats: marketingStats(p, rows, full.slice(-3)), stats6: marketingStats(p, rows, full), avg_deal: avg ? Math.round(Number(avg)) : null, vendors, rollup }
+  const stats = marketingStats(p, rows, full.slice(-3))
+  return { processes: list.map((x) => ({ id: x.id, name: x.name, company: ownerName(sc, x.entity_id) })), process: { ...p, company: ownerName(sc, p.entity_id) }, campaigns, rows, months, stats, stats6: marketingStats(p, rows, full), avg_deal: avg ? Math.round(Number(avg)) : null, vendors, rollup,
+    actual: await actualCac(p, full.slice(-3), stats.totals, rate), alignment: await alignmentOf(p.id) }
+}
+// Actual CAC over the last three full months: everything paid for sales and marketing in Banking (the Sales &
+// marketing category; else the channels' own spend) divided by new paying customers (first revenue in those months in
+// Financials' customer data; else new deals won in Sales; else the channels' customers).
+async function actualCac(p: PRow & { entity_id: string | null }, ms: string[], tot: { spend: number; customers: number; cac: number | null }, rate: (c: string) => Promise<number>) {
+  if (!ms.length) return null
+  const from = ms[0]! + '-01', to = ms[ms.length - 1]!, ent = p.entity_id
+  const bank = (await db().query<{ currency: string; amt: string }>("SELECT currency, sum(amount)::text AS amt FROM banking.ledger WHERE direction = 'out' AND category = 'opex_marketing' AND txn_date >= $1::date AND to_char(txn_date, 'YYYY-MM') <= $2 AND ($3::uuid IS NULL OR entity_id = $3) GROUP BY 1", [from, to, ent]).catch(() => ({ rows: [] }))).rows
+  let bankSpend = 0; for (const b of bank) bankSpend += Number(b.amt) * await rate(b.currency)
+  const fin = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM (SELECT customer_id, min(month) AS first FROM financials.customer_revenue WHERE amount > 0 AND ($2::uuid IS NULL OR entity_id = $2) GROUP BY 1) x WHERE to_char(x.first, 'YYYY-MM') >= $1 AND to_char(x.first, 'YYYY-MM') <= $3", [ms[0], ent, to]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0
+  const won = (await db().query<{ n: number }>(`SELECT count(*)::int AS n FROM growth.deals d JOIN growth.processes p ON p.id = d.process_id WHERE coalesce(d.deal_type, 'new') = 'new' AND to_char(coalesce(d.closed_at, d.updated_at), 'YYYY-MM') BETWEEN $1 AND $2
+    AND ($3::uuid IS NULL OR coalesce(d.entity_id, p.entity_id) = $3) AND EXISTS (SELECT 1 FROM jsonb_array_elements(p.stages) s WHERE s->>'key' = d.stage_key AND s->>'kind' = 'won')`, [ms[0], to, ent]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0
+  const spend = bankSpend > 0 ? bankSpend : tot.spend, spendFrom = bankSpend > 0 ? 'bank' : 'channels'
+  const customers = fin || won || tot.customers, custFrom = fin ? 'financials' : won ? 'sales' : 'channels'
+  return { months: ms, spend: Math.round(spend), spend_from: spendFrom, bank_spend: Math.round(bankSpend), channel_spend: Math.round(tot.spend), customers, customers_from: custFrom, cac: customers ? Math.round(spend / customers) : null, channel_cac: tot.cac }
+}
+async function alignmentOf(id: string) {
+  return (await db().query<{ text: string | null; at: string | null }>('SELECT alignment AS text, alignment_at::text AS at FROM growth.processes WHERE id = $1', [id]).catch(() => ({ rows: [] }))).rows[0] ?? null
 }

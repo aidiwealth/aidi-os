@@ -28,8 +28,8 @@ const FIELDS: Record<LinkKind, { key: string; label: string; words: string[]; ne
     { key: 'expected_close', label: 'Expected close', words: ['close date', 'closing date', 'expected close date', 'estimated close date', 'deal expected close date', 'expected close', 'closing', 'close', 'due'] }, { key: 'source', label: 'Source', words: ['lead source', 'original source', 'source', 'channel', 'origin'] },
     { key: 'owner', label: 'Owner', words: ['deal owner', 'opportunity owner', 'owner', 'user', 'rep', 'sales rep', 'assigned', 'account manager'] }, { key: 'notes', label: 'Notes', words: ['next step', 'notes', 'note', 'comments', 'description'] },
     { key: 'external_id', label: 'Record ID', words: ['record id', 'deal id', 'opportunity id', 'deal record id'] }],
-  marketing_months: [{ key: 'month', label: 'Month', words: ['month', 'period', 'date'], need: true }, { key: 'channel', label: 'Channel', words: ['channel', 'source', 'medium', 'campaign'], need: true },
-    { key: 'spend', label: 'Spend', words: ['spend', 'cost', 'budget spent', 'amount spent'] }, { key: 'visitors', label: 'Visitors', words: ['visitors', 'sessions', 'traffic', 'clicks', 'users'] }, { key: 'leads', label: 'Leads', words: ['leads', 'sign ups', 'signups', 'sign-ups', 'registrations'] },
+  marketing_months: [{ key: 'month', label: 'Month', words: ['month', 'period', 'date', 'day', 'reporting starts', 'start date', 'week'], need: true }, { key: 'channel', label: 'Channel', words: ['channel', 'source', 'medium', 'campaign'], need: true },
+    { key: 'spend', label: 'Spend', words: ['spend', 'cost', 'budget spent', 'amount spent', 'amount spent (usd)', 'total spent', 'spent'] }, { key: 'visitors', label: 'Visitors', words: ['visitors', 'sessions', 'traffic', 'clicks', 'link clicks', 'landing page views', 'users'] }, { key: 'leads', label: 'Leads', words: ['leads', 'sign ups', 'signups', 'sign-ups', 'registrations', 'results', 'form submissions', 'leads (form)'] },
     { key: 'mqls', label: 'Marketing qualified', words: ['mql', 'mqls', 'marketing qualified'] }, { key: 'sqls', label: 'Sales qualified', words: ['sql', 'sqls', 'sales qualified', 'opportunities'] },
     { key: 'customers', label: 'Customers', words: ['customers', 'new customers', 'conversions', 'won', 'paying'] }, { key: 'revenue', label: 'Revenue', words: ['revenue', 'sales', 'income'] }],
   bank_txns: [{ key: 'date', label: 'Date', words: ['date', 'transaction date', 'value date', 'posted', 'trans date', 'clearing date'], need: true }, { key: 'description', label: 'Description', words: ['merchant', 'description', 'narration', 'details', 'memo', 'payee', 'vendor', 'reference', 'remarks'], need: true },
@@ -50,7 +50,7 @@ export function tableOf(grids: Grid[]): { tab: string; headers: string[]; rows: 
   }
   return null
 }
-export interface Mapping { tab?: string; columns: Record<string, number | null>; values: { stage?: Record<string, string>; channel?: Record<string, string>; owner?: Record<string, string> }; currency?: string; account?: string; entity?: string | null; all_out?: boolean }
+export interface Mapping { channel_fixed?: string; tab?: string; columns: Record<string, number | null>; values: { stage?: Record<string, string>; channel?: Record<string, string>; owner?: Record<string, string> }; currency?: string; account?: string; entity?: string | null; all_out?: boolean }
 function byHeadings(kind: LinkKind, headers: string[]): Record<string, number | null> {
   const out: Record<string, number | null> = {}, used = new Set<number>()
   for (const f of FIELDS[kind]) {
@@ -141,14 +141,17 @@ async function readRows(kind: LinkKind, t: Tbl, map: Mapping, processId: string 
     const channels = [...p.channels], months: MonthIn[] = []
     for (const r of t.rows.slice(0, 3000)) {
       if (r.some((c) => typeof c === 'string' && /\(delete this row\)/i.test(c))) continue
-      const month = monthOf(col(r, 'month')), raw = str(col(r, 'channel')); if (!month || !raw) { skipped++; continue }
+      const month = monthOf(col(r, 'month')), raw = map.channel_fixed || str(col(r, 'channel')); if (!month || !raw) { skipped++; continue }
       let key = map.values.channel?.[raw], isNew = false
       // A channel on the sheet that the company has not set up yet is added with the sheet's name.
       if (!key || key === 'new') { key = channels.find((c) => norm(c.name) === norm(raw))?.key; if (!key) { let k = norm(raw).replace(/ /g, '_').slice(0, 30) || 'channel'; while (channels.some((c) => c.key === k)) k += '_2'; channels.push({ key: k, name: raw.slice(0, 60), monthly_budget: null, vendor_keys: [] }); key = k; isNew = true } (map.values.channel ??= {})[raw] = key }
       const n = (k: string) => { const v = numOf(col(r, k)); return v === null ? null : k === 'spend' || k === 'revenue' ? Math.abs(v) : Math.round(Math.abs(v)) }
       months.push({ channel: key, channelName: channels.find((c) => c.key === key)?.name ?? raw, isNew, month, vals: Object.fromEntries(MFIELDS.map((f) => [f, n(f)])) })
     }
-    return { kind, skipped, deals: [] as DealIn[], stages: [] as Stage[], months, txns: [] as RailTxn[], channels }
+    // Platform exports come a row per day or campaign: rows for the same channel and month are added together.
+    const merged = new Map<string, MonthIn>()
+    for (const m of months) { const k = m.channel + '|' + m.month, x = merged.get(k); if (!x) { merged.set(k, { ...m, vals: { ...m.vals } }); continue } for (const f of MFIELDS) { const a = x.vals[f], b2 = m.vals[f]; x.vals[f] = a === null && b2 === null ? null : (a ?? 0) + (b2 ?? 0) } }
+    return { kind, skipped, deals: [] as DealIn[], stages: [] as Stage[], months: [...merged.values()], txns: [] as RailTxn[], channels }
   }
   const cur = map.currency ?? 'USD', account = map.account ?? 'Linked sheet', seen = new Map<string, number>(), txns: RailTxn[] = []
   for (const r of t.rows.slice(0, 20000)) {

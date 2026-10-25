@@ -9,7 +9,7 @@ const props = defineProps<{ open: boolean; kind: 'sales_deals' | 'marketing_mont
 const emit = defineEmits<{ close: []; done: [] }>()
 const WHAT: Record<string, string> = { sales_deals: 'deals', marketing_months: 'channel results', bank_txns: 'bank transactions' }
 const { sf, isGroup, companies } = await useCoScope()
-const f = reactive({ url: '', name: '', link: true, currency: props.currency ?? 'USD', account: '', entity: '', all_out: '' as '' | 'true' | 'false' })
+const f = reactive({ platform: '', url: '', name: '', link: true, currency: props.currency ?? 'USD', account: '', entity: '', all_out: '' as '' | 'true' | 'false' })
 const busy = ref(false), msg = ref(''), ok = ref('')
 const res = ref<{ pending: string | null; summary: ImportSummary; rows: number; columns: { field: string; column: string }[]; ai: boolean; all_out: boolean | null } | null>(null)
 interface L { id: string; name: string; url: string | null; source: string; auto: boolean; last_synced_at: string | null; last_result: { added: number; updated: number; waiting?: number } | null; last_error: string | null; pending_id: string | null }
@@ -20,10 +20,10 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 let last: FormData | Record<string, string> | null = null
 async function fromFile(ev: Event) {
   const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return
-  const fd = new FormData(); fd.append('file', file, file.name); fd.append('kind', props.kind); if (props.processId) fd.append('process_id', props.processId); fd.append('currency', f.currency); fd.append('account', f.account || file.name.replace(/\.[a-z]+$/i, '')); if (f.entity) fd.append('entity_id', f.entity); if (f.all_out) fd.append('all_out', f.all_out)
+  const fd = new FormData(); fd.append('file', file, file.name); fd.append('kind', props.kind); if (f.platform) fd.append('platform', f.platform); if (props.processId) fd.append('process_id', props.processId); fd.append('currency', f.currency); fd.append('account', f.account || file.name.replace(/\.[a-z]+$/i, '')); if (f.entity) fd.append('entity_id', f.entity); if (f.all_out) fd.append('all_out', f.all_out)
   await go(fd)
 }
-async function fromLink() { await go({ kind: props.kind, process_id: props.processId ?? '', url: f.url, link: f.link ? 'true' : 'false', name: f.name || 'Linked sheet', currency: f.currency, account: f.account || f.name || 'Linked sheet', entity_id: f.entity, all_out: f.all_out }) }
+async function fromLink() { await go({ kind: props.kind, platform: f.platform, process_id: props.processId ?? '', url: f.url, link: f.link ? 'true' : 'false', name: f.name || 'Linked sheet', currency: f.currency, account: f.account || f.name || 'Linked sheet', entity_id: f.entity, all_out: f.all_out }) }
 async function go(body: FormData | Record<string, string>) {
   busy.value = true; msg.value = ''; ok.value = ''; res.value = null; last = body
   try { res.value = await sf('/api/growth/import', { method: 'POST', body }) } catch (e) { msg.value = err(e) } finally { busy.value = false }
@@ -69,6 +69,7 @@ const srcLabel = (l: L) => (l.source === 'hubspot' ? 'HubSpot' : l.source === 'p
       <p class="lead">Headings are matched for you, with AI help.</p>
       <label v-if="kind === 'bank_txns' && isGroup">Company<select v-model="f.entity"><option value="">{{ companies.find((c) => c.main)?.name ?? 'Main company' }}</option><option v-for="c in companies.filter((x) => !x.main)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
       <div v-if="kind === 'bank_txns'" class="g2"><label>Account<input v-model="f.account" maxlength="120" placeholder="e.g. GTBank current ··1234"></label><label>Currency<select v-model="f.currency"><option>NGN</option><option>USD</option><option>GBP</option><option>EUR</option><option>KES</option><option>GHS</option><option>ZAR</option></select></label></div>
+      <label v-if="kind === 'marketing_months'">From<select v-model="f.platform"><option value="">Any sheet (a column says the channel)</option><option value="linkedin">LinkedIn Campaign Manager export</option><option value="meta">Meta Ads Manager (Facebook and Instagram ads)</option><option value="facebook">Facebook page insights</option><option value="instagram">Instagram insights</option><option value="google_ads">Google Ads report</option><option value="search">Google Search Console (SEO)</option><option value="x">X (Twitter) ads or analytics</option><option value="tiktok">TikTok Ads</option><option value="youtube">YouTube analytics</option></select><span class="hint2">Export the report from the platform (daily or monthly, any columns) and drop it here: spend, clicks and leads are added up by month for that channel.</span></label>
       <DropZone accept=".xlsx,.csv" :disabled="busy" hint="Excel or CSV · brought in once" @change="fromFile" />
       <label v-if="kind === 'bank_txns'" class="cb"><input type="checkbox" :checked="f.all_out === 'true'" @change="f.all_out = ($event.target as HTMLInputElement).checked ? 'true' : ''"> A card or expense export (Brex, Ramp, Amex…): every row is a payment</label>
       <div class="or"><span>or link a sheet</span></div>
@@ -106,4 +107,5 @@ input:not([type="checkbox"]), select { font: inherit; font-size: 14px; padding: 
 .sp { flex: 1; } @media (max-width: 720px) { .lnk, .g2 { grid-template-columns: 1fr; } }
 .mut { margin: 0; color: var(--c-muted); font-size: 12.5px; line-height: 1.5; } .ok { margin: 0; color: var(--c-ink-soft); font-size: 13px; } .rh { margin: 4px 0 0; font-size: 14px; }
 .crm { display: flex; gap: 8px; } .opt { font: inherit; font-size: 13px; padding: 7px 14px; border: 1px solid var(--c-rule-strong); background: #fff; cursor: pointer; } .opt.on { border-color: var(--c-navy); background: var(--c-navy); color: #fff; } .ck2 { display: flex; flex-direction: column; gap: 6px; }
+.hint2 { display: block; font-size: 12px; color: var(--c-muted); margin-top: 4px; font-weight: 400; }
 </style>

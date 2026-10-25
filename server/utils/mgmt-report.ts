@@ -4,7 +4,7 @@ import { shortAmount } from '~/shared/compact'
 // analysis' key points, what to raise, and the founder's own comments. Made as a PDF or an Excel file.
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { burnReview, checkRow, deriveLines, type FinRow } from '~/shared/fin-view'
+import { burnReview, checkRow, deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
 import { modelOf } from '~/shared/business-models'
 import type { ReportProfile } from './fin-report'
 
@@ -37,11 +37,15 @@ export interface MChart { title: string; labels: string[]; values: (number | nul
 export interface MPie { title: string; note?: string; slices: { label: string; value: number }[] }
 export type ChartKind = 'area' | 'line' | 'bar'
 export interface MSection { key: string; title: string; intro?: string; facts?: [string, string][]; pies?: MPie[]; tiles?: MTile[]; tables?: MTable[]; charts?: MChart[]; bullets?: { text: string; tone?: Tone }[]; text?: { head: string; body: string }[] }
-export interface MReport { company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
+export interface MReport { kind?: string; company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
 type Tone = 'good' | 'watch' | 'risk'
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-const ML = (d: string, short = false) => new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: short ? 'short' : 'long', year: short ? '2-digit' : 'numeric', timeZone: 'UTC' })
+// The report's period: a month, or (quarterly and annual reports) months rolled into quarters or years. Set while one
+// report is built (building is synchronous).
+let PER: 'month' | 'quarter' | 'year' = 'month'
+const ML = (d: string, short = false) => PER === 'year' ? (short ? "'" + d.slice(2, 4) : d.slice(0, 4)) : PER === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + (short ? "'" + d.slice(2, 4) : d.slice(0, 4))
+  : new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: short ? 'short' : 'long', year: short ? '2-digit' : 'numeric', timeZone: 'UTC' })
 const pctCh = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : ((a - b) / Math.abs(b)) * 100)
 const sumOf = (rs: { d: Record<string, number | null> }[], k: string) => { const v = rs.map((r) => num(r.d[k])).filter((x): x is number => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) : null }
 
@@ -51,12 +55,36 @@ function pieOf(title: string, xs: { label: string; value: number }[], note?: str
   const top = s2.slice(0, 6), rest = s2.slice(6).reduce((a, x) => a + x.value, 0)
   return { title, note, slices: rest > 0 ? [...top, { label: 'Other', value: rest }] : top }
 }
-export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>; cf_generated?: boolean })[], o: {
+// Quarterly and annual reports: the months up to the chosen one rolled into quarters or years (flows added, balances
+// at the period's end); burn and runway still come from the monthly figures; the wording follows the period.
+export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>; cf_generated?: boolean })[], o: Parameters<typeof buildMonthly>[1] & { period?: 'month' | 'quarter' | 'year' }): MReport {
+  if (!o.period || o.period === 'month') return buildMonthly(raw, o)
+  const months = raw.filter((r) => r.period_type === 'month' && r.period_end.slice(0, 7) <= o.month.slice(0, 7)).sort((a, b) => a.period_end.localeCompare(b.period_end))
+  if (!months.length) throw new Error('No figures for that period.')
+  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month' }))
+  const last = months[months.length - 1]!, sel = rolled[rolled.length - 1]!
+  PER = o.period
+  try {
+    const r = buildMonthly(rolled as never, { ...o, month: sel.period_end, reviewRows: months as FinRow[] })
+    const u = o.period
+    const us = u + 's', U = u[0]!.toUpperCase() + u.slice(1), before = u === 'year' ? 'the year before' : 'the same quarter last year'
+    const swap: [RegExp, string][] = [[/Month-on-month/g, U + '-on-' + u], [/On the same month last year/g, 'On ' + before], [/the same month last year/g, before], [/same month last year/g, before], [/[Oo]n last month/g, 'On last ' + u],
+      [/Last 3 months vs the 3 before/g, 'Last 3 ' + us + ' vs the 3 before'], [/last 3 months/g, 'last 3 ' + us], [/3 months ago/g, '3 ' + us + ' ago'], [/on the quarter before/g, 'on the 3 ' + us + ' before'], [/on the quarter/g, 'on the last 3 ' + us],
+      [/Last month/g, 'Last ' + u], [/last month/g, 'last ' + u], [/This month/g, 'This ' + u], [/this month/g, 'this ' + u], [/in the month/g, 'in the ' + u], [/for the month/g, 'for the ' + u], [/the month/g, 'the ' + u],
+      [/next month/g, 'next ' + u], [/by month/g, 'by ' + u], [/each month/g, 'each ' + u], [/earlier months/g, 'earlier ' + us], [/^Month$/g, U]]
+    const fix = (x: unknown): unknown => (typeof x === 'string' ? swap.reduce((t, [a, b]) => t.replace(a, b), x) : Array.isArray(x) ? x.map(fix) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, k === 'value' || k === 'labels' ? v : fix(v)])) : x)
+    const out = { ...r, kind: (u === 'year' ? 'Annual' : 'Quarterly') + ' management report', sections: fix(r.sections) as MSection[] }
+    const sm = Number(sel.period_end.slice(0, 4)) === Number(last.period_end.slice(0, 4)) && (o.period === 'year' ? last.period_end.slice(5, 7) !== '12' : Number(last.period_end.slice(5, 7)) % 3 !== 0)
+    out.label = ML(sel.period_end) + (sm ? ' (to ' + new Date(last.period_end.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) + ')' : '')
+    return out
+  } finally { PER = 'month' }
+}
+function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_generated?: boolean })[], o: {
   company: string; month: string; sections: string[]; fyeMonth: number; model: string | null; withSecurities: boolean
   analysis: { headline: string; insights: { title: string; detail: string; tone: Tone }[]; flags: { for: string; item: string; why: string }[] } | null
   customers: Record<string, any> | null; comments: string; priorities: string
   about?: { text: string; facts: [string, string][]; leaders: [string, string][] } | null
-  chart?: ChartKind; pies?: boolean
+  chart?: ChartKind; pies?: boolean; reviewRows?: FinRow[]
 }): MReport {
   const rows = raw.filter((r) => r.period_type === 'month').sort((a, b) => a.period_end.localeCompare(b.period_end)).map((r) => ({ ...r, d: r.derived ?? deriveLines(r.lines, 1) }))
   const i = rows.findIndex((r) => r.period_end.slice(0, 7) === o.month.slice(0, 7))
@@ -80,7 +108,7 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
   const pts = (v: number | null) => (v === null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1).replace(/\.0$/, '') + ' pts')
   const COST = new Set(['cogs', 'opex_total', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other', 'depreciation', 'interest', 'tax'])
   const toneCh = (k: string, ch: number | null): Tone | '' => (ch === null || Math.abs(ch) < 0.5 ? '' : (COST.has(k) ? ch < 0 : ch > 0) ? 'good' : 'risk')
-  const review = burnReview(upTo as unknown as FinRow[])
+  const review = burnReview((o.reviewRows ?? upTo) as unknown as FinRow[])
   const bm = modelOf(o.model)
   const rev = g(cur, 'revenue'), revP = g(prev, 'revenue'), gm = g(cur, 'gross_margin')
   const sections: MSection[] = []
@@ -281,7 +309,7 @@ const fmtK = (v: number | null) => (v === null ? '–' : Math.abs(v) >= 100 ? Ma
 const clean = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/−/g, '-').replace(/•/g, '-').replace(/₦/g, 'NGN ').replace(/…/g, '...').replace(/[^\x20-\x7E\xA0-\xFF\n£€]/g, '')
 export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
-  pdf.setTitle(r.company + ' monthly management report, ' + r.label); pdf.setProducer('Finvry'); pdf.setCreator(clean(r.company))
+  pdf.setTitle(r.company + ' ' + (r.kind ?? 'Monthly management report').toLowerCase() + ', ' + r.label); pdf.setProducer('Finvry'); pdf.setCreator(clean(r.company))
   pdf.registerFontkit(fontkit)
   const reg = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.semibold, 'base64'), { subset: true })
   let img: PDFImage | null = null
@@ -311,7 +339,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   // Cover band on the first page.
   newPage()
   if (img) { const h = 40, w = Math.min(160, (img.width / img.height) * h); page.drawImage(img, { x: M, y: y - h + 10, width: w, height: h }); y -= h + 8 }
-  page.drawText('MONTHLY MANAGEMENT REPORT', { x: M, y, size: 10, font: bold, color: mut }); y -= 26
+  page.drawText((r.kind ?? 'Monthly management report').toUpperCase(), { x: M, y, size: 10, font: bold, color: mut }); y -= 26
   page.drawText(clean(r.label), { x: M, y, size: 24, font: bold, color: navy }); y -= 20
   para('Prepared for the executive team. Management figures, unaudited.' + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
 
@@ -486,7 +514,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   }
   // Footer with page numbers.
   const pages = pdf.getPages()
-  pages.forEach((p, k) => { const t = clean(r.company + ' · Monthly management report · ' + r.label + ' · Page ' + (k + 1) + ' of ' + pages.length); p.drawText(t, { x: M, y: 26, size: 7.5, font: reg, color: mut }); p.drawText('Confidential', { x: W - M - reg.widthOfTextAtSize('Confidential', 7.5), y: 26, size: 7.5, font: reg, color: mut }) })
+  pages.forEach((p, k) => { const t = clean(r.company + ' · ' + (r.kind ?? 'Monthly management report') + ' · ' + r.label + ' · Page ' + (k + 1) + ' of ' + pages.length); p.drawText(t, { x: M, y: 26, size: 7.5, font: reg, color: mut }); p.drawText('Confidential', { x: W - M - reg.widthOfTextAtSize('Confidential', 7.5), y: 26, size: 7.5, font: reg, color: mut }) })
   return pdf.save()
 }
 

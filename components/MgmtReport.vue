@@ -13,7 +13,7 @@ const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: stri
 const sec = ref<boolean | null>(null)
 const grp = ref('')
 const about0 = ref('')
-const f = reactive({ chart: 'area', pies: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
+const f = reactive({ period: 'month' as 'month' | 'quarter' | 'year', chart: 'area', pies: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
 async function load() {
   f.loading = true; f.msg = ''
   try {
@@ -25,6 +25,11 @@ async function load() {
 watch(() => props.open, (o) => { if (o) void load() }, { immediate: true })
 const err = (e: unknown, d: string) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? d
 const mon = (d: string) => new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+// A month, quarter or year: each choice is the latest month with figures in it (the report covers up to that month).
+const keyOf = (d: string) => (f.period === 'year' ? d.slice(0, 4) : f.period === 'quarter' ? d.slice(0, 4) + '-Q' + Math.ceil(Number(d.slice(5, 7)) / 3) : d.slice(0, 7))
+const choices = computed(() => { const seen = new Map<string, string>(); for (const m of opts.value?.months ?? []) { const k = keyOf(m); if (!seen.has(k) || m > seen.get(k)!) seen.set(k, m) } return [...seen.entries()].map(([k, m]) => ({ value: m, label: f.period === 'month' ? mon(m) : f.period === 'quarter' ? k.slice(5) + ' ' + k.slice(0, 4) + (Number(m.slice(5, 7)) % 3 ? ' (to ' + mon(m) + ')' : '') : k + (m.slice(5, 7) !== '12' ? ' (to ' + mon(m) + ')' : '') })) })
+watch(() => f.period, () => { if (!choices.value.some((c) => c.value === f.month)) f.month = choices.value[0]?.value ?? '' })
+const perWord = computed(() => (f.period === 'year' ? 'annual' : f.period === 'quarter' ? 'quarterly' : 'monthly'))
 const all = computed(() => (opts.value?.sections ?? []).filter((s) => s.available))
 function toggleAll(on: boolean) { f.picked = on ? all.value.map((s) => s.key) : [] }
 async function draft() {
@@ -36,11 +41,11 @@ async function make() {
   f.busy = true; f.msg = ''
   try {
     const res = await fetch('/api/financials/mgmt-report' + (props.cust ? '?cust=' + encodeURIComponent(props.cust) : ''), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ cash_with_securities: opts.value?.has_securities ? sec.value : undefined, subject: props.subject || undefined, month: f.month, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
+      body: JSON.stringify({ cash_with_securities: opts.value?.has_securities ? sec.value : undefined, subject: props.subject || undefined, month: f.month, period: f.period, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)
     const upd = res.headers.get('x-update-id')
-    emit('done', (props.title ?? 'Monthly management report') + ' for ' + mon(f.month) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
+    emit('done', (props.title ?? (perWord.value[0]!.toUpperCase() + perWord.value.slice(1) + ' management report')) + ' for ' + (choices.value.find((c) => c.value === f.month)?.label ?? mon(f.month)) + ' downloaded' + (f.room ? ' and added to the data room (Financials folder)' : '') + '.' + (upd ? ' A draft investor update with these numbers is ready in Investor updates.' : ''))
   } catch (e) { f.msg = (e as Error).message } finally { f.busy = false }
 }
 const { data: mods } = useNuxtData<{ code: string; usable?: boolean }[]>('modules')
@@ -54,7 +59,7 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
       <p class="hint">{{ only ? 'Revenue retention and customers for the month, ready to share. Add other sections if you like.' : 'A clear report for your executive team on how the month went. Pick what goes in; we remember your choice for next month.' }}</p>
       <p v-if="f.loading" class="hint">Loading…</p>
       <template v-else-if="opts">
-        <div class="g2"><label class="label">Month<select v-model="f.month"><option v-for="m in opts.months" :key="m" :value="m">{{ mon(m) }}</option><option v-if="!opts.months.length" value="" disabled>No monthly figures yet</option></select></label>
+        <div class="g2"><label class="label">Covers<select v-model="f.period"><option value="month">A month</option><option value="quarter">A quarter</option><option value="year">A year</option></select></label><label class="label">{{ f.period === 'year' ? 'Year' : f.period === 'quarter' ? 'Quarter' : 'Month' }}<select v-model="f.month"><option v-for="c in choices" :key="c.value" :value="c.value">{{ c.label }}</option><option v-if="!opts.months.length" value="" disabled>No monthly figures yet</option></select></label>
           <label class="label">Format<select v-model="f.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label></div>
         <div class="g2"><label class="label">Charts over time<select v-model="f.chart"><option value="area">Area line (shaded)</option><option value="line">Line</option><option value="bar">Bars</option></select></label>
           <label class="label">Breakdowns (costs, assets, sectors, top customers)<select v-model="f.pies"><option :value="true">Pie charts</option><option :value="false">Bars</option></select></label></div>

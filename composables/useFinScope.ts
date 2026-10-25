@@ -28,7 +28,8 @@ export async function useFinScope() {
     const s = subj.value
     return [...(scoped.value ? [] : [{ value: 'group', label: 'Group', sub: 'Consolidated', group: true }]),
       ...(s?.entities ?? []).map((e) => ({ value: 'entity:' + e.id, label: e.name, sub: e.kind === 'fund' ? 'Fund' : e.kind === 'spv' ? 'SPV' : 'Entity', group: false })),
-      ...(s?.companies ?? []).map((c) => ({ value: 'company:' + c.id, label: c.name, sub: c.relationship === 'subsidiary' ? 'Subsidiary' : 'Portfolio company', group: false }))]
+      // Aidi OS: only the group's own entities and subsidiaries; portfolio companies have their own pages in Portfolio.
+      ...(s?.companies ?? []).filter((c) => c.relationship === 'subsidiary').map((c) => ({ value: 'company:' + c.id, label: c.name, sub: 'Subsidiary', group: false }))]
   })
   const fallback = computed(() => options.value[0]?.value ?? (co.value?.subject ?? 'group'))
   const s = computed<string>({

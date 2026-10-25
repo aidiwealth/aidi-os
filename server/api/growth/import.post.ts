@@ -25,6 +25,9 @@ export default defineEventHandler(async (event) => {
   if (kind.data !== 'bank_txns' && !pid) throw apiError('invalid', 'Choose the process first.')
   const t = tableOf(await readGrids(buf, ext)); if (!t) throw apiError('empty', 'No table with headings found. Put headings in the first row and one record per row.', 422)
   const map = await mapTable(kind.data, t, await targetsFor(kind.data, pid))
+  // An export from an ad or social platform: every row is that platform's channel (added if it is not set up yet).
+  const PLATFORM: Record<string, string> = { linkedin: 'LinkedIn', meta: 'Meta ads', facebook: 'Facebook', instagram: 'Instagram', google_ads: 'Google Ads', search: 'SEO', x: 'X', tiktok: 'TikTok', youtube: 'YouTube' }
+  if (kind.data === 'marketing_months' && PLATFORM[f.platform ?? '']) map.channel_fixed = PLATFORM[f.platform!]
   if (kind.data === 'bank_txns') { map.currency = /^[A-Z]{3}$/.test(f.currency ?? '') ? f.currency : 'USD'; map.account = (f.account || fileName || 'Linked sheet').slice(0, 120) }
   // The company the rows belong to: the one chosen at the top; on the group view, the one picked in the form (bank
   // transactions) or, for deals, the main company unless the process belongs to one.
