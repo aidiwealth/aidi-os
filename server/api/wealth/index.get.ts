@@ -12,7 +12,9 @@ export default defineEventHandler(async (event) => {
   const venture = rows.filter((r) => r.section === 'venture')
   const byCat: Record<string, number> = {}
   for (const r of rows) if (r.in_nav && r.category !== 'liability') byCat[r.category] = (byCat[r.category] ?? 0) + n(r.current_value)
-  return { rows, totals: { assets, liabilities, nav: assets - liabilities, mgmtNav: mgmtAssets - liabilities,
+  // Portfolio companies a strategic holding can be valued from (their own figures on Financials).
+  const companies = (await db().query<{ id: string; name: string }>('SELECT id, name FROM portfolio.companies ORDER BY name').catch(() => ({ rows: [] }))).rows
+  return { companies, rows, totals: { assets, liabilities, nav: assets - liabilities, mgmtNav: mgmtAssets - liabilities,
     wealthAum: rows.filter((r) => (r.section === 'wealth' || r.section === 'client') && r.in_aum).reduce((a, r) => a + n(r.current_value), 0),
     clientAssets: rows.filter((r) => r.section === 'client').reduce((a, r) => a + n(r.current_value), 0),
     ventureCost: venture.reduce((a, r) => a + n(r.cost), 0), ventureValue: venture.reduce((a, r) => a + n(r.current_value), 0), ventureRealized: venture.reduce((a, r) => a + n(r.realized), 0),
