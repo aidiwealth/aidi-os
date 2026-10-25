@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { localCardCountry, LOCAL_CARD_NOTE } from '~/shared/countries'
-// Wallet (the Wallet page, and Settings → Plan & billing with `bare`): balance card, card top-up, money movement by month, transactions with export.
+// Wallet (Settings → Plan & billing, and the Wallet page): the balance, add money in a pop-up, what is coming up, and
+// every movement.
 defineProps<{ bare?: boolean }>()
 interface Bank { bank: string; account_number: string; account_name: string; routing?: string; swift?: string }
 interface D { country?: string; transfer: { mode: 'monnify'; account: { bank_name: string; account_number: string; account_name: string; accounts: { bankName: string; accountNumber: string; accountName: string }[] } | null } | { mode: 'manual'; bank: Bank } | null; reference: string; card: { brand: string | null; last4: string | null } | null; subscriptions: { id: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; next_charge_at: string; status: string; failures: number; last_error: string | null }[]; company: string; plan: string; currency: string; balance_minor: number; min_minor: number; ledger: { id: string; reference?: string | null; kind: string; amount_minor: number; balance_after_minor: number; category: string; reason: string; date: string }[]; pending: number; canTopup: boolean; provider: string }
@@ -38,74 +39,137 @@ const yearly = computed(() => subsActive.value.reduce((t, x) => t + (x.interval 
 const fmtM = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.currency ?? 'USD', maximumFractionDigits: minor % 100 ? 2 : 0 }).format(minor / 100)
 const dLong = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.value.amount_minor - data.value.balance_minor) : 0))
+
+// Add money opens in a pop-up (bank transfer or card); a card top-up return opens nothing.
+const addOpen = ref(false)
+function openAdd(t: 'transfer' | 'card') { tab.value = data.value?.transfer ? t : 'card'; addOpen.value = true }
+// The balance, split into whole units and cents.
+const parts = computed(() => { const v = new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.currency ?? 'USD', minimumFractionDigits: 2 }).format((data.value?.balance_minor ?? 0) / 100); const i = v.lastIndexOf('.'); return i > 0 ? [v.slice(0, i), v.slice(i)] : [v, ''] })
+// The last 90 days: added, spent, and the balance as a line (a step for each movement).
+const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
+const recent = computed(() => (data.value?.ledger ?? []).filter((l) => l.date >= since))
+const added = computed(() => recent.value.filter((l) => l.kind === 'credit').reduce((t, l) => t + l.amount_minor, 0))
+const spent = computed(() => recent.value.filter((l) => l.kind === 'debit').reduce((t, l) => t + l.amount_minor, 0))
+const spark = computed(() => {
+  const d = data.value; if (!d) return { line: '', area: '' }
+  const asc = [...recent.value].reverse(), day = (s: string) => Math.max(0, Math.min(90, (new Date(s + 'T12:00:00Z').getTime() - new Date(since + 'T12:00:00Z').getTime()) / 864e5))
+  const start = asc.length ? asc[0]!.balance_after_minor - (asc[0]!.kind === 'credit' ? 1 : -1) * asc[0]!.amount_minor : d.balance_minor
+  const pts: [number, number][] = [[0, start]]; for (const l of asc) { const x = day(l.date); pts.push([x, pts[pts.length - 1]![1]], [x, l.balance_after_minor]) } pts.push([90, d.balance_minor])
+  const hi = Math.max(1, ...pts.map((p) => p[1])), y = (v: number) => 58 - (v / hi) * 50
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + (p[0] / 90 * 600).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' ')
+  return { line, area: line + ' L600 64 L0 64 Z' }
+})
+// Coming up: renewals in date order (with whether the balance covers them, in turn) and unpaid invoices.
+const days = (s: string) => Math.round((new Date(s + 'T12:00:00Z').getTime() - Date.now()) / 864e5)
+const upcoming = computed(() => { let left = data.value?.balance_minor ?? 0; return subsActive.value.map((s) => { const cover = left >= s.amount_minor; left = Math.max(0, left - s.amount_minor); return { ...s, short: cover ? 0 : s.amount_minor - Math.max(0, left), in: days(s.next_charge_at) } }) })
+const { canPath } = useModuleAccess()
+const { data: inv } = useFetch<{ id: string; number: string; amount: string; currency: string; status: string; due_date: string; summary: string; overdue: boolean }[]>('/api/portal/invoices', { key: 'wallet-invoices', server: false, default: () => [] })
+const unpaid = computed(() => (canPath('/client/invoices') ? (inv.value ?? []).filter((i) => i.status === 'sent') : []))
+const perYear = computed(() => subsActive.value.reduce((t, x) => t + (x.interval === 'month' ? x.amount_minor * 12 : x.amount_minor), 0))
+// Transactions: all, money in or money out, 15 a page.
+const flow = ref<'' | 'credit' | 'debit'>(''), page = ref(0)
+const moves = computed(() => (data.value?.ledger ?? []).filter((l) => !flow.value || l.kind === flow.value))
+watch(flow, () => (page.value = 0))
+const CAT: Record<string, string> = { topup: 'Top-up', admin_credit: 'From Finvry', refund: 'Refund', service: 'Service', subscription: 'Subscription', admin_debit: 'Adjustment' }
 </script>
 <template>
-  <section v-if="data">
-    <template v-if="!bare"><h1 class="ttl">Wallet</h1>
-    <p class="lead">Pay for services, filings and renewals from one balance.</p></template>
-    <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
-    <p v-if="returned && data.pending" class="card note">Payment received. Your balance updates in a moment.</p>
+  <section v-if="data" class="wl">
     <div class="top">
-      <WalletCard title="Finvry" label="Available balance" :value="data.balance_minor / 100" :currency="data.currency" :sub="lastMove" foot-label="Workspace" :foot-value="data.company" :tag="PLAN[data.plan] ?? data.plan" />
-      <div class="card fund">
-        <h3>Add money</h3>
-        <div v-if="data.transfer" class="tabs2"><button type="button" :class="{ on: tab === 'transfer' }" @click="tab = 'transfer'">Bank transfer</button><button type="button" :class="{ on: tab === 'card' }" @click="tab = 'card'">Card</button></div>
+      <div><div class="eyb">{{ bare ? 'Finvry wallet' : 'Wallet' }} · {{ data.currency }}</div><div class="big">{{ parts[0] }}<small>{{ parts[1] }}</small></div>
+        <p v-if="returned && data.pending" class="pend">Payment received. Your balance updates in a moment.</p></div>
+      <div class="btns">
+        <button type="button" class="bt p" @click="openAdd('transfer')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>Add money</button>
+        <button v-if="data.card" type="button" class="bt" @click="openAdd('card')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" /><path d="M3 10h18" /></svg>{{ data.card.brand ?? 'Card' }} ···· {{ data.card.last4 ?? '' }}</button>
+        <a href="/api/wallet/export" class="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg>Statement</a>
+      </div>
+    </div>
+    <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
+    <p v-if="msg && !addOpen" class="error">{{ msg }}</p>
+    <div class="g2">
+      <div class="panel hero">
+        <div class="hh"><span>Balance, last 90 days</span><span>Today</span></div>
+        <svg class="spark" viewBox="0 0 600 64" preserveAspectRatio="none" aria-hidden="true"><path :d="spark.area" fill="#0c1a2e" opacity=".05" /><path :d="spark.line" fill="none" stroke="#0c1a2e" stroke-width="1.6" vector-effect="non-scaling-stroke" /></svg>
+        <div class="trio">
+          <div><span>Added</span><b>{{ fmtM(added) }}</b></div><div><span>Spent</span><b>{{ fmtM(spent) }}</b></div>
+          <div><span>Next charge</span><b>{{ nextSub ? fmtM(nextSub.amount_minor) : '—' }}<em v-if="nextSub"> · {{ dLong(nextSub.next_charge_at).replace(/ \d{4}$/, '') }}</em></b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h3>Upcoming</h3><span v-if="perYear" class="m">{{ fmtM(perYear) }} / yr</span></div>
+        <div v-for="s in upcoming" :key="s.id" class="rowl"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg></span>
+          <div class="tx"><b>{{ s.name }}</b><span>{{ dLong(s.next_charge_at) }} · {{ s.in <= 0 ? 'today' : s.in === 1 ? 'tomorrow' : 'in ' + s.in + ' days' }}</span></div>
+          <div class="am">{{ fmtM(s.amount_minor) }}<span v-if="s.failures"><i class="dot r" />Payment failed, retrying</span><span v-else-if="s.short"><i class="dot" />{{ data.card ? 'Card covers ' + fmtM(s.short) : 'Short ' + fmtM(s.short) }}</span><span v-else><i class="dot b" />Covered</span></div></div>
+        <div v-for="i in unpaid" :key="i.id" class="rowl"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l3 3v15H6z" /></svg></span>
+          <div class="tx"><b>{{ i.summary || 'Invoice' }}</b><span>{{ i.overdue ? 'Overdue' : 'Due ' + dLong(i.due_date) }} · {{ i.number }}</span></div>
+          <div class="am"><Money :value="i.amount" :currency="i.currency" /><span><i class="dot" :class="{ r: i.overdue }" />Invoice</span></div></div>
+        <p v-if="!upcoming.length && !unpaid.length" class="none">Nothing due</p>
+        <p v-else class="foot">Paid from the wallet, then your card.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h3>Transactions</h3><div class="seg"><button v-for="[k, l] in ([['', 'All'], ['credit', 'Money in'], ['debit', 'Money out']] as const)" :key="k" type="button" :class="{ on: flow === k }" @click="flow = k">{{ l }}</button></div></div>
+      <table data-nosearch v-if="moves.length"><thead><tr><th>Date</th><th>Description</th><th>Type</th><th class="r">Amount</th><th class="r">Balance</th></tr></thead>
+        <tbody><tr v-for="l in moves.slice(page * 15, page * 15 + 15)" :key="l.id"><td class="mut nw">{{ dLong(l.date) }}</td><td>{{ l.reason }}</td><td class="mut">{{ CAT[l.category] ?? l.category }}</td><td class="r num" :class="{ in: l.kind === 'credit' }">{{ l.kind === 'credit' ? '+' : '−' }}{{ fmtM(l.amount_minor) }}</td><td class="r num mut">{{ fmtM(l.balance_after_minor) }}</td></tr></tbody></table>
+      <p v-else class="none">No transactions yet</p>
+      <TablePager v-if="moves.length > 15" v-model="page" :total="moves.length" :size="15" />
+    </div>
+    <AppModal :open="addOpen" title="Add money" @close="addOpen = false">
+      <div class="fund">
+        <div v-if="data.transfer" class="seg2"><button type="button" :class="{ on: tab === 'transfer' }" @click="tab = 'transfer'">Bank transfer</button><button type="button" :class="{ on: tab === 'card' }" @click="tab = 'card'">Card</button></div>
         <template v-if="data.transfer && tab === 'transfer'">
           <template v-if="data.transfer.mode === 'monnify'">
-            <template v-if="acct"><p class="mut">Transfer from any Nigerian bank. Credited automatically, usually in minutes.</p>
-              <div class="acct"><span>Bank</span><b>{{ acct.bank_name }}</b><span>Account number</span><b class="mono">{{ acct.account_number }} <button type="button" class="cp" @click="copy(acct?.account_number ?? '')">{{ copied === acct.account_number ? 'Copied' : 'Copy' }}</button></b><span>Account name</span><b>{{ acct.account_name }}</b></div>
+            <template v-if="acct"><div class="acct"><span>Bank</span><b>{{ acct.bank_name }}</b><span>Account</span><b class="mono">{{ acct.account_number }} <button type="button" class="cp" @click="copy(acct?.account_number ?? '')">{{ copied === acct.account_number ? 'Copied' : 'Copy' }}</button></b><span>Name</span><b>{{ acct.account_name }}</b></div>
+              <p class="mut">Credited automatically, usually in minutes.</p>
               <p v-if="acct.accounts.length > 1" class="mut">Also: {{ acct.accounts.slice(1).map((a) => a.bankName + ' ' + a.accountNumber).join(' · ') }}</p></template>
-            <template v-else><p class="mut">Get an account number for {{ data.company }}. A BVN or NIN is required and used only to open it.</p>
+            <template v-else><p class="mut">A BVN or NIN opens an account number for {{ data.company }}.</p>
               <div class="kyc"><select v-model="kycType"><option value="bvn">BVN</option><option value="nin">NIN</option></select><input v-model="kyc" inputmode="numeric" maxlength="11" placeholder="11 digits"></div>
-              <button class="btn" type="button" :disabled="busy || kyc.length !== 11" @click="makeAccount">{{ busy ? 'Creating account…' : 'Generate account number' }}</button></template>
+              <button class="btn" type="button" :disabled="busy || kyc.length !== 11" @click="makeAccount">{{ busy ? 'Creating…' : 'Get account number' }}</button></template>
           </template>
-          <template v-else-if="bank"><p class="mut">Quote your reference. Credited when it arrives, usually the same working day.</p>
-            <div class="acct"><span>Bank</span><b>{{ bank.bank }}</b><span>Account number</span><b class="mono">{{ bank.account_number }} <button type="button" class="cp" @click="copy(bank?.account_number ?? '')">{{ copied === bank.account_number ? 'Copied' : 'Copy' }}</button></b><span>Account name</span><b>{{ bank.account_name }}</b>
+          <template v-else-if="bank"><div class="acct"><span>Bank</span><b>{{ bank.bank }}</b><span>Account</span><b class="mono">{{ bank.account_number }} <button type="button" class="cp" @click="copy(bank?.account_number ?? '')">{{ copied === bank.account_number ? 'Copied' : 'Copy' }}</button></b><span>Name</span><b>{{ bank.account_name }}</b>
               <template v-if="bank.routing"><span>Routing</span><b class="mono">{{ bank.routing }}</b></template><template v-if="bank.swift"><span>SWIFT</span><b class="mono">{{ bank.swift }}</b></template>
-              <span>Your reference</span><b class="mono">{{ data.reference }} <button type="button" class="cp" @click="copy(data.reference)">{{ copied === data.reference ? 'Copied' : 'Copy' }}</button></b></div>
-            <button v-if="!notice.done" class="btn secondary" type="button" @click="notice.open = true">I've sent a transfer</button><p v-else class="okm">Thanks. We'll credit it when it arrives.</p></template>
+              <span>Reference</span><b class="mono">{{ data.reference }} <button type="button" class="cp" @click="copy(data.reference)">{{ copied === data.reference ? 'Copied' : 'Copy' }}</button></b></div>
+            <p class="mut">Quote the reference. Usually credited the same day.</p>
+            <template v-if="!notice.done"><template v-if="notice.open"><label class="label">Amount sent ({{ data.currency }})<input v-model="notice.amount" inputmode="decimal" required></label><label class="label">Date sent<input v-model="notice.sent_on" type="date" required></label><label class="label">Note<input v-model="notice.note" maxlength="500" placeholder="Optional"></label></template></template>
+            <p v-else class="okm">Thanks. We'll credit it when it arrives.</p></template>
         </template>
         <template v-else>
-        <div class="quick"><button v-for="a in quick" :key="a" type="button" :class="{ on: amount === a }" @click="amount = a">{{ sym }}{{ a.toLocaleString() }}</button></div>
-        <label class="label">Amount ({{ data.currency }})<input v-model.number="amount" type="number" :min="data.min_minor / 100" inputmode="decimal"></label>
-        <p class="mut" :class="{ red: below }">Smallest top-up is {{ sym }}{{ (data.min_minor / 100).toLocaleString() }}.</p>
-        <button class="btn" type="button" :disabled="busy || !amount || below || !data.canTopup" @click="topup">{{ busy ? 'Redirecting…' : 'Continue with ' + data.provider }}</button>
-        <p class="mut">{{ data.canTopup ? 'Secured by ' + data.provider + '. Card details never reach us.' : 'Card top-ups are coming soon. Contact support to fund your wallet.' }}</p>
-        <p v-if="data.card" class="mut">Card on file: {{ data.card.brand ?? 'Card' }}{{ data.card.last4 ? ' ending ' + data.card.last4 : '' }} · used if your wallet is short · <button type="button" class="cp" @click="removeCard">Remove</button></p>
-        <p v-else class="mut">Your card is saved as a backup for renewals.</p>
+          <div class="quick"><button v-for="a in quick" :key="a" type="button" :class="{ on: amount === a }" @click="amount = a">{{ sym }}{{ a.toLocaleString() }}</button></div>
+          <label class="label">Amount ({{ data.currency }})<input v-model.number="amount" type="number" :min="data.min_minor / 100" inputmode="decimal"></label>
+          <p class="mut" :class="{ red: below }">At least {{ sym }}{{ (data.min_minor / 100).toLocaleString() }}.{{ data.canTopup ? '' : ' Card top-ups are coming soon.' }}</p>
+          <p v-if="data.card" class="mut">{{ data.card.brand ?? 'Card' }}{{ data.card.last4 ? ' ···· ' + data.card.last4 : '' }} on file, used when the wallet is short · <button type="button" class="cp" @click="removeCard">Remove</button></p>
         </template>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
-    </div>
-    <div v-if="subsActive.length" class="fx-stats">
-      <StatTile label="Next renewal" :value="nextSub ? fmtM(nextSub.amount_minor) : '—'" :note="nextSub ? nextSub.name + ' · ' + dLong(nextSub.next_charge_at) : ''" icon="calendar" tone="n" />
-      <StatTile label="Renewing in the next 90 days" :value="fmtM(soon90)" :note="subsActive.length + ' active service' + (subsActive.length === 1 ? '' : 's')" icon="clock" tone="b" />
-      <StatTile label="Renewals per year" :value="fmtM(yearly)" note="All services together" icon="billing" tone="c" />
-      <StatTile label="Ready for the next renewal?" :value="short ? 'Top up ' + fmtM(short) : 'Covered'" :pos="!short" :note="short ? (data.card ? 'or we charge your card on file' : 'before ' + (nextSub ? dLong(nextSub.next_charge_at) : 'then')) : 'Your balance covers it'" :note-tone="short ? 'warn' : ''" :icon="short ? 'alert' : 'check'" :tone="short ? 'a' : 'g'" />
-    </div>
-    <div v-if="data.subscriptions.length" class="card subs"><h3>Renewals</h3><p class="mut">Charged from your wallet, then your card. If both fail we retry after 3 days, then {{ data.subscriptions.some((s) => s.kind === 'plan') ? 'move you to Free or ' : '' }}pause the service.</p>
-      <div class="subg"><RenewalCard v-for="s in data.subscriptions" :key="s.id" :r="{ code: (s as any).code ?? s.kind, name: s.name, amount_minor: s.amount_minor, currency: s.currency, interval: s.interval, status: s.status, next: s.next_charge_at, started: (s as any).started_on, details: (s as any).details, failures: s.failures, last_error: s.last_error }" /></div></div>
-    <AppModal :open="notice.open" title="Tell us about your transfer" @close="notice.open = false">
-      <form id="ntf" class="nt" @submit.prevent="sendNotice(); notice.open = false"><label class="label">Amount sent ({{ data.currency }})<input v-model="notice.amount" inputmode="decimal" required></label><label class="label">Date sent<input v-model="notice.sent_on" type="date" required></label><label class="label">Note (optional)<input v-model="notice.note" maxlength="500" placeholder="e.g. sent from Zuri Labs GTBank account"></label></form>
-      <template #foot><button class="btn secondary" @click="notice.open = false">Cancel</button><button class="btn" type="submit" form="ntf">Send</button></template>
+      <template #foot><button class="btn secondary" type="button" @click="addOpen = false">Close</button>
+        <template v-if="data.transfer && tab === 'transfer'"><button v-if="bank && !notice.done && !notice.open" class="btn" type="button" @click="notice.open = true">I've sent it</button><button v-else-if="bank && notice.open && !notice.done" class="btn" type="button" :disabled="busy || !notice.amount" @click="sendNotice">Send</button></template>
+        <button v-else-if="!(data.transfer && tab === 'transfer')" class="btn" type="button" :disabled="busy || !amount || below || !data.canTopup" @click="topup">{{ busy ? 'Redirecting…' : 'Continue to pay' }}</button></template>
     </AppModal>
-    <MoneyFlow v-if="data.ledger.length" class="flow" :rows="rows" :currency="data.currency" />
-    <div v-if="byCat.length" class="card mix"><DonutChart title="Where your wallet went" total-label="Spent" :currency="data.currency" :segments="byCat" /></div>
-    <div v-if="invoicePays.length" class="card ip"><b>Invoices paid from this wallet</b><div v-for="l in invoicePays" :key="l.id" class="ipr"><span>{{ l.date }} · {{ l.reason }}</span><b>{{ new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency }).format(l.amount_minor / 100) }}</b></div><NuxtLink to="/client/invoices">See all invoices →</NuxtLink></div>
-    <TxnTable :rows="rows" :currency="data.currency" title="Transactions"><template #empty>No transactions yet. Add money to start.</template></TxnTable>
   </section>
 </template>
 <style scoped>
-.eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--c-muted); } .ttl { margin: 0; }
-.lead { color: var(--c-ink-soft); max-width: 720px; } .note { border-left: 3px solid var(--c-blue-deep); margin-bottom: 14px; }
-.top { display: grid; grid-template-columns: minmax(320px, 1.1fr) 1fr; gap: 16px; margin: 16px 0 22px; } .fund { display: flex; flex-direction: column; gap: 10px; } .fund h3 { margin: 0; }
+.wl { display: flex; flex-direction: column; gap: 18px; }
+.top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.eyb { font-size: 13px; color: var(--c-muted); margin-bottom: 8px; }
+.big { font-size: 44px; font-weight: 500; letter-spacing: -.025em; font-variant-numeric: tabular-nums; line-height: 1; color: var(--c-ink); } .big small { font-size: 21px; color: var(--c-muted); font-weight: 500; letter-spacing: 0; }
+.pend { font-size: 13px; color: var(--c-blue-deep); margin: 8px 0 0; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; } .bt { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; font: inherit; font-size: 13.5px; background: #fff; border: 1px solid var(--c-rule-strong); color: var(--c-ink); cursor: pointer; text-decoration: none; } .bt:hover { border-color: var(--c-ink-soft); } .bt.p { background: var(--c-navy); color: #fff; border-color: var(--c-navy); } .bt svg { width: 15px; height: 15px; }
+.lcn { background: #f3f8fc; padding: 9px 12px; font-size: 13px; color: var(--c-ink-soft); margin: 0; }
+.g2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.panel { background: #fff; border: 1px solid var(--c-rule); }
+.hero { padding: 20px 22px 16px; display: flex; flex-direction: column; gap: 12px; } .hh { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--c-muted); } .spark { width: 100%; height: 64px; display: block; }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--c-rule); padding-top: 12px; } .trio span { font-size: 12.5px; color: var(--c-muted); } .trio b { display: block; font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; margin-top: 2px; } .trio em { font-style: normal; font-size: 12.5px; color: var(--c-muted); font-weight: 400; }
+.ph { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; } .ph h3 { margin: 0; font-size: 15px; font-weight: 600; } .ph .m { font-size: 12.5px; color: var(--c-muted); }
+.rowl { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--c-rule); font-size: 14px; } .ic { width: 32px; height: 32px; background: var(--c-paper-2); display: grid; place-items: center; color: var(--c-ink-soft); flex: none; } .ic svg { width: 15px; height: 15px; }
+.tx { flex: 1; min-width: 0; } .tx b { font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tx span { font-size: 12.5px; color: var(--c-muted); } .am { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; } .am span { display: block; font-size: 12px; color: var(--c-muted); font-weight: 400; white-space: nowrap; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #b4541a; margin-right: 6px; vertical-align: 1px; } .dot.b { background: #5fa8d3; } .dot.r { background: var(--c-danger); }
+.none { padding: 18px 20px; border-top: 1px solid var(--c-rule); color: var(--c-muted); font-size: 13px; margin: 0; text-align: center; } .foot { padding: 10px 20px 14px; margin: 0; font-size: 12.5px; color: var(--c-muted); border-top: 1px solid var(--c-rule); }
+.seg { display: inline-flex; gap: 4px; } .seg button { background: none; border: 0; padding: 5px 11px; font: inherit; font-size: 13px; color: var(--c-ink-soft); cursor: pointer; } .seg button.on { background: var(--c-paper-2); color: var(--c-ink); font-weight: 500; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; } th { text-align: left; font-weight: 500; font-size: 12.5px; color: var(--c-muted); padding: 10px 20px; border-top: 1px solid var(--c-rule); } td { padding: 12px 20px; border-top: 1px solid var(--c-rule); } .r { text-align: right; } .num { font-variant-numeric: tabular-nums; } .mut { color: var(--c-muted); } .nw { white-space: nowrap; } td.in { color: var(--c-blue-deep); }
+.fund { display: flex; flex-direction: column; gap: 12px; } .fund .mut { font-size: 12.5px; margin: 0; } .red { color: var(--c-danger) !important; }
+.seg2 { display: flex; border: 1px solid var(--c-rule-strong); } .seg2 button { flex: 1; background: #fff; border: 0; padding: 8px; font: inherit; font-size: 13.5px; cursor: pointer; } .seg2 button.on { background: var(--c-navy); color: #fff; }
+.acct { display: grid; grid-template-columns: 110px 1fr; gap: 8px 10px; background: var(--c-paper-2); padding: 12px 14px; font-size: 14px; } .acct span { color: var(--c-muted); } .acct b { font-weight: 500; } .mono { font-family: ui-monospace, Menlo, monospace; }
+.cp { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-size: 12px; color: var(--c-blue-deep); cursor: pointer; }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; } .quick button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 9px 4px; font: inherit; font-weight: 500; cursor: pointer; } .quick button.on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
-label.label { display: flex; flex-direction: column; gap: 6px; } input { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--c-rule-strong); } .mut { color: var(--c-muted); font-size: 12.5px; margin: 0; } .red { color: var(--c-danger); }
-.flow, .mix { margin-bottom: 22px; } .tabs2 { display: flex; border: 1px solid var(--c-rule-strong); } .tabs2 button { flex: 1; background: #fff; border: 0; padding: 8px; font: inherit; font-size: 13.5px; cursor: pointer; } .tabs2 button.on { background: var(--c-navy); color: #fff; }
-.acct { display: grid; grid-template-columns: 130px 1fr; gap: 8px 10px; background: var(--c-paper-2); padding: 12px 14px; font-size: 14px; } .acct span { color: var(--c-muted); } .acct b { font-weight: 500; } .mono { font-family: ui-monospace, Menlo, monospace; }
-.cp { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-size: 12px; color: var(--c-blue-deep); cursor: pointer; } .kyc { display: flex; gap: 8px; } .kyc select { font: inherit; padding: 8px; border: 1px solid var(--c-rule-strong); } .kyc input { flex: 1; } .okm { color: var(--c-ok); font-size: 13.5px; margin: 0; }
-.subs { margin-bottom: 22px; } .subg { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-top: 12px; } .subs h3 { margin: 0 0 4px; } .sr { display: grid; grid-template-columns: 1fr auto 220px; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; align-items: center; } .sr em { font-style: normal; color: var(--c-muted); font-size: 12.5px; } .sr span:last-child { text-align: right; color: var(--c-ink-soft); font-size: 13px; } .nt { display: flex; flex-direction: column; gap: 12px; } .mix { max-width: 640px; } .error { color: var(--c-danger); margin: 0; }
-@media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
-.ip { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; font-size: 14px; } .ipr { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--c-rule); padding: 4px 0; } .ip a { color: var(--c-blue-deep); font-size: 13px; }
-.lcn { background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; font-size: 13.5px; color: var(--c-ink-soft); margin: 0 0 14px; }
+label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--c-rule-strong); } .kyc { display: flex; gap: 8px; } .kyc input { flex: 1; } .okm { color: var(--c-ok); font-size: 13px; margin: 0; } .error { color: var(--c-danger); font-size: 13px; margin: 0; }
+@media (max-width: 900px) { .g2 { grid-template-columns: 1fr; } .big { font-size: 36px; } th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { display: none; } }
 </style>

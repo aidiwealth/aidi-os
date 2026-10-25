@@ -48,7 +48,8 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 </script>
 
 <template>
-  <section>
+  <CompanyTeam v-if="isCo" />
+  <section v-else>
     <p class="label">Administration</p>
     <h1>Team</h1>
     <p class="lead">{{ isCo ? 'Who can sign in and what they see. Changes are logged.' : 'People, contracts, pay and sign-in access. Changes are logged.' }}</p>

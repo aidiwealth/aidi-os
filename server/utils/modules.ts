@@ -97,6 +97,7 @@ export async function usableModules(roles: string[], event?: H3Event): Promise<S
   const on = await enabledModules(), ov = await moduleRoleOverrides()
   const out = new Set(MODULES.filter((m) => on.has(m.code) && canUse(m, roles, ov)).map((m) => m.code))
   if (event) for (const c of [...out]) if (await scopeBlocks(event, c)) out.delete(c)
+  if (event) { const s = (event.context.user as SessionUser | undefined) ?? await readSession(event).catch(() => null); for (const c of await blockedForUser(s)) out.delete(c) }
   return out
 }
 // Modules that belong to one company (Rental & Real Estate is Aidi Haven's): people limited to other companies cannot
@@ -109,4 +110,30 @@ export async function scopeBlocks(event: H3Event, code: string): Promise<boolean
 }
 export async function requireModule(event: H3Event, code: string): Promise<void> {
   if (!(await enabledModules()).has(code)) throw apiError('module_off', 'This module is switched off.', 404)
+}
+
+// Per-person access (Team page): an admin can switch features off for one member. Stored in the workspace settings as
+// member_modules = { userId: [module codes] }; 'ai_analyst' is the AI analyst. Admins (and support visits) are never limited.
+export const AI_ANALYST_API = ['/api/ai/analyst', '/api/ai/act', '/api/ai/chats']
+export const MEMBER_FEATURES: { key: string; label: string; group: string; codes: string[] }[] = [
+  { key: 'financials', label: 'Financials', group: 'Investors', codes: ['financials', 'forecast', 'fin_customers', 'fin_report'] },
+  { key: 'investors', label: 'Investors', group: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] },
+  { key: 'equity', label: 'Cap table', group: 'Investors', codes: ['equity'] },
+  { key: 'boards', label: 'Boards', group: 'Investors', codes: ['boards'] },
+  { key: 'sales', label: 'Sales', group: 'Growth', codes: ['sales'] },
+  { key: 'marketing', label: 'Marketing', group: 'Growth', codes: ['marketing'] },
+  { key: 'stage_monitor', label: 'Stage monitor', group: 'Growth', codes: ['stage_monitor'] },
+  { key: 'banking_treasury', label: 'Banking', group: 'Growth', codes: ['banking_treasury'] },
+  { key: 'documents', label: 'Documents', group: 'Company', codes: ['documents', 'decks'] },
+  { key: 'compliance', label: 'Compliance', group: 'Company', codes: ['compliance', 'entities', 'meetings', 'governance'] },
+  { key: 'services', label: 'Services', group: 'Company', codes: ['company_services', 'client_inbox', 'client_raise', 'wallet'] },
+  { key: 'ai_analyst', label: 'AI analyst', group: 'Company', codes: ['ai_analyst'] }]
+export async function memberBlocks(): Promise<Record<string, string[]>> {
+  const v = ((await currentOrg())?.settings as Record<string, unknown> | undefined)?.member_modules
+  return v && typeof v === 'object' ? v as Record<string, string[]> : {}
+}
+export async function blockedForUser(s: { userId: string; roles: string[]; support?: unknown } | null | undefined): Promise<Set<string>> {
+  if (!s || s.roles.includes('admin') || s.support) return new Set()
+  const b = await memberBlocks()
+  return new Set(b[s.userId] ?? [])
 }

@@ -216,5 +216,6 @@
  "server/utils/wm-market.ts": 7,
  "server/utils/wm-rails.ts": 3,
  "server/utils/wm-statement.ts": 1,
- "server/utils/workspaces.ts": 1
+ "server/utils/workspaces.ts": 1,
+ "server/api/admin/member-access/index.post.ts": 1
 }

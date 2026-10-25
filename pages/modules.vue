@@ -4,7 +4,7 @@ interface Mod { code: string; group: string; groupLabel: string; label: string; 
 const { data, refresh } = await useFetch<Mod[]>('/api/modules')
 const groups = computed(() => {
   const g: Record<string, { label: string; items: Mod[] }> = {}
-  for (const m of data.value ?? []) (g[m.group] ??= { label: m.groupLabel, items: [] }).items.push(m)
+  for (const m of (data.value ?? []).filter((x) => x.code !== 'ai_analyst')) (g[m.group] ??= { label: m.groupLabel, items: [] }).items.push(m)
   return Object.values(g)
 })
 const msg = ref('')

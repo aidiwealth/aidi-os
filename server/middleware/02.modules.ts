@@ -2,6 +2,15 @@
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
   if (!path.startsWith('/api/') || path.startsWith('/api/public/') || path.startsWith('/api/v1/') || path === '/api/mcp') return
+  // Features an admin switched off for this person (Team page).
+  const mb = await memberBlocks()
+  if (Object.keys(mb).length) {
+    const code = moduleForApi(path)?.code ?? (AI_ANALYST_API.some((p) => path === p || path.startsWith(p + '/')) ? 'ai_analyst' : null)
+    if (code) {
+      const s = (event.context.user as SessionUser | undefined) ?? await readSession(event)
+      if ((await blockedForUser(s)).has(code)) throw apiError('forbidden', 'Your admin has not given you access to this. Ask them for it.', 403)
+    }
+  }
   const m = moduleForApi(path)
   if (m) {
     await requireModule(event, m.code)

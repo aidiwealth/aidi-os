@@ -76,9 +76,10 @@ const disclaimer = computed(() => {
 })
 // Services for a company is one sub-menu in the order work happens: see your jobs, order, talk to us, files, then
 // paying (invoices, the wallet you can pay from). Job pages sit under Overview; the job list sits with Invoices.
+const MOVED: Record<string, string> = { '/client/invoices': '/settings', '/wallet': '/settings', '/perks': '/treasury' }
 const SVC_ORDER = ['/client', '/client/order', '/client/messages', '/client/documents', '/client/invoices', '/wallet', '/client/raise', '/perks']
 const svcTabs = (m: Mod): WsTab[] => [
-  { to: '/client', label: 'Overview', code: m.code, match: (p: string) => p === '/client' || p.startsWith('/client/jobs/') },
+  { to: '/client', label: 'Overview', code: m.code, match: (p: string) => p === '/client' || p.startsWith('/client/jobs') },
   { to: '/client/order', label: 'Order a service', code: m.code },
   { to: '/client/documents', label: 'Documents', code: m.code },
   { to: '/client/invoices', label: 'Invoices', code: m.code, match: (p: string) => p === '/client/invoices' || p === '/client/jobs' }].filter((t) => t.to === '/client' || canPath(t.to))
@@ -90,6 +91,8 @@ const wsMenu = computed(() => {
   const out = (isCompany.value ? COMPANY_MENU : AIDI_MENU).map((s) => ({ label: s.label, items: s.items.map((d) => {
     const tabs = d.codes.map((c) => by.get(c)).filter((m): m is Mod => !!m).flatMap((m) => (isCompany.value && m.code === 'company_services' ? (used.add(m.code), svcTabs(m)) : [tabOf(m)]))
     if (d.extra && tabs.length && isCompany.value) tabs.push(...d.extra)
+    // Invoices and the wallet live in Settings (Plan & billing) and perks on Banking, for people who can open those.
+    if (tabs.some((t) => t.code === 'company_services')) for (let i = tabs.length - 1; i >= 0; i--) { const home = MOVED[tabs[i]!.to]; if (home && canPath(home)) tabs.splice(i, 1) }
     if (tabs.some((t) => t.code === 'company_services')) { tabs.sort((a, b) => (SVC_ORDER.indexOf(a.to) + 99) % 99 - (SVC_ORDER.indexOf(b.to) + 99) % 99); for (const t of tabs) if (t.code === 'client_inbox') t.label = 'Messages' }
     const it = item(d.label, tabs); if (it && d.inner) it.inner = true
     return it }).filter((x): x is WsItem => !!x) }))
@@ -128,7 +131,7 @@ const SERVICES_GROUPS: NavG[] = [
   { label: 'Analytics', icon: 'cs_analytics', items: [{ to: '/client-services/analytics', label: 'Analytics', icon: 'cs_analytics' }] }]
 const PLATFORM_NAV: NavI[] = PLATFORM_GROUPS.flatMap((g) => g.items)
 const SERVICES_NAV: NavI[] = SERVICES_GROUPS.flatMap((g) => g.items)
-const { canPath } = useModuleAccess()
+const { canPath, has } = useModuleAccess()
 // Services pages follow the desk modules (and the person's access); the jobs module carries clients, billing and prices.
 const svcOk = (n: NavI) => desk.value.some((m) => m.to === n.to) || (['/services/clients', '/services/invoices', '/services/invoices/jobs', '/services/invoices/payments', '/services/agreements', '/services/settings'].includes(n.to) && desk.value.some((m) => m.to === '/services') && canPath(n.to))
 const servicesGroups = computed(() => SERVICES_GROUPS.map((g) => ({ ...g, items: g.items.filter(svcOk) })).filter((g) => g.items.length))
@@ -233,7 +236,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
       </header>
       <div v-if="support" class="supbar" role="status"><span>Support access: you are seeing this account as <b>{{ me?.email }}</b></span><span class="sm">{{ support.can_edit ? 'Changes allowed, recorded as ' + support.by_name : 'View only' }} · ends in {{ supLeft }} min</span><button type="button" @click="endSupport">End session</button></div>
       <main id="main" class="content"><div class="inner" :class="{ bleed: !lockedHere && route.meta.fullBleed }"><nav v-if="consoleTabs" class="ctabs"><NuxtLink v-for="n in consoleTabs" :key="n.label" :to="linkOf(n)" :class="{ on: navOn(n) }">{{ n.label }}</NuxtLink></nav><nav v-else-if="wsTabs" class="ctabs" :aria-label="wsCurrent?.it.label"><NuxtLink v-for="t in wsTabs" :key="t.to" :to="t.to" :class="{ on: tabOn(t), off: t.locked }">{{ t.label }}<svg v-if="t.locked" class="tl" viewBox="0 0 24 24" aria-label="Upgrade to unlock"><rect x="5" y="11" width="14" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" /></svg></NuxtLink></nav><Paywall v-if="lockedHere" :key="lockedHere.code" :code="lockedHere.code" :label="lockedHere.label" /><slot v-else /><footer v-if="disclaimer" class="disc" :class="{ pad: !lockedHere && route.meta.fullBleed }"><p><b>Disclaimer:</b> {{ disclaimer }}</p></footer></div></main>
-      <AnalystPanel v-if="me && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
+      <AnalystPanel v-if="me && has('ai_analyst') && !(me.roles.length && me.roles.every((r: string) => r === 'wealth_client'))" />
     </div>
   </div>
 </template>
