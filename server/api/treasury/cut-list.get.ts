@@ -1,8 +1,7 @@
 // The cut list as an Excel file to work on offline or share: each recurring payment with its flag, monthly cost,
 // saving % (editable, blue) and the monthly saving as a formula; payments worth a look; the last 90 days of payments.
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin', 'gp')
-  if ((await currentOrg())?.kind !== 'company') throw apiError('not_found', 'Not found', 404)
+  await requireRole(event, 'admin', 'gp', 'family')
   const sc = await forecastScope(event), t = await treasuryView(sc), cy = t.currency
   const { default: Excel } = await import('exceljs')
   const wb = new Excel.Workbook(), FLAG: Record<string, string> = { keep: 'KEEP', to_cancel: 'CUT', downgrade: 'DOWNGRADE', review: 'REVIEW', personal: 'PERSONAL' }

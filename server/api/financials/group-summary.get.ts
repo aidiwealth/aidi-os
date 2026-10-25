@@ -7,7 +7,6 @@ export default defineEventHandler(async (event) => {
   await requireRole(event, 'admin', 'gp', 'team', 'family')
   await requireModule(event, 'financials')
   const org = (await currentOrg())!
-  if (org.kind !== 'company') return null
   const to = (org.settings.reporting_currency as string) || 'USD'
   const ents = (await db().query<{ id: string; name: string; currency: string | null; main: boolean }>("SELECT id, name, currency, parent_id IS NULL AS main FROM core.entities WHERE kind = 'operating' AND status <> 'closed' ORDER BY (parent_id IS NOT NULL), created_at")).rows
   if (ents.length < 2) return null

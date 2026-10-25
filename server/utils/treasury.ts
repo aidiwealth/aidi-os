@@ -94,7 +94,7 @@ export async function notYetIn(txns: RailTxn[], entityId: string | null): Promis
   for (const t of txns) { const x = k(t.account.slice(0, 160), t.date, t.description, t.amount), n = have.get(x) ?? 0; if (n > 0) have.set(x, n - 1); else out.push(t) }
   return out
 }
-export async function addToLedger(source: Rail['key'], txns0: RailTxn[], entityId: string | null, uploadId: string | null = null): Promise<number> {
+export async function addToLedger(source: Rail['key'] | 'statement', txns0: RailTxn[], entityId: string | null, uploadId: string | null = null): Promise<number> {
   const txns = source === 'upload' ? await notYetIn(txns0.map((t) => ({ ...t, entity: t.entity ?? entityId })), entityId) : txns0
   const own = await ownNames()
   const org = await currentOrg(), base = ((org?.settings.reporting_currency as string) || (org?.settings.currency as string) || 'USD')
@@ -180,8 +180,9 @@ export async function syncBankFeed(force = false): Promise<number> { return sync
 // Cash and burn on the same basis as Financials and the Stage Monitor, for the runway each cut gives back.
 // keyFigures: the one cash, burn and runway shown on every page.
 export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null; cash_at: string | null; investments: number; runway_to: string | null }> {
-  const ent = await companyEntityId(); if (!ent) return { cash: null, burn: null, runway: null, cash_at: null, investments: 0, runway_to: null }
-  const rows = (await loadStatements(subject ?? 'entity:' + ent, 'month', cur)).filter((r) => r.period_type === 'month').slice(-12)
+  const ent = await companyEntityId(), subj = subject ?? (ent ? 'entity:' + ent : null)
+  if (!subj) return { cash: null, burn: null, runway: null, cash_at: null, investments: 0, runway_to: null }
+  const rows = (await loadStatements(subj, 'month', cur).catch(() => [])).filter((r) => r.period_type === 'month').slice(-12)
   const sec = await cashPolicy()
   const k = keyFigures(rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) })) as FinRow[])
   return { cash: k.cash, burn: k.burn, runway: k.runway, cash_at: k.cash_at, investments: k.investments, runway_to: k.runway_to }

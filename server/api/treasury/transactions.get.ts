@@ -1,7 +1,7 @@
 // The ledger, newest first: filter by month, direction, category or text.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin', 'gp')
+  await requireRole(event, 'admin', 'gp', 'family')
   const q = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional().catch(undefined), dir: z.enum(['in', 'out']).optional().catch(undefined), category: z.string().max(140).optional(), q: z.string().max(80).optional(), vendor: z.string().max(80).optional(), page: z.coerce.number().int().min(0).max(500).default(0) }).parse(getQuery(event))
   const sc = await forecastScope(event), main = await companyEntityId(), rate = await rateTo(sc.currency)
   const r = await db().query<{ currency: string; amount: number } & Record<string, unknown>>(`SELECT id, to_char(txn_date, 'YYYY-MM-DD') AS date, description, vendor, vendor_key, direction, amount::float, currency, amount_base::float, base_currency, category, category_by, account_label, source, count(*) OVER ()::int AS total FROM banking.ledger

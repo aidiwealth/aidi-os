@@ -11,7 +11,9 @@ export default defineEventHandler(async (event) => {
       if ((await blockedForUser(s)).has(code)) throw apiError('forbidden', 'Your admin has not given you access to this. Ask them for it.', 403)
     }
   }
-  const m = moduleForApi(path)
+  let m = moduleForApi(path)
+  // Aidi OS: Banking (/api/treasury) is part of Bank & cash, so it follows that module and its roles.
+  if (m?.code === 'banking_treasury' && (await currentOrg())?.kind !== 'company') m = MODULES.find((x) => x.code === 'banking')
   if (m) {
     await requireModule(event, m.code)
     if (await scopeBlocks(event, m.code)) throw apiError('forbidden', 'You do not have access to ' + m.label + '. Ask an admin.', 403)

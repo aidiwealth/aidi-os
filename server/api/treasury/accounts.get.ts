@@ -4,7 +4,7 @@
 // company with both, otherwise by account.
 import { isDebt } from '~/shared/bank'
 export default defineEventHandler(async (event) => {
-  await requireRole(event, 'admin', 'gp')
+  await requireRole(event, 'admin', 'gp', 'family')
   const sc = await forecastScope(event), up = await uploadedAccounts(sc), rate = await rateTo(sc.currency), main = await companyEntityId()
   const names = new Map(sc.companies.map((c) => [c.id, c.name]))
   let live = 0, liveAt: string | null = null
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   if (sc.group || !(await nigerianBanking(sc.entity))) {
     const rows = (await db().query<{ type: string | null; subtype: string | null; currency: string; current: string | null; updated_at: string; entity_id: string | null; label: string }>(
       "SELECT a.type, a.subtype, a.currency, a.current::text, a.updated_at::text AS updated_at, i.entity_id, coalesce(i.institution, 'Bank') || ' ' || a.name AS label FROM banking.plaid_accounts a JOIN banking.plaid_items i ON i.id = a.item_id WHERE i.wm_client_id IS NULL")).rows
-    for (const a of rows) if (a.current !== null && !isDebt(a)) {
+    for (const a of rows) if (a.current !== null && !isDebt(a) && (sc.group || (a.entity_id ?? main) === sc.entity)) {
       const k = await rate(a.currency); if (!Number.isFinite(k)) continue
       const v = Number(a.current) * k, e = a.entity_id ?? main ?? ''
       live += v; liveBy.set(e, (liveBy.get(e) ?? 0) + v); liveAcc.push({ label: a.label, v })
@@ -21,14 +21,26 @@ export default defineEventHandler(async (event) => {
   }
   const upAcc: { label: string; v: number; e: string }[] = []
   for (const a of up.accounts) if (a.balance) upAcc.push({ label: a.label, v: a.balance * await rate(a.currency), e: a.entity_id ?? main ?? '' })
+  // Aidi OS: each Bank & cash account's latest tied-out statement.
+  let stmt = 0, stmtN = 0, stmtAt: string | null = null
+  if ((await currentOrg())?.kind !== 'company') {
+    const ids = sc.group ? sc.companies.map((c) => c.id) : [sc.entity ?? '']
+    for (const r of (await db().query<{ entity_id: string; label: string; currency: string; closing: string; at: string }>(
+      `SELECT DISTINCT ON (a.id) a.entity_id, ${STMT_LABEL_SQL} AS label, a.currency, s.closing_balance::text AS closing, s.period_end::text AS at
+         FROM banking.accounts a JOIN banking.statements s ON s.account_id = a.id WHERE a.active AND a.entity_id = ANY($1::uuid[]) ORDER BY a.id, s.period_end DESC, s.created_at DESC`, [ids])).rows) {
+      const k = await rate(r.currency); if (!Number.isFinite(k) || !k) continue
+      const v = Number(r.closing) * k; stmt += v; stmtN++; upAcc.push({ label: r.label, v, e: r.entity_id })
+      if (!stmtAt || r.at > stmtAt) stmtAt = r.at
+    }
+  }
   // Where the cash sits, largest first, at most five parts (the rest together).
   const top = (xs: { label: string; v: number }[]) => { const s = xs.filter((x) => x.v > 0).sort((a, b) => b.v - a.v); return s.length > 5 ? [...s.slice(0, 4), { label: s.length - 4 + ' more', v: s.slice(4).reduce((t, x) => t + x.v, 0) }] : s }
   let parts: { label: string; v: number }[]
   if (sc.group) {
     const by = new Map<string, number>(); for (const [e, v] of liveBy) by.set(e, (by.get(e) ?? 0) + v); for (const a of upAcc) by.set(a.e, (by.get(a.e) ?? 0) + a.v)
     parts = top([...by].map(([e, v]) => ({ label: names.get(e) ?? 'Other', v })))
-  } else if (live > 0 && upAcc.length) parts = top([{ label: 'Live banks', v: live }, { label: 'Statements', v: up.total }])
+  } else if (live > 0 && upAcc.length) parts = top([{ label: 'Live banks', v: live }, { label: 'Statements', v: up.total + stmt }])
   else parts = top([...liveAcc, ...upAcc])
-  const asOf = [liveAt?.slice(0, 10) ?? null, ...up.accounts.map((a) => a.as_of)].filter(Boolean).sort().pop() ?? null
-  return { ...up, live_total: Math.round(live * 100) / 100, all_total: Math.round((live + up.total) * 100) / 100, as_of: asOf, parts: parts.map((p) => ({ label: p.label, value: Math.round(p.v * 100) / 100 })) }
+  const asOf = [liveAt?.slice(0, 10) ?? null, stmtAt, ...up.accounts.map((a) => a.as_of)].filter(Boolean).sort().pop() ?? null
+  return { ...up, live_total: Math.round(live * 100) / 100, all_total: Math.round((live + up.total + stmt) * 100) / 100, statement_accounts: stmtN, as_of: asOf, parts: parts.map((p) => ({ label: p.label, value: Math.round(p.v * 100) / 100 })) }
 })

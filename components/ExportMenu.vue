@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // The export button used across the app: an icon that opens a small menu. Data that spans time downloads a month at
 // a time; longer periods (up to a year) are emailed as a link. Excel or CSV.
-const props = withDefaults(defineProps<{ kind: string; ranged?: boolean; label?: string }>(), { ranged: true, label: 'Export' })
-const { cust } = await useCoScope()
+const props = withDefaults(defineProps<{ kind: string; ranged?: boolean; label?: string; cust?: string }>(), { ranged: true, label: 'Export', cust: undefined })
+const { cust: coCust } = await useCoScope()
+// The company (or group) the page is on; Aidi OS Banking passes its own.
+const cust = computed(() => props.cust ?? coCust.value)
 const open = ref(false), fmt = ref<'xlsx' | 'csv'>('xlsx'), busy = ref(''), msg = ref(''), bad = ref(false)
 const ym = (d: Date) => d.toISOString().slice(0, 7)
 const months = computed(() => Array.from({ length: 24 }, (_, i) => { const d = new Date(); d.setUTCDate(15); d.setUTCMonth(d.getUTCMonth() - i); return ym(d) }))

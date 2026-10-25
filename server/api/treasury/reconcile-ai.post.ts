@@ -6,7 +6,6 @@ import { z } from 'zod'
 interface Sug { id: string; category: string; reason: string }
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp')
-  if ((await currentOrg())?.kind !== 'company') throw apiError('not_found', 'Not found', 404)
   const b = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Choose a month.')
   await rateLimit('reconcile_ai', user.userId, 30, 60 * 60 * 1000)
