@@ -45,7 +45,9 @@ const inApp = (p?: string) => !!p && p.startsWith('/') && !p.startsWith('//') &&
 function scroll() { nextTick(() => { if (box.value) box.value.scrollTop = box.value.scrollHeight }) }
 function key(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-function md(s: string) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n').map((l) => (/^\s*#{1,4}\s+/.test(l) ? '<h4>' + l.replace(/^\s*#{1,4}\s+/, '') + '</h4>' : /^\s*([-•]|\d+[.)])\s+/.test(l) ? '<li>' + l.replace(/^\s*([-•]|\d+[.)])\s+/, '') + '</li>' : l ? '<p>' + l + '</p>' : '')).join('').replace(/(<li>.*?<\/li>)+/g, (m) => '<ul>' + m + '</ul>') }
+// Full Markdown, as everywhere else in the app: headings, lists, links and tables (an answer comparing months or
+// options can come back as a table).
+function md(s: string) { return renderMarkdown(s) }
 </script>
 <template>
   <div class="an" :class="{ open }">
@@ -91,7 +93,7 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 .body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .intro p { margin: 0 0 10px; color: var(--c-muted); font-size: 13.5px; } .sg { display: block; width: 100%; text-align: left; background: var(--c-paper-2); border: 1px solid transparent; padding: 9px 12px; margin-bottom: 6px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-ink); } .sg:hover { border-color: var(--c-rule-strong); }
 .m { font-size: 14px; line-height: 1.5; max-width: 92%; } .m.user { align-self: flex-end; background: var(--c-navy); color: #fff; padding: 8px 12px; white-space: pre-wrap; } .m.assistant { align-self: flex-start; color: var(--c-ink); }
-.md :deep(h4) { margin: 8px 0 4px; font-size: 13.5px; font-weight: 600; } .md :deep(p) { margin: 0 0 6px; } .md :deep(ul) { margin: 4px 0 6px; padding-left: 18px; } .md :deep(li) { margin: 2px 0; }
+.md :deep(h2), .md :deep(h3), .md :deep(h4) { margin: 8px 0 4px; font-size: 13.5px; font-weight: 600; } .md :deep(table) { font-size: 12.5px !important; margin: 6px 0 10px !important; display: block; overflow-x: auto; max-width: 100%; } .md :deep(th), .md :deep(td) { padding: 5px 8px !important; white-space: nowrap; } .md :deep(ol) { margin: 4px 0 6px; padding-left: 18px; } .md :deep(a) { color: var(--c-blue-deep); } .md :deep(p) { margin: 0 0 6px; } .md :deep(ul) { margin: 4px 0 6px; padding-left: 18px; } .md :deep(li) { margin: 2px 0; }
 .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .doa { display: flex; flex-direction: column; gap: 3px; width: 100%; } .doa em { font-style: normal; font-size: 12px; color: var(--c-muted); } .act.do { background: var(--c-navy); color: #fff; border-color: var(--c-navy); cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; align-self: flex-start; } .act.do:disabled { opacity: .7; cursor: default; } .act { font-size: 12.5px; font-weight: 600; text-decoration: none; color: var(--c-blue-deep); border: 1px solid var(--c-rule); padding: 4px 9px; } .act:hover { border-color: var(--c-blue-deep); }
 .typing { display: flex; gap: 4px; padding: 6px 0; } .typing span { width: 6px; height: 6px; background: var(--c-muted); animation: dot 1s infinite; } .typing span:nth-child(2) { animation-delay: .15s } .typing span:nth-child(3) { animation-delay: .3s } @keyframes dot { 50% { opacity: .2 } }
 .err { color: var(--c-danger); font-size: 13px; margin: 0; }

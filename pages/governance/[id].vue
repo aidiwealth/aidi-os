@@ -198,7 +198,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
         <div class="aib full"><b>✦ Write with AI</b><span>Say what it should cover. Gaps show as [brackets].</span>
           <textarea v-model="ai.brief" rows="2" maxlength="4000" :placeholder="BRIEF[rf.kind]" />
           <div class="aia"><button class="btn secondary sm" type="button" :disabled="ai.busy || (!ai.brief.trim() && !rf.body.trim() && !rf.title.trim())" @click="aiDraft"><AiSpark v-if="ai.busy" /> {{ ai.busy ? 'Writing…' : rf.body.trim() ? 'Improve with AI' : 'Draft with AI' }}</button><span v-if="ai.err" class="error">{{ ai.err }}</span></div></div>
-        <label class="lb full">Text<textarea v-model="rf.body" rows="12" required maxlength="20000" placeholder="RESOLVED, that…" /></label>
+        <div class="lb full">Text<ClientOnly><RichEditor v-model="rf.body" :min-height="260" :max-length="20000" placeholder="RESOLVED, that…" /></ClientOnly></div>
         <p class="mut sm full">Saves a draft. Circulate it to {{ signers.length ? signers.length + ' signator' + (signers.length === 1 ? 'y' : 'ies') : 'the signatories' }} on the next page.</p>
         <p v-if="msg" class="error full">{{ msg }}</p>
       </form>

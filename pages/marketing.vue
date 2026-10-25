@@ -25,7 +25,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 const aiText = ref(''), aiBudget = ref<number | ''>(''), aiBusy = ref(false), imp = ref(false)
 async function aiCreate() {
   aiBusy.value = true; msg.value = ''
-  try { const r = await sf<{ stages: unknown[]; channels: { name: string; monthly_budget: number | null }[] }>('/api/growth/ai', { method: 'POST', body: { task: 'marketing_process', description: aiText.value, budget: aiBudget.value || undefined } })
+  try { const r = await growthAi<{ stages: unknown[]; channels: { name: string; monthly_budget: number | null }[] }>(sf, { task: 'marketing_process', description: aiText.value, budget: aiBudget.value || undefined })
     const c = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: { stages: r.stages, channels: r.channels.map((x) => ({ name: x.name, monthly_budget: x.monthly_budget, vendor_keys: [] })) } }); await go({ p: c.id, t: 'design' }); await refresh() }
   catch (e) { msg.value = err(e) } finally { aiBusy.value = false }
 }
@@ -33,8 +33,8 @@ async function aiCreate() {
 const cBusy = ref(false)
 async function aiCampaign() {
   cBusy.value = true; msg.value = ''
-  try { const r = await sf<{ goal: string; steps: string[]; brief: string }>('/api/growth/ai', { method: 'POST', body: { task: 'campaign', name: cf.name, channel: chName(cf.channel_key), goal: cf.goal, description: cf.notes } })
-    cf.goal = r.goal.slice(0, 300); cf.steps = r.steps.map((t) => ({ text: t.slice(0, 200), done: false })); cf.notes = (r.brief + (cf.notes ? '\n\n' + cf.notes : '')).slice(0, 4000) }
+  try { const r = await growthAi<{ goal: string; steps: string[]; brief: string }>(sf, { task: 'campaign', name: cf.name, channel: chName(cf.channel_key), goal: cf.goal, description: cf.notes })
+    cf.goal = r.goal.slice(0, 300); cf.steps = r.steps.map((t) => ({ text: t.slice(0, 200), done: false })); cf.notes = (r.brief + (cf.notes ? '\n\n' + cf.notes : '')).slice(0, 20000) }
   catch (e) { msg.value = err(e) } finally { cBusy.value = false }
 }
 async function create() { try { const r = await sf<{ id: string }>('/api/marketing/process', { method: 'POST', body: {} }); await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
@@ -74,7 +74,7 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
     <p v-if="msg && !cf.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <ClientOnly><PendingUpdates v-if="p" kind="marketing_months" :process-id="p.id" what="channel results" @done="refresh()" /></ClientOnly>
     <div v-if="d && !p" class="empty"><h2>Set up your marketing process</h2><p>Start with a standard funnel and six common channels, ready to rename.</p>
-      <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
+      <div class="aic"><b><AiSpark /> Or describe your customers and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="12000" placeholder="e.g. Founders of seed-stage startups in Lagos and Nairobi; we find them on LinkedIn, at events and through accelerators." /><div class="row"><label class="sm">Monthly budget<input v-model.number="aiBudget" type="number" min="0"></label><button class="btn secondary" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <button class="btn" :disabled="!canEdit" @click="create">Set up the standard funnel</button></div>
     <template v-if="p && d && st">
       <nav v-if="d.processes.length > 1" class="pt"><button v-for="x in d.processes" :key="x.id" :class="{ on: x.id === p.id }" @click="go({ p: x.id })">{{ isGroup ? x.company + ' · ' + x.name : x.name }}</button></nav>
@@ -125,7 +125,7 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
         <label>Status<select v-model="cf.status"><option value="planned">Planned</option><option value="live">Live</option><option value="done">Done</option></select></label><span />
         <div class="w ck"><span>Checklist</span><label v-for="(s, i) in cf.steps" :key="i"><input v-model="s.done" type="checkbox"> {{ s.text }} <button class="lk red" type="button" @click="cf.steps.splice(i, 1)">×</button></label>
           <form class="ad" @submit.prevent="cf.newStep.trim() && (cf.steps.push({ text: cf.newStep.trim(), done: false }), cf.newStep = '')"><input v-model="cf.newStep" maxlength="200" placeholder="Add a step"><button class="btn secondary sm" type="submit">Add</button></form></div>
-        <label class="w">Brief and notes<textarea v-model="cf.notes" rows="6" maxlength="4000" /></label><p v-if="msg" class="error w">{{ msg }}</p></div>
+        <div class="label w">Brief and notes<ClientOnly><RichEditor v-model="cf.notes" compact :min-height="160" :max-length="20000" placeholder="Audience, message, offer, budget, timeline. Tables welcome." /></ClientOnly></div><p v-if="msg" class="error w">{{ msg }}</p></div>
       <template #foot><button v-if="cf.id" class="btn secondary" @click="saveC(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="cf.open = false">Cancel</button><button class="btn" :disabled="!cf.name.trim()" @click="saveC()">Save</button></template>
     </AppModal>
   </section>
@@ -147,4 +147,5 @@ const maxF = computed(() => Math.max(1, ...(st.value?.funnel ?? []).map((f) => f
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.red { color: var(--c-danger); } .sp { flex: 1; }
 .aic { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-rule); background: #f7f9fc; padding: 14px; margin-bottom: 12px; } .aic b { display: flex; gap: 6px; align-items: center; font-weight: 600; } .aic textarea, .aic input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); } .aic .sm { display: flex; gap: 8px; align-items: center; font-size: 13px; } .aic .sm input { width: 120px; } .pt { align-items: center; }
 .t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
+.frm div.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
 </style>

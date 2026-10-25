@@ -21,6 +21,8 @@ async function openDoc(docId: string) { try { const r = await $fetch<{ url: stri
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 const money = (v: string | null, c: string | null) => (v && c ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: c }).format(Number(v)) : '')
 const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.decision === 'approve').length)
+// Text written in the editor (headings, lists, tables) is shown formatted; older plain text keeps its line breaks.
+const richBody = computed(() => /(^|\n)\s*(\|.+\||#{1,3} |[-*] |\d+\. |<table)/.test(data.value?.resolution.body ?? ''))
 </script>
 
 <template>
@@ -39,7 +41,7 @@ const approvals = computed(() => (data.value?.approvals ?? []).filter((a) => a.d
       <div class="card doc">
         <p v-if="data.resolution.kind === 'distribution'" class="dist">Distribution of <b>{{ money(data.resolution.amount, data.resolution.currency) }}</b> to <b>{{ data.resolution.beneficiary }}</b></p>
         <p v-if="data.resolution.meeting_date" class="muted">Meeting held {{ data.resolution.meeting_date }}</p>
-        <div class="body">{{ data.resolution.body }}</div>
+        <div v-if="richBody" class="body md" v-html="renderMarkdown(data.resolution.body)" /><div v-else class="body">{{ data.resolution.body }}</div>
         <p v-if="data.document" class="att">Supporting document: <button type="button" class="link" @click="openDoc(data.document.id)"><FileBadge :name="data.document.title" :mime="(data.document as any).mime_type" size="sm" />{{ data.document.title }}</button></p>
       </div>
       <div class="col">
@@ -92,4 +94,5 @@ textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid 
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12.5px; margin: 8px 0 0; } .error { color: var(--c-danger); } .ok { color: var(--c-ok); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+.body.md { white-space: normal; } .body.md :deep(p) { margin: 0 0 12px; } .body.md :deep(table) { margin: 8px 0 14px; }
 </style>

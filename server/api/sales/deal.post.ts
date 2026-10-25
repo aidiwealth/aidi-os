@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'admin', 'gp', 'team')
   const b = z.object({ id: z.string().uuid().optional(), delete: z.boolean().optional(), process_id: z.string().uuid().optional(), name: z.string().trim().min(1).max(160).optional(), contact: z.string().trim().max(200).optional(),
     value: amt.optional(), recurring: z.boolean().optional(), stage_key: z.string().max(40).optional(), owner_id: z.string().uuid().nullable().optional(), source_channel: z.string().max(40).nullable().optional(),
-    expected_close: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), notes: z.string().max(4000).optional(), deal_type: z.enum(['new', 'expansion', 'renewal']).optional(), customer_key: z.string().max(200).nullable().optional(), customer_name: z.string().trim().max(200).nullable().optional(), lost_reason: z.string().trim().max(300).optional(),
+    expected_close: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), notes: z.string().max(20000).optional(), deal_type: z.enum(['new', 'expansion', 'renewal']).optional(), customer_key: z.string().max(200).nullable().optional(), customer_name: z.string().trim().max(200).nullable().optional(), lost_reason: z.string().trim().max(300).optional(),
     step: z.object({ stage: z.string().max(40), i: z.number().int().min(0).max(19), done: z.boolean() }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the deal: a name, and a value in numbers.')
   const d = b.data

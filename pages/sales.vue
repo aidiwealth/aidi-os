@@ -24,13 +24,13 @@ const nw = reactive({ open: false, template: 'b2b', name: '' })
 const aiText = ref(''), aiBusy = ref(false)
 async function aiCreate() {
   aiBusy.value = true; msg.value = ''
-  try { const r = await sf<{ name: string; stages: unknown[] }>('/api/growth/ai', { method: 'POST', body: { task: 'sales_process', description: aiText.value } }); const c = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { name: r.name, stages: r.stages } }); await go({ p: c.id, t: 'design' }); await refresh() }
+  try { const r = await growthAi<{ name: string; stages: unknown[] }>(sf, { task: 'sales_process', description: aiText.value }); const c = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { name: r.name, stages: r.stages } }); await go({ p: c.id, t: 'design' }); await refresh() }
   catch (e) { msg.value = err(e) } finally { aiBusy.value = false }
 }
 const imp = ref(false)
 // The next move on a deal, drafted with AI: steps and an email to the contact.
 const nx = reactive({ busy: false, steps: [] as string[], subject: '', email: '', copied: false })
-async function aiNext() { nx.busy = true; msg.value = ''; try { const r = await sf<{ next_steps: string[]; subject: string; email: string }>('/api/growth/ai', { method: 'POST', body: { task: 'deal_next', deal_id: f.id } }); Object.assign(nx, { steps: r.next_steps, subject: r.subject, email: r.email, copied: false }) } catch (e) { msg.value = err(e) } finally { nx.busy = false } }
+async function aiNext() { nx.busy = true; msg.value = ''; try { const r = await growthAi<{ next_steps: string[]; subject: string; email: string }>(sf, { task: 'deal_next', deal_id: f.id }); Object.assign(nx, { steps: r.next_steps, subject: r.subject, email: r.email, copied: false }) } catch (e) { msg.value = err(e) } finally { nx.busy = false } }
 async function copyEmail() { try { await navigator.clipboard.writeText('Subject: ' + nx.subject + '\n\n' + nx.email); nx.copied = true } catch { /* ignore */ } }
 async function create() { try { const r = await sf<{ id: string }>('/api/sales/process', { method: 'POST', body: { template: nw.template, name: nw.name || undefined } }); nw.open = false; await go({ p: r.id, t: 'design' }); await refresh() } catch (e) { msg.value = err(e) } }
 // Deals.
@@ -81,7 +81,7 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
     <p v-if="msg && !f.open" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
     <ClientOnly><PendingUpdates v-if="p" kind="sales_deals" :process-id="p.id" what="deals" @done="refresh()" /></ClientOnly>
     <div v-if="d && !p" class="empty"><h2>Set up your sales process</h2><p>Draft one with AI or start from a template, then adjust the stages.</p>
-      <div class="aic"><b><AiSpark /> Describe how you sell and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="3000" placeholder="e.g. We sell a messaging API to banks and fintechs in Nigeria. Leads come from referrals and outbound; a technical demo, then a pilot, then procurement and a contract." /><div><button class="btn" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
+      <div class="aic"><b><AiSpark /> Describe how you sell and let AI draft it</b><textarea v-model="aiText" rows="3" maxlength="12000" placeholder="e.g. We sell a messaging API to banks and fintechs in Nigeria. Leads come from referrals and outbound; a technical demo, then a pilot, then procurement and a contract." /><div><button class="btn" :disabled="!canEdit || aiBusy" @click="aiCreate">{{ aiBusy ? 'Drafting…' : 'Build with AI' }}</button></div></div>
       <p class="or">Or start from a template</p>
       <div class="tpl"><button v-for="t in d.templates" :key="t.key" class="opt" :disabled="!canEdit" @click="nw.template = t.key; create()"><b>{{ t.label }}</b><span>{{ t.key === 'b2b' ? 'Lead, qualified, demo, proposal, negotiation' : t.key === 'self_serve' ? 'Sign-up, activated, trial, paying' : 'Target account, meeting, pilot, commercials, contract' }}</span></button></div></div>
     <template v-if="p && d && st">
@@ -140,7 +140,7 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
         <label>Source<select v-model="f.source_channel"><option value="">—</option><option v-for="c in d?.channels ?? []" :key="c.key" :value="c.key">{{ c.name }}</option></select></label>
         <label v-if="stageOf(f.stage_key)?.kind === 'lost'" class="w">Why it was lost<input v-model="f.lost_reason" maxlength="300"></label>
         <div v-if="cur && stageOf(cur.stage_key)?.steps.length" class="w ck"><span>Steps in {{ stageOf(cur.stage_key)?.name }}</span><label v-for="(s, i) in stageOf(cur.stage_key)!.steps" :key="i"><input type="checkbox" :checked="(cur.steps_done[cur.stage_key] ?? []).includes(i)" @change="step(cur.stage_key, i, ($event.target as HTMLInputElement).checked)"> {{ s }}</label></div>
-        <label class="w">Notes<textarea v-model="f.notes" rows="3" maxlength="4000" /></label>
+        <div class="label w">Notes<ClientOnly><RichEditor v-model="f.notes" compact :min-height="110" :max-length="20000" /></ClientOnly></div>
         <div v-if="f.id" class="w nx"><button class="btn secondary sm" :disabled="nx.busy" @click="aiNext"><AiSpark /> {{ nx.busy ? 'Drafting…' : 'Next step and email with AI' }}</button>
           <template v-if="nx.email"><ul><li v-for="(s, i) in nx.steps" :key="i">{{ s }}</li></ul><div class="em"><b>{{ nx.subject }}</b><p>{{ nx.email }}</p><button class="lk" @click="copyEmail">{{ nx.copied ? 'Copied' : 'Copy email' }}</button></div></template></div>
         <p v-if="msg" class="error w">{{ msg }}</p></div>
@@ -189,4 +189,5 @@ const late = (x: DealRow) => x.expected_close && x.expected_close < new Date().t
 .t tr.tot td { font-weight: 600; border-top: 1px solid var(--c-rule-strong); } .t tr.cl { cursor: pointer; } .t tr.cl:hover { background: var(--c-paper-3); }
 .kl { max-height: 320px; overflow: auto; border: 1px solid var(--c-rule); } .frm .kr, .kr { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; padding: 8px 10px; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .kr small { display: block; color: var(--c-muted); font-size: 12px; } .ok { color: var(--c-ink-soft); font-size: 13.5px; margin: 0; }
 .dc .ex { font-style: normal; font-size: 11px; color: var(--c-blue-deep); }
+.frm div.label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
 </style>
