@@ -261,3 +261,19 @@ export function fillCashFlow<T extends { period_end: string; period_type: string
   }
   return out
 }
+
+// The three figures every page shows the same way (dashboard, Financials, Banking, boards, updates, Stage):
+//   Cash    the latest month-end cash, with treasury bills and other short-term investments (what runway counts)
+//   Burn    the 3-month average (burnReview)
+//   Runway  cash ÷ burn, with the month the cash would run out
+export interface KeyFigures { cash: number | null; cash_at: string | null; investments: number; burn: number | null; runway: number | null; runway_to: string | null; profitable: boolean }
+export function keyFigures(raw: FinRow[]): KeyFigures {
+  const b = burnReview(raw)
+  const rows = raw.filter((r) => r.period_type === 'month')
+  const at = b.cash_at ? rows.find((r) => r.period_end === b.cash_at) : undefined
+  const dv = at ? (at.derived ?? deriveLines(at.lines, 1)) : null
+  const inv = dv && dv.bank_cash === undefined && typeof dv.investments === 'number' && dv.investments > 0 ? dv.investments : 0
+  let to: string | null = null
+  if (b.runway !== null && b.runway < 120 && b.cash_at) { const t = new Date(b.cash_at.slice(0, 7) + '-15T00:00:00Z'); t.setUTCMonth(t.getUTCMonth() + Math.floor(b.runway)); to = t.toISOString().slice(0, 7) }
+  return { cash: b.cash === null ? null : Math.round(b.cash), cash_at: b.cash_at, investments: Math.round(inv), burn: b.status === 'none' ? null : b.profitable ? 0 : b.burn, runway: b.runway, runway_to: to, profitable: b.profitable }
+}

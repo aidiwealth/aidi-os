@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { rollUp, combine, type FinRow, burnReview } from '~/shared/fin-view'
+import { rollUp, combine, type FinRow, burnReview, keyFigures } from '~/shared/fin-view'
 const { canPath } = useModuleAccess()
 // Financials. Finvry companies: always their own company. Aidi OS: the group (consolidated) or any fund, entity or company.
 useHead({ title: 'Financials' })
@@ -120,6 +120,10 @@ const cashStale = computed(() => { const c = cashKnown.value, l = latest.value; 
 const burnShown = computed(() => view.value === 'month' && review.value.status !== 'none' ? (review.value.profitable ? 0 : review.value.burn) : latest.value?.derived.burn ?? null)
 const runwayKnown = computed(() => { if (cashStale.value) return null; if (review.value.status !== 'none' && (review.value.runway !== null || review.value.profitable)) return review.value.runway; const b = latest.value?.derived.burn; return cashKnown.value && b ? Math.round((cashKnown.value.v / b) * 10) / 10 : null })
 const cur = computed(() => latest.value?.currency ?? currency.value)
+// Cash shown the way every page shows it: on the monthly view, the month-end cash with treasury bills (what runway
+// counts); other views keep the period's bank cash.
+const cashShown = computed(() => { const k = keyFigures(monthly.value as unknown as FinRow[]); const on = view.value === 'month' && !secOn.value && k.cash !== null && !!cashKnown.value && k.cash_at === cashKnown.value.at && tbills.value > 0
+  return { v: on ? k.cash : cashKnown.value?.v ?? null, withBills: on } })
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 const CURS = computed(() => [...new Set(['USD', 'NGN', ...(co.value ? pages.value.map((p) => p.currency ?? '').filter(Boolean) : subj.value?.currencies ?? [])])])
 const curName = (c: string) => ({ USD: 'US dollar (USD)', NGN: 'Naira (NGN)', GBP: 'Pound (GBP)', EUR: 'Euro (EUR)' } as Record<string, string>)[c] ?? c
@@ -312,7 +316,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
         <div class="fx-stats">
           <StatTile :label="'Revenue · ' + (view === 'custom' ? rangeLbl : lbl(latest.period_end))" icon="money" tone="b" :note="view === 'custom' ? 'Total for the range' : change('revenue') == null ? 'First period' : (change('revenue')! > 0 ? '▲ ' : '▼ ') + Math.abs(change('revenue')!) + '% vs previous'" :note-tone="(change('revenue') ?? 0) > 0 ? 'up' : (change('revenue') ?? 0) < 0 ? 'dn' : ''"><Money :value="latest.derived.revenue" :currency="cur" /></StatTile>
           <StatTile :label="(latest.derived.net_income ?? 0) < 0 ? 'Net loss' : 'Net income'" icon="chart" tone="n" :red="(latest.derived.net_income ?? 0) < 0"><Money :value="latest.derived.net_income" :currency="cur" /><template #note>EBITDA <Money :value="latest.derived.ebitda" :currency="cur" /></template></StatTile>
-          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="b" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (tbills ? '+ ' + briefMoney(tbills, cur) + ' treasury bills · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashKnown?.v ?? null" :currency="cur" /></StatTile>
+          <StatTile :label="secOn ? 'Cash & marketable securities' : 'Cash'" icon="billing" tone="b" :note="(cashKnown && cashKnown.at !== latest.period_end ? 'At ' + lbl(cashKnown.at, 'month') + ' · ' : '') + (tbills ? (cashShown.withBills ? 'incl. ' : '+ ') + briefMoney(tbills, cur) + ' treasury bills · ' : '') + (runwayKnown ? runwayKnown + ' months runway' : cashStale ? 'No recent cash, so no runway' : latest.derived.burn === 0 ? 'Cash-flow positive' : cashKnown ? 'Runway needs burn' : 'Not in the figures')"><Money :value="cashShown.v" :currency="cur" /></StatTile>
           <StatTile label="Gross margin" icon="chart" tone="b" :value="pctFmt(latest.derived.gross_margin)"><template #note>Burn <Money :value="burnShown" :currency="cur" /> / month{{ view === 'month' && review.status !== 'none' ? ' (3-month average)' : '' }}</template></StatTile>
         </div>
         <BurnCheck v-if="!co && monthly.length >= 2" :review="review" :currency="cur" :with-securities="secOn" />

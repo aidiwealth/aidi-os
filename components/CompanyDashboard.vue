@@ -40,8 +40,8 @@ function hide() { hidden.value = true; try { localStorage.setItem('finvry-setup-
     <div class="fx-stats">
       <StatTile :label="'Revenue' + (data.last ? ' · ' + lbl(data.last.period) : '')" icon="money" tone="b" :note="data.growth == null ? 'Growth shows after two months' : (data.growth > 0 ? '+' : '') + data.growth + '% vs last month'" :note-tone="(data.growth ?? 0) > 0 ? 'up' : (data.growth ?? 0) < 0 ? 'dn' : ''"><Money :value="data.last?.revenue" :currency="data.currency" /></StatTile>
       <StatTile label="Net income" icon="chart" tone="n" :note="'Gross margin ' + (data.last?.gross_margin == null ? '—' : data.last.gross_margin + '%')"><Money :value="data.last?.net_income" :currency="data.currency" /></StatTile>
-      <StatTile label="Cash" icon="billing" tone="b" :note="data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Add cash and burn for runway'"><Money :value="data.last?.cash" :currency="data.currency" /></StatTile>
-      <StatTile label="Monthly burn" icon="flag" tone="n"><Money :value="data.last?.burn" :currency="data.currency" /><template #note>Operating costs <Money :value="data.last?.opex_total" :currency="data.currency" /></template></StatTile>
+      <StatTile label="Cash" icon="billing" tone="b" :note="(data.last?.investments ? 'incl. ' + briefMoney(data.last.investments, data.currency) + ' treasury bills · ' : '') + (data.last?.runway ? data.last.runway + ' months runway' : data.last?.burn === 0 ? 'Cash-flow positive' : 'Add cash and burn for runway')"><Money :value="data.last?.cash" :currency="data.currency" /></StatTile>
+      <StatTile label="Monthly burn" icon="flag" tone="n"><Money :value="data.last?.burn" :currency="data.currency" /><template #note>3-month average · operating costs <Money :value="data.last?.opex_total" :currency="data.currency" /></template></StatTile>
     </div>
 
     <p v-if="data.series.length" class="tofin"><NuxtLink :to="data.group ? { path: '/financials', query: { s: 'group' } } : '/financials'">Charts and statements in Financials →</NuxtLink></p>

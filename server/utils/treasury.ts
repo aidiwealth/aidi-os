@@ -4,7 +4,7 @@
 // ranked by the runway they would give back. Nothing here moves money.
 import { isCard, isDebt, CARD_PAY } from '~/shared/bank'
 import { createHash } from 'node:crypto'
-import { deriveLines, withSecurities, burnReview, type FinRow } from '~/shared/fin-view'
+import { deriveLines, withSecurities, keyFigures, type FinRow } from '~/shared/fin-view'
 
 // The rails: one contract, an adapter per provider, so pages never depend on which one a company uses.
 export interface RailTxn { entity?: string | null; spender?: string | null; balance?: number | null; category?: string; ref: string; date: string; description: string; vendor?: string | null; amount: number; currency: string; account: string; bank_category?: string | null }
@@ -178,12 +178,13 @@ export async function fixCardPayments() {
 export async function syncBankFeed(force = false): Promise<number> { return syncPlaidItems(force) }
 
 // Cash and burn on the same basis as Financials and the Stage Monitor, for the runway each cut gives back.
-export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null }> {
-  const ent = await companyEntityId(); if (!ent) return { cash: null, burn: null, runway: null }
+// keyFigures: the one cash, burn and runway shown on every page.
+export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null; cash_at: string | null; investments: number; runway_to: string | null }> {
+  const ent = await companyEntityId(); if (!ent) return { cash: null, burn: null, runway: null, cash_at: null, investments: 0, runway_to: null }
   const rows = (await loadStatements(subject ?? 'entity:' + ent, 'month', cur)).filter((r) => r.period_type === 'month').slice(-12)
   const sec = await cashPolicy()
-  const b = burnReview(rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) })) as FinRow[])
-  return { cash: b.cash, burn: b.burn, runway: b.runway }
+  const k = keyFigures(rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) })) as FinRow[])
+  return { cash: k.cash, burn: k.burn, runway: k.runway, cash_at: k.cash_at, investments: k.investments, runway_to: k.runway_to }
 }
 
 // Tools that do the same job: two or more of them paid every month is worth a look.
@@ -240,6 +241,10 @@ export async function treasuryView(sc: TScope) {
   const burn = cb.burn ?? bankBurn, cash = cb.cash ?? bc?.cash ?? null
   const runway = (b: number | null) => (cash === null || b === null ? null : b <= 0 ? null : Math.round(cash / b * 10) / 10)
   const now = runway(burn)
+  // The month the cash is from, whether that month is marked reconciled, and the month it would run out.
+  const cashMonth = cb.cash !== null ? cb.cash_at?.slice(0, 7) ?? null : bc?.month ?? null
+  const reconciledCash = cashMonth ? !!(await db().query('SELECT 1 FROM banking.reconciled WHERE scope = $1 AND month = $2', [sc.group ? 'group' : ent ?? 'group', cashMonth]).catch(() => ({ rowCount: 0 }))).rowCount : false
+  const runwayTo = (r: number | null) => { if (r === null || r >= 120 || !cashMonth) return null; const t = new Date(cashMonth + '-15T00:00:00Z'); t.setUTCMonth(t.getUTCMonth() + Math.floor(r)); return t.toISOString().slice(0, 7) }
   // Taxes, loan payments and transfers are not choices to cut.
   const recurring = [...vend.values()].filter((v) => v.recurring && v.monthly > 0 && !['tax', 'interest', 'transfer', 'investment', 'financing'].includes(v.category ?? '')).sort((a, b) => b.monthly - a.monthly)
   const dupes = SAME_JOB.map(([job, re]) => ({ job, vendors: recurring.filter((v) => re.test(v.key + ' ' + v.name.toLowerCase())).map((v) => ({ key: v.key, name: v.name, monthly: v.monthly })) })).filter((g) => g.vendors.length > 1)
@@ -293,7 +298,7 @@ export async function treasuryView(sc: TScope) {
   const movers = [...vend.values()].map((v) => ({ name: v.name, last: lastM ? v.months[lastM] ?? 0 : 0, prev: prevM ? v.months[prevM] ?? 0 : 0 })).map((x) => ({ ...x, change: x.last - x.prev })).filter((x) => Math.abs(x.change) > 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 50)
   const count = (await db().query<{ n: number; first: string | null; sources: string[]; ai: number }>("SELECT count(*)::int AS n, min(txn_date)::text AS first, array_agg(DISTINCT source) AS sources, count(*) FILTER (WHERE category_by = 'ai')::int AS ai FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)", [ent, main])).rows[0]!
   return { currency: cur, months: full.map((m) => ({ month: m, ...months[m]! })), last_month: lastM, prev_month: prevM,
-    cash, cash_from: cb.cash !== null ? 'financials' : bc ? 'bank' : null, cash_month: bc?.month ?? null, burn_from: cb.burn !== null ? 'financials' : bankBurn !== null ? 'bank' : null, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
+    cash, cash_from: cb.cash !== null ? 'financials' : bc ? 'bank' : null, cash_month: cashMonth, cash_investments: cb.cash !== null ? cb.investments : 0, cash_reconciled: reconciledCash, runway_to: runwayTo(now), burn_from: cb.burn !== null ? 'financials' : bankBurn !== null ? 'bank' : null, burn, runway: now, marked_monthly: Math.round(marked * 100) / 100, runway_if_cut: marked && burn !== null ? (burn - marked <= 0 ? 'no longer burning' : runway(burn - marked)) : null,
     by_category: byCat, top_vendors: topVendors, movers, recurring_total: Math.round(recurring.reduce((s, v) => s + v.monthly, 0) * 100) / 100, cut_list: cut, duplicates: dupes, checks: checks.slice(0, 30), by_spender: bySpender,
     categories: [...STD_CATS.map((c) => ({ key: c.key, label: c.label })), ...accts.map((a) => ({ key: a.key, label: a.label + ' (' + (STD_CATS.find((c) => c.key === a.parent)?.label ?? a.parent) + ')' }))],
     ledger: { count: count.n, since: count.first, sources: count.sources ?? [], ai: count.ai } }

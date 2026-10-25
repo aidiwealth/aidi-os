@@ -7,9 +7,14 @@ interface D { reporting_currency?: string; name: string; website: string; countr
 const { data, refresh } = await useFetch<D>('/api/company/profile', { key: 'company-profile' })
 useHead({ title: 'Settings' })
 const route = useRoute(); const router = useRouter()
-const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Your plan, trial and prices']] as const
+const SECTIONS = [['company', 'Company', 'Name, legal form, country and currency'], ['sharing', 'Branding & sharing', 'Logo, colours, address, watermark, NDA'], ['ai', 'AI usage', 'Session and weekly limits, credits'], ['api', 'Data API', 'Keys to connect your own systems'], ['notifications', 'Notifications', 'Who gets emails from Finvry'], ['plan', 'Plan & billing', 'Plan, wallet and invoices']] as const
 const sec = computed(() => (SECTIONS.find(([k]) => k === route.query.s)?.[0] ?? 'company'))
 const go = (k: string) => router.replace({ query: { s: k } })
+// Plan & billing: the plan, the wallet and Finvry's invoices, each a tab (?b=).
+const { canPath } = useModuleAccess()
+const BILL = computed(() => ([['plan', 'Plan'], ['wallet', 'Wallet'], ['invoices', 'Invoices']] as const).filter(([k]) => k === 'plan' || canPath(k === 'wallet' ? '/wallet' : '/client/invoices')))
+const bill = computed(() => (BILL.value.find(([k]) => k === route.query.b)?.[0] ?? 'plan'))
+const goBill = (k: string) => router.replace({ query: { s: 'plan', b: k === 'plan' ? undefined : k } })
 const f = reactive({ name: '', website: '', country: '', currency: 'USD', reporting_currency: '', entity_type: '', state: 'Delaware', seed: true })
 const ngCo = computed(() => isNigeria(f.country))
 watch(() => f.country, (c, old) => { if (old !== undefined && old !== '' && c) { f.currency = currencyForCountry(c); if (!isNigeria(c) && f.entity_type === 'ng_ltd') f.entity_type = '' } })
@@ -60,7 +65,12 @@ const FEAT = PLAN_FEATS
           <div class="wide add"><input v-model="newEmail" type="email" placeholder="name@company.com" @keydown.enter.prevent="addEmail"><button type="button" class="btn secondary" @click="addEmail">Add</button></div>
           <div class="wide"><button class="btn" type="button" :disabled="busy" @click="saveEmails">Save</button></div>
         </div>
+        <div v-else-if="sec === 'plan' && bill !== 'plan'">
+          <nav v-if="BILL.length > 1" class="btabs"><button v-for="[k, l] in BILL" :key="k" type="button" :class="{ on: bill === k }" @click="goBill(k)">{{ l }}</button></nav>
+          <WalletPanel v-if="bill === 'wallet'" bare /><InvoicesPanel v-else bare />
+        </div>
         <div v-else-if="sec === 'plan'">
+          <nav v-if="BILL.length > 1" class="btabs"><button v-for="[k, l] in BILL" :key="k" type="button" :class="{ on: bill === k }" @click="goBill(k)">{{ l }}</button></nav>
           <StorageCard class="stor" />
           <div class="card cur"><div><span class="muted">Current plan</span><h2>{{ currentPlan }}</h2><span v-if="data.status === 'trial'" class="trial">Free trial{{ data.trial_ends_at ? ' until ' + new Date(data.trial_ends_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '' }}</span></div><div class="pay"><span class="muted">{{ data.price?.free ? 'Free of charge' : data.price ? 'You pay ' + (ngn ? '₦' : '$') + data.price.list.toLocaleString('en-US', { maximumFractionDigits: 2 }) + (data.price.interval === 'month' ? ' a month' : ' a year') + (data.price.override ? ' (your own price)' : '') : '' }} · {{ data.members }} member{{ data.members === 1 ? '' : 's' }}</span>
             <div v-if="data.billing?.cycles === 'both' && !data.price?.override && !data.price?.free" class="cyc"><button type="button" :class="{ on: data.cycle !== 'year' }" :disabled="busy" @click="setCycle('month')">Pay monthly</button><button type="button" :class="{ on: data.cycle === 'year' }" :disabled="busy" @click="setCycle('year')">Pay yearly{{ data.billing.annual_discount_pct ? ' · save ' + data.billing.annual_discount_pct + '%' : '' }}</button></div></div></div>
@@ -94,4 +104,5 @@ input, select { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px s
 .lgo { margin-bottom: 12px; }
 .stor { margin: 0 0 12px; }
 .cyc { display: flex; border: 1px solid var(--c-rule-strong); width: fit-content; margin-top: 10px; } .cyc button { font: inherit; font-size: 13px; padding: 6px 12px; background: #fff; border: 0; cursor: pointer; color: var(--c-ink-soft); } .cyc button + button { border-left: 1px solid var(--c-rule-strong); } .cyc button.on { background: var(--c-navy); color: #fff; }
+.btabs { display: flex; gap: 2px; border-bottom: 1px solid var(--c-rule); margin: 0 0 16px; } .btabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 14px; font: inherit; font-size: 14px; color: var(--c-muted); cursor: pointer; margin-bottom: -1px; } .btabs button.on { color: var(--c-ink); border-bottom-color: var(--c-navy); font-weight: 500; }
 </style>

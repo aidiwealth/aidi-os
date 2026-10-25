@@ -1,3 +1,4 @@
+import { keyFigures, type KeyFigures, type FinRow } from '~/shared/fin-view'
 import { shortAmount } from '~/shared/compact'
 import { mdPlain, mdRender } from '../../shared/markdown'
 // Turning an update (cover + blocks) into HTML for email and the web. All user text is escaped first; charts are drawn
@@ -33,9 +34,14 @@ export async function metricSeries(metrics: string[], period: string, count: num
   // Customer metrics (retention, recurring revenue…) at the end of each period, and the company's own KPIs.
   const ends = keys.map((gk) => { const g = groups.get(gk)!; return g.rows[g.rows.length - 1]!.period_end.slice(0, 7) })
   const cust = await customerSeries(metrics.filter(isCustKey), ends)
+  const kfMemo = new Map<string, KeyFigures>()
+  const kfAt = (end: string) => { let v = kfMemo.get(end); if (!v) { v = keyFigures(rows.filter((r) => r.period_end <= end) as unknown as FinRow[]); kfMemo.set(end, v) } return v }
   const series = metrics.filter(isMetricKey).map((k) => ({ key: k, label: metricLabel(k), values: isCustKey(k) ? cust[k] ?? keys.map(() => null) : keys.map((gk) => {
     const g = groups.get(gk)!
     if (k.startsWith('kpi:')) { for (let i = g.rows.length - 1; i >= 0; i--) { const v = g.rows[i]!.kpis?.[k.slice(4)]; if (typeof v === 'number') return v } return null }
+    // Cash, burn and runway as every page shows them (keyFigures): at the period's last month, cash with treasury bills,
+    // burn the 3-month average to then, runway cash ÷ burn.
+    if (k === 'cash' || k === 'burn' || k === 'runway') { const kf = kfAt(g.rows[g.rows.length - 1]!.period_end); return k === 'cash' ? kf.cash : k === 'burn' ? kf.burn : kf.runway }
     const ds = g.rows.map((r) => derive(r.lines, 'month'))
     if (FLOWS.has(k)) { const v = ds.map((x) => x[k]).filter((x): x is number => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) : null }
     if (k === 'gross_margin') { const rev = ds.reduce((a, x) => a + (x.revenue ?? 0), 0), gp = ds.reduce((a, x) => a + (x.gross_profit ?? 0), 0); return rev ? Math.round((gp / rev) * 1000) / 10 : null }

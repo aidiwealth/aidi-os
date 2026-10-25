@@ -6,14 +6,15 @@ import type { UpAcc, LiveData } from '~/components/BankAccounts.vue'
 useHead({ title: 'Banking' })
 interface Cat { key: string; label: string }
 interface V { key: string; name: string; category: string | null; monthly: number; recurring: boolean; last: string; status: string; remind_on: string | null; note: string | null; runway_gain: number | string | null; saving: number; saving_pct: number | null; suggest: { flag: string; why: string } | null }
-interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; cash_from?: string | null; cash_month?: string | null; burn_from?: string | null; marked_monthly: number; runway_if_cut: number | string | null
+interface D { currency: string; months: { month: string; in: number; out: number }[]; last_month: string | null; prev_month: string | null; cash: number | null; burn: number | null; runway: number | null; cash_from?: string | null; cash_month?: string | null; cash_investments?: number; cash_reconciled?: boolean; runway_to?: string | null; burn_from?: string | null; marked_monthly: number; runway_if_cut: number | string | null
   by_category: { key: string; label: string; last: number; prev: number; avg3: number; budget: number | null }[]; top_vendors: { key: string; name: string; category: string; last: number; prev: number; total: number; recurring: boolean }[]
   movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
   ledger: { count: number; since: string | null; sources: string[]; ai?: number }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
 const route = useRoute(), router = useRouter()
 // Reconcile now lives in Transactions (pick a month); old links to ?t=reconcile open it there.
-const tab = computed(() => (String(route.query.t) === 'reconcile' ? 'txns' : ['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
+const tab = computed(() => (String(route.query.t) === 'reconcile' ? 'txns' : ['spend', 'txns', 'cut', 'perks'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
+const tabsShown = computed(() => ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['perks', 'Perks']] as const).filter(([k]) => k !== 'perks' || perksOn.value))
 const { sf, cust, isGroup, companies, entityId } = await useCoScope()
 const { data, refresh, pending } = await useFetch<D>('/api/treasury', { query: computed(() => ({ cust: cust.value })) })
 const d = computed(() => data.value)
@@ -141,6 +142,21 @@ const setNote = (v: V, ev: Event) => void mark(v, v.status, { note: (ev.target a
 const xlsx = computed(() => '/api/treasury/cut-list' + (cust.value ? '?cust=' + encodeURIComponent(cust.value) : ''))
 async function budget(c: { key: string; budget: number | null }, ev: Event) { const v = (ev.target as HTMLInputElement).value; try { await sf('/api/treasury/budget', { method: 'POST', body: { category: c.key, monthly: v } }); await refresh() } catch (e) { msg.value = err(e) } }
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : null)
+// Spend: the month's total, categories as bars (red mark = budget, click for vendors), the biggest changes and ways to save.
+const spendTot = computed(() => (d.value?.by_category ?? []).reduce((t, c) => ({ last: t.last + c.last, prev: t.prev + c.prev, avg3: t.avg3 + c.avg3 }), { last: 0, prev: 0, avg3: 0 }))
+const allCats = ref(false), openCat = ref(''), moversAll = ref(false)
+const catsByLast = computed(() => [...(d.value?.by_category ?? [])].sort((a, b) => b.last - a.last || b.avg3 - a.avg3))
+const catsShown = computed(() => (allCats.value ? catsByLast.value : catsByLast.value.slice(0, 7)))
+const catMax = computed(() => Math.max(1, ...catsByLast.value.map((c) => Math.max(c.last, c.budget ?? 0))))
+const vendorsOf = (label: string) => (d.value?.top_vendors ?? []).filter((v) => v.category === label && v.last > 0).sort((a, b) => b.last - a.last).slice(0, 8)
+// Perks: offers from partners the company already pays.
+interface PerkLite { id: string; partner: string }
+const { canPath } = useModuleAccess()
+const perksOn = computed(() => canPath('/perks'))
+const { data: pk } = useFetch<{ perks: PerkLite[] }>('/api/perks', { server: false, key: 'treasury-perks', immediate: true })
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+const perkFor = (name: string) => { if (!perksOn.value) return null; const n = ' ' + norm(name) + ' '; return (pk.value?.perks ?? []).find((p) => { const q = norm(p.partner); return q.length > 2 && n.includes(' ' + q + ' ') }) ?? null }
+const perkHits = computed(() => { const seen = new Map<string, PerkLite>(); for (const v of d.value?.top_vendors ?? []) { const p = perkFor(v.name); if (p) seen.set(p.id, p) } return [...seen.values()] })
 const maxOut = computed(() => Math.max(1, ...(d.value?.months ?? []).map((x) => Math.max(x.in, x.out))))
 const today = new Date().toISOString().slice(0, 10)
 </script>
@@ -148,7 +164,7 @@ const today = new Date().toISOString().slice(0, 10)
   <section class="tr">
     <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and payment in one place. Read-only: Finvry never holds or moves your money.</p></div>
       <div class="tb"><button v-if="!d?.ng" class="ic" type="button" :disabled="busy" title="Refresh bank feed" aria-label="Refresh bank feed" @click="sync"><svg :class="{ spin: busy }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg></button><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn" :disabled="busy" @click="openUpload(null)">Upload statement</button></div></div>
-    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
+    <nav class="tabs"><button v-for="[k, l] in tabsShown" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span><span v-if="k === 'perks' && perkHits.length" class="n">{{ perkHits.length }}</span></button></nav>
     <transition name="toast"><p v-if="ok" class="toast" role="status">{{ ok }}<button type="button" aria-label="Close" @click="ok = ''">×</button></p></transition><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
     <template v-if="d">
@@ -157,17 +173,24 @@ const today = new Date().toISOString().slice(0, 10)
         <div v-if="d.ledger.count && d.cash_from !== 'financials' && !isGroup" class="hb">No monthly figures in Financials yet. <NuxtLink :to="'/financials?bank=1' + (entityId ? '&s=entity:' + entityId : '')" class="lk">Start them from your bank →</NuxtLink></div>
         <div class="ov">
           <div class="hero">
-            <span class="ht">{{ ua?.holdings_total ? 'Cash and investments' : 'Cash in the bank' }}</span>
-            <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
-            <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.holdings_total ? ' · incl. ' + m(ua.holdings_total) + ' investments' : '' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}{{ d.cash !== null ? ' · ' + (d.cash_from === 'financials' ? 'Financials shows ' : 'month-end ') + m(d.cash) : '' }}</span>
+            <template v-if="d.cash !== null">
+              <span class="ht">Cash{{ d.cash_month ? ' · ' + mon(d.cash_month) : '' }}<span v-if="d.cash_reconciled" class="rcok"><i />Reconciled</span></span>
+              <b class="hv">{{ big(d.cash) }}</b>
+              <span class="hs">{{ d.cash_investments ? 'Incl. ' + m(d.cash_investments) + ' treasury bills · ' : '' }}{{ ua && (nLive || nUp) ? 'In the bank today ' + m(ua.all_total) + ' · ' + (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : '' }}{{ ua?.as_of ? ' · ' + day(ua.as_of) : '' }}</span>
+            </template>
+            <template v-else>
+              <span class="ht">{{ ua?.holdings_total ? 'Cash and investments' : 'Cash in the bank' }}</span>
+              <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
+              <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.holdings_total ? ' · incl. ' + m(ua.holdings_total) + ' investments' : '' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}</span>
+            </template>
             <template v-if="parts.length">
               <div class="cbar" role="img" :aria-label="parts.map((p) => p.label + ' ' + m(p.value)).join(', ')"><i v-for="(p, i) in parts" :key="p.label" :style="{ width: Math.max(1.5, p.value / partsTotal * 100) + '%', background: PAL[i % PAL.length] }" :title="p.label + ': ' + m(p.value)" /></div>
               <div class="lgd"><span v-for="(p, i) in parts" :key="p.label"><i :style="{ background: PAL[i % PAL.length] }" />{{ p.label }} <b>{{ m(p.value) }}</b></span></div>
             </template>
           </div>
           <div class="kp">
-            <StatTile label="Monthly burn" :value="d.burn === null ? '—' : !d.burn ? 'None' : m(d.burn)" :note="d.burn === null ? 'Add Financials or statements' : !d.burn ? 'Money in covers money out' : d.burn_from === 'bank' ? 'From your bank' : 'As in Financials'" />
-            <StatTile label="Runway" :value="d.runway === null ? (d.burn === 0 ? 'Not burning' : '—') : d.runway + ' months'" :note="d.runway === null ? (d.burn === 0 ? 'Cash is not running down' : 'Needs burn and cash') : d.runway_if_cut ? (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months with your cuts' : 'Your cuts end the burn') : 'Before any cuts'" :red="(d.runway ?? 99) < 6" full />
+            <StatTile label="Monthly burn" :value="d.burn === null ? '—' : !d.burn ? 'None' : m(d.burn)" :note="d.burn === null ? 'Add Financials or statements' : !d.burn ? 'Money in covers money out' : d.burn_from === 'bank' ? '3-month average · from your bank' : '3-month average'" />
+            <StatTile label="Runway" :value="d.runway === null ? (d.burn === 0 ? 'Not burning' : '—') : d.runway + ' months'" :note="d.runway === null ? (d.burn === 0 ? 'Cash is not running down' : 'Needs burn and cash') : (d.runway_to ? 'To ' + mon(d.runway_to) : '') + (d.runway_if_cut ? (d.runway_to ? ' · ' : '') + (typeof d.runway_if_cut === 'number' ? d.runway_if_cut + ' months with your cuts' : 'your cuts end the burn') : d.runway_to ? '' : 'Before any cuts')" :red="(d.runway ?? 99) < 6" full />
             <StatTile :label="lastM ? 'Net, ' + mon(lastM.month) : 'Net last month'" :value="lastM ? m(lastM.in - lastM.out) : '—'" :note="lastM ? 'In ' + m(lastM.in) + ' · out ' + m(lastM.out) : 'No full month yet'" :red="!!lastM && lastM.in < lastM.out" />
             <StatTile label="Recurring payments" :value="m(d.recurring_total)" note="A month · see the cut list" clickable @click="go('cut')" />
           </div>
@@ -190,22 +213,49 @@ const today = new Date().toISOString().slice(0, 10)
       </template>
 
       <template v-if="tab === 'spend'">
-        <div class="card"><div class="ch"><h2>Spend by category</h2><div class="cha"><span class="mut">{{ mon(d.last_month) }} against {{ mon(d.prev_month) }}</span><ExportMenu kind="bank_spend" label="Export spend" /></div></div>
-          <table class="t" data-nosearch><thead><tr><th>Category</th><th class="r">{{ mon(d.prev_month) }}</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">Change</th><th class="r">3-month average</th><th class="r">Budget a month</th></tr></thead>
-            <tbody><tr v-for="c in d.by_category" :key="c.key"><td>{{ c.label }}</td><td class="r">{{ m(c.prev) }}</td><td class="r" :class="{ neg: c.budget !== null && c.last > c.budget }">{{ m(c.last) }}</td><td class="r" :class="{ neg: (pct(c.last, c.prev) ?? 0) > 20 }">{{ pct(c.last, c.prev) === null ? '—' : (pct(c.last, c.prev)! > 0 ? '+' : '') + pct(c.last, c.prev) + '%' }}</td><td class="r">{{ m(c.avg3) }}</td>
-              <td class="r"><input class="bi" :value="c.budget ?? ''" inputmode="decimal" placeholder="Set" :aria-label="'Budget for ' + c.label" @change="budget(c, $event)"></td></tr></tbody></table></div>
-        <div class="two">
-          <div class="card pad0"><div class="ch padh"><h2>Top vendors</h2><span class="mut">Last 12 months</span></div>
-            <div class="flt"><input v-model="sv.q" placeholder="Search vendors" aria-label="Search vendors"><select v-model="sv.cat" aria-label="Category"><option value="">All categories</option><option v-for="c in vendorCats" :key="c" :value="c">{{ c }}</option></select></div>
-            <table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">12 months</th></tr></thead>
-              <tbody><tr v-for="v in vendorsShown.slice(sv.page * 10, sv.page * 10 + 10)" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table>
-            <p v-if="!vendorsShown.length" class="mut padx">No vendors match.</p><TablePager v-model="sv.page" :total="vendorsShown.length" :size="10" /></div>
-          <div class="card"><div class="ch"><h2>Biggest changes</h2><span class="mut">{{ mon(d.prev_month) }} to {{ mon(d.last_month) }}</span></div>
-            <table v-if="d.movers.length" class="t" data-nosearch><tbody><tr v-for="v in d.movers.slice(mvPage * 8, mvPage * 8 + 8)" :key="v.name"><td>{{ v.name }}</td><td class="r mut2">{{ m(v.prev) }} → {{ m(v.last) }}</td><td class="r" :class="{ neg: v.change > 0 }">{{ v.change > 0 ? '+' : '' }}{{ m(v.change) }}</td></tr></tbody></table><p v-else class="mut">No changes yet.</p><TablePager v-model="mvPage" :total="d.movers.length" :size="8" />
-            <template v-if="d.by_spender.length"><h3>Who spends</h3><p class="mut">Card and expense payments, last 90 days</p><table class="t" data-nosearch><tbody><tr v-for="p in d.by_spender" :key="p.name"><td>{{ p.name }}</td><td class="r">{{ m(p.monthly) }} a month</td><td class="r mut2">{{ m(p.total) }}</td></tr></tbody></table></template>
-            <template v-if="d.duplicates.length"><h3>Tools doing the same job</h3><p v-for="g in d.duplicates" :key="g.job" class="dup"><b>{{ g.job }}:</b> {{ g.vendors.map((v) => v.name + ' (' + m(v.monthly) + ')').join(', ') }}</p></template></div>
+        <div class="sp2">
+          <div class="card">
+            <div class="ch"><span class="mut">{{ mon(d.last_month) }} · vs {{ mon(d.prev_month) }}</span><ExportMenu kind="bank_spend" label="Export spend" /></div>
+            <div class="stot"><b>{{ big(spendTot.last) }}</b><span v-if="pct(spendTot.last, spendTot.prev) !== null" class="pill" :class="{ up: pct(spendTot.last, spendTot.prev)! > 0 }">{{ pct(spendTot.last, spendTot.prev)! > 0 ? '+' : '' }}{{ pct(spendTot.last, spendTot.prev) }}%</span><span class="mut">3-month average {{ m(spendTot.avg3) }}</span></div>
+            <div v-for="c in catsShown" :key="c.key" class="sc">
+              <button type="button" class="scr" :aria-expanded="openCat === c.key" @click="openCat = openCat === c.key ? '' : c.key">
+                <span class="scl">{{ c.label }}</span>
+                <span class="sbar"><i :style="{ width: Math.max(c.last ? 0.8 : 0, c.last / catMax * 100) + '%' }" /><u v-if="c.budget" :class="{ over: c.last > c.budget }" :style="{ left: Math.min(100, c.budget / catMax * 100) + '%' }" /></span>
+                <span class="scv" :class="{ neg: c.budget !== null && c.last > c.budget }">{{ m(c.last) }}</span>
+                <span class="scc" :class="{ neg: (pct(c.last, c.prev) ?? 0) > 20 }">{{ !c.prev ? (c.last ? 'new' : '') : (pct(c.last, c.prev)! > 0 ? '+' : '') + pct(c.last, c.prev) + '%' }}</span>
+              </button>
+              <div v-if="openCat === c.key" class="scd">
+                <div v-for="v in vendorsOf(c.label)" :key="v.key" class="scdr"><span>{{ v.name }}</span><span class="mut2">{{ m(v.last) }}</span></div>
+                <p v-if="!vendorsOf(c.label).length" class="mut">No payments this month.</p>
+                <label class="bud">Budget a month <input class="bi" :value="c.budget ?? ''" inputmode="decimal" placeholder="Set" :aria-label="'Budget for ' + c.label" @change="budget(c, $event)"></label>
+              </div>
+            </div>
+            <button v-if="d.by_category.length > 7" type="button" class="lk more" @click="allCats = !allCats">{{ allCats ? 'Fewer' : d.by_category.length - 7 + ' more' }}</button>
+          </div>
+          <div class="sside">
+            <div class="card"><div class="ch"><h2>Biggest changes</h2></div>
+              <div v-for="v in d.movers.slice(0, moversAll ? 50 : 5)" :key="v.name" class="mvr"><span>{{ v.name }}<em v-if="!v.prev">new</em><em v-else-if="!v.last">stopped</em></span><b :class="v.change > 0 ? 'neg' : 'pos'">{{ v.change > 0 ? '+' : '−' }}{{ m(Math.abs(v.change)) }}</b></div>
+              <p v-if="!d.movers.length" class="mut">No changes yet.</p>
+              <button v-if="d.movers.length > 5" type="button" class="lk more" @click="moversAll = !moversAll">{{ moversAll ? 'Fewer' : 'All ' + d.movers.length }}</button></div>
+            <div class="card"><div class="ch"><h2>Ways to save</h2></div>
+              <div class="wts">
+                <button v-for="g in d.duplicates" :key="g.job" type="button" class="wt" :title="g.vendors.map((v) => v.name).join(', ')" @click="go('cut')"><b>{{ g.vendors.length }}</b> {{ g.job.toLowerCase() }} tools →</button>
+                <button v-if="d.cut_list.length" type="button" class="wt" @click="go('cut')"><b>{{ d.cut_list.length }}</b> recurring · {{ m(d.recurring_total) }}/mo →</button>
+                <button v-if="perkHits.length" type="button" class="wt" @click="go('perks')"><b>{{ perkHits.length }}</b> perk{{ perkHits.length === 1 ? '' : 's' }}: {{ perkHits.slice(0, 2).map((p) => p.partner).join(', ') }} →</button>
+              </div>
+              <p v-if="!d.duplicates.length && !d.cut_list.length && !perkHits.length" class="mut">Nothing yet.</p></div>
+            <div v-if="d.by_spender.length" class="card"><div class="ch"><h2>Who spends</h2><span class="mut">90 days</span></div>
+              <div v-for="p in d.by_spender.slice(0, 6)" :key="p.name" class="mvr"><span>{{ p.name }}</span><b>{{ m(p.monthly) }}/mo</b></div></div>
+          </div>
         </div>
+        <div class="card pad0"><div class="ch padh"><h2>Top vendors</h2><span class="mut">Last 12 months</span></div>
+          <div class="flt"><input v-model="sv.q" placeholder="Search vendors" aria-label="Search vendors"><select v-model="sv.cat" aria-label="Category"><option value="">All categories</option><option v-for="c in vendorCats" :key="c" :value="c">{{ c }}</option></select></div>
+          <table class="t" data-nosearch><thead><tr><th>Vendor</th><th>Category</th><th class="r">{{ mon(d.last_month) }}</th><th class="r">12 months</th></tr></thead>
+            <tbody><tr v-for="v in vendorsShown.slice(sv.page * 10, sv.page * 10 + 10)" :key="v.key"><td>{{ v.name }}<span v-if="v.recurring" class="chip">Monthly</span><button v-if="perkFor(v.name)" type="button" class="chip pk" @click="go('perks')">Perk</button></td><td class="mut2">{{ v.category }}</td><td class="r">{{ m(v.last) }}</td><td class="r">{{ m(v.total) }}</td></tr></tbody></table>
+          <p v-if="!vendorsShown.length" class="mut padx">No vendors match.</p><TablePager v-model="sv.page" :total="vendorsShown.length" :size="10" /></div>
       </template>
+
+      <template v-if="tab === 'perks'"><PerksPanel bare /></template>
 
       <template v-if="tab === 'txns'">
         <div v-if="rc?.rows.length" class="months" role="tablist" aria-label="Month">
@@ -352,4 +402,17 @@ small.ai { color: var(--c-blue-deep); font-weight: 600; }
 .rc .cl { cursor: pointer; } .rc tr.on td { background: var(--c-paper-3); } .chev { color: var(--c-muted); } .rd { padding: 10px 6px 14px; display: flex; flex-direction: column; gap: 10px; } .dt > td { background: #fbfcfd; }
 .rs { font-size: 12px; white-space: nowrap; color: var(--c-ink-soft); } .rs.matches, .rs.done { color: var(--c-blue-deep); font-weight: 500; } .rs.gap { color: var(--c-danger); }
 .rcd { display: flex; gap: 8px; align-items: center; font-size: 13px; } .rcd input { flex: 1; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--c-rule-strong); } .btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
+.rcok { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; font-size: 12px; color: var(--c-blue-deep); } .rcok i { width: 7px; height: 7px; border-radius: 50%; background: #5fa8d3; }
+.sp2 { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; } .sside { display: flex; flex-direction: column; gap: 16px; }
+.stot { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 2px 0 10px; } .stot b { font-size: 34px; font-weight: 600; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; }
+.pill { font-size: 12px; padding: 2px 8px; background: #e8f0f8; color: var(--c-blue-deep); } .pill.up { background: rgba(180,35,24,.08); color: var(--c-danger); }
+.sc { border-top: 1px solid var(--c-rule); } .scr { width: 100%; display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr) 90px 56px; gap: 12px; align-items: center; padding: 10px 0; background: none; border: 0; font: inherit; font-size: 14px; color: var(--c-ink); cursor: pointer; text-align: left; }
+.scr:hover .scl { color: var(--c-blue-deep); } .scl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbar { height: 8px; background: var(--c-paper-2); position: relative; } .sbar i { position: absolute; inset: 0 auto 0 0; background: var(--c-navy); } .sbar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--c-ink-soft); } .sbar u.over { background: var(--c-danger); }
+.scv { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; } .scc { text-align: right; font-size: 12.5px; color: var(--c-blue-deep); font-variant-numeric: tabular-nums; } .scc.neg, .scv.neg { color: var(--c-danger); }
+.scd { padding: 0 0 12px; display: flex; flex-direction: column; gap: 2px; } .scdr { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 10px; background: var(--c-paper-2); } .bud { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--c-muted); margin-top: 6px; }
+.more { margin-top: 8px; font-size: 13px; } .mvr { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--c-rule); font-size: 14px; } .mvr:first-of-type { border-top: 0; } .mvr em { font-style: normal; font-size: 11.5px; color: var(--c-muted); margin-left: 6px; } .mvr b { font-variant-numeric: tabular-nums; } .mvr b.neg { color: var(--c-danger); } .mvr b.pos { color: var(--c-blue-deep); }
+.wts { display: flex; gap: 8px; flex-wrap: wrap; } .wt { border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 7px 11px; font: inherit; font-size: 13px; color: var(--c-ink); cursor: pointer; text-align: left; } .wt:hover { border-color: var(--c-rule-strong); } .wt b { font-weight: 600; }
+.chip.pk { border: 0; font: inherit; font-size: 11.5px; cursor: pointer; background: #eef1f5; color: var(--c-ink-soft); margin-left: 6px; }
+@media (max-width: 900px) { .sp2 { grid-template-columns: 1fr; } .scr { grid-template-columns: minmax(0, 1fr) 80px 50px; } .scr .sbar { display: none; } }
 </style>

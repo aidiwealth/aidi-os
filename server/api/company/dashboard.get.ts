@@ -1,4 +1,4 @@
-import { burnReview, withSecurities, type FinRow } from '~/shared/fin-view'
+import { keyFigures, withSecurities, type FinRow } from '~/shared/fin-view'
 // The company dashboard: headline figures and trends from Financials, what is due, services, investor page, setup steps.
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
@@ -16,8 +16,10 @@ export default defineEventHandler(async (event) => {
   const last = series[series.length - 1] ?? null, prev = series[series.length - 2] ?? null
   // Burn is the 3-month average (as on Financials and in the reports), not the latest month alone, which can swing with
   // one month's bills or collections. Runway is the latest month's cash divided by it.
-  const br = burnReview(rows as unknown as FinRow[], (d) => withSecurities(d, sec).cash as number | null)
-  if (last && br.status !== 'none') { last.burn = br.profitable ? 0 : br.burn; last.runway = last.cash != null && br.burn ? Math.round((last.cash / br.burn) * 10) / 10 : null }
+  // Cash, burn and runway on the one basis every page uses (keyFigures): cash includes treasury bills, burn is the
+  // 3-month average, runway is cash ÷ burn.
+  const kf = keyFigures(rows as unknown as FinRow[])
+  if (last && (kf.burn !== null || kf.cash !== null)) { if (kf.cash !== null) last.cash = kf.cash; last.burn = kf.burn ?? last.burn; last.runway = kf.runway; last.investments = kf.investments }
   const lr = last ? last.revenue ?? null : null, pr = prev ? prev.revenue ?? null : null
   const growth = lr != null && pr ? Math.round(((lr - pr) / Math.abs(pr)) * 1000) / 10 : null
   const due = await db().query("SELECT id, title, to_char(next_due, 'YYYY-MM-DD') AS next_due, (next_due < current_date) AS overdue FROM compliance.obligations WHERE active AND next_due <= current_date + 60 ORDER BY next_due LIMIT 6")
