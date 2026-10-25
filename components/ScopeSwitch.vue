@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The title of Sales, Marketing, Banking and the Stage Monitor: with subsidiaries, the company (or the group) you are
+// The title of Banking and the Stage Monitor: with subsidiaries, the company (or the group) you are
 // looking at, switched the same way as Financials (kept in the address, shared across these pages); otherwise the
 // page's name.
 const props = defineProps<{ page: string }>()

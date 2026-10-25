@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Data sources: everything feeding Finvry (banks, linked sheets, CRMs, accounting software) and the updates waiting
+// Data sources: everything feeding Finvry (banks, linked sheets, accounting software) and the updates waiting
 // for you, in one list, each linking to where it is managed.
 interface It { name: string; company: string; detail: string; status: string; ok: boolean; to: string }
 const { data } = await useFetch<{ sections: { key: string; title: string; empty: string; items: It[] }[] }>('/api/data-sources')
@@ -7,7 +7,7 @@ useHead({ title: 'Data sources' })
 </script>
 <template>
   <section class="ds">
-    <div><h1>Data sources</h1><p class="lead">Banks, sheets, CRMs and accounting software that feed your figures.</p></div>
+    <div><h1>Data sources</h1><p class="lead">Banks, sheets and accounting software that feed your figures.</p></div>
     <div v-for="s in data?.sections ?? []" :key="s.key" class="card"><div class="ch"><h2>{{ s.title }}</h2><span v-if="s.items.length" class="mut">{{ s.items.length }}</span></div>
       <p v-if="!s.items.length" class="mut pad">{{ s.empty }}</p>
       <div v-for="(x, i) in s.items" :key="i" class="row"><div class="nm"><b>{{ x.name }}</b><small>{{ [x.company, x.detail].filter(Boolean).join(' · ') }}</small></div>

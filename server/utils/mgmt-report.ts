@@ -21,8 +21,6 @@ export const MR_SECTIONS: { key: string; title: string; desc: string; on: boolea
   { key: 'kpis', title: 'Business metrics', desc: 'Your KPIs (customers, volumes, headcount…) against earlier months', on: true },
   { key: 'retention', title: 'Revenue retention', desc: 'Net and gross revenue retention, customers lost, where revenue came and went, retention by group', on: false },
   { key: 'customers', title: 'Customers', desc: 'Paying customers, recurring revenue, average customer, concentration, sectors and top customers', on: false },
-  { key: 'sales', title: 'Sales pipeline', desc: 'Open pipeline, expected wins, win rate and cycle by process, the pipeline by stage and won by month', on: true },
-  { key: 'marketing', title: 'Marketing', desc: 'Spend, leads, new customers, cost per lead and CAC by channel, and live campaigns', on: true },
   { key: 'banking', title: 'Banking and spend', desc: 'Money in and out from the bank, spend by category against budget, the biggest payments and recurring costs', on: true },
   { key: 'stage', title: 'Stage and readiness', desc: 'Funding and operating stage, health, runway, and equity and debt readiness (indicative only)', on: true },
   { key: 'checks', title: 'Data checks', desc: 'Totals in the figures that do not add up', on: false },

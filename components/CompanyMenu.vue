@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The company switcher, the same everywhere: the name (or the group) with a chevron opens a short list, each option with
 // what it is underneath (Consolidated, Company, Subsidiary · NGN, Fund…) and a tick on the current one. As the page
-// title (Financials, Sales, Marketing, Banking, Stage) or as a smaller filter beside other filters.
+// title (Financials, Banking, Stage) or as a smaller filter beside other filters.
 interface Opt { value: string; label: string; sub?: string }
 const props = withDefaults(defineProps<{ options: Opt[]; modelValue: string; heading?: string; meta?: string; menuLabel: string; size?: 'title' | 'filter' }>(), { heading: '', meta: '', size: 'title' })
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()

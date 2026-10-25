@@ -1,7 +1,7 @@
-// Bring a spreadsheet into Sales, Marketing or Banking: a dropped file (Excel or CSV) brought in once, or a sheet link
+// Bring a spreadsheet of bank transactions into Banking: a dropped file (Excel or CSV) brought in once, or a sheet link
 // (Google Sheets, Excel online, Dropbox) brought in and, when asked, kept in step.
 import { z } from 'zod'
-const Kind = z.enum(['sales_deals', 'marketing_months', 'bank_txns'])
+const Kind = z.enum(['bank_txns'])
 export default defineEventHandler(async (event) => {
   const ct = getRequestHeader(event, 'content-type') ?? ''
   let buf: Buffer, ext: 'xlsx' | 'csv', f: Record<string, string> = {}, url = '', fileName = ''
@@ -21,22 +21,16 @@ export default defineEventHandler(async (event) => {
   const kind = Kind.safeParse(f.kind); if (!kind.success) throw apiError('invalid', 'Choose what to bring in.')
   const user = await requireKind(event, kind.data)
   await rateLimit('growth_import', user.userId, 40, 60 * 60 * 1000)
-  const pid = kind.data === 'bank_txns' ? null : z.string().uuid().safeParse(f.process_id).data ?? null
-  if (kind.data !== 'bank_txns' && !pid) throw apiError('invalid', 'Choose the process first.')
   const t = tableOf(await readGrids(buf, ext)); if (!t) throw apiError('empty', 'No table with headings found. Put headings in the first row and one record per row.', 422)
-  const map = await mapTable(kind.data, t, await targetsFor(kind.data, pid))
-  // An export from an ad or social platform: every row is that platform's channel (added if it is not set up yet).
-  const PLATFORM: Record<string, string> = { linkedin: 'LinkedIn', meta: 'Meta ads', facebook: 'Facebook', instagram: 'Instagram', google_ads: 'Google Ads', search: 'SEO', x: 'X', tiktok: 'TikTok', youtube: 'YouTube' }
-  if (kind.data === 'marketing_months' && PLATFORM[f.platform ?? '']) map.channel_fixed = PLATFORM[f.platform!]
-  if (kind.data === 'bank_txns') { map.currency = /^[A-Z]{3}$/.test(f.currency ?? '') ? f.currency : 'USD'; map.account = (f.account || fileName || 'Linked sheet').slice(0, 120) }
-  // The company the rows belong to: the one chosen at the top; on the group view, the one picked in the form (bank
-  // transactions) or, for deals, the main company unless the process belongs to one.
+  const map = await mapTable(kind.data, t)
+  map.currency = /^[A-Z]{3}$/.test(f.currency ?? '') ? f.currency : 'USD'; map.account = (f.account || fileName || 'Linked sheet').slice(0, 120)
+  // The company the rows belong to: the one chosen at the top; on the group view, the one picked in the form.
   const sc = await forecastScope(event), picked = sc.companies.find((c) => c.id === f.entity_id)?.id
   map.entity = sc.group ? (picked ?? null) : sc.entity
-  if (kind.data === 'bank_txns' && (f.all_out === 'true' || f.all_out === 'false')) map.all_out = f.all_out === 'true'
+  if (f.all_out === 'true' || f.all_out === 'false') map.all_out = f.all_out === 'true'
   // Nothing is written yet: what the rows would add or change is held for the founder to accept (with the link kept
   // only once they do).
-  const h = await holdImport({ kind: kind.data, processId: pid, name: (f.name || fileName || 'Sheet').slice(0, 120), ref: url || fileName, t, map, userId: user.userId,
+  const h = await holdImport({ kind: kind.data, name: (f.name || fileName || 'Sheet').slice(0, 120), ref: url || fileName, t, map, userId: user.userId,
     keepLink: url && f.link === 'true' ? { url, name: (f.name || 'Linked sheet').slice(0, 120), auto: true } : null })
   await audit({ event, actorUserId: user.userId, action: 'growth.import_review', objectType: 'growth_import', detail: { kind: kind.data, added: h.summary.added, changed: h.summary.changed, linked: url && f.link === 'true', ai: map.ai } })
   const used = Object.entries(map.columns).filter(([, i]) => i !== null && i !== undefined).map(([k, i]) => ({ field: k, column: t.headers[i!] || 'column ' + (i! + 1) }))

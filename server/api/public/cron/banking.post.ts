@@ -1,4 +1,4 @@
-// Every few hours: for each live company, pull the bank feed and balances, re-read linked sheets and CRMs (their
+// Every few hours: for each live company, pull the bank feed and balances, re-read linked bank sheets (their
 // changes wait for the founder to accept), and tidy categories (own companies and card bills are transfers). Pages then
 // open on fresh data without waiting for banks. Called by the scheduled GitHub Action with the shared secret.
 import { timingSafeEqual } from 'node:crypto'
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
       await ensureWebhook(webhook)
       added += await syncBankFeed()
       if (plaidOn()) for (const it of (await db().query<{ id: string; access_token_enc: string }>("SELECT id, access_token_enc FROM banking.plaid_items WHERE wm_client_id IS NULL AND error IS NULL")).rows) await refreshItem(it.id, it.access_token_enc).catch(() => {})
-      for (const k of ['bank_txns', 'sales_deals', 'marketing_months'] as const) await syncDue(k, null).catch(() => {})
+      await syncDue('bank_txns').catch(() => {})
       await fixOwnTransfers(); await fixCardPayments(); await pairTransfers(); await aiCategorize().catch(() => null)
     } catch (e) { failed++; console.error('[cron banking]', org.id, (e as Error).message) }
   }

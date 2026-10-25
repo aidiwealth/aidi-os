@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const aidi = (await currentOrg())?.kind !== 'company'
   if (aidi) await syncStatementLedger().catch((e) => console.error('[treasury] statements', (e as Error).message))
   if (getQuery(event).sync === '1') { added = await syncBankFeed(true); await tidy() }
-  else inBackground('bank', async () => { await syncBankFeed(); await syncDue('bank_txns', null).catch(() => {}); await tidy(); await aiCategorize().catch((e) => console.error('[treasury] ai categories', (e as Error).message)) })
+  else inBackground('bank', async () => { await syncBankFeed(); await syncDue('bank_txns').catch(() => {}); await tidy(); await aiCategorize().catch((e) => console.error('[treasury] ai categories', (e as Error).message)) })
   const rails = await Promise.all(RAILS.map(async (r) => ({ key: r.key, label: r.label, note: r.note, on: await r.available() })))
   const sc = await forecastScope(event)
   // A Nigerian company (or the subsidiary chosen at the top): no live bank feed until Nigerian connections are switched

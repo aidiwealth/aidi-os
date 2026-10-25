@@ -1,14 +1,14 @@
 <script setup lang="ts">
-// Updates waiting from a linked sheet or a connected CRM (kept in step), shown at the top of Sales, Marketing or
-// Banking: review what would change, then accept or dismiss. Nothing from a link is written without this.
+// Updates waiting from a linked bank sheet (kept in step), shown at the top of Banking: review what would change,
+// then accept or dismiss. Nothing from a link is written without this.
 import type { ImportSummary } from '~/shared/growth'
-const props = defineProps<{ kind: 'sales_deals' | 'marketing_months' | 'bank_txns'; processId?: string | null; what: string }>()
+const props = defineProps<{ kind: 'bank_txns'; what: string }>()
 const emit = defineEmits<{ done: [] }>()
 const { sf, cust } = await useCoScope()
-interface P { id: string; name: string; summary: ImportSummary; created_at: string; source: string | null }
+interface P { id: string; name: string; summary: ImportSummary; created_at: string }
 const list = ref<P[]>([]), open = ref<P | null>(null), busy = ref(false), msg = ref('')
-async function load() { try { list.value = await sf<P[]>('/api/growth/pending', { query: { kind: props.kind, process_id: props.processId || undefined } }) } catch { list.value = [] } }
-watch(() => [props.processId, cust.value], load, { immediate: true })
+async function load() { try { list.value = await sf<P[]>('/api/growth/pending', { query: { kind: props.kind } }) } catch { list.value = [] } }
+watch(() => cust.value, load, { immediate: true })
 async function settle(accept: boolean) {
   if (!open.value) return; busy.value = true; msg.value = ''
   try { await sf('/api/growth/pending/settle', { method: 'POST', body: { id: open.value.id, accept } }); open.value = null; await load(); emit('done') }

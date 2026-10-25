@@ -1,4 +1,4 @@
-// Sales, Marketing, Banking and the Stage Monitor follow the company chosen at the top (or the whole group), like
+// Banking and the Stage Monitor follow the company chosen at the top (or the whole group), like
 // Financials: the choice is kept in the address (?s=) and sent to the server as ?cust=<company id>|group. `sf` is
 // $fetch with the choice added, for the page's own calls.
 export async function useCoScope() {

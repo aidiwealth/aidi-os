@@ -16,11 +16,11 @@ export default defineEventHandler(async (event) => {
   // Customer sections: the company's own customers, or the group's combined.
   const customers = org.kind === 'company' && (await enabledModules()).has('fin_customers') && ((await withCustFor(subject, () => loadCustomers()).catch(() => null)) ?? []).length > 0
   // The report used to have one customer section: a saved choice with it keeps retention too.
-  const on = (k: string) => (saved ? saved.includes(k) || (k === 'retention' && saved.includes('customers')) || (['sales', 'marketing', 'banking', 'stage'].includes(k) && !mine?.growth_seen) : MR_SECTIONS.find((x) => x.key === k)!.on)
+  const on = (k: string) => (saved ? saved.includes(k) || (k === 'retention' && saved.includes('customers')) || (['banking', 'stage'].includes(k) && !mine?.growth_seen) : MR_SECTIONS.find((x) => x.key === k)!.on)
   // Treasury bills or other securities in the figures: the dialog asks whether to show them with cash.
   const has_securities = rows.some((r) => typeof r.lines.investments === 'number' && r.lines.investments !== 0)
-  // Sales, Marketing, Banking and Stage: offered when the plan has them and there is something to show.
+  // Banking and Stage: offered when the plan has them and there is something to show.
   const growth = await growthAvailable(event, subject).catch(() => ({} as Record<string, boolean>))
-  const GROWTH = new Set(['sales', 'marketing', 'banking', 'stage'])
+  const GROWTH = new Set(['banking', 'stage'])
   return { has_securities, subject, groups: customers ? ((await withCustFor(subject, () => customerGroups())) ?? []) : [], months, sections: MR_SECTIONS.map((s) => ({ ...s, on: on(s.key), available: GROWTH.has(s.key) ? !!growth[s.key] : (s.key !== 'customers' && s.key !== 'retention') || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, about: (await companyAbout(subject, mine?.about)).text }
 })

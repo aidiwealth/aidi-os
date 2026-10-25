@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// What a sheet, file or CRM would change, before anything is written: new and changed rows (with what changes) and
+// What a sheet or file would change, before anything is written: new and changed rows (with what changes) and
 // how many are unchanged. Accept writes it in; Dismiss leaves everything as it is.
 import type { ImportSummary } from '~/shared/growth'
 defineProps<{ summary: ImportSummary; busy?: boolean; what: string }>()
@@ -8,7 +8,6 @@ const emit = defineEmits<{ accept: []; dismiss: [] }>()
 <template>
   <div class="ir">
     <p class="hd"><b>{{ summary.added }} new</b>, <b>{{ summary.changed }} changed</b>, {{ summary.unchanged }} unchanged{{ summary.skipped ? ', ' + summary.skipped + ' rows skipped' : '' }}. Nothing is saved until you accept.</p>
-    <p v-if="summary.new_channels.length" class="mut">New channels to add: {{ summary.new_channels.join(', ') }}.</p>
     <div v-if="summary.sample.length" class="ls"><div v-for="(s, i) in summary.sample" :key="i" class="it"><span class="tg" :class="s.what">{{ s.what === 'new' ? 'New' : 'Changed' }}</span><b>{{ s.name }}</b><small>{{ s.changes.join(' · ') }}</small></div></div>
     <p v-if="summary.added + summary.changed > summary.sample.length" class="mut">Showing the first {{ summary.sample.length }} of {{ summary.added + summary.changed }}.</p>
     <p v-if="!summary.added && !summary.changed" class="mut">Your {{ what }} already match.</p>

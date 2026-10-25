@@ -3,7 +3,7 @@ import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const b = z.object({ id: z.string().uuid(), action: z.enum(['sync', 'auto_on', 'auto_off', 'delete']) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
-  const l = (await db().query<GLink>('SELECT ' + LINK_COLS + ' FROM growth.links WHERE id = $1', [b.data.id])).rows[0]
+  const l = (await db().query<GLink>('SELECT ' + BANK_LINK_COLS + ' FROM growth.links WHERE id = $1', [b.data.id])).rows[0]
   if (!l) throw apiError('not_found', 'Not found', 404)
   const user = await requireKind(event, l.kind)
   if (b.data.action === 'delete') { await db().query('DELETE FROM growth.links WHERE id = $1', [l.id]); return { ok: true } }

@@ -60,6 +60,8 @@ export default defineNuxtConfig({
       ]
     }
   },
+  // Sales and Marketing were removed from Finvry: old links land on the dashboard.
+  routeRules: { '/sales': { redirect: '/' }, '/marketing': { redirect: '/' } },
   $production: {
     routeRules: {
       '/**': {

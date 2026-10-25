@@ -148,27 +148,6 @@ async function scopeFor(event: H3Event, company?: unknown) {
 const COMPANY = { company: { type: 'string', description: 'A company in the group by name, or "group" for all of them combined. Leave out for the default (the group when there are subsidiaries).' } }
 const label = (sc: { group: boolean; name: string }) => (sc.group ? sc.name + ' (all companies combined)' : sc.name)
 export const finvryExtra: ATool[] = [
-  { name: 'sales_pipeline', module: 'sales', description: "Sales: each process's stages with actual against target conversion and days, open pipeline and weighted value, win rate, average deal, cycle, expected wins by month and what the monthly target needs. Open pipeline split into new business and existing customers (grow spend, renewal; key accounts from Financials customers), won new-business deals not yet added to Financials customers, and where deals come from (sheets, HubSpot, Pipedrive). For a company or the whole group; optionally a process by name.", input_schema: S({ ...COMPANY, process: { type: 'string' } }),
-    run: async (a, c) => {
-      const sc = await scopeFor(c.event, a.company), gs = { group: sc.group, entity: sc.entity, currency: sc.currency, companies: sc.companies }
-      const all = await salesView(undefined, gs), list = all.processes
-      const pick = a.process ? list.find((x) => x.name.toLowerCase().includes(String(a.process).toLowerCase())) : list[0]
-      if (!pick) return { scope: label(sc), note: 'No sales process yet. Set one up under Growth → Sales.' }
-      const v = await salesView(pick.id, gs), open = new Set(v.process?.stages.filter((s) => s.kind === 'open').map((s) => s.key))
-      const main = await companyEntityId(), ent = sc.group ? null : sc.entity
-      const wonNotCustomers = (await db().query<{ n: number }>(`SELECT count(*)::int AS n FROM growth.deals d JOIN growth.processes p ON p.id = d.process_id WHERE d.deal_type = 'new' AND d.customer_key IS NULL
-        AND EXISTS (SELECT 1 FROM jsonb_array_elements(p.stages) s WHERE s->>'key' = d.stage_key AND s->>'kind' = 'won') AND ($1::uuid IS NULL OR coalesce(d.entity_id, p.entity_id, $2::uuid) = $1)`, [ent, main]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n
-      const sources = (await db().query<{ source: string; name: string }>("SELECT source, name FROM growth.links WHERE kind = 'sales_deals' AND process_id = $1", [pick.id]).catch(() => ({ rows: [] }))).rows.map((l) => (l.source === 'sheet' ? 'linked sheet ' + l.name : l.source === 'hubspot' ? 'HubSpot (read-only)' : 'Pipedrive (read-only)'))
-      return { scope: label(sc), group_totals: all.rollup, processes: list.map((x) => x.name + (sc.group ? ' (' + x.company + ')' : '')), company: v.process?.company, process: v.process?.name, currency: v.process?.currency, target_monthly: v.process?.target_monthly, target_kind: v.process?.target_kind, stats: v.stats,
-        open_pipeline_split: v.split, won_new_deals_not_in_financials_customers: wonNotCustomers, deal_sources: sources.length ? sources : ['typed in Finvry or imported once'],
-        open_deals: v.deals.filter((x) => open.has(x.stage_key)).slice(0, 15).map((x) => ({ deal: x.name, type: x.deal_type, customer: x.customer_name, value: x.value, stage: v.process?.stages.find((s) => s.key === x.stage_key)?.name, expected_close: x.expected_close })) }
-    } },
-  { name: 'marketing_channels', module: 'marketing', description: "Marketing: spend, leads, customers, cost per lead, CAC, lead-to-customer rate and return by channel over the last three full months (spend from bank payments to the channel's vendors, customers and revenue from won deals with that source), the funnel, campaigns with budget and spend, and channel budgets. For a company or the whole group.", input_schema: S(COMPANY),
-    run: async (a, c) => {
-      const sc = await scopeFor(c.event, a.company), v = await marketingView(undefined, 7, { group: sc.group, entity: sc.entity, currency: sc.currency, companies: sc.companies })
-      if (!v.process) return { scope: label(sc), note: 'No marketing process yet. Set one up under Growth → Marketing.' }
-      return { scope: label(sc), group_totals: v.rollup, process: v.process.name, company: v.process.company, currency: v.process.currency, last_3_months: v.stats, campaigns: v.campaigns.slice(0, 12), average_won_deal: v.avg_deal }
-    } },
   { name: 'spend_and_cuts', module: 'banking_treasury', description: "Banking: cash and burn (and whether they come from Financials or, with no Financials yet, from the bank's month-end balances), cards and loans owed (never cash), money in and out by month, spend by category against budget, top payees, who spends (card exports), the cut list with each payment's flag (keep, cut, downgrade with saving %, review, personal, cancelled), the saving and runway it gives, suggested flags, payments worth a look, and reconciliation with Financials (month-end cash, receipts against revenue, spend against costs; months marked reconciled). For a company or the whole group.", input_schema: S(COMPANY),
     run: async (a, c) => {
       const sc = await scopeFor(c.event, a.company), ts = { group: sc.group, entity: sc.entity, currency: sc.currency }

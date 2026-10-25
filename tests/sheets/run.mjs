@@ -359,57 +359,12 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('plaid notices: a valid signature passes; a changed body or an old notice does not', good && !tampered && !stale, [good, tampered, stale].join(' '))
 }
 
-// 9d. Sales and marketing: conversion from deal moves, the weighted pipeline, and what a budget buys.
-{
-  const G = await jiti.import(join(root, 'shared/growth.ts'))
-  const stages = G.withKeys([{ name: 'Lead', kind: 'open', target_pct: 50, days: 5, steps: [] }, { name: 'Proposal', kind: 'open', target_pct: 50, days: 10, steps: [] }, { name: 'Won', kind: 'won', target_pct: null, days: null, steps: [] }, { name: 'Lost', kind: 'lost', target_pct: null, days: null, steps: [] }])
-  const p = { id: 'p', kind: 'sales', name: 'B2B', currency: 'USD', target_monthly: 10000, target_kind: 'revenue', stages, channels: [] }
-  const mk = (id, path, value) => ({ deal: { id, stage_key: path[path.length - 1], value, recurring: false, created_at: '2026-06-01T00:00:00Z', closed_at: path.at(-1) === 'won' || path.at(-1) === 'lost' ? '2026-07-01T00:00:00Z' : null, expected_close: '2026-11-15', source_channel: null, owner_id: null },
-    moves: path.slice(1).map((to, k) => ({ deal_id: id, from_stage: path[k], to_stage: to, at: '2026-06-' + String(10 + k * 5).padStart(2, '0') + 'T00:00:00Z' })) })
-  const all = [mk('a', ['lead', 'proposal', 'won'], 5000), mk('b', ['lead', 'proposal', 'won'], 5000), mk('c', ['lead', 'proposal', 'lost'], 4000), mk('d', ['lead', 'lost'], 0), mk('e', ['lead', 'proposal'], 6000), mk('f', ['lead'], 2000)]
-  const s = G.salesStats(p, all.map((x) => x.deal), all.flatMap((x) => x.moves), '2026-10-23')
-  const lead = s.stages.find((x) => x.key === 'lead'), prop = s.stages.find((x) => x.key === 'proposal')
-  check('sales: conversion from moves, win rate and average deal', lead.reached === 6 && lead.moved_on === 4 && lead.actual_pct === 80 && prop.actual_pct === 66.7 && s.won === 2 && s.win_rate === 50 && s.avg_won === 5000, JSON.stringify([lead.actual_pct, prop.actual_pct, s.win_rate, s.avg_won]))
-  check('sales: weighted pipeline and what the target needs', s.open_value === 8000 && s.weighted === Math.round(6000 * 0.667 + 2000 * 0.8 * 0.667) && s.to_target.deals_needed === 2 && s.to_target.leads_needed === 4, JSON.stringify([s.weighted, s.to_target]))
-  const pr = G.predictBudget([{ key: 'ads', name: 'Ads', spend: 5000, leads: 100, customers: 10, revenue: 0, cpl: 50, cac: 500, lead_to_customer: 10, roi: null, budget: null }], { ads: 2000 }, 3, 1000)
-  check('marketing: a budget buys leads and customers at the channel\'s own rates', pr.rows[0].leads === 40 && pr.rows[0].customers === 4 && pr.total.revenue === 4000, JSON.stringify(pr.rows[0]))
-}
-
-// 9e. Bringing sheets into Sales, Marketing and Banking: columns by heading, the sheet's names matched to the company's.
+// 9e. Bringing bank sheets into Banking: columns by heading, card exports read as payments.
 {
   globalThis.useRuntimeConfig = () => ({})
   const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
-  const t = GI.tableOf([{ name: 'Deals', rows: [['Pipeline export'], ['Company', 'Deal size', 'Status', 'Close date', 'Lead source'], ['Acme', '5,000', 'Proposal sent', '2026-11-30', 'Referral'], ['Beta', 3000, 'Closed won', 46000, 'Paid search'], [null, null, null, null, null]] }])
-  const stages = [{ key: 'lead', name: 'Lead', kind: 'open' }, { key: 'proposal', name: 'Proposal', kind: 'open' }, { key: 'won', name: 'Won', kind: 'won' }]
-  const m = await GI.mapTable('sales_deals', t, { stages, channels: [{ key: 'paid_search', name: 'Paid search' }, { key: 'referrals', name: 'Referrals and partners' }], people: [] })
-  check('import: deal columns found by their headings', t.headers[0] === 'Company' && t.rows.length === 2 && m.columns.name === 0 && m.columns.value === 1 && m.columns.stage === 2 && m.columns.expected_close === 3 && m.columns.source === 4, JSON.stringify(m.columns))
-  check('import: the sheet\'s stage and channel names matched where they are close', m.values.stage['Proposal sent'] === 'proposal' && m.values.channel['Paid search'] === 'paid_search' && m.values.stage['Closed won'] === 'won', JSON.stringify(m.values))
   const b = await GI.mapTable('bank_txns', GI.tableOf([{ name: 'S', rows: [['Txn Date', 'Narration', 'Withdrawals', 'Lodgements', 'Balance'], ['01/09/2026', 'NIP TRF', '1,000', '', '9,000']] }]), {})
   check('import: bank columns, money in and out', b.columns.date === 0 && b.columns.description === 1 && b.columns.debit === 2 && b.columns.credit === 3 && GI.dateOf('01/09/2026') === '2026-09-01' && GI.dateOf(46000) === '2025-12-09', JSON.stringify(b.columns))
-}
-
-// 9f. Deals from CRMs (exports and connections), card exports, and what an import would change.
-{
-  const GI = await jiti.import(join(root, 'server/utils/growth-import.ts'))
-  const DC = await jiti.import(join(root, 'server/utils/deal-crm.ts'))
-  const stages = [{ key: 'lead', name: 'Lead', kind: 'open' }, { key: 'demo', name: 'Demo', kind: 'open' }, { key: 'won', name: 'Won', kind: 'won' }, { key: 'lost', name: 'Lost', kind: 'lost' }]
-  const crm = await GI.mapTable('sales_deals', { headers: DC.CRM_HEADERS, rows: [['hubspot:1', 'Acme renewal', 'Acme Ltd', 'Ada', 5000, 'Demo', 'open', '2026-11-30', 'a@x.co']] }, { stages, channels: [], people: [] })
-  const c = crm.columns
-  check('CRM: every column of a connection found by heading', c.external_id === 0 && c.name === 1 && c.account === 2 && c.contact === 3 && c.value === 4 && c.stage === 5 && c.status === 6 && c.expected_close === 7 && c.owner === 8, JSON.stringify(c))
-  const sf = await GI.mapTable('sales_deals', { headers: ['Opportunity Name', 'Account Name', 'Amount', 'Stage', 'Close Date', 'Opportunity Owner', 'Lead Source'], rows: [['Big deal', 'Acme', 1, 'Demo', '2026-12-01', 'x', 'Web']] }, { stages, channels: [], people: [] })
-  check('CRM: a Salesforce opportunities export', sf.columns.name === 0 && sf.columns.account === 1 && sf.columns.value === 2 && sf.columns.stage === 3 && sf.columns.expected_close === 4 && sf.columns.owner === 5 && sf.columns.source === 6, JSON.stringify(sf.columns))
-  const pd = await GI.mapTable('sales_deals', { headers: ['Deal - Title', 'Deal - Value', 'Deal - Organization', 'Deal - Stage', 'Deal - Status', 'Deal - Expected close date'], rows: [['X', 1, 'Org', 'Demo', 'won', '2026-12-01']] }, { stages, channels: [], people: [] })
-  check('CRM: a Pipedrive export, status apart from stage', pd.columns.name === 0 && pd.columns.value === 1 && pd.columns.account === 2 && pd.columns.stage === 3 && pd.columns.status === 4 && pd.columns.expected_close === 5, JSON.stringify(pd.columns))
-  const calls = []
-  const hs = await DC.hubspotDeals('t', async (url) => { calls.push(url)
-    if (url.includes('/pipelines/')) return { results: [{ stages: [{ id: 's1', label: 'Demo', metadata: { isClosed: 'false', probability: '0.4' } }, { id: 'cw', label: 'Closed won', metadata: { isClosed: 'true', probability: '1.0' } }] }] }
-    if (url.includes('/owners')) return { results: [{ id: '9', email: 'rep@x.co' }] }
-    if (url.includes('/companies/batch')) return { results: [{ id: 'c1', properties: { name: 'Acme Ltd' } }] }
-    if (url.includes('after=')) return { results: [{ id: '2', properties: { dealname: 'Beta', amount: '700', dealstage: 'cw', closedate: '2026-09-01T00:00:00Z', hubspot_owner_id: null } }] }
-    return { results: [{ id: '1', properties: { dealname: 'Acme', amount: '5000.5', dealstage: 's1', closedate: '2026-11-30T00:00:00Z', hubspot_owner_id: '9' }, associations: { companies: { results: [{ id: 'c1' }] } } }], paging: { next: { after: 'p2' } } } })
-  check('CRM: HubSpot deals with stage labels, won status, owner and company, across pages', hs.rows.length === 2 && hs.rows[0].join('|') === 'hubspot:1|Acme|Acme Ltd||5000.5|Demo|open|2026-11-30|rep@x.co' && hs.rows[1][6] === 'won', JSON.stringify(hs.rows))
-  const pdr = await DC.pipedriveDeals('t', async (url) => url.includes('/stages') ? { data: [{ id: 3, name: 'Demo' }] } : url.includes('start=0') ? { data: [{ id: 7, title: 'Gamma', value: 900, stage_id: 3, status: 'lost', expected_close_date: null, org_name: 'Gamma Co', person_name: 'Bo', user_id: { email: 'o@x.co' } }], additional_data: { pagination: { more_items_in_collection: true, next_start: 500 } } } : { data: [] })
-  check('CRM: Pipedrive deals with stage names and status', pdr.rows.length === 1 && pdr.rows[0].join('|') === 'pipedrive:7|Gamma|Gamma Co|Bo|900|Demo|lost||o@x.co', JSON.stringify(pdr.rows))
   const card = GI.tableOf([{ name: 'Payments', rows: [['Date', 'User', 'Card last 4', 'Amount ($)', 'Merchant', 'Flag', 'Category'], ['2026-10-14', 'Emmanuel', '8328', 1705.76, 'Wise', 'REVIEW', 'Transfer'], ['2026-10-09', 'Emmanuel', '6730', -47.32, 'Intuit', 'KEEP', 'Software'], ['2026-10-08', 'Atinuke', '3608', 104, '360dialog', 'KEEP', 'COGS'], ['2026-10-02', 'Emmanuel', '6730', 9302.64, 'Google Cloud', 'CRITICAL', 'Infra'], ['2026-10-01', 'Awe', '2971', 2004.94, 'Raenest', 'KEEP', 'Payroll']] }])
   const cm = await GI.mapTable('bank_txns', card, {})
   check('card export: merchant, who spent and amount found; read as payments', cm.columns.date === 0 && cm.columns.spender === 1 && cm.columns.amount === 3 && cm.columns.description === 4 && cm.all_out === true, JSON.stringify(cm))
