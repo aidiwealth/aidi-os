@@ -11,7 +11,8 @@ interface D { currency: string; months: { month: string; in: number; out: number
   movers: { name: string; last: number; prev: number; change: number }[]; recurring_total: number; cut_list: V[]; checks: { id: string; date: string; vendor: string; amount: number; spender: string | null; why: string; count: number }[]; by_spender: { name: string; total: number; monthly: number }[]; duplicates: { job: string; vendors: { name: string; monthly: number }[] }[]; categories: Cat[]
   ledger: { count: number; since: string | null; sources: string[]; ai?: number }; rails: { key: string; label: string; note: string; on: boolean; soon?: boolean }[]; added: number; ng?: boolean }
 const route = useRoute(), router = useRouter()
-const tab = computed(() => (['spend', 'txns', 'cut', 'reconcile'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
+// Reconcile now lives in Transactions (pick a month); old links to ?t=reconcile open it there.
+const tab = computed(() => (String(route.query.t) === 'reconcile' ? 'txns' : ['spend', 'txns', 'cut'].includes(String(route.query.t)) ? String(route.query.t) : 'overview'))
 const go = (t: string) => router.replace({ query: { ...route.query, t: t === 'overview' ? undefined : t } })
 const { sf, cust, isGroup, companies, entityId } = await useCoScope()
 const { data, refresh, pending } = await useFetch<D>('/api/treasury', { query: computed(() => ({ cust: cust.value })) })
@@ -88,6 +89,7 @@ async function setCat(t: T, category: string, always: boolean) {
   catch (e) { msg.value = err(e) }
 }
 const always = ref(true)
+const checksWho = computed(() => (d.value?.checks ?? []).some((c) => !!c.spender))
 // Spend and cut list: filters and pages, in the browser.
 const sv = reactive({ q: '', cat: '', page: 0 }), mvPage = ref(0)
 const vendorsShown = computed(() => (d.value?.top_vendors ?? []).filter((v) => (!sv.q || v.name.toLowerCase().includes(sv.q.toLowerCase())) && (!sv.cat || v.category === sv.cat)))
@@ -113,7 +115,22 @@ interface RL { key: string; label: string; bank: number; fin: number | null }
 interface RR { month: string; status: string; cash: { bank: number | null; fin: number | null; gap: number | null; accounts: number; of: number }; receipts: { bank: number; fin: number | null; ok: boolean | null }; spend: RL[]; spend_total: { bank: number; fin: number | null; ok: boolean | null }; other: { financing: number; other_in: number; transfers: number }; reconciled: { note: string | null; at: string; by: string | null; gap: number | null } | null }
 const rc = ref<{ currency: string; accounts: { name: string; currency: string; balances: number; live: boolean }[]; rows: RR[] } | null>(null), rcOpen = ref(''), rcNote = ref('')
 async function loadRc() { try { rc.value = await sf('/api/treasury/reconcile') } catch (e) { msg.value = err(e) } }
-watch(() => [tab.value, cust.value], () => { if (tab.value === 'reconcile') void loadRc() }, { immediate: true })
+watch(() => [tab.value, cust.value], () => { if (tab.value === 'txns') void loadRc() }, { immediate: true })
+const rcRow = computed(() => (f.month ? rc.value?.rows.find((r) => r.month === f.month) ?? null : null))
+const pickMonth = (m: string) => { f.month = f.month === m ? '' : m; f.page = 0; ai.value = null; aiJob.fail.value = null }
+const gapOf = (bank: number | null, fin: number | null) => (bank === null || fin === null ? null : bank - fin)
+// Find the difference with AI: suggestions to apply one by one (or all), and other causes.
+interface Sug { id: string; category: string; label: string; reason: string; date: string; vendor: string; amount: number; currency: string; direction: string; from: string | null; done?: boolean }
+const aiJob = useAiJob<{ summary: string; suggestions: Sug[]; causes: string[] }>(), ai = ref<{ summary: string; suggestions: Sug[]; causes: string[] } | null>(null)
+async function aiRecon() {
+  if (!f.month) return; ai.value = null; msg.value = ''
+  try { const { job } = await sf<{ job: string }>('/api/treasury/reconcile-ai', { method: 'POST', body: { month: f.month } }); ai.value = await aiJob.follow(job) } catch (e) { msg.value = err(e) }
+}
+async function applySug(x: Sug) {
+  try { await sf('/api/treasury/categorize', { method: 'POST', body: { id: x.id, category: x.category, always: false } }); x.done = true } catch (e) { msg.value = err(e) }
+}
+async function applyAll() { for (const x of ai.value?.suggestions ?? []) if (!x.done) await applySug(x); await Promise.all([loadRc(), loadTx(), refresh()]); ok.value = 'Applied. The month is checked again.' }
+async function afterApply() { await Promise.all([loadRc(), loadTx()]) }
 const ST: Record<string, string> = { matches: 'Cash matches', gap: 'Cash differs', partial: 'Some accounts missing', no_balance: 'No bank balance', no_bank: 'No bank data', no_financials: 'No Financials yet' }
 const rm = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, rc.value?.currency ?? 'USD'))
 async function markRc(r: RR, on: boolean) {
@@ -131,7 +148,7 @@ const today = new Date().toISOString().slice(0, 10)
   <section class="tr">
     <div class="hd"><div><ScopeSwitch page="Banking" /><p class="lead">Every account and payment in one place. Read-only: Finvry never holds or moves your money.</p></div>
       <div class="tb"><button v-if="!d?.ng" class="ic" type="button" :disabled="busy" title="Refresh bank feed" aria-label="Refresh bank feed" @click="sync"><svg :class="{ spin: busy }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg></button><button class="btn secondary" :disabled="busy" @click="lk = true">Link a sheet</button><button class="btn" :disabled="busy" @click="openUpload(null)">Upload statement</button></div></div>
-    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list'], ['reconcile', 'Reconcile']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
+    <nav class="tabs"><button v-for="[k, l] in ([['overview', 'Overview'], ['spend', 'Spend'], ['txns', 'Transactions'], ['cut', 'Cut list']] as const)" :key="k" :class="{ on: tab === k }" @click="go(k)">{{ l }}<span v-if="k === 'cut' && d?.cut_list.length" class="n">{{ d.cut_list.length }}</span></button></nav>
     <transition name="toast"><p v-if="ok" class="toast" role="status">{{ ok }}<button type="button" aria-label="Close" @click="ok = ''">×</button></p></transition><p v-if="msg" class="error">{{ msg }}</p>
     <ClientOnly><PendingUpdates kind="bank_txns" what="transactions" @done="refresh()" /></ClientOnly>
     <template v-if="d">
@@ -144,7 +161,7 @@ const today = new Date().toISOString().slice(0, 10)
             <b class="hv">{{ ua && (nLive || nUp) ? big(ua.all_total) : '—' }}</b>
             <span class="hs">{{ nLive + nUp ? (nLive + nUp) + ' account' + (nLive + nUp === 1 ? '' : 's') : 'Add an account to see your cash' }}{{ ua?.holdings_total ? ' · incl. ' + m(ua.holdings_total) + ' investments' : '' }}{{ ua?.as_of ? ' · as of ' + day(ua.as_of) : '' }}{{ d.cash !== null ? ' · ' + (d.cash_from === 'financials' ? 'Financials shows ' : 'month-end ') + m(d.cash) : '' }}</span>
             <template v-if="parts.length">
-              <div class="bar" role="img" :aria-label="parts.map((p) => p.label + ' ' + m(p.value)).join(', ')"><i v-for="(p, i) in parts" :key="p.label" :style="{ width: Math.max(1.5, p.value / partsTotal * 100) + '%', background: PAL[i % PAL.length] }" :title="p.label + ': ' + m(p.value)" /></div>
+              <div class="cbar" role="img" :aria-label="parts.map((p) => p.label + ' ' + m(p.value)).join(', ')"><i v-for="(p, i) in parts" :key="p.label" :style="{ width: Math.max(1.5, p.value / partsTotal * 100) + '%', background: PAL[i % PAL.length] }" :title="p.label + ': ' + m(p.value)" /></div>
               <div class="lgd"><span v-for="(p, i) in parts" :key="p.label"><i :style="{ background: PAL[i % PAL.length] }" />{{ p.label }} <b>{{ m(p.value) }}</b></span></div>
             </template>
           </div>
@@ -191,7 +208,40 @@ const today = new Date().toISOString().slice(0, 10)
       </template>
 
       <template v-if="tab === 'txns'">
-        <div class="fl"><input v-model="f.q" placeholder="Search description or vendor" aria-label="Search"><input v-model="f.month" type="month" aria-label="Month"><select v-model="f.dir" aria-label="Direction"><option value="">In and out</option><option value="in">Money in</option><option value="out">Money out</option></select>
+        <div v-if="rc?.rows.length" class="months" role="tablist" aria-label="Month">
+          <button type="button" role="tab" :aria-selected="!f.month" :class="{ on: !f.month }" @click="pickMonth('')"><b>All months</b><span>Every payment</span></button>
+          <button v-for="r in rc.rows" :key="r.month" type="button" role="tab" :aria-selected="f.month === r.month" :class="{ on: f.month === r.month }" @click="pickMonth(r.month)">
+            <b>{{ mon(r.month) }}</b><span><i class="dot" :class="r.reconciled ? 'done' : r.status" />{{ r.reconciled ? 'Reconciled' : ST[r.status] }}</span></button>
+        </div>
+        <div v-if="rcRow" class="card rcp">
+          <div class="rch"><div><h2>{{ mon(rcRow.month) }}: bank against Financials</h2><p class="mut">Cash must match. Receipts and spend can differ by timing.</p></div><span class="sp" />
+            <button class="btn sm" type="button" :disabled="aiJob.busy.value || rcRow.status === 'no_bank'" @click="aiRecon">{{ aiJob.busy.value ? 'Looking…' : 'Find the difference with AI' }}</button></div>
+          <div class="cmp">
+            <div v-for="c in ([['Cash at month end', rcRow.cash.bank, rcRow.cash.fin, true], ['Receipts / revenue', rcRow.receipts.bank, rcRow.receipts.fin, false], ['Spend / costs', rcRow.spend_total.bank, rcRow.spend_total.fin, false]] as const)" :key="c[0]" class="cb">
+              <span class="cl2">{{ c[0] }}</span><b>{{ rm(c[1]) }}</b><span class="mut">Financials {{ rm(c[2]) }}</span>
+              <span v-if="gapOf(c[1], c[2]) !== null" class="gp" :class="{ bad: Math.abs(gapOf(c[1], c[2])!) > (c[3] ? 1 : Math.max(100, Math.abs(c[2] ?? 0) * 0.1)) }">{{ gapOf(c[1], c[2])! > 0 ? '+' : '' }}{{ rm(gapOf(c[1], c[2])) }}</span></div>
+          </div>
+          <details class="lines"><summary>By line</summary>
+            <table class="t" data-nosearch><thead><tr><th>Line</th><th class="r">Bank</th><th class="r">Financials</th><th class="r">Difference</th></tr></thead>
+              <tbody><tr v-for="x in rcRow.spend" :key="x.key"><td>{{ x.label }}</td><td class="r">{{ rm(x.bank) }}</td><td class="r">{{ rm(x.fin) }}</td><td class="r">{{ x.fin === null ? '—' : rm(x.bank - x.fin) }}</td></tr>
+                <tr class="mut2"><td colspan="4">Not in the P&amp;L: funding {{ rm(rcRow.other.financing) }} · other money in {{ rm(rcRow.other.other_in) }} · transfers and investments {{ rm(rcRow.other.transfers) }}</td></tr></tbody></table></details>
+          <p v-if="rcRow.status === 'partial'" class="mut">{{ rcRow.cash.of - rcRow.cash.accounts }} of {{ rcRow.cash.of }} accounts have no balance this month: upload their statements for a full check.</p>
+          <div v-if="aiJob.busy.value" class="aiw"><span class="spin" />AI is reading the month's payments against Financials…</div>
+          <p v-else-if="aiJob.fail.value" class="error">{{ aiJob.fail.value.message }}</p>
+          <div v-if="ai" class="air">
+            <p class="sum"><b>AI</b> {{ ai.summary }}</p>
+            <template v-if="ai.suggestions.length">
+              <div class="sh"><span>Payments that look to be in the wrong category</span><button class="lk" type="button" :disabled="ai.suggestions.every((x) => x.done)" @click="applyAll">Apply all</button></div>
+              <div v-for="x in ai.suggestions" :key="x.id" class="sg2" :class="{ done: x.done }"><span class="nw">{{ x.date.slice(5) }}</span><b>{{ x.vendor }}</b><span class="nw" :class="{ pos: x.direction === 'in' }">{{ x.direction === 'in' ? '+' : '−' }}{{ briefMoney(x.amount, x.currency) }}</span>
+                <span class="mv">{{ catLabel(x.from) }} → <b>{{ x.label }}</b><small>{{ x.reason }}</small></span><button class="lk" type="button" :disabled="x.done" @click="applySug(x).then(afterApply)">{{ x.done ? 'Applied' : 'Apply' }}</button></div>
+            </template>
+            <p v-else class="mut">No payment looks to be in the wrong category.</p>
+            <ul v-if="ai.causes.length" class="causes"><li v-for="c in ai.causes" :key="c">{{ c }}</li></ul>
+          </div>
+          <div v-if="rcRow.reconciled" class="rcd">Reconciled{{ rcRow.reconciled.by ? ' by ' + rcRow.reconciled.by : '' }} on {{ rcRow.reconciled.at.slice(0, 10) }}{{ rcRow.reconciled.note ? ': ' + rcRow.reconciled.note : '' }} <button class="lk" @click="markRc(rcRow, false)">Undo</button></div>
+          <div v-else-if="rcRow.status !== 'no_financials' && rcRow.status !== 'no_bank'" class="rcd"><input v-model="rcNote" maxlength="1000" placeholder="Note, e.g. card payments in transit"><button class="btn sm secondary" @click="markRc(rcRow, true)">Mark reconciled</button></div>
+        </div>
+        <div class="fl"><input v-model="f.q" placeholder="Search description or vendor" aria-label="Search"><select v-model="f.dir" aria-label="Direction"><option value="">In and out</option><option value="in">Money in</option><option value="out">Money out</option></select>
           <select v-model="f.category" aria-label="Category"><option value="">Every category</option><option v-for="c in d.categories" :key="c.key" :value="c.key">{{ c.label }}</option></select><ExportMenu kind="bank_transactions" label="Export transactions" />
           <label class="al"><input v-model="always" type="checkbox"> Apply my change to every payment to that vendor</label></div>
         <div class="aib"><span><b>AI</b> sorts each vendor into a category, past and future. Your changes always win.</span><span class="mut">{{ (d.ledger.ai ?? 0).toLocaleString('en-US') }} payments sorted by AI</span><button class="lk" type="button" :disabled="aiBusy" @click="aiSort">{{ aiBusy ? 'Sorting…' : 'Sort the rest with AI' }}</button></div>
@@ -215,33 +265,8 @@ const today = new Date().toISOString().slice(0, 10)
             <td><input class="nt" :value="v.note ?? ''" :placeholder="v.suggest?.why ?? 'What to do'" maxlength="500" :aria-label="'Action for ' + v.name" @change="setNote(v, $event)"></td></tr></tbody></table>
           <p v-if="!cutShown.length" class="mut padx">{{ d.cut_list.length ? 'No payees match.' : 'No recurring payments yet.' }}</p><TablePager v-model="cf.page" :total="cutShown.length" :size="20" /></div>
         <div v-if="d.checks.length" class="card"><div class="ch"><h2>Worth a look</h2><span class="mut">Payments in the last 90 days that stand out</span></div>
-          <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th>Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
-            <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
-      </template>
-      <template v-if="tab === 'reconcile'">
-        <div class="hb">Your bank against Financials, month by month. <b>Cash</b> must match; receipts and spend differ by timing.</div>
-        <p v-if="!rc" class="mut">Loading…</p>
-        <template v-else>
-          <div class="card pad0"><table class="t rc" data-nosearch><thead><tr><th>Month</th><th class="r">Bank cash</th><th class="r">Financials cash</th><th class="r">Gap</th><th class="r">Receipts / revenue</th><th class="r">Spend / costs</th><th>Status</th><th /></tr></thead>
-            <tbody><template v-for="r in rc.rows" :key="r.month"><tr class="cl" :class="{ on: rcOpen === r.month }" @click="rcOpen = rcOpen === r.month ? '' : r.month">
-              <td><b>{{ mon(r.month) }}</b><small v-if="r.cash.of">{{ r.cash.accounts }} of {{ r.cash.of }} account{{ r.cash.of === 1 ? '' : 's' }} with a balance</small></td>
-              <td class="r">{{ rm(r.cash.bank) }}</td><td class="r">{{ rm(r.cash.fin) }}</td><td class="r" :class="{ neg: r.cash.gap !== null && r.status === 'gap' }">{{ r.cash.gap === null ? '—' : (r.cash.gap > 0 ? '+' : '') + rm(r.cash.gap) }}</td>
-              <td class="r" :class="{ mut2: r.receipts.ok }">{{ rm(r.receipts.bank) }} / {{ rm(r.receipts.fin) }}</td><td class="r" :class="{ mut2: r.spend_total.ok }">{{ rm(r.spend_total.bank) }} / {{ rm(r.spend_total.fin) }}</td>
-              <td><span class="rs" :class="r.reconciled ? 'done' : r.status">{{ r.reconciled ? 'Reconciled' : ST[r.status] }}</span></td><td class="r"><span class="chev">{{ rcOpen === r.month ? '−' : '+' }}</span></td></tr>
-              <tr v-if="rcOpen === r.month" class="dt"><td colspan="8"><div class="rd">
-                <table class="t" data-nosearch><thead><tr><th>Line</th><th class="r">Bank</th><th class="r">Financials</th><th class="r">Difference</th></tr></thead>
-                  <tbody><tr><td>Cash at month end</td><td class="r">{{ rm(r.cash.bank) }}</td><td class="r">{{ rm(r.cash.fin) }}</td><td class="r">{{ r.cash.gap === null ? '—' : rm(r.cash.gap) }}</td></tr>
-                    <tr><td>Customer receipts / revenue</td><td class="r">{{ rm(r.receipts.bank) }}</td><td class="r">{{ rm(r.receipts.fin) }}</td><td class="r">{{ r.receipts.fin === null ? '—' : rm(r.receipts.bank - r.receipts.fin) }}</td></tr>
-                    <tr v-for="x in r.spend" :key="x.key"><td>{{ x.label }}</td><td class="r">{{ rm(x.bank) }}</td><td class="r">{{ rm(x.fin) }}</td><td class="r">{{ x.fin === null ? '—' : rm(x.bank - x.fin) }}</td></tr>
-                    <tr class="mut2"><td>Also in the bank: funding and loans {{ rm(r.other.financing) }} · other money in {{ rm(r.other.other_in) }} · transfers between own accounts {{ rm(r.other.transfers) }}</td><td colspan="3" /></tr></tbody></table>
-                <p v-if="r.status === 'partial'" class="mut">Some accounts have no balance this month.</p>
-                <p v-else-if="r.status === 'gap'" class="mut">Cash differs by {{ rm(Math.abs(r.cash.gap ?? 0)) }}. Common reasons: an account missing from Banking (or from Financials), a statement month not uploaded, money in transit between accounts at month end, or a figure keyed into Financials by mistake.</p>
-                <div v-if="r.reconciled" class="rcd">Reconciled{{ r.reconciled.by ? ' by ' + r.reconciled.by : '' }} on {{ r.reconciled.at.slice(0, 10) }}{{ r.reconciled.note ? ': ' + r.reconciled.note : '' }} <button class="lk" @click.stop="markRc(r, false)">Undo</button></div>
-                <div v-else-if="r.status !== 'no_financials' && r.status !== 'no_bank'" class="rcd"><input v-model="rcNote" maxlength="1000" placeholder="Note (e.g. difference is card payments in transit)" @click.stop><button class="btn sm" @click.stop="markRc(r, true)">Mark reconciled</button></div>
-              </div></td></tr></template></tbody></table></div>
-          <div v-if="rc.accounts.length" class="card"><div class="ch"><h2>Accounts</h2><span class="mut">Where month-end balances come from</span></div>
-            <table class="t" data-nosearch><tbody><tr v-for="a in rc.accounts" :key="a.name"><td>{{ a.name }}</td><td class="mut2">{{ a.currency }}</td><td class="r">{{ a.live ? a.balances + ' balance' + (a.balances === 1 ? '' : 's') + ' known' : 'No balance yet' }}</td></tr></tbody></table></div>
-        </template>
+          <table class="t" data-nosearch><thead><tr><th>Date</th><th>Payee</th><th v-if="checksWho">Who</th><th class="r">Amount</th><th>Why</th></tr></thead>
+            <tbody><tr v-for="c in d.checks" :key="c.id"><td class="nw">{{ c.date }}</td><td>{{ c.vendor }}</td><td v-if="checksWho" class="mut2">{{ c.spender ?? '—' }}</td><td class="r">{{ m(c.amount) }}</td><td>{{ c.why }}{{ c.count > 1 ? ' · ' + c.count + ' payments' : '' }}</td></tr></tbody></table></div>
       </template>
       <p class="fine">Read-only. Other currencies at the daily rate. Not financial advice.</p>
     </template>
@@ -272,8 +297,8 @@ const today = new Date().toISOString().slice(0, 10)
 .hero { background: #fff; border: 1px solid var(--c-rule); padding: 24px 26px; display: flex; flex-direction: column; min-height: 228px; }
 .ht { font-size: 14px; color: var(--c-muted); } .hv { margin-top: 8px; font-size: 44px; font-weight: 600; letter-spacing: -.02em; color: var(--c-navy); font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
 .hs { margin-top: 6px; font-size: 13px; color: var(--c-ink-soft); }
-.bar { display: flex; gap: 2px; height: 8px; margin-top: auto; padding-top: 0; background: var(--c-paper-2); } .bar i { display: block; height: 100%; }
-.hero .bar { margin-top: auto; } .lgd { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; color: var(--c-ink-soft); } .lgd i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .lgd b { font-weight: 600; color: var(--c-ink); margin-left: 3px; }
+.cbar { display: flex; gap: 2px; height: 8px; margin-top: auto; background: var(--c-paper-2); } .cbar i { display: block; height: 100%; }
+.hero .cbar { margin-top: auto; } .lgd { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; color: var(--c-ink-soft); } .lgd i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; } .lgd b { font-weight: 600; color: var(--c-ink); margin-left: 3px; }
 .kp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } .kp > * { margin: 0; }
 .ic { width: 38px; height: 38px; display: grid; place-items: center; background: #fff; border: 1px solid var(--c-rule-strong); color: var(--c-ink-soft); cursor: pointer; } .ic:hover { color: var(--c-navy); } .ic svg { width: 16px; height: 16px; } .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; right: 24px; bottom: 96px; z-index: 60; display: flex; align-items: center; gap: 14px; margin: 0; padding: 12px 14px 12px 16px; background: var(--c-navy); color: #fff; font-size: 13.5px; max-width: 420px; box-shadow: 0 14px 34px rgba(12, 26, 46, .22); }
@@ -294,6 +319,19 @@ small.ai { color: var(--c-blue-deep); font-weight: 600; }
 .cha { display: flex; align-items: center; gap: 12px; } .padh { padding: 18px 20px 0; }
 .flt { display: flex; gap: 8px; padding: 12px 20px; flex-wrap: wrap; align-items: center; } .flt input, .flt select { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; } .flt input { flex: 1; min-width: 160px; }
 .flt.bar { padding: 0; } .flt .sp { flex: 1; } .xl2 { font-size: 12.5px; color: var(--c-blue-deep); margin-top: 4px; }
+.months { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; } .months button { flex: none; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 8px 12px; background: #fff; border: 1px solid var(--c-rule); font: inherit; cursor: pointer; text-align: left; }
+.months button b { font-size: 13px; font-weight: 600; color: var(--c-ink); } .months button span { font-size: 11.5px; color: var(--c-muted); white-space: nowrap; } .months button.on { border-color: var(--c-navy); box-shadow: inset 0 0 0 1px var(--c-navy); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--c-rule-strong); vertical-align: 0; } .dot.matches, .dot.done { background: var(--c-blue-deep); } .dot.gap { background: var(--c-danger); } .dot.partial { background: #9fb3c8; }
+.rcp { display: flex; flex-direction: column; gap: 14px; } .rch { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; } .rch h2 { margin: 0; } .rch p { margin: 4px 0 0; } .rch .sp { flex: 1; }
+.cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .cb { border: 1px solid var(--c-rule); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; } .cl2 { font-size: 12.5px; color: var(--c-muted); } .cb b { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; } .cb .mut { font-size: 12.5px; }
+.gp { font-size: 12.5px; font-weight: 600; color: var(--c-blue-deep); margin-top: 4px; } .gp.bad { color: var(--c-danger); }
+.lines summary { cursor: pointer; font-size: 13px; color: var(--c-blue-deep); } .lines table { margin-top: 8px; }
+.aiw { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--c-ink-soft); } .aiw .spin { width: 14px; height: 14px; border: 2px solid var(--c-rule-strong); border-top-color: var(--c-navy); border-radius: 50%; animation: spin .8s linear infinite; }
+.air { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--c-paper-2); border: 1px solid var(--c-rule); } .sum { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--c-ink); } .sum b { color: var(--c-navy); margin-right: 6px; }
+.sh { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--c-muted); margin-top: 4px; } .sh .lk { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.sg2 { display: grid; grid-template-columns: 50px minmax(120px, 1fr) 90px minmax(200px, 2fr) 70px; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .sg2.done { opacity: .55; } .sg2 .mv small { display: block; color: var(--c-muted); font-size: 12px; margin-top: 2px; } .sg2 .lk { justify-self: end; }
+.causes { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--c-ink-soft); } .causes li { margin: 2px 0; }
+@media (max-width: 860px) { .cmp { grid-template-columns: 1fr; } .sg2 { grid-template-columns: 1fr auto; } }
 .src { margin: 0; font-size: 12.5px; color: var(--c-muted); }
 @media (max-width: 960px) { .ov { grid-template-columns: 1fr; } }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; } .t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .t td { padding: 7px 10px; border-bottom: 1px solid var(--c-rule); vertical-align: top; }
