@@ -92,6 +92,8 @@ export async function syncPlaidItem(it: PItem): Promise<{ added: number; modifie
   const gone = p.removed.map((x) => x.transaction_id)
   const removed = gone.length ? (await db().query("DELETE FROM banking.ledger WHERE source = 'bank_feed' AND source_ref = ANY($1::text[])", [gone])).rowCount ?? 0 : 0
   await db().query('UPDATE banking.plaid_items SET tx_cursor = $2, synced_at = now(), needs_sync = false WHERE id = $1', [it.id, p.next_cursor])
+  // Aidi OS: the monthly statement view other pages read follows the feed.
+  await syncFeedStatements(it.id).catch((e) => console.error('[feed statements]', it.id, (e as Error).message))
   return { added, modified, removed }
 }
 

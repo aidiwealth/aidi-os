@@ -1,4 +1,5 @@
-// Add or edit a holding. A changed value is kept in the valuation history.
+// Add or edit a holding. A changed value is kept in the valuation history. A holding can instead take its value from a
+// company's books (book_entity): its latest balance sheet, equity times the share held.
 import { z } from 'zod'
 const N = z.union([z.coerce.number().finite(), z.literal('').transform(() => null), z.null()]).optional()
 export default defineEventHandler(async (event) => {
@@ -6,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const b = z.object({ wm_client_id: z.string().uuid().nullable().optional(), id: z.string().uuid().optional(), entity_id: z.string().uuid().nullable().optional(), client_name: z.string().trim().max(200).nullable().optional(), section: z.enum(['family', 'wealth', 'venture', 'real_estate', 'client']),
     category: z.enum(['venture', 'private_stake', 'secondaries', 'public_securities', 'fund', 'bonds', 'retirement', 'cash', 'crypto', 'precious_metals', 'real_estate', 'other', 'liability']), name: z.string().trim().min(1).max(200), platform: z.string().trim().max(120).nullable().optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).default('USD'), cost: N, current_value: N, realized: N, ownership_pct: N, status: z.enum(['active', 'realized', 'at_cost', 'nil', 'written_off', 'sold']).default('active'),
-    last_valuation: N, as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), notes: z.string().max(3000).nullable().optional(), in_nav: z.boolean().default(true), in_aum: z.boolean().default(true) }).safeParse(await readBody(event))
+    last_valuation: N, as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), notes: z.string().max(3000).nullable().optional(), in_nav: z.boolean().default(true), in_aum: z.boolean().default(true), book_entity: z.string().uuid().nullable().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the holding details.')
   const d = b.data
   const args = [d.entity_id ?? null, d.client_name || null, d.section, d.category, d.name, d.platform || null, d.currency, d.cost ?? null, d.current_value ?? null, d.realized ?? null, d.ownership_pct ?? null, d.status, d.as_of ?? null, d.notes || null, d.in_nav, d.in_aum]
@@ -22,6 +23,12 @@ export default defineEventHandler(async (event) => {
   }
   if (d.wm_client_id !== undefined) await db().query('UPDATE wealth.holdings SET wm_client_id = $2, client_name = CASE WHEN $2::uuid IS NULL THEN client_name ELSE (SELECT name FROM wm.clients WHERE id = $2) END WHERE id = $1', [id, d.wm_client_id])
   if (d.last_valuation != null) await db().query("UPDATE wealth.holdings SET meta = meta || jsonb_build_object('last_valuation', $2::numeric, 'valuation_date', coalesce($3, current_date::text)) WHERE id = $1", [id, d.last_valuation, d.as_of ?? null])
+  // Valued from a company's books, or by hand again.
+  if (d.book_entity !== undefined) {
+    if (d.book_entity) await db().query("UPDATE wealth.holdings SET meta = meta || jsonb_build_object('book_entity', $2::text) WHERE id = $1", [id, d.book_entity])
+    else await db().query("UPDATE wealth.holdings SET meta = meta - 'book_entity' - 'book_basis' WHERE id = $1", [id])
+    if (d.book_entity) await refreshBookValues()
+  }
   await audit({ event, actorUserId: user.userId, action: d.id ? 'wealth.update' : 'wealth.create', objectType: 'holding', objectId: id })
   return { ok: true, id }
 })

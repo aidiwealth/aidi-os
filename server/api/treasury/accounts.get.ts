@@ -21,13 +21,13 @@ export default defineEventHandler(async (event) => {
   }
   const upAcc: { label: string; v: number; e: string }[] = []
   for (const a of up.accounts) if (a.balance) upAcc.push({ label: a.label, v: a.balance * await rate(a.currency), e: a.entity_id ?? main ?? '' })
-  // Aidi OS: each Bank & cash account's latest tied-out statement.
+  // Aidi OS: each Bank & cash account's latest tied-out statement (live-feed accounts are counted as live banks).
   let stmt = 0, stmtN = 0, stmtAt: string | null = null
   if ((await currentOrg())?.kind !== 'company') {
     const ids = sc.group ? sc.companies.map((c) => c.id) : [sc.entity ?? '']
     for (const r of (await db().query<{ entity_id: string; label: string; currency: string; closing: string; at: string }>(
       `SELECT DISTINCT ON (a.id) a.entity_id, ${STMT_LABEL_SQL} AS label, a.currency, s.closing_balance::text AS closing, s.period_end::text AS at
-         FROM banking.accounts a JOIN banking.statements s ON s.account_id = a.id WHERE a.active AND a.entity_id = ANY($1::uuid[]) ORDER BY a.id, s.period_end DESC, s.created_at DESC`, [ids])).rows) {
+         FROM banking.accounts a JOIN banking.statements s ON s.account_id = a.id WHERE a.active AND a.plaid_account_id IS NULL AND a.entity_id = ANY($1::uuid[]) ORDER BY a.id, s.period_end DESC, s.created_at DESC`, [ids])).rows) {
       const k = await rate(r.currency); if (!Number.isFinite(k) || !k) continue
       const v = Number(r.closing) * k; stmt += v; stmtN++; upAcc.push({ label: r.label, v, e: r.entity_id })
       if (!stmtAt || r.at > stmtAt) stmtAt = r.at
