@@ -45,7 +45,7 @@ async function linkBank() { msg.value = ''; try { await loadScript(); const { li
     <template v-else-if="data">
       <p v-if="preview" class="pv">Preview of {{ data.client.name }}'s portal</p>
       <p class="label">Aidi Wealth</p><h1>{{ data.client.name }}</h1>
-      <nav class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
+      <MarketTicker client /><nav class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
       <template v-if="tab === 'home'"><RiskCard v-if="!data.client.risk_profile" :fit="data.summary.risk" mode="client" :preview="preview" @saved="refresh(); refreshDeals()" /><WealthSummary :s="data.summary" /><RiskCard v-if="data.client.risk_profile" :fit="data.summary.risk" :set-by="data.client.risk_set_by" :set-at="data.client.risk_set_at" mode="client" :preview="preview" @saved="refresh(); refreshDeals()" />
         <div v-if="deals?.deals.length" class="card dfh"><div class="ch"><h3>Deal flow</h3><button class="lk" @click="tab = 'deals'">See all {{ deals.deals.length }} →</button></div>
           <div v-for="d in deals.deals.slice(0, 3)" :key="d.id" class="dr"><span><b>{{ d.company ? d.company + ' · ' : '' }}{{ d.title }}</b><em>{{ [d.sector, d.stage].filter(Boolean).join(' · ') }}{{ d.min_investment ? ' · from ' + usd0(d.min_investment) : '' }}{{ closesTxt(d) ? ' · ' + closesTxt(d) : '' }}</em></span><span class="mut">{{ d.my_status === 'invested' ? 'Invested' : d.my_status === 'interested' ? 'You are interested' : '' }}</span></div></div>

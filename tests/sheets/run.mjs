@@ -370,6 +370,21 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('card export: merchant, who spent and amount found; read as payments', cm.columns.date === 0 && cm.columns.spender === 1 && cm.columns.amount === 3 && cm.columns.description === 4 && cm.all_out === true, JSON.stringify(cm))
 }
 
+// 9g. The live market strip: Treasury bill CSV, New York Fed rates, Alpaca snapshots and US market hours.
+{
+  globalThis.alpacaReady = () => false
+  const MT = await jiti.import(join(root, 'server/utils/market-ticker.ts'))
+  const csv = 'Date,"4 WEEKS BANK DISCOUNT","4 WEEKS COUPON EQUIVALENT","13 WEEKS BANK DISCOUNT","13 WEEKS COUPON EQUIVALENT"\n10/24/2026,4.02,4.10,3.95,4.07\n10/23/2026,4.03,4.11,3.97,4.09\n'
+  const t = MT.tbillFromCsv(csv)
+  check('ticker: 3-month T-bill from the Treasury file, change in points', t.length === 1 && t[0].value === 4.07 && t[0].change === -0.02 && t[0].as_of === '10/24/2026', JSON.stringify(t))
+  const e = MT.effrFromJson({ refRates: [{ effectiveDate: '2026-10-23', percentRate: 4.33 }, { effectiveDate: '2026-10-22', percentRate: 4.33 }] })
+  check('ticker: Fed funds from the New York Fed, unchanged', e.length === 1 && e[0].value === 4.33 && e[0].change === 0, JSON.stringify(e))
+  const s = MT.fromSnapshots({ SPY: { latestTrade: { p: 588.4, t: '2026-10-26T17:42:05Z' }, prevDailyBar: { c: 589.87 } }, QQQ: undefined }, { SPY: 'S&P 500 (SPY)', QQQ: 'Nasdaq 100 (QQQ)' }, 'usd', 'Alpaca')
+  check('ticker: Alpaca snapshot against yesterday, missing symbols left out', s.length === 1 && s[0].change === -0.25, JSON.stringify(s))
+  check('ticker: US market hours in New York time', MT.usMarketOpen(new Date('2026-10-26T15:00:00Z')) && !MT.usMarketOpen(new Date('2026-10-26T21:30:00Z')) && !MT.usMarketOpen(new Date('2026-10-25T15:00:00Z')))
+  check('ticker: no Yahoo source', !readFileSync(join(root, 'server/utils/market-ticker.ts'), 'utf8').includes('yahoo.com'))
+}
+
 // 10. Valuation from trading peers: quartiles, gross-profit multiple, discounts and net cash.
 {
   const V = await jiti.import(join(root, 'shared/valuation.ts'))

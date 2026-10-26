@@ -26,6 +26,11 @@ async function alpacaAuth(): Promise<string> {
 export async function alpaca<T = any>(path: string, method = 'GET', body?: unknown) {
   return call<T>('Alpaca', alpacaBase() + path, { method, headers: { authorization: 'Bearer ' + await alpacaAuth(), 'content-type': 'application/json', accept: 'application/json' }, body: body ? JSON.stringify(body) : undefined })
 }
+// Alpaca market data (prices for the market strip and, later, Public Markets), with the same sign-in.
+export async function alpacaData<T = any>(path: string) {
+  const base = alpacaBase().includes('sandbox') ? 'https://data.sandbox.alpaca.markets' : 'https://data.alpaca.markets'
+  return call<T>('Alpaca', base + path, { method: 'GET', headers: { authorization: 'Bearer ' + await alpacaAuth(), accept: 'application/json' } })
+}
 // Fincra: virtual accounts (NGN with BVN, instant; USD in the client's name, reviewed by Fincra). Base URL:
 // NUXT_FINCRA_BASE_URL (sandbox https://sandboxapi.fincra.com, live https://api.fincra.com).
 export function fincra<T = any>(path: string, method = 'GET', body?: unknown) {
