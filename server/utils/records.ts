@@ -10,11 +10,13 @@ const VC = ['admin', 'gp']
 export const RECORDS: Record<string, RecordType> = {
   entity: { table: 'core.entities', module: 'entities', roles: ['admin'], name: 'name', blockers: [
     ['SELECT count(*) FROM banking.accounts WHERE entity_id = $1', 'bank account'], ['SELECT count(*) FROM core.documents WHERE entity_id = $1', 'document'],
-    ['SELECT count(*) FROM compliance.obligations WHERE entity_id = $1', 'compliance obligation'], ['SELECT count(*) FROM governance.parties WHERE entity_id = $1', 'person on the register'],
+    ['SELECT count(*) FROM compliance.obligations WHERE entity_id = $1', 'compliance obligation'],
     ['SELECT count(*) FROM governance.resolutions WHERE entity_id = $1', 'resolution'], ['SELECT count(*) FROM credit.loans WHERE lender_entity_id = $1', 'loan'],
     ['SELECT count(*) FROM deals.deals WHERE vehicle_entity_id = $1', 'deal'], ['SELECT count(*) FROM portfolio.companies WHERE holding_entity_id = $1', 'portfolio company'],
     ['SELECT count(*) FROM services.jobs WHERE provider_entity_id = $1', 'client job'], ['SELECT count(*) FROM core.entities WHERE parent_id = $1', 'owned entity'],
-    ['SELECT count(*) FROM funds.funds WHERE entity_id = $1', 'fund set-up']] },
+    ['SELECT count(*) FROM funds.funds WHERE entity_id = $1', 'fund set-up']],
+    // Its register goes with it (anyone who signed a paper is kept by the papers, which block deleting).
+    children: ['DELETE FROM governance.parties WHERE entity_id = $1'] },
   vehicle: { table: 'core.entities', module: 'pipeline', roles: ['admin', 'gp'], name: 'name', blockers: [
     ["SELECT count(*) FROM core.entities WHERE id = $1 AND kind NOT IN ('fund','spv')", 'non-fund entity (delete it under Entities)'],
     ['SELECT count(*) FROM deals.deals WHERE vehicle_entity_id = $1', 'deal'], ['SELECT count(*) FROM portfolio.companies WHERE holding_entity_id = $1', 'portfolio company'],
@@ -49,7 +51,7 @@ export const RECORDS: Record<string, RecordType> = {
     children: ['DELETE FROM banking.transactions WHERE account_id = $1', 'DELETE FROM banking.imports WHERE account_id = $1', 'DELETE FROM banking.statements WHERE account_id = $1'] },
   resolution: { table: 'governance.resolutions', module: 'governance', roles: ['admin'], name: 'title', children: ['DELETE FROM governance.approvals WHERE resolution_id = $1'],
     guard: { sql: "SELECT 1 FROM governance.resolutions WHERE id = $1 AND status IN ('circulating','approved')", message: 'Circulating and approved resolutions are kept as a record. Withdraw it first if it is still circulating.' } },
-  party: { table: 'governance.parties', module: 'governance', roles: ['admin'], name: 'name', blockers: [
+  party: { table: 'governance.parties', module: 'governance', roles: ['admin', 'family'], name: 'name', blockers: [
     ['SELECT count(*) FROM governance.approvals WHERE party_id = $1', 'signature'], ['SELECT count(*) FROM governance.resolutions WHERE beneficiary_id = $1', 'resolution']] },
   borrower: { table: 'credit.borrowers', module: 'credit', roles: VC, name: 'name', blockers: [['SELECT count(*) FROM credit.loans WHERE borrower_id = $1', 'loan']] },
   loan: { table: 'credit.loans', module: 'credit', roles: VC, name: "coalesce(reference, 'loan')", children: [

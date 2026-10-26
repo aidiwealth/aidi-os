@@ -14,6 +14,7 @@ const { data, error, refresh } = __p804_0
 const { data: docs } = __p804_1
 const { data: me } = __p804_2
 const canManageParties = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'family'].includes(r)))
+const isAdmin = computed(() => !!me.value?.roles?.includes('admin'))
 useHead({ title: () => (data.value?.entity.name ?? 'Entity') + ' · governance' })
 const ROLE: Record<string, string> = { settlor: 'Settlor', trustee: 'Trustee', successor_trustee: 'Successor trustee', protector: 'Protector', beneficiary: 'Beneficiary', director: 'Director', officer: 'Officer', member: 'Member', shareholder: 'Shareholder', signatory: 'Signatory' }
 const SIGN = ['trustee', 'protector', 'director', 'signatory', 'member']
@@ -101,6 +102,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
       <div class="acts">
         <button v-if="canManageParties" type="button" class="btn secondary" @click="editParty()">Add person</button>
         <button type="button" class="btn" @click="newPaper">New paper</button>
+        <DeleteButton v-if="isAdmin" type="entity" :id="data.entity.id" :name="data.entity.name" to="/governance" />
       </div>
     </div>
 
@@ -186,7 +188,7 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
         <label class="lb full">Notes<input v-model="pf.notes" maxlength="1000"></label>
         <p v-if="msg" class="error full">{{ msg }}</p>
       </form>
-      <template #foot><button class="btn secondary" type="button" @click="partyOpen = false">Cancel</button><button class="btn" type="submit" form="pform">Save</button></template>
+      <template #foot><DeleteButton v-if="pf.id && canManageParties" type="party" :id="pf.id" :name="pf.name + ' from the register'" @deleted="partyOpen = false; refresh()" /><span v-if="pf.id" class="mut sm fh">Or set Until to keep them as a former {{ ROLE[pf.role]?.toLowerCase() ?? 'member' }}.</span><button class="btn secondary" type="button" @click="partyOpen = false">Cancel</button><button class="btn" type="submit" form="pform">Save</button></template>
     </AppModal>
 
     <AppModal :open="resOpen" wide title="New paper" @close="resOpen = false">
@@ -236,9 +238,9 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
 .t td { padding: 12px 18px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .t tbody tr { cursor: pointer; } .t tbody tr:hover { background: var(--c-paper-3); } .t tbody tr:last-child td { border-bottom: 0; }
 .co { color: var(--c-navy); font-weight: 600; text-decoration: none; } .sub { display: block; font-size: 12px; color: var(--c-muted); margin-top: 2px; }
 .st { font-size: 12px; font-weight: 600; padding: 2px 8px; background: var(--c-paper-2); color: var(--c-ink-soft); white-space: nowrap; } .st[data-s="circulating"] { background: var(--c-signal-soft); color: var(--c-blue-deep); } .st[data-s="approved"] { background: var(--c-navy); color: #fff; } .st[data-s="rejected"] { background: #fdecef; color: var(--c-danger); } .st[data-s="withdrawn"], .st[data-s="draft"] { color: var(--c-muted); }
-.frm { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; } .full { grid-column: 1 / -1; } .two { display: grid; grid-template-columns: 1fr 110px; gap: 12px; }
+.frm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; } .full { grid-column: 1 / -1; } .two { display: grid; grid-template-columns: 1fr 110px; gap: 12px; }
 .lb { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--c-muted); } .lb em { font-style: normal; font-size: 12px; }
-.frm input, .frm select, .frm textarea { font: inherit; font-size: 14px; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .frm textarea { resize: vertical; }
+.frm input:not([type="checkbox"]), .frm select, .frm textarea { width: 100%; box-sizing: border-box; } .frm input, .frm select, .frm textarea { font: inherit; font-size: 14px; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; } .frm textarea { resize: vertical; }
 .seg { display: flex; } .seg button { flex: 1; background: #fff; border: 1px solid var(--c-rule-strong); padding: 8px; font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-ink-soft); } .seg button + button { border-left: 0; } .seg .on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
 .aib { border: 1px solid var(--c-rule); background: var(--c-paper-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--c-muted); } .aib b { color: var(--c-blue-deep); font-size: 13px; } .aia { display: flex; align-items: center; gap: 10px; }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
@@ -246,4 +248,5 @@ const place = computed(() => { const j = data.value?.entity.jurisdiction; return
 .mut { color: var(--c-muted); font-size: 13px; margin: 0; } .sm { font-size: 12.5px; } .error { color: var(--c-danger); margin: 0; }
 @media (max-width: 1100px) { .pp { grid-template-columns: 1fr; } }
 @media (max-width: 800px) { .four { grid-template-columns: 1fr 1fr !important; } .pr { grid-template-columns: 40px minmax(0, 1fr) 40px; } .pm, .pi { display: none; } .frm { grid-template-columns: 1fr; } }
+.fh { margin-right: auto; align-self: center; }
 </style>

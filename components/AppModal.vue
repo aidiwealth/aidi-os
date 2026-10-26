@@ -15,5 +15,7 @@ onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() =
 .mb { position: fixed; inset: 0; background: rgba(12, 26, 46, .45); z-index: 1000; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto; }
 .mw { background: #fff; width: 100%; max-width: 560px; box-shadow: 0 24px 60px rgba(12, 26, 46, .25); display: flex; flex-direction: column; } .mw.wide { max-width: 860px; } .mw.xl { max-width: 1120px; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 24px 14px; border-bottom: 1px solid var(--c-rule); } header :deep(h2) { margin: 0; font-size: 24px; }
-.x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--c-muted); cursor: pointer; padding: 0 4px; } .body { padding: 20px 24px; } footer { padding: 14px 24px 20px; border-top: 1px solid var(--c-rule); display: flex; justify-content: flex-end; gap: 10px; }
+.x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--c-muted); cursor: pointer; padding: 0 4px; } .body { padding: 20px 24px; min-width: 0; }
+/* Forms stay inside the dialog: grid columns may shrink below a long option or editor, and fields fill their column. */
+.body :deep(form > *) { min-width: 0; } .body :deep(select), .body :deep(textarea), .body :deep(input:not([type="checkbox"]):not([type="radio"])) { max-width: 100%; box-sizing: border-box; } footer { padding: 14px 24px 20px; border-top: 1px solid var(--c-rule); display: flex; justify-content: flex-end; gap: 10px; }
 </style>
