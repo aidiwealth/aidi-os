@@ -19,7 +19,9 @@ function getPool(): pg.Pool {
     // Connections kept warm so a page does not wait to reconnect. DB_POOL_MAX raises the count (stay under the
     // database plan's connection limit across all app instances).
     max: Number(process.env.DB_POOL_MAX) || 10,
-    idleTimeoutMillis: 60000,
+    // Opening a connection to the managed database (TLS and sign-in) costs a few hundred milliseconds, so open ones are
+    // kept rather than closed after a quiet minute; the server reconnects on its own if the database drops one.
+    idleTimeoutMillis: 0,
     keepAlive: true
   })
   pool.on('error', (err) => console.error('[db] idle client error', err))
@@ -62,6 +64,11 @@ const wrapper = {
   connect: checkout
 }
 export function db(): typeof wrapper { return wrapper }
+// Open a few connections ahead of the first visitors (after a deploy or restart).
+export async function warmPool(n = 5): Promise<void> {
+  const p = getPool(), cs = await Promise.all(Array.from({ length: n }, () => p.connect().catch(() => null)))
+  for (const c of cs) c?.release()
+}
 
 // Act for a given workspace for the rest of this request (public links, scheduled jobs).
 export function setOrgContext(orgId: string | null): void {
