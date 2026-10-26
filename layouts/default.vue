@@ -44,8 +44,8 @@ interface WsDef { label: string; codes: string[]; extra?: WsTab[]; inner?: boole
 interface WsTab { to: string; label: string; code: string; locked?: boolean; pages?: string[]; match?: (p: string) => boolean }
 interface WsItem { label: string; icon: string; to: string; tabs: WsTab[]; inner?: boolean }
 const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
-  { label: 'Investors', items: [{ label: 'Financials', codes: ['financials', 'forecast'], inner: true }, { label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity'] }, { label: 'Boards', codes: ['boards'] }] },
-  { label: 'Growth', items: [{ label: 'Stage monitor', codes: ['stage_monitor'] }, { label: 'Banking', codes: ['banking_treasury'] }] },
+  { label: 'Investors', items: [{ label: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] }, { label: 'Cap table', codes: ['equity'] }, { label: 'Boards', codes: ['boards'] }, { label: 'Stage monitor', codes: ['stage_monitor'] }] },
+  { label: 'Money', items: [{ label: 'Financials', codes: ['financials', 'forecast'], inner: true }, { label: 'Banking', codes: ['banking_treasury'] }] },
   { label: 'Company', items: [{ label: 'Documents', codes: ['documents', 'decks'] }, { label: 'Compliance', codes: ['compliance', 'entities', 'meetings', 'governance'] },
     { label: 'Services', codes: ['company_services', 'client_inbox', 'wallet', 'client_raise'], extra: [{ to: '/perks', label: 'Perks', code: 'perks' }] }] },
   { label: 'Administration', items: [{ label: 'Settings', codes: ['settings', 'team'], extra: [{ to: '/data-sources', label: 'Data sources', code: 'settings' }] }] }]

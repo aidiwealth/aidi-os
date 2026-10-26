@@ -114,12 +114,12 @@ export async function requireModule(event: H3Event, code: string): Promise<void>
 // member_modules = { userId: [module codes] }; 'ai_analyst' is the AI analyst. Admins (and support visits) are never limited.
 export const AI_ANALYST_API = ['/api/ai/analyst', '/api/ai/act', '/api/ai/chats']
 export const MEMBER_FEATURES: { key: string; label: string; group: string; codes: string[] }[] = [
-  { key: 'financials', label: 'Financials', group: 'Investors', codes: ['financials', 'forecast', 'fin_customers', 'fin_report'] },
   { key: 'investors', label: 'Investors', group: 'Investors', codes: ['fundraising', 'contacts', 'updates', 'investor_page'] },
   { key: 'equity', label: 'Cap table', group: 'Investors', codes: ['equity'] },
   { key: 'boards', label: 'Boards', group: 'Investors', codes: ['boards'] },
-  { key: 'stage_monitor', label: 'Stage monitor', group: 'Growth', codes: ['stage_monitor'] },
-  { key: 'banking_treasury', label: 'Banking', group: 'Growth', codes: ['banking_treasury'] },
+  { key: 'stage_monitor', label: 'Stage monitor', group: 'Investors', codes: ['stage_monitor'] },
+  { key: 'financials', label: 'Financials', group: 'Money', codes: ['financials', 'forecast', 'fin_customers', 'fin_report'] },
+  { key: 'banking_treasury', label: 'Banking', group: 'Money', codes: ['banking_treasury'] },
   { key: 'documents', label: 'Documents', group: 'Company', codes: ['documents', 'decks'] },
   { key: 'compliance', label: 'Compliance', group: 'Company', codes: ['compliance', 'entities', 'meetings', 'governance'] },
   { key: 'services', label: 'Services', group: 'Company', codes: ['company_services', 'client_inbox', 'client_raise', 'wallet'] },
