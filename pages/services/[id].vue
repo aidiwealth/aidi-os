@@ -9,8 +9,12 @@ interface Ev { id: string; kind: string; body: string | null; from_status: strin
 interface Person { id: string; name: string; email: string | null; role: string; ownership_pct: number | null; company: string | null }
 interface Company { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string | null; status: string | null; ein: string | null; formation_date: string | null; address: string | null; virtual_office: boolean | null }
 interface Inv { id: string; number: string; currency: string; amount: string; tax_amount: string; status: string; paid_via: string | null; issue_date: string; overdue: boolean }
-const { data, error, refresh } = await useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[]; invoices: Inv[]; wallet: { currency: string; balance_minor: number } | null; people: Person[]; company: Company | null; items: { code: string; name: string; billing: string }[] }>('/api/services/' + id)
-const { data: team } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1624_0, __p1624_1] = await Promise.all([
+  useFetch<{ job: Job; events: Ev[]; companies: { id: string; name: string }[]; invoices: Inv[]; wallet: { currency: string; balance_minor: number } | null; people: Person[]; company: Company | null; items: { code: string; name: string; billing: string }[] }>('/api/services/' + id),
+  useFetch<{ id: string; name: string }[]>('/api/pipeline/people')])
+const { data, error, refresh } = __p1624_0
+const { data: team } = __p1624_1
 const fmtMoney = (v: number | string, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(Number(v))
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', virtual_office: 'Virtual office', state_filing: 'State filing', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
 const STATUSES = [['new', 'New'], ['in_progress', 'In progress'], ['waiting_client', 'Waiting on client'], ['completed', 'Completed'], ['cancelled', 'Cancelled']] as const

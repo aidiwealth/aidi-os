@@ -20,8 +20,12 @@ async function sendInterest(action: 'interested' | 'withdraw', id = di.id) { if 
 const closesTxt = (d: Deal) => { if (d.closed) return 'Closed'; if (!d.closes_at) return ''; const n = Math.round((new Date(d.closes_at + 'T00:00:00Z').getTime() - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime()) / 86400e3); return n <= 0 ? 'Closes today' : 'Closes in ' + n + ' day' + (n === 1 ? '' : 's') }
 const usd0 = (v: number | null) => (v == null ? '—' : shortAmount(v))
 const TABS = computed(() => [['home', 'Overview'], ['plan', 'Financial plan'], ['holdings', 'Holdings'], ...(deals.value?.deals.length ? [['deals', 'Deal flow']] : []), ['accounts', 'Accounts'], ['statements', 'Statements'], ['docs', 'Documents'], ['family', 'Family'], ['billing', 'Invoices'], ['calculator', 'Calculator'], ...(data.value?.features?.savings || data.value?.features?.trading || data.value?.features?.wallet ? [['invest', data.value?.client?.country === 'NG' ? 'Wallet & savings' : 'Invest & wallet']] : [])])
-const { data: statements } = await useFetch<{ id: string; label: string; period_kind: string; ending: number }[]>('/api/w/statements', { key: 'w-stm', default: () => [], immediate: !route.query.client })
-const { data: docs, refresh: refreshDocs } = await useFetch<{ id: string; title: string; status: string; has_signed: boolean; created_at: string }[]>('/api/w/docs', { key: 'w-docs', default: () => [], immediate: !route.query.client })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p3472_0, __p3472_1] = await Promise.all([
+  useFetch<{ id: string; label: string; period_kind: string; ending: number }[]>('/api/w/statements', { key: 'w-stm', default: () => [], immediate: !route.query.client }),
+  useFetch<{ id: string; title: string; status: string; has_signed: boolean; created_at: string }[]>('/api/w/docs', { key: 'w-docs', default: () => [], immediate: !route.query.client })])
+const { data: statements } = __p3472_0
+const { data: docs, refresh: refreshDocs } = __p3472_1
 const { data: taxDocs } = await useFetch<{ id: string; tax_year: number; form_type: string; issuer: string | null }[]>('/api/w/tax-docs', { key: 'w-tax', default: () => [], immediate: !route.query.client })
 const sg = reactive({ doc: null as { id: string; title: string } | null, name: '', sig: '', agree: false, busy: false, msg: '' })
 async function sign() { sg.busy = true; sg.msg = ''; try { await $fetch('/api/w/docs', { method: 'POST', body: { action: 'sign', doc_id: sg.doc!.id, name: sg.name, signature: sg.sig, agree: sg.agree } }); sg.doc = null; await refreshDocs() } catch (e) { sg.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not sign.' } finally { sg.busy = false } }

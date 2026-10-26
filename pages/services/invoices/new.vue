@@ -3,9 +3,14 @@ const editId = String(useRoute().query.edit ?? '')
 useHead({ title: editId ? 'Edit invoice' : 'New invoice' })
 interface Item { id: string; code: string; name: string; billing: string; price: string | null; currency: string; active: boolean }
 const route = useRoute()
-const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients/list')
-const { data: catalog } = await useFetch<Item[]>('/api/services/catalog')
-const { data: settings } = await useFetch<{ terms_days: number; us: { issuer: string }; ng: { issuer: string } }>('/api/services/billing-settings')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p269_0, __p269_1, __p269_2] = await Promise.all([
+  useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients/list'),
+  useFetch<Item[]>('/api/services/catalog'),
+  useFetch<{ terms_days: number; us: { issuer: string }; ng: { issuer: string } }>('/api/services/billing-settings')])
+const { data: clients } = __p269_0
+const { data: catalog } = __p269_1
+const { data: settings } = __p269_2
 const f = reactive({ client_id: String(route.query.client ?? ''), job_id: String(route.query.job ?? ''), company_id: String(route.query.company ?? ''), region: 'us' as 'us' | 'ng', issue_date: '', due_date: '', note: '', bill_name: '', bill_email: '', bill_address: '' })
 interface Ln { description: string; quantity: number | string; unit_amount: number | string; code?: string; interval?: 'month' | 'year'; free_first_year?: boolean }
 const lines = ref<Ln[]>([{ description: '', quantity: 1, unit_amount: '' }])

@@ -3,10 +3,16 @@ const id = useRoute().params.id as string
 interface Ev { id: string; kind: string; body: string | null; meeting_at: string | null; from_stage: string | null; to_stage: string | null; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
 interface Vote { vote: string; note: string | null; voted_at: string; voter: string; mine: boolean }
 interface Deal { vehicle_entity_id: string | null; vehicle_name: string | null; id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
-const { data, error, refresh } = await useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean }>('/api/pipeline/' + id)
-const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
-const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
-const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p782_0, __p782_1, __p782_2, __p782_3] = await Promise.all([
+  useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean }>('/api/pipeline/' + id),
+  useFetch<{ id: string; name: string }[]>('/api/pipeline/people'),
+  useFetch<{ id: string; title: string }[]>('/api/documents'),
+  useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')])
+const { data, error, refresh } = __p782_0
+const { data: people } = __p782_1
+const { data: docs } = __p782_2
+const { data: entities } = __p782_3
 const vehicles = computed(() => (entities.value ?? []).filter((e) => ['fund', 'spv'].includes(e.kind)))
 useHead({ title: () => (data.value?.deal.company ?? 'Deal') })
 const STAGES = [

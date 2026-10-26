@@ -5,9 +5,14 @@ interface Pos { outstandingPrincipal: number; principalReceived: number; interes
 interface Rep { id: string; received_on: string; amount: string; note: string | null; by_name: string | null; allocation: { interest: number; principal: number; excess: number } | null }
 interface Check { due_date: string; checked_on: string; result: string; note: string | null; document_id: string | null; document_title: string | null }
 interface Cov { id: string; title: string; kind: string; threshold: string | null; frequency: string; next_due: string; active: boolean; days_left: number; checks: Check[] | null }
-const { data, error, refresh } = await useFetch<{ loan: Record<string, string>; position: Pos; repayments: Rep[]; covenants: Cov[]; lenders: { id: string; name: string }[]; borrowers: { id: string; name: string }[] }>('/api/credit/loans/' + id)
-const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p897_0, __p897_1, __p897_2] = await Promise.all([
+  useFetch<{ loan: Record<string, string>; position: Pos; repayments: Rep[]; covenants: Cov[]; lenders: { id: string; name: string }[]; borrowers: { id: string; name: string }[] }>('/api/credit/loans/' + id),
+  useFetch<{ id: string; title: string }[]>('/api/documents'),
+  useFetch<{ roles: string[] }>('/api/auth/me')])
+const { data, error, refresh } = __p897_0
+const { data: docs } = __p897_1
+const { data: me } = __p897_2
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 useHead({ title: () => (data.value?.loan.borrower ?? 'Loan') + ' — Credit' })
 const cur = computed(() => data.value?.loan.currency ?? 'USD')

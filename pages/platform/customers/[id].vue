@@ -5,8 +5,12 @@ interface Mem { user_id: string; name: string; email: string; roles: string }
 interface Sup { id: string; reason: string; can_edit: boolean; started_at: string; expires_at: string; ended_at: string | null; by_name: string; as_email: string; changes: number }
 interface D { ai?: { weekly_used: number; weekly_limit: number | null; credits: number; blocked: boolean; gifts: { tokens: number; at: string }[] } | null; price?: { code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: { free?: boolean; amount?: number; interval?: string; note?: string; set_at?: string; set_by?: string } | null } | null; members?: Mem[]; support?: Sup[]; can_support?: boolean; can_edit?: boolean; agreements?: { id: string; title: string; version: number; status: string; signed_at: string | null; signer_name: string | null; signer_email: string | null }[]; grantable?: { code: string; label: string; plans: string[] }[]; storage?: { plan_gb: number | null; addon_gb: number; extra_gb: number; limit_gb: number | null }; org: { extra_modules?: string[]; raise_enabled?: boolean; raise_fee_pct?: number; id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; brand: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null; price: string | null }
   usage: { seats: number; storage: number; ai: number; last_activity: string | null; modules_off: number }; admins: { name: string; email: string; last_login_at: string | null }[]; log: { action: string; at: string; detail: Record<string, unknown>; by_name: string | null }[]; cards: { provider: string; brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null; is_default: boolean }[] }
-const { data, refresh } = await useFetch<D>('/api/platform/orgs/' + id)
-const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1932_0, __p1932_1] = await Promise.all([
+  useFetch<D>('/api/platform/orgs/' + id),
+  useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')])
+const { data, refresh } = __p1932_0
+const { data: plans } = __p1932_1
 useHead({ title: () => 'Finvry · ' + (data.value?.org.name ?? 'Customer') })
 const f = reactive({ name: '', plan_code: '', status: '', trial_ends_at: '' })
 // What this company pays: list price, its own price (yearly or monthly) or free.

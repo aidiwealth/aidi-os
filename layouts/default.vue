@@ -7,8 +7,12 @@ interface Org { id: string; name: string; plan_code: string; kind: string }
 interface Me { email: string; roles: string[]; platform: boolean; customers_view?: boolean; org: Org | null; orgs: Org[] }
 const brand = useBrand()
 const route = useRoute()
-const { data: me } = await useFetch<Me>('/api/auth/me', { key: 'me' })
-const { data: mods } = await useFetch<Mod[]>('/api/modules', { key: 'modules' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p727_0, __p727_1] = await Promise.all([
+  useFetch<Me>('/api/auth/me', { key: 'me' }),
+  useFetch<Mod[]>('/api/modules', { key: 'modules' })])
+const { data: me } = __p727_0
+const { data: mods } = __p727_1
 const canPlatform = computed(() => !!me.value?.platform && brand.key === 'aidi')
 const deskPath = computed(() => route.path === '/services' || route.path.startsWith('/services/') || route.path.startsWith('/client-services'))
 const platformMode = computed(() => (canPlatform.value && (route.path === '/platform' || route.path.startsWith('/platform/'))) || (canPlatform.value && deskPath.value))

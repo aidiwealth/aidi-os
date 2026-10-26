@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import type { DocumentRow } from '~/server/api/documents/index.get'
 useHead({ title: 'Documents' })
-const { data: docs, error, refresh } = await useFetch<DocumentRow[]>('/api/documents')
-const { data: meD } = await useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p101_0, __p101_1] = await Promise.all([
+  useFetch<DocumentRow[]>('/api/documents'),
+  useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })])
+const { data: docs, error, refresh } = __p101_0
+const { data: meD } = __p101_1
 const canDelete = computed(() => !!meD.value?.roles.includes('admin'))
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p378_0, __p378_1] = await Promise.all([
+  useFetch<{ id: string; name: string }[]>('/api/entities'),
+  useFetch<{ roles: string[] }>('/api/auth/me')])
+const { data: entities } = __p378_0
+const { data: me } = __p378_1
 // Files from Finvry services (shared by our team or uploaded by you on a request or in messages), view-only here.
 interface SvcDoc { id: string; title: string; size_bytes: string | null; mime_type: string | null; kind: string; reason: string | null; created_at: string; job_id: string | null; job: string | null }
 const svc = ref<SvcDoc[]>([])

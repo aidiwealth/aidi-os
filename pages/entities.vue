@@ -1,8 +1,12 @@
 <script setup lang="ts">
 useHead({ title: 'Entities' })
 interface Ent { tax_id?: string | null; registration_number?: string | null; formation_date?: string | null; address?: string | null; id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string; parent_id: string | null; parent_name: string | null; deals: number; companies: number; documents: number }
-const { data, refresh } = await useFetch<Ent[]>('/api/entities')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p386_0, __p386_1] = await Promise.all([
+  useFetch<Ent[]>('/api/entities'),
+  useFetch<{ roles: string[] }>('/api/auth/me')])
+const { data, refresh } = __p386_0
+const { data: me } = __p386_1
 const isAdmin = computed(() => me.value?.roles.includes('admin'))
 const KIND: Record<string, string> = { holding: 'Holding', operating: 'Operating company', fund: 'Fund', gp: 'General partner', management_company: 'Management company', trust: 'Trust', household: 'Household', spv: 'SPV', other: 'Other' }
 const form = reactive({ id: '', name: '', legal_name: '', kind: 'operating', jurisdiction: '', status: 'active', parent_id: '', tax_id: '', registration_number: '', formation_date: '', address: '' })

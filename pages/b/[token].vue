@@ -2,8 +2,12 @@
 // A shared financial board (read-only).
 definePageMeta({ layout: 'public' })
 const token = useRoute().params.token as string
-const { data, error } = await useFetch<{ forecast: { name: string; assumptions: import('~/shared/forecast').Assumptions } | null; name: string; note: string | null; data: { labels: string[]; series: Record<string, (number | null)[]>; kpis: { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }[]; charts: { title: string; metrics: string[] }[]; currency: string; period: string }; workspace: { firm: string } }>('/api/public/board/' + token, { key: 'pub-board-' + token })
-const { data: m } = await useFetch<{ metrics: Record<string, { label: string; unit: string }> }>('/api/public/board-metrics', { key: 'board-metrics' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p127_0, __p127_1] = await Promise.all([
+  useFetch<{ forecast: { name: string; assumptions: import('~/shared/forecast').Assumptions } | null; name: string; note: string | null; data: { labels: string[]; series: Record<string, (number | null)[]>; kpis: { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }[]; charts: { title: string; metrics: string[] }[]; currency: string; period: string }; workspace: { firm: string } }>('/api/public/board/' + token, { key: 'pub-board-' + token }),
+  useFetch<{ metrics: Record<string, { label: string; unit: string }> }>('/api/public/board-metrics', { key: 'board-metrics' })])
+const { data, error } = __p127_0
+const { data: m } = __p127_1
 useHead({ title: () => (data.value ? data.value.workspace.firm + ' · ' + data.value.name : 'Financial board'), meta: [{ name: 'robots', content: 'noindex' }] })
 </script>
 <template>

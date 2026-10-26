@@ -3,9 +3,12 @@ import { shortAmount } from '~/shared/compact'
 useHead({ title: 'Family Office analytics' })
 const entity = ref('')
 const range = ref<'90d' | '12m' | 'all'>('12m')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { data } = await useFetch<any>('/api/fo-analytics', { query: { entity, range }, watch: [entity, range] })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p165_0, __p165_1] = await Promise.all([
+  useFetch<{ id: string; name: string }[]>('/api/entities'),
+  useFetch<any>('/api/fo-analytics', { query: { entity, range }, watch: [entity, range] })])
+const { data: entities } = __p165_0
+const { data } = __p165_1
 const usd = (v: number | null | undefined) => (v == null ? '—' : shortAmount(v))
 const lbl = (p: string, monthly = false) => new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.bucket === 'week' && !monthly ? { day: 'numeric', month: 'short', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const pts = (s?: { period: string; value: number }[], monthly = false) => (s ?? []).map((x) => ({ label: lbl(x.period, monthly), value: x.value }))

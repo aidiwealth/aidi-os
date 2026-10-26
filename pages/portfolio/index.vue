@@ -2,8 +2,12 @@
 import { shortAmount } from '~/shared/compact'
 import type { PortfolioRow } from '~/server/api/portfolio/index.get'
 useHead({ title: 'Portfolio' })
-const { data, error, refresh } = await useFetch<PortfolioRow[]>('/api/portfolio')
-const { data: candidates, refresh: refreshC } = await useFetch<{ id: string; company: string; founder_name: string | null; email: string | null }[]>('/api/portfolio/candidates')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p149_0, __p149_1] = await Promise.all([
+  useFetch<PortfolioRow[]>('/api/portfolio'),
+  useFetch<{ id: string; company: string; founder_name: string | null; email: string | null }[]>('/api/portfolio/candidates')])
+const { data, error, refresh } = __p149_0
+const { data: candidates, refresh: refreshC } = __p149_1
 const { data: pos } = await useLazyFetch<Record<string, { cost: number; recorded: number | null; implied: number | null; latest: string | null; currency: string }>>('/api/portfolio/positions', { server: false, default: () => ({}) })
 const posTot = computed(() => { const v = rows.value.map((r) => pos.value?.[r.id]).filter((x): x is NonNullable<typeof x> => !!x); return v.length ? { cost: v.reduce((a, x) => a + x.cost, 0), recorded: v.reduce((a, x) => a + (x.recorded ?? x.cost), 0), implied: v.reduce((a, x) => a + (x.implied ?? x.recorded ?? x.cost), 0), n: v.length } : null })
 const adding = ref(false)

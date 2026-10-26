@@ -8,8 +8,12 @@ interface Part { fund: string; fund_id: string; currency: string; commitment: nu
 interface D { participations?: Part[]; lp: { id: string; name: string; kind: string; contact_name: string | null; email: string | null; country: string | null; kyc_status: string; notes: string | null; portal: boolean | null; portal_expires: string | null }
   positions: { fund_id: string; fund: string; currency: string; commitment: number; called: number; paidIn: number; unfunded: number; distributed: number; navShare: number; m: M }[]
   history: { id: string; fund: string; currency: string; kind: string; number: number; due_date: string; status: string; amount: string; paid_amount: string; paid_on: string | null }[] }
-const { data, refresh } = await useFetch<D>('/api/funds/lps/' + id)
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1270_0, __p1270_1] = await Promise.all([
+  useFetch<D>('/api/funds/lps/' + id),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p1270_0
+const { data: me } = __p1270_1
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 useHead({ title: () => data.value?.lp.name ?? 'LP' })
 const { money, x, pct, day } = useMoney()

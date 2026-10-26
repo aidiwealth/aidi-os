@@ -3,8 +3,12 @@ useHead({ title: 'Credit' })
 interface Loan { id: string; reference: string | null; borrower: string; borrower_id: string; sector: string | null; country: string | null; lender: string | null; principal: string; currency: string; annual_rate: string; status: string; disbursed_on: string; outstanding: number; arrears: number; dpd: number; bucket: string; next: { due_date: string; amount: number } | null }
 interface Tot { outstanding: number; arrears: number; par30: number; interest12m: number; loans: number }
 interface Exp { name: string; totals: Record<string, number> }
-const { data, error, refresh } = await useFetch<{ loans: Loan[]; totals: Record<string, Tot>; interestSeries: Record<string, { period: string; value: number }[]>; byBorrower: Exp[]; bySector: Exp[]; byCountry: Exp[] }>('/api/credit')
-const { data: borrowers, refresh: refreshB } = await useFetch<{ id: string; name: string; country: string | null; kind: string; monitor: boolean; last_check: { score: number | null; band: string | null; status: string; at: string } | null }[]>('/api/credit/borrowers')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p578_0, __p578_1] = await Promise.all([
+  useFetch<{ loans: Loan[]; totals: Record<string, Tot>; interestSeries: Record<string, { period: string; value: number }[]>; byBorrower: Exp[]; bySector: Exp[]; byCountry: Exp[] }>('/api/credit'),
+  useFetch<{ id: string; name: string; country: string | null; kind: string; monitor: boolean; last_check: { score: number | null; band: string | null; status: string; at: string } | null }[]>('/api/credit/borrowers')])
+const { data, error, refresh } = __p578_0
+const { data: borrowers, refresh: refreshB } = __p578_1
 const report = ref('')
 const bookMix = computed(() => { const c = cc.value; if (!c) return []; const m: Record<string, number> = { current: 0, '1-30': 0, '31-90': 0, '90+': 0 }; for (const l of data.value?.loans ?? []) if (l.status === 'active' && l.currency === c) m[l.bucket] = (m[l.bucket] ?? 0) + l.outstanding; return Object.entries(m).map(([k, v]) => ({ label: BUCKET[k] ?? k, value: v })) })
 // Pie charts are per currency; pick which one when the book has more than one.

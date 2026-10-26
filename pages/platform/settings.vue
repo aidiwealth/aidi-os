@@ -1,7 +1,11 @@
 <script setup lang="ts">
 useHead({ title: 'Finvry · Settings' })
-const { data, refresh } = await useFetch<{ issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string; ngn_per_usd: number }>('/api/platform/settings')
-const { data: pay } = await useFetch<{ stripe: boolean; stripeWebhook: boolean; paystack: boolean; stripeWebhookUrl: string; paystackWebhookUrl: string }>('/api/platform/payments')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p41_0, __p41_1] = await Promise.all([
+  useFetch<{ issuer_name: string; issuer_address: string; issuer_email: string; invoice_prefix: string; payment_terms_days: number; payment_instructions: string; ngn_per_usd: number }>('/api/platform/settings'),
+  useFetch<{ stripe: boolean; stripeWebhook: boolean; paystack: boolean; stripeWebhookUrl: string; paystackWebhookUrl: string }>('/api/platform/payments')])
+const { data, refresh } = __p41_0
+const { data: pay } = __p41_1
 const copy = (s: string) => navigator.clipboard.writeText(s)
 // Slack alerts: a webhook for each channel and the events that go to it.
 interface SC { key: 'aidi' | 'finvry' | 'critical'; label: string; hint: string; set: boolean; hint_url: string }

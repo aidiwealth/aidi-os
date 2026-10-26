@@ -3,9 +3,14 @@ import { localCardCountry, LOCAL_CARD_NOTE } from '~/shared/countries'
 useHead({ title: 'Settings' })
 interface S { org: { name: string; slug: string; kind: string; status: string; plan: string }; settings: { public_name: string; investor_name: string; thesis: string; notify_emails: string[]; default_vehicle_id: string }
   plan: { name: string; seat_limit: number | null; storage_gb: number | null; ai_runs_month: number | null }; usage: { members: number; storage_bytes: number; ai_runs: number }; pitchUrl: string; pitchFormUrl?: string }
-const { data, refresh } = await useFetch<S>('/api/settings')
-const { data: entities } = await useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')
-const { data: billing } = await useFetch<{ country?: string; subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p544_0, __p544_1, __p544_2] = await Promise.all([
+  useFetch<S>('/api/settings'),
+  useFetch<{ id: string; name: string; kind: string }[]>('/api/entities'),
+  useFetch<{ country?: string; subscription: { plan: string; billing: string; method: string; amount_usd: string; renews: string; status: string } | null; invoices: { id: string; number: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; overdue: boolean; payUrl: string | null }[]; card: { provider: string; brand: string | null; last4: string | null } | null }>('/api/settings/billing')])
+const { data, refresh } = __p544_0
+const { data: entities } = __p544_1
+const { data: billing } = __p544_2
 const usd = (v: string | number) => '$' + Number(v).toLocaleString()
 const f = reactive({ name: '', public_name: '', investor_name: '', thesis: '', notify: '', default_vehicle_id: '' })
 watchEffect(() => { const d = data.value; if (!d) return; Object.assign(f, { name: d.org.name, public_name: d.settings.public_name, investor_name: d.settings.investor_name, thesis: d.settings.thesis, notify: d.settings.notify_emails.join(', '), default_vehicle_id: d.settings.default_vehicle_id }) })

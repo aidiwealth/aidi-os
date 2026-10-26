@@ -3,8 +3,12 @@
 // on, recovery codes left, new codes, and turning it off (Finvry asks for it again straight away).
 useHead({ title: 'Account security' })
 const brand = useBrand()
-const { data: me } = await useFetch<{ email: string }>('/api/auth/me', { key: 'me' })
-const { data: st, refresh } = await useFetch<{ enabled: boolean; enabled_at: string | null; recovery_left: number }>('/api/account/mfa', { key: 'mfa' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p285_0, __p285_1] = await Promise.all([
+  useFetch<{ email: string }>('/api/auth/me', { key: 'me' }),
+  useFetch<{ enabled: boolean; enabled_at: string | null; recovery_left: number }>('/api/account/mfa', { key: 'mfa' })])
+const { data: me } = __p285_0
+const { data: st, refresh } = __p285_1
 const mode = ref<'' | 'disable' | 'recovery'>(''), code = ref(''), codes = ref<string[]>([]), msg = ref(''), busy = ref(false), copied = ref(false)
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function act() {

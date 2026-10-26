@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import type { JobRow } from '~/server/api/services/index.get'
 useHead({ title: 'Jobs' })
-const { data, error } = await useFetch<JobRow[]>('/api/services')
-const { data: clients } = await useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p90_0, __p90_1] = await Promise.all([
+  useFetch<JobRow[]>('/api/services'),
+  useFetch<{ id: string; name: string; contact_name: string; email: string }[]>('/api/services/clients')])
+const { data, error } = __p90_0
+const { data: clients } = __p90_1
 const SERVICES: Record<string, string> = { company_formation: 'Company formation', annual_compliance: 'Annual compliance', tax_filing: 'Tax filing', registered_agent: 'Registered agent', legal_review: 'Legal review', trust_setup: 'Trust set-up', banking_setup: 'Banking set-up', other: 'Other' }
 const STATUS: Record<string, string> = { new: 'New', in_progress: 'In progress', waiting_client: 'Waiting on client', completed: 'Completed', cancelled: 'Cancelled' }
 const filter = ref<'open' | 'new' | 'waiting' | 'overdue' | 'done' | 'all'>('open')

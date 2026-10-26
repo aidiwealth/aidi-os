@@ -2,8 +2,12 @@
 useHead({ title: 'Funds' })
 interface F { entity_id: string; name: string; fund_id: string | null; currency?: string; status?: string; vintage?: number | null; target?: number; lps?: number; rolling?: boolean; administrator?: string | null; deals?: { companies: number; invested: number; value: number; realized: number; coInvestors: number } | null
   totals?: { committed: number; called: number; paidIn: number; distributed: number; nav: number; calledPct: number }; m?: { dpi: number | null; tvpi: number | null; irr: number | null } }
-const { data, refresh } = await useFetch<F[]>('/api/funds')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p540_0, __p540_1] = await Promise.all([
+  useFetch<F[]>('/api/funds'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p540_0
+const { data: me } = __p540_1
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const { money, x, pct } = useMoney()
 const setup = reactive({ structure: 'closed_end', entity_id: '', name: '', currency: 'USD', target_size: '', vintage: String(new Date().getFullYear()), status: 'raising', administrator: 'self' })

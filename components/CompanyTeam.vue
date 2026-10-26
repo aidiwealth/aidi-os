@@ -2,8 +2,12 @@
 // Finvry team: who can sign in, their role, and what each person can open. Admins open everything; for anyone else an
 // admin can switch features off one by one (hidden from their menu and blocked on the server). Changes are logged.
 import type { TeamUser } from '~/server/api/admin/users/index.get'
-const { data: users, refresh } = await useFetch<TeamUser[]>('/api/admin/users')
-const { data: me } = await useFetch<{ email: string; roles: string[]; org: { kind: string; name?: string } | null }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p303_0, __p303_1] = await Promise.all([
+  useFetch<TeamUser[]>('/api/admin/users'),
+  useFetch<{ email: string; roles: string[]; org: { kind: string; name?: string } | null }>('/api/auth/me', { key: 'me' })])
+const { data: users, refresh } = __p303_0
+const { data: me } = __p303_1
 const isAdmin = computed(() => (me.value?.roles ?? []).includes('admin'))
 interface Acc { features: { key: string; label: string; group: string }[]; members: Record<string, { admin: boolean; allowed: string[]; off: string[] }> }
 const { data: acc, refresh: refreshAcc } = await useFetch<Acc>('/api/admin/member-access', { default: () => ({ features: [], members: {} }), server: false, immediate: isAdmin.value })

@@ -1,8 +1,12 @@
 <script setup lang="ts">
 useHead({ title: 'LP register' })
 interface L { id: string; name: string; kind: string; contact_name: string | null; email: string | null; country: string | null; kyc_status: string; portal: boolean | null; committed: string; funds: number }
-const { data, refresh } = await useFetch<L[]>('/api/funds/lps')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p243_0, __p243_1] = await Promise.all([
+  useFetch<L[]>('/api/funds/lps'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p243_0
+const { data: me } = __p243_1
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const { money } = useMoney()
 const adding = ref(false)

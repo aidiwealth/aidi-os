@@ -4,8 +4,12 @@ useHead({ title: 'Services' })
 interface O { deadlines: { id: string; title: string; next_due: string; days_left: number; service_code: string | null }[]; due: { currency: string; amount: number; count: number }[]; jobs: { id: string; title: string; status: string; due_date: string | null; created_at: string; company: string | null; items?: string[] }[]; documents: { id: string; title: string; reason: string | null; created_at: string; job: string }[]; unread: number; forms: { id: string; tax_year: number; status: string; company: string | null }[] }
 interface Me { name: string; client: string; companies: { id: string; name: string; entity_type: string; jurisdiction: string | null; country: string; ein: string | null; address: string | null; registered_agent: string; agent_name?: string | null; agent_resigned_on?: string | null; agent_renewal: string | null; virtual_office: boolean; mailbox: boolean; status: string }[] }
 const { data } = await usePortalFetch<O>('/api/portal/overview')
-const { data: me } = await useFetch<Me>('/api/portal/me', { key: 'portal:me' })
-const { data: wl } = await useFetch<{ subscriptions: { id: string; code?: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; status: string; next_charge_at: string; started_on?: string | null; details?: Record<string, string>; failures: number; last_error: string | null }[] }>('/api/wallet', { key: 'client-home-wallet', server: false, lazy: true })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1102_0, __p1102_1] = await Promise.all([
+  useFetch<Me>('/api/portal/me', { key: 'portal:me' }),
+  useFetch<{ subscriptions: { id: string; code?: string; kind: string; name: string; amount_minor: number; currency: string; interval: string; status: string; next_charge_at: string; started_on?: string | null; details?: Record<string, string>; failures: number; last_error: string | null }[] }>('/api/wallet', { key: 'client-home-wallet', server: false, lazy: true })])
+const { data: me } = __p1102_0
+const { data: wl } = __p1102_1
 const services = computed(() => (wl.value?.subscriptions ?? []).filter((x) => x.kind === 'service'))
 const wizard = ref(false); const preset = ref('')
 function open(code = '') { preset.value = code; wizard.value = true }

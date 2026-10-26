@@ -16,8 +16,11 @@ function getPool(): pg.Pool {
   pool = new pg.Pool({
     connectionString: url.replace(/[?&]sslmode=[^&]*/, ''),
     ssl: local ? false : { ca, rejectUnauthorized: true },
-    max: 10,
-    idleTimeoutMillis: 30000
+    // Connections kept warm so a page does not wait to reconnect. DB_POOL_MAX raises the count (stay under the
+    // database plan's connection limit across all app instances).
+    max: Number(process.env.DB_POOL_MAX) || 10,
+    idleTimeoutMillis: 60000,
+    keepAlive: true
   })
   pool.on('error', (err) => console.error('[db] idle client error', err))
   return pool
@@ -48,8 +51,13 @@ async function checkout(): Promise<pg.PoolClient> {
 const wrapper = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async query<R extends pg.QueryResultRow = any>(text: string, values?: unknown[]): Promise<pg.QueryResult<R>> {
+    // Time spent in the database per request, for the slow-request log and the Server-Timing header.
+    const e = requestEvent(), t0 = performance.now()
     const client = await checkout()
-    try { return await client.query<R>(text, values) } finally { client.release() }
+    try { return await client.query<R>(text, values) } finally {
+      client.release()
+      if (e) { e.context.__dbMs = ((e.context.__dbMs as number | undefined) ?? 0) + (performance.now() - t0); e.context.__dbN = ((e.context.__dbN as number | undefined) ?? 0) + 1 }
+    }
   },
   connect: checkout
 }

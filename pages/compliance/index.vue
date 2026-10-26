@@ -2,8 +2,12 @@
 // Compliance: filings, renewals and deadlines with a status strip, a month calendar and an agenda; add and mark done in popups.
 import type { ObligationRow } from '~/server/api/compliance/index.get'
 useHead({ title: 'Compliance' })
-const { data, refresh } = await useFetch<ObligationRow[]>('/api/compliance')
-const { data: me } = await useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p234_0, __p234_1] = await Promise.all([
+  useFetch<ObligationRow[]>('/api/compliance'),
+  useFetch<{ roles: string[]; org: { kind: string } | null }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p234_0
+const { data: me } = __p234_1
 const company = computed(() => me.value?.org?.kind === 'company')
 const { data: coProf } = await useFetch<{ country?: string; currency?: string }>('/api/company/profile', { key: 'company-profile', immediate: true })
 const showNg = computed(() => !company.value || /nigeria/i.test(coProf.value?.country ?? '') || coProf.value?.currency === 'NGN')

@@ -16,8 +16,12 @@ interface Data {
   schedule: { cadence: 'off' | 'monthly' | 'quarterly'; day: number; next: { date: string; label: string; soon: boolean } | null }
   requests: { period: string; months: number; status: string; sent_at: string; opened_at: string | null; submitted_at: string | null; expires_at: string; file_document_id: string | null }[]
 }
-const { data, error, refresh } = await useFetch<Data>('/api/portfolio/' + id)
-const { data: meP } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1660_0, __p1660_1] = await Promise.all([
+  useFetch<Data>('/api/portfolio/' + id),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, error, refresh } = __p1660_0
+const { data: meP } = __p1660_1
 const canUpload = computed(() => (meP.value?.roles ?? []).some((r) => ['admin', 'gp'].includes(r)))
 useHead({ title: () => (data.value?.company.name ?? 'Company') })
 

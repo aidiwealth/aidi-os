@@ -2,9 +2,14 @@
 const id = useRoute().params.id as string
 interface Lead { id: string; company: string; contact_name: string | null; contact_email: string | null; contact_phone: string | null; kind: string; country: string | null; source: string; stage: string; plan_code: string | null; seats: number | null; value_monthly_usd: string | null; billing: string; owner_id: string | null; owner: string | null; expected_close: string | null; lost_reason: string | null; notes: string | null; organization_id: string | null; organization_name: string | null }
 interface Ev { id: string; kind: string; body: string | null; from_stage: string | null; to_stage: string | null; created_at: string; by_name: string | null }
-const { data, refresh } = await useFetch<{ lead: Lead; events: Ev[] }>('/api/platform/leads/' + id)
-const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
-const { data: staff } = await useFetch<{ id: string; name: string }[]>('/api/platform/staff')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p700_0, __p700_1, __p700_2] = await Promise.all([
+  useFetch<{ lead: Lead; events: Ev[] }>('/api/platform/leads/' + id),
+  useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans'),
+  useFetch<{ id: string; name: string }[]>('/api/platform/staff')])
+const { data, refresh } = __p700_0
+const { data: plans } = __p700_1
+const { data: staff } = __p700_2
 useHead({ title: () => 'Finvry · ' + (data.value?.lead.company ?? 'Lead') })
 const STAGES = [['lead', 'Lead'], ['qualified', 'Qualified'], ['demo', 'Demo'], ['proposal', 'Proposal'], ['negotiation', 'Negotiation'], ['won', 'Won'], ['lost', 'Lost']] as const
 const label = (s: string | null) => STAGES.find(([k]) => k === s)?.[1] ?? s ?? ''

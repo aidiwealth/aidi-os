@@ -10,8 +10,12 @@ const qd = ref(q.value); let qt: ReturnType<typeof setTimeout> | undefined
 watch(q, (v) => { clearTimeout(qt); qt = setTimeout(() => { qd.value = v.trim(); page.value = 1 }, 300) })
 watch([status, entity, need, size], () => { page.value = 1; sel.value = [] })
 watch([status, qd, entity, need, page], () => router.replace({ query: { status: status.value !== 'new' ? status.value : undefined, q: qd.value || undefined, entity: entity.value || undefined, need: need.value || undefined, page: page.value > 1 ? page.value : undefined } }))
-const { data, refresh, pending } = await useFetch<{ rows: R[]; total: number; page: number; pages: number; size: number; counts: { status: string; n: number }[]; open: { overdue: number; soon: number; action: number }; webhook: string | null; settings: { mailboxes: string[]; senders: string[] }; can_edit: boolean }>('/api/notices', { query: { status, q: qd, entity, need, page, size } })
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1447_0, __p1447_1] = await Promise.all([
+  useFetch<{ rows: R[]; total: number; page: number; pages: number; size: number; counts: { status: string; n: number }[]; open: { overdue: number; soon: number; action: number }; webhook: string | null; settings: { mailboxes: string[]; senders: string[] }; can_edit: boolean }>('/api/notices', { query: { status, q: qd, entity, need, page, size } }),
+  useFetch<{ id: string; name: string }[]>('/api/entities')])
+const { data, refresh, pending } = __p1447_0
+const { data: entities } = __p1447_1
 const cnt = (s: string) => data.value?.counts.find((c) => c.status === s)?.n ?? 0
 const filtered = computed(() => !!(qd.value || entity.value || need.value))
 function clearFilters() { q.value = ''; qd.value = ''; entity.value = ''; need.value = '' }

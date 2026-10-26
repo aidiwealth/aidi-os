@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import type { TeamUser } from '~/server/api/admin/users/index.get'
 useHead({ title: 'Team' })
-const { data: users, error, refresh } = await useFetch<TeamUser[]>('/api/admin/users')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: me } = await useFetch<{ email: string; roles: string[]; org: { kind: string } | null }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p95_0, __p95_1, __p95_2] = await Promise.all([
+  useFetch<TeamUser[]>('/api/admin/users'),
+  useFetch<{ id: string; name: string }[]>('/api/entities'),
+  useFetch<{ email: string; roles: string[]; org: { kind: string } | null }>('/api/auth/me')])
+const { data: users, error, refresh } = __p95_0
+const { data: entities } = __p95_1
+const { data: me } = __p95_2
 // GPs run this page too on Aidi OS; only an admin gives or changes the Admin role.
 const isAdmin = computed(() => (me.value?.roles ?? []).includes('admin'))
 const isCo = computed(() => me.value?.org?.kind === 'company')

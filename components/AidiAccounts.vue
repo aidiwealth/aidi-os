@@ -3,9 +3,14 @@
 // a table, adding an account and live US bank connections. The company is chosen at the top of the page.
 const props = defineProps<{ entity: string }>()
 interface Acct { id: string; entity_id: string; entity: string; bank_name: string; account_name: string; last4: string | null; currency: string; kind: string; active: boolean; balance: string | null; as_of: string | null; statements: number; continuous: boolean | null }
-const { data, error, refresh } = await useFetch<Acct[]>('/api/banking/accounts', { key: 'aidi-accounts' })
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities', { key: 'aidi-entities' })
-const { data: meBk } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p546_0, __p546_1, __p546_2] = await Promise.all([
+  useFetch<Acct[]>('/api/banking/accounts', { key: 'aidi-accounts' }),
+  useFetch<{ id: string; name: string }[]>('/api/entities', { key: 'aidi-entities' }),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, error, refresh } = __p546_0
+const { data: entities } = __p546_1
+const { data: meBk } = __p546_2
 const canManage = computed(() => (meBk.value?.roles ?? []).some((r) => r === 'admin' || r === 'gp'))
 const entity = computed(() => props.entity)
 const rows = computed(() => (data.value ?? []).filter((a) => a.active && (!entity.value || a.entity_id === entity.value)))

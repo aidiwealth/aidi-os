@@ -2,8 +2,12 @@
 useHead({ title: 'Finvry · Pipeline' })
 interface Lead { id: string; company: string; contact_name: string | null; kind: string; country: string | null; source: string; stage: string; plan: string | null; value_monthly_usd: string | null; billing: string; owner: string | null; expected_close: string | null; stage_changed_at: string; organization_id: string | null }
 const route = useRoute()
-const { data, refresh } = await useFetch<{ leads: Lead[]; kpis: { open: number; pipeline: number; weighted: number; wonMonth: number; wonMonthValue: number } }>('/api/platform/leads')
-const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean; price_monthly: string | null }[] }>('/api/platform/plans')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p394_0, __p394_1] = await Promise.all([
+  useFetch<{ leads: Lead[]; kpis: { open: number; pipeline: number; weighted: number; wonMonth: number; wonMonthValue: number } }>('/api/platform/leads'),
+  useFetch<{ plans: { code: string; name: string; active: boolean; price_monthly: string | null }[] }>('/api/platform/plans')])
+const { data, refresh } = __p394_0
+const { data: plans } = __p394_1
 const COLS = [['lead', 'Lead'], ['qualified', 'Qualified'], ['demo', 'Demo'], ['proposal', 'Proposal'], ['negotiation', 'Negotiation']] as const
 const col = (s: string) => (data.value?.leads ?? []).filter((l) => l.stage === s)
 const closed = computed(() => (data.value?.leads ?? []).filter((l) => l.stage === 'won' || l.stage === 'lost').slice(0, 12))

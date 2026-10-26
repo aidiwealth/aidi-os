@@ -2,9 +2,14 @@
 useHead({ title: 'Prices & settings' })
 interface Item { cost?: string | null; fee?: string | null; cost_ngn?: string | null; fee_ngn?: string | null; cost_label?: string | null; public?: boolean; id: string; code: string; name: string; description: string | null; billing: string; price: string | null; price_ngn: string | null; region: string; currency: string; formation: boolean; active: boolean; sort: number }
 interface Region { issuer: string; address: string; phone: string; email: string; bank: Record<string, string> }
-const { data: s, refresh: rs } = await useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; legal_footer: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings')
-const { data: items, refresh: ri } = await useFetch<Item[]>('/api/services/catalog')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p530_0, __p530_1, __p530_2] = await Promise.all([
+  useFetch<{ slug: string; prefix: string; terms_days: number; note_top: string; note_bottom: string; legal_footer: string; us: Region; ng: Region; online: { usd: boolean; ngn: boolean } }>('/api/services/billing-settings'),
+  useFetch<Item[]>('/api/services/catalog'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data: s, refresh: rs } = __p530_0
+const { data: items, refresh: ri } = __p530_1
+const { data: me } = __p530_2
 const isAdmin = computed(() => !!me.value?.roles.includes('admin'))
 const formationUrl = computed(() => 'https://app.finvry.com/formation/' + (s.value?.slug ?? ''))
 const fcopied = ref(false); async function copyFormation() { await navigator.clipboard.writeText(formationUrl.value); fcopied.value = true; setTimeout(() => (fcopied.value = false), 1500) }

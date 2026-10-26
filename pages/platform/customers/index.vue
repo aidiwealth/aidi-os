@@ -2,8 +2,12 @@
 useHead({ title: 'Finvry · Customers' })
 interface Org { id: string; name: string; slug: string; kind: string; status: string; plan_code: string; plan: string; trial_ends: string | null; created_at: string; seats: number; seat_limit: number | null; last_activity: string | null; brand: string }
 const route = useRoute()
-const { data, refresh } = await useFetch<Org[]>('/api/platform/orgs')
-const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p321_0, __p321_1] = await Promise.all([
+  useFetch<Org[]>('/api/platform/orgs'),
+  useFetch<{ plans: { code: string; name: string; active: boolean }[] }>('/api/platform/plans')])
+const { data, refresh } = __p321_0
+const { data: plans } = __p321_1
 const adding = ref(route.query.new === '1')
 const q = ref('')
 const status = ref('')

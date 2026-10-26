@@ -7,8 +7,12 @@ const route = useRoute(); const router = useRouter()
 const TABS: [string, string][] = [['overview', 'Overview'], ['clients', 'Clients'], ['metals', 'Gold & metals'], ['firms', 'Advisers & fees'], ['calculator', 'Calculator'], ['settings', 'Settings']]
 const tab = computed({ get: () => String(route.query.t ?? 'overview'), set: (v: string) => router.replace({ query: { t: v } }) })
 interface Cl { risk_profile?: string | null; risk?: { ok: boolean; over: number; over_high: boolean; high_pct: number }; id: string; name: string; kind: string; tag: string | null; country: string; model: string; status: string; kyc_status: string; email: string | null; user_id: string | null; entity: string | null; totals: { net_worth: number; invested: number; cash: number } }
-const { data, refresh } = await useFetch<{ fortress?: { US: { key: string; label: string; pct: number; where: string }[]; NG: { key: string; label: string; pct: number; where: string }[]; company_stock: { min: number; max: number; note: string }; retirement_note: string }; providers?: Record<string, boolean>; clients: Cl[]; fees: { id: string; kind: string; period: string | null; amount: number; currency: string; status: string; paid_on: string | null; client: string | null; firm: string | null; note: string | null }[]; metals: Record<string, any>[]; firms: Record<string, any>[]; settings: Record<string, any> }>('/api/wm/overview')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1095_0, __p1095_1] = await Promise.all([
+  useFetch<{ fortress?: { US: { key: string; label: string; pct: number; where: string }[]; NG: { key: string; label: string; pct: number; where: string }[]; company_stock: { min: number; max: number; note: string }; retirement_note: string }; providers?: Record<string, boolean>; clients: Cl[]; fees: { id: string; kind: string; period: string | null; amount: number; currency: string; status: string; paid_on: string | null; client: string | null; firm: string | null; note: string | null }[]; metals: Record<string, any>[]; firms: Record<string, any>[]; settings: Record<string, any> }>('/api/wm/overview'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p1095_0
+const { data: me } = __p1095_1
 const isAdmin = computed(() => !!me.value?.roles.includes('admin'))
 const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v)
 const money = (v: number, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(v)

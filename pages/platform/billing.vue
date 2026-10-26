@@ -3,10 +3,16 @@ useHead({ title: 'Finvry · Platform billing' })
 interface Sub { id: string; organization_id: string; customer: string; plan: string; plan_code: string; billing: string; method: string; currency: string; amount_usd: string; monthly: string; status: string; start_date: string; ended_at: string | null; end_reason: string | null; renews: string | null }
 interface Inv { id: string; number: string; organization_id: string; customer: string; issue_date: string; due_date: string; amount: string; currency: string; status: string; paid_at: string | null; overdue: boolean }
 const route = useRoute()
-const { data, refresh } = await useFetch<{ subscriptions: Sub[]; invoices: Inv[]; cards: { organization_id: string; provider: string; brand: string | null; last4: string | null }[]; providers: { stripe: boolean; paystack: boolean }; kpis: { mrr: number; arr: number; live: number; outstanding: number; overdue: number; overdueCount: number } }>('/api/platform/billing')
-const { data: orgs } = await useFetch<{ id: string; name: string; plan_code: string; status: string }[]>('/api/platform/orgs')
-const { data: plans } = await useFetch<{ plans: { code: string; name: string; active: boolean; price_monthly: string | null; price_annual: string | null }[] }>('/api/platform/plans')
-const { data: settings } = await useFetch<{ payment_terms_days: number }>('/api/platform/settings')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p596_0, __p596_1, __p596_2, __p596_3] = await Promise.all([
+  useFetch<{ subscriptions: Sub[]; invoices: Inv[]; cards: { organization_id: string; provider: string; brand: string | null; last4: string | null }[]; providers: { stripe: boolean; paystack: boolean }; kpis: { mrr: number; arr: number; live: number; outstanding: number; overdue: number; overdueCount: number } }>('/api/platform/billing'),
+  useFetch<{ id: string; name: string; plan_code: string; status: string }[]>('/api/platform/orgs'),
+  useFetch<{ plans: { code: string; name: string; active: boolean; price_monthly: string | null; price_annual: string | null }[] }>('/api/platform/plans'),
+  useFetch<{ payment_terms_days: number }>('/api/platform/settings')])
+const { data, refresh } = __p596_0
+const { data: orgs } = __p596_1
+const { data: plans } = __p596_2
+const { data: settings } = __p596_3
 const org = ref(String(route.query.org ?? ''))
 const tab = ref<'subs' | 'inv'>(route.query.tab === 'inv' ? 'inv' : 'subs')
 // The menu opens Subscriptions & renewals or Invoices: follow it.

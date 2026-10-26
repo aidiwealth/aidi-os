@@ -5,9 +5,14 @@ const id = useRoute().params.id as string
 const route = useRoute(), router = useRouter()
 interface Party { id: string; name: string; email: string | null; role: string; share_pct: string | null; notes: string | null; start_date: string | null; end_date: string | null; active: boolean; has_account: boolean }
 interface Res { id: string; kind: string; title: string; status: string; required_approvals: number; meeting_date: string | null; amount: string | null; currency: string | null; beneficiary: string | null; created_at: string; approvals: number; rejections: number }
-const { data, error, refresh } = await useFetch<{ entity: { id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string }; parties: Party[]; resolutions: Res[]; signers: { name: string; email: string; user_id: string | null }[] }>('/api/governance/entities/' + id)
-const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p804_0, __p804_1, __p804_2] = await Promise.all([
+  useFetch<{ entity: { id: string; name: string; legal_name: string | null; kind: string; jurisdiction: string | null; status: string }; parties: Party[]; resolutions: Res[]; signers: { name: string; email: string; user_id: string | null }[] }>('/api/governance/entities/' + id),
+  useFetch<{ id: string; title: string }[]>('/api/documents'),
+  useFetch<{ roles: string[] }>('/api/auth/me')])
+const { data, error, refresh } = __p804_0
+const { data: docs } = __p804_1
+const { data: me } = __p804_2
 const canManageParties = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'family'].includes(r)))
 useHead({ title: () => (data.value?.entity.name ?? 'Entity') + ' · governance' })
 const ROLE: Record<string, string> = { settlor: 'Settlor', trustee: 'Trustee', successor_trustee: 'Successor trustee', protector: 'Protector', beneficiary: 'Beneficiary', director: 'Director', officer: 'Officer', member: 'Member', shareholder: 'Shareholder', signatory: 'Signatory' }

@@ -3,10 +3,16 @@
 useHead({ title: 'Investments & AUM' })
 interface R { wm_client_id?: string | null; wm_client?: string | null; id: string; entity_id: string | null; entity: string | null; client_name: string | null; section: string; category: string; name: string; platform: string | null; currency: string; cost: string | null; current_value: string | null; realized: string | null; ownership_pct: string | null; status: string; as_of: string | null; notes: string | null; meta: Record<string, unknown>; in_nav: boolean; in_aum: boolean }
 interface T { assets: number; liabilities: number; nav: number; mgmtNav: number; wealthAum: number; clientAssets: number; ventureCost: number; ventureValue: number; ventureRealized: number; realEstate: number; flags: number }
-const { data, refresh } = await useFetch<{ companies: { id: string; name: string }[]; rows: R[]; totals: T; byCat: Record<string, number> }>('/api/wealth')
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: wmClients } = await useFetch<{ id: string; name: string; country: string }[]>('/api/wm/clients/list', { key: 'wm-clients-list', default: () => [] })
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p868_0, __p868_1, __p868_2, __p868_3] = await Promise.all([
+  useFetch<{ companies: { id: string; name: string }[]; rows: R[]; totals: T; byCat: Record<string, number> }>('/api/wealth'),
+  useFetch<{ id: string; name: string }[]>('/api/entities'),
+  useFetch<{ id: string; name: string; country: string }[]>('/api/wm/clients/list', { key: 'wm-clients-list', default: () => [] }),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p868_0
+const { data: entities } = __p868_1
+const { data: wmClients } = __p868_2
+const { data: me } = __p868_3
 const canEdit = computed(() => !!me.value?.roles?.some((r) => ['admin', 'gp'].includes(r)))
 const CAT: Record<string, string> = { venture: 'Venture', private_stake: 'Private stakes', secondaries: 'Secondaries', public_securities: 'Public securities', fund: 'Funds', bonds: 'Bonds & bills', retirement: 'Retirement', cash: 'Cash', crypto: 'Digital assets', precious_metals: 'Precious metals', real_estate: 'Real estate', other: 'Other', liability: 'Liabilities' }
 const SEC: [string, string, string][] = [['family', 'Family NAV', 'What the family owns across the group, less liabilities (conservative basis).'], ['wealth', 'Aidi Wealth: Main Fund', 'The family portfolio managed by Aidi Wealth.'], ['client', 'Aidi Wealth: client assets', 'Third-party assets advised or managed by Aidi Wealth. Not part of family NAV.'], ['venture', 'Venture positions', 'Aidi Angel Fund portfolio, by company (full positions).'], ['real_estate', 'Real estate', 'Property interests and estimated market values.']]

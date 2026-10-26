@@ -7,11 +7,18 @@ const { data, refresh } = await useFetch<{ room?: { available: boolean; files?: 
 const f = reactive({ forecast_id: null as string | null, captable_id: null as string | null, captable_detail: 'summary' as 'summary' | 'holders', deck_id: null as string | null, board_id: null as string | null, logo_id: null as string | null, cover_id: null as string | null, slug: '', published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: [] as string[], period_type: 'month', show_sectors: false })
 watchEffect(() => { const p = data.value?.page; if (p) Object.assign(f, { forecast_id: p.forecast_id ?? null, captable_id: p.captable_id ?? null, captable_detail: p.captable_detail ?? 'summary', deck_id: p.deck_id ?? null, board_id: p.board_id ?? null, logo_id: p.logo_id ?? null, cover_id: p.cover_id ?? null, slug: p.slug, published: p.published, headline: p.headline ?? '', about: p.about ?? '', website: p.website ?? '', deck_url: p.deck_url ?? '', contact_email: p.contact_email ?? '', metrics: [...p.metrics], period_type: p.period_type, show_sectors: !!(p as { show_sectors?: boolean }).show_sectors }) })
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
-const { data: deckList } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; stats: { total: number } }[] }>('/api/documents/decks', { key: 'page-decks' })
-const { data: boards } = await useFetch<{ boards: { id: string; name: string; audience: string }[] }>('/api/financials/boards', { key: 'page-boards', immediate: canPath('/financials/boards'), default: () => ({ boards: [] }) })
-const { data: fcs } = await useFetch<{ forecasts: { id: string; name: string }[] }>('/api/forecast', { key: 'page-fcs', immediate: canPath('/forecast'), default: () => ({ forecasts: [] }) })
-const { data: cts } = await useFetch<{ captables: { id: string; name: string }[] }>('/api/equity', { key: 'page-cts', immediate: canPath('/cap-table'), default: () => ({ captables: [] }) })
-const { data: mainDeck } = await useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p2031_0, __p2031_1, __p2031_2, __p2031_3, __p2031_4] = await Promise.all([
+  useFetch<{ decks: { id: string; title: string; primary_deck: boolean; stats: { total: number } }[] }>('/api/documents/decks', { key: 'page-decks' }),
+  useFetch<{ boards: { id: string; name: string; audience: string }[] }>('/api/financials/boards', { key: 'page-boards', immediate: canPath('/financials/boards'), default: () => ({ boards: [] }) }),
+  useFetch<{ forecasts: { id: string; name: string }[] }>('/api/forecast', { key: 'page-fcs', immediate: canPath('/forecast'), default: () => ({ forecasts: [] }) }),
+  useFetch<{ captables: { id: string; name: string }[] }>('/api/equity', { key: 'page-cts', immediate: canPath('/cap-table'), default: () => ({ captables: [] }) }),
+  useFetch<{ url: string | null; title: string | null }>('/api/documents/decks/primary', { key: 'main-deck' })])
+const { data: deckList } = __p2031_0
+const { data: boards } = __p2031_1
+const { data: fcs } = __p2031_2
+const { data: cts } = __p2031_3
+const { data: mainDeck } = __p2031_4
 async function upImg(kind: 'cover_id', ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); try { f[kind] = (await $fetch<{ id: string }>('/api/investor-page/media', { method: 'POST', body: fd })).id; await save() } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload.' } }
 async function save(publish?: boolean) {
   busy.value = true; msg.value = ''; ok.value = ''

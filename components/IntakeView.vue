@@ -3,8 +3,12 @@
 // The team can correct it (or fill it in for the client); files already sent are kept.
 import { fieldVisible, type IntakeField } from '~/shared/intake'
 const props = defineProps<{ jobId: string }>()
-const { data, refresh } = await useFetch<{ id: string; kind: string; answers: Record<string, unknown>; files: { field: string; doc_id: string; name: string }[]; ssn_last4: string | null; submitted_by: string | null; updated_at: string; form: { title: string; intro?: string; fields: IntakeField[] } } | null>(() => '/api/services/intakes/' + props.jobId)
-const { data: blank } = await useFetch<{ kind: string | null; form?: { title: string; intro: string; fields: IntakeField[] } }>(() => '/api/services/' + props.jobId + '/intake-form', { server: false, lazy: true })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p314_0, __p314_1] = await Promise.all([
+  useFetch<{ id: string; kind: string; answers: Record<string, unknown>; files: { field: string; doc_id: string; name: string }[]; ssn_last4: string | null; submitted_by: string | null; updated_at: string; form: { title: string; intro?: string; fields: IntakeField[] } } | null>(() => '/api/services/intakes/' + props.jobId),
+  useFetch<{ kind: string | null; form?: { title: string; intro: string; fields: IntakeField[] } }>(() => '/api/services/' + props.jobId + '/intake-form', { server: false, lazy: true })])
+const { data, refresh } = __p314_0
+const { data: blank } = __p314_1
 const form = computed(() => data.value?.form ?? blank.value?.form ?? null)
 const ssn = ref('')
 async function reveal() { if (!data.value || !await askConfirm('Show the full SSN? This is recorded.')) return; ssn.value = (await $fetch<{ ssn: string }>('/api/services/intakes/' + data.value.id + '/reveal', { method: 'POST' })).ssn }

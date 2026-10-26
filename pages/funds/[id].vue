@@ -10,8 +10,12 @@ interface D {
   calls: { id: string; kind: string; number: number; purpose: string | null; total_amount: string; due_date: string; status: string; paid: string }[]
   navs: { id: string; as_of: string; nav: string; note: string | null }[]; investments: { id: string; company: string; check_usd: string | null; closed_at: string | null }[]; allLps: { id: string; name: string }[]; required: number
 }
-const { data, refresh } = await useFetch<D>('/api/funds/' + id)
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1750_0, __p1750_1] = await Promise.all([
+  useFetch<D>('/api/funds/' + id),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p1750_0
+const { data: me } = __p1750_1
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 useHead({ title: () => data.value?.fund.name ?? 'Fund' })
 const { money, x, pct, day } = useMoney()

@@ -6,8 +6,12 @@ import { shortAmount } from '~/shared/compact'
 useHead({ title: 'LP prospects' })
 interface P { id: string; name: string; kind: string; capital: string; country: string | null; regions: string[]; sectors: string[]; aum_usd: number | null; ticket_min_usd: number | null; ticket_max_usd: number | null; mandate: string | null; backs_emerging: boolean | null
   website: string | null; contact_name: string | null; contact_title: string | null; email: string | null; linkedin: string | null; phone: string | null; notes: string | null; sources: string[]; source: string; lp_id: string | null; added: string; priority: string | null; extra: Record<string, string>; pipelines: { pipeline_id: string; pipeline: string; kind: string; stage: string; stage_kind: string; amount: number | null }[] }
-const { data, refresh } = await useFetch<{ items: P[]; pipelines: { id: string; name: string; kind: string; status: string }[]; kinds: Record<string, string>; capital: Record<string, string>; extra: Record<string, string> }>('/api/funds/prospects')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p1100_0, __p1100_1] = await Promise.all([
+  useFetch<{ items: P[]; pipelines: { id: string; name: string; kind: string; status: string }[]; kinds: Record<string, string>; capital: Record<string, string>; extra: Record<string, string> }>('/api/funds/prospects'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p1100_0
+const { data: me } = __p1100_1
 const isGp = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 const q = ref(''), kind = ref(''), cap = ref(''), pri = ref(''), sel = ref<string[]>([]), okMsg = ref(''), msg = ref('')
 const shown = computed(() => (data.value?.items ?? []).filter((p) => (!kind.value || p.kind === kind.value) && (!pri.value || p.priority === pri.value) && (!cap.value || (cap.value === 'debt' ? p.capital !== 'equity' : p.capital !== 'debt')) && (!q.value || [p.name, p.country, p.mandate, p.contact_name, p.regions.join(' '), p.sectors.join(' ')].join(' ').toLowerCase().includes(q.value.toLowerCase()))))

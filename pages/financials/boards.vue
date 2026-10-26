@@ -3,8 +3,12 @@
 useHead({ title: 'Boards' })
 interface B { id: string; audience: string; name: string; kpis: string[]; charts: { title: string; metrics: string[]; type?: string }[]; period: string; count: number; note: string | null; share_url: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; data: Parameters<typeof useBoardData>[0]; forecast: { id: string; name: string; assumptions: import('~/shared/forecast').Assumptions } | null }
 function useBoardData(d: { labels: string[]; series: Record<string, (number | null)[]>; kpis: { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }[]; charts: { title: string; metrics: string[] }[]; currency: string; period: string }) { return d }
-const { data, refresh } = await useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }>; forecasts: { id: string; name: string }[] }>('/api/financials/boards')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p897_0, __p897_1] = await Promise.all([
+  useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }>; forecasts: { id: string; name: string }[] }>('/api/financials/boards'),
+  useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
+const { data, refresh } = __p897_0
+const { data: me } = __p897_1
 const canEdit = computed(() => !!me.value?.roles?.some((r) => ['admin', 'gp'].includes(r)))
 const sel = ref(''); watchEffect(() => { if (!sel.value && data.value?.boards.length) sel.value = data.value.boards[0]!.id })
 const board = computed(() => data.value?.boards.find((b) => b.id === sel.value) ?? null)

@@ -2,11 +2,18 @@
 const id = useRoute().params.id as string
 interface Ob { id: string; entity_id: string; entity: string; title: string; category: string; jurisdiction: string | null; recurrence: string; next_due: string; days_left: number; reminder_days: number; owner_id: string | null; notes: string | null; active: boolean }
 interface H { id: string; due_date: string; completed_on: string; note: string | null; by_name: string | null; document_id: string | null; document_title: string | null }
-const { data, error, refresh } = await useFetch<{ obligation: Ob; history: H[] }>('/api/compliance/' + id)
-const { data: entities } = await useFetch<{ id: string; name: string }[]>('/api/entities')
-const { data: people } = await useFetch<{ id: string; name: string }[]>('/api/pipeline/people')
-const { data: docs } = await useFetch<{ id: string; title: string }[]>('/api/documents')
-const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me')
+// Fetched together, not one after another (each wait is a round trip to the server).
+const [__p483_0, __p483_1, __p483_2, __p483_3, __p483_4] = await Promise.all([
+  useFetch<{ obligation: Ob; history: H[] }>('/api/compliance/' + id),
+  useFetch<{ id: string; name: string }[]>('/api/entities'),
+  useFetch<{ id: string; name: string }[]>('/api/pipeline/people'),
+  useFetch<{ id: string; title: string }[]>('/api/documents'),
+  useFetch<{ roles: string[] }>('/api/auth/me')])
+const { data, error, refresh } = __p483_0
+const { data: entities } = __p483_1
+const { data: people } = __p483_2
+const { data: docs } = __p483_3
+const { data: me } = __p483_4
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['admin', 'gp', 'team'].includes(r)))
 useHead({ title: () => (data.value?.obligation.title ?? 'Obligation') })
 const CAT: Record<string, string> = { tax: 'Tax', annual_return: 'Annual return', franchise_tax: 'Franchise tax', registered_agent: 'Registered agent', licence: 'Licence', regulatory: 'Regulatory filing', insurance: 'Insurance', banking: 'Banking / KYC', other: 'Other' }
