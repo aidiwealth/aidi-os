@@ -15,13 +15,18 @@ const COLORS = ['#1c3d63', '#5b8fd1', '#46a7dc', '#8aa4c4', '#2b5a8c', '#b9c9dc'
 // Metric series from the company's statements: monthly, quarterly or yearly (flows summed, balances at period end).
 export async function updateSubject(subject?: string | null): Promise<string | null> {
   const org = (await currentOrg())!
-  if (org.kind === 'company') { const ent = await companyEntityId(); return ent ? 'entity:' + ent : null }
+  // A company: the one asked for (the group, or one of its own companies, e.g. on Boards), else the main company.
+  if (org.kind === 'company') {
+    if (subject === 'group') return 'group'
+    if (subject?.startsWith('entity:') && (await db().query('SELECT 1 FROM core.entities WHERE id = $1', [subject.slice(7)]).catch(() => ({ rowCount: 0 }))).rowCount) return subject
+    const ent = await companyEntityId(); return ent ? 'entity:' + ent : null
+  }
   return subject || 'group'
 }
 export async function metricSeries(metrics: string[], period: string, count: number, subject?: string | null): Promise<Series> {
   const org = (await currentOrg())!
   const subj = await updateSubject(subject)
-  const cur = (org.settings.currency as string) || 'USD'
+  const cur = org.kind === 'company' && subj === 'group' ? await subjectCurrency('group') : (org.settings.currency as string) || 'USD'
   const rows = subj ? await loadStatements(subj, 'month', cur) : []
   const groups = new Map<string, { label: string; rows: typeof rows }>()
   for (const r of rows) {

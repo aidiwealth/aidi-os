@@ -42,8 +42,8 @@ export const HEALTH_NOTE: Record<Health, string> = {
   struggling: 'Under 6 months of cash, or revenue down three months running.', critical: 'Under 3 months of cash.', unknown: 'Add at least three months of statements under Financials.' }
 
 // One month of figures, in the company's currency (expenses = cost of revenue + operating costs).
-export interface Mo { month: string; revenue: number | null; expenses: number | null; net: number | null; ebitda: number | null; gross_margin: number | null; cash: number | null; debt: number | null }
-export interface CapFacts { has: boolean; raised_usd: number; priced_round: Funding | null; founders_pct: number | null; pool: boolean; safes: number }
+export interface Mo { month: string; revenue: number | null; expenses: number | null; net: number | null; ebitda: number | null; gross_margin: number | null; cash: number | null; safe?: number; debt: number | null }
+export interface CapFacts { has: boolean; raised_usd: number; priced_round: Funding | null; founders_pct: number | null; pool: boolean; safes: number; safe_amount?: number }
 export interface Inputs { months: Mo[]; usd: number; runway: number | null; cash: number | null; cash_at: string | null; cap: CapFacts; nrr: number | null; retention_on: boolean; room: { deck: boolean; files: number; links: number }; bank: { connected: boolean; months: number } }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -150,14 +150,15 @@ export function debtScore(i: Inputs, w: Record<DebtKey, number>): Score {
   const cv = last6.length > 2 && mean ? Math.sqrt(last6.reduce((s, v) => s + (v - mean) ** 2, 0) / last6.length) / mean : null
   const bigDrop = last6.some((v, k) => k > 0 && v < last6[k - 1]! * 0.8)
   const gm = avg(i.months.slice(-3).map((x) => x.gross_margin)), eb = avg(i.months.slice(-3).map((x) => x.ebitda)), rv = avg(i.months.slice(-3).map((x) => x.revenue))
-  const debt = [...i.months].reverse().find((x) => x.debt !== null)?.debt ?? 0, arr = (rv ?? 0) * 12
+  // SAFEs are investors' money waiting to convert to shares, not borrowing: they never count as debt here.
+  const lastDebt = [...i.months].reverse().find((x) => x.debt !== null), debt = lastDebt?.debt ?? 0, safe = lastDebt?.safe ?? 0, arr = (rv ?? 0) * 12
   const cover = eb === null || !rv ? 0 : eb >= 0 ? 1 : eb >= -0.2 * rv ? 0.5 : 0
   const parts: Part[] = [
     { key: 'history', label: 'Months of revenue', weight: w.history, score: lin(withRev.length, 0, 12), detail: withRev.length + ' month' + (withRev.length === 1 ? '' : 's') + ' with revenue', fix: 'Add more months of statements: lenders look for 12', to: '/financials' },
     { key: 'consistency', label: 'Steady revenue', weight: w.consistency, score: cv === null ? 0 : clamp(1 - cv * 2, 0, 1) * (bigDrop ? 0.5 : 1), detail: cv === null ? 'Not enough months' : (bigDrop ? 'a month fell more than 20% · ' : '') + 'variation ' + Math.round(cv * 100) + '% over six months', fix: 'Keep monthly revenue steady: lenders lend against it', to: '/financials' },
     { key: 'margin', label: 'Gross margin', weight: w.margin, score: gm === null ? 0 : lin(gm, 15, 50), detail: gm === null ? 'No gross margin yet' : r1(gm) + '%', fix: 'Lift gross margin towards 50%', to: '/financials' },
     { key: 'cover', label: 'Ability to repay', weight: w.cover, score: cover, detail: eb === null ? 'No EBITDA yet' : eb >= 0 ? 'EBITDA positive' : 'EBITDA ' + Math.round((eb / (rv || 1)) * 100) + '% of revenue', fix: 'Bring EBITDA to break-even', to: '/forecast' },
-    { key: 'debt', label: 'Existing debt', weight: w.debt, score: arr ? clamp(1 - debt / (arr * 0.5), 0, 1) : debt ? 0 : 0.5, detail: debt ? 'Debt of ' + Math.round(debt).toLocaleString('en-US') + ' on the balance sheet' : 'No debt on the balance sheet', fix: 'Lower existing debt against revenue', to: '/financials' },
+    { key: 'debt', label: 'Existing debt', weight: w.debt, score: arr ? clamp(1 - debt / (arr * 0.5), 0, 1) : debt ? 0 : 0.5, detail: (debt ? 'Debt of ' + Math.round(debt).toLocaleString('en-US') + ' on the balance sheet' : 'No debt on the balance sheet') + (safe ? ' (SAFEs of ' + Math.round(safe).toLocaleString('en-US') + ' left out: they convert to shares)' : ''), fix: 'Lower existing debt against revenue', to: '/financials' },
     { key: 'bank', label: 'Bank history', weight: w.bank, score: i.bank.connected ? 1 : lin(i.bank.months, 0, 6), detail: i.bank.connected ? 'Bank connected' : i.bank.months ? i.bank.months + ' months of statements' : 'No bank connected', fix: 'Connect your bank, or upload six months of statements', to: '/financials' }]
   return total(parts)
 }

@@ -17,7 +17,7 @@ export function stageTier(planCode: string | null | undefined): number { return 
 async function capFacts(currency: string): Promise<CapFacts> {
   const list = await capTables().catch(() => [])
   const main = list.find((c) => c.is_main) ?? list[0]
-  if (!main) return { has: false, raised_usd: 0, priced_round: null, founders_pct: null, pool: false, safes: 0 }
+  if (!main) return { has: false, raised_usd: 0, priced_round: null, founders_pct: null, pool: false, safes: 0, safe_amount: 0 }
   const d = await loadCapTable(main.id), t = capTable(d, new Date().toISOString().slice(0, 10))
   const usd = async (c: string) => (c === 'USD' ? 1 : (await fxRate(c, 'USD')) ?? 0)
   let raised = 0
@@ -31,7 +31,9 @@ async function capFacts(currency: string): Promise<CapFacts> {
     if (st && (!round || i.issued_on > round.on)) round = { on: i.issued_on, stage: st }
   }
   const founders = t.rows.filter((r) => r.holder.kind === 'founder')
-  return { has: true, raised_usd: Math.round(raised), priced_round: round?.stage ?? null, founders_pct: founders.length ? founders.reduce((s, r) => s + r.pctFd, 0) : null, pool: d.plans.some((p) => p.reserved > 0), safes: d.convertibles.filter((c) => c.status === 'outstanding').length }
+  // SAFEs still outstanding, in the report's currency (taken off any debt line that holds them).
+  let safeAmt = 0; for (const c of d.convertibles) if (c.status === 'outstanding' && c.kind === 'safe') { const r = (c.currency || currency) === currency ? 1 : (await fxRate(c.currency, currency)) ?? 0; safeAmt += c.amount * r }
+  return { has: true, raised_usd: Math.round(raised), priced_round: round?.stage ?? null, founders_pct: founders.length ? founders.reduce((s, r) => s + r.pctFd, 0) : null, pool: d.plans.some((p) => p.reserved > 0), safes: d.convertibles.filter((c) => c.status === 'outstanding').length, safe_amount: Math.round(safeAmt) }
 }
 
 export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<typeof forecastScope>>) {
@@ -48,9 +50,16 @@ export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<ty
   const sec = await cashPolicy()
   const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: 'month', currency: r.currency, lines: r.lines, kpis: {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
   const burn = burnReview(fr)
+  // SAFEs booked as a liability are not debt: they come off the debt line (never below zero).
+  const cap = await capFacts(cur)
+  const SAFE = /\bsafes?\b|simple agreement for future equity/i
   const months: Mo[] = rows.map((r) => {
     const d = derive(r.lines, 'month'), exp = d.cogs === null && d.opex_total === null ? null : (d.cogs ?? 0) + (d.opex_total ?? 0)
-    return { month: String(r.period_end).slice(0, 7), revenue: d.revenue, expenses: exp, net: d.net_income ?? (d.ebitda !== null ? d.ebitda : null), ebitda: d.ebitda, gross_margin: d.gross_margin, cash: d.cash, debt: d.debt ?? null }
+    // With the debt line broken down, only lines named as SAFEs; without a breakdown, the cap table's SAFEs.
+    const lines = Object.entries(((r as { detail?: Record<string, number> | null }).detail) ?? {}).filter(([k]) => k.startsWith('debt|'))
+    const raw = d.debt ?? null, named = lines.filter(([k]) => SAFE.test(k.slice(5))).reduce((a, [, v]) => a + (Number(v) || 0), 0)
+    const safe = raw === null ? 0 : Math.min(raw, lines.length ? named : cap.safe_amount ?? 0)
+    return { month: String(r.period_end).slice(0, 7), revenue: d.revenue, expenses: exp, net: d.net_income ?? (d.ebitda !== null ? d.ebitda : null), ebitda: d.ebitda, gross_margin: d.gross_margin, cash: d.cash, debt: raw === null ? null : Math.max(0, raw - Math.max(0, safe)), safe: Math.max(0, safe) }
   })
   // Customer revenue for this company (net revenue retention over 12 months), when the plan includes it.
   let nrr: number | null = null
@@ -66,7 +75,6 @@ export async function stageMonitor(event: H3Event, scope?: Awaited<ReturnType<ty
   const cutRows = (await db().query<{ currency: string; v: string }>(`SELECT l.currency, sum(l.amount) / 3 AS v FROM banking.ledger l JOIN banking.vendors v ON v.vendor_key = l.vendor_key AND v.status = 'to_cancel'
     WHERE l.direction = 'out' AND l.txn_date >= date_trunc('month', now()) - interval '3 months' AND l.txn_date < date_trunc('month', now()) AND ($1::uuid IS NULL OR coalesce(l.entity_id, $2::uuid) = $1) GROUP BY 1`, [ent, await companyEntityId()]).catch(() => ({ rows: [] }))).rows
   let cutMonthly = 0; for (const r of cutRows) cutMonthly += Number(r.v) * (r.currency === cur ? 1 : (await fxRate(r.currency, cur)) ?? 0)
-  const cap = await capFacts(cur)
   const i: Inputs = { months, usd, runway: burn.runway, cash: burn.cash ?? [...months].reverse().find((m) => m.cash !== null)?.cash ?? (await bankCash(sc))?.cash ?? null, cash_at: burn.cash_at, cap, nrr, retention_on: retentionOn, room, bank }
   const fund = fundingStage(cap, rr), lastRev = [...months].reverse().find((m) => m.revenue !== null)?.revenue ?? 0
   const arrUsd = Math.max(0, lastRev) * 12 * usd, op = operatingStage(arrUsd, rr)

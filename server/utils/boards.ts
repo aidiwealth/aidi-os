@@ -20,9 +20,9 @@ export async function ensureBoards(): Promise<void> {
 // Series for a board's metrics (growth is derived from revenue). Values follow the reporting currency.
 // Any metric a board can show: the standard ones, plus customer and KPI metrics.
 export function boardMetric(k: string): { label: string; unit: string } { return BOARD_METRICS[k] ?? { label: metricLabel(k), unit: metricUnit(k) } }
-export async function boardData(kpis: string[], charts: BoardChart[], period: string, count: number) {
+export async function boardData(kpis: string[], charts: BoardChart[], period: string, count: number, subject?: string | null) {
   const want = [...new Set([...kpis, ...charts.flatMap((c) => c.metrics)].flatMap((m) => (m === 'growth' ? ['revenue'] : [m])))]
-  const s = await metricSeries(want, period, count + 1)
+  const s = await metricSeries(want, period, count + 1, subject)
   const get = (k: string) => s.series.find((x) => x.key === k)?.values ?? []
   const rev = get('revenue')
   const growth = rev.map((v, i) => (i && v != null && rev[i - 1] ? Math.round(((v - rev[i - 1]!) / Math.abs(rev[i - 1]!)) * 1000) / 10 : null))

@@ -3,9 +3,11 @@
 useHead({ title: 'Boards' })
 interface B { id: string; audience: string; name: string; kpis: string[]; charts: { title: string; metrics: string[]; type?: string }[]; period: string; count: number; note: string | null; share_url: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; data: Parameters<typeof useBoardData>[0]; forecast: { id: string; name: string; assumptions: import('~/shared/forecast').Assumptions } | null }
 function useBoardData(d: { labels: string[]; series: Record<string, (number | null)[]>; kpis: { key: string; label: string; unit: string; value: number | null; prev: number | null; change: number | null }[]; charts: { title: string; metrics: string[] }[]; currency: string; period: string }) { return d }
+// The company (or the group) chosen at the top, as on Financials.
+const { cust } = await useCoScope()
 // Fetched together, not one after another (each wait is a round trip to the server).
 const [__p897_0, __p897_1] = await Promise.all([
-  useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }>; forecasts: { id: string; name: string }[] }>('/api/financials/boards'),
+  useFetch<{ boards: B[]; metrics: Record<string, { label: string; unit: string }>; forecasts: { id: string; name: string }[] }>('/api/financials/boards', { query: { cust }, watch: [cust] }),
   useFetch<{ roles: string[] }>('/api/auth/me', { key: 'me' })])
 const { data, refresh } = __p897_0
 const { data: me } = __p897_1
@@ -27,7 +29,7 @@ async function setType(i: number, type: string) { if (!board.value) return; cons
 <template>
   <section v-if="data">
     <p class="label">Financials</p>
-    <div class="head"><div><h1>Boards</h1><p class="lead">Your figures, set up for each audience.</p></div><NuxtLink to="/financials" class="btn secondary">Back to Financials</NuxtLink></div>
+    <div class="head"><div><ScopeSwitch page="Boards" /><p class="lead">Your figures, set up for each audience.</p></div><NuxtLink to="/financials" class="btn secondary">Back to Financials</NuxtLink></div>
     <nav class="bt"><button v-for="b in data.boards" :key="b.id" :class="{ on: sel === b.id }" @click="sel = b.id">{{ b.name }}<i v-if="b.share_enabled" title="Shared">●</i></button><button v-if="canEdit" class="add" @click="newBoard">+ New board</button></nav>
     <template v-if="board">
       <div class="bh"><p class="mut">{{ board.note }}</p><div class="tools">
