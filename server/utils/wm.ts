@@ -24,8 +24,8 @@ const CLASS: Record<string, string> = { public_securities: 'Stocks & ETFs', cryp
 // Everything a client holds, in USD: holdings, external accounts and linked bank balances.
 export async function clientSummary(clientId: string) {
   const usd = async (v: number, c: string) => (c === 'USD' ? v : v * ((await fxRate(c, 'USD')) ?? 0))
-  const holdings = (await db().query<{ id: string; category: string; name: string; platform: string | null; currency: string; cost: string | null; current_value: string | null; as_of: string | null; meta: Record<string, unknown>; status: string; notes: string | null }>(
-    "SELECT id, category, name, platform, currency, cost::text, current_value::text, to_char(as_of, 'YYYY-MM-DD') AS as_of, meta, status, notes FROM wealth.holdings WHERE wm_client_id = $1 AND status NOT IN ('sold','written_off') ORDER BY category, name", [clientId])).rows
+  const holdings = (await db().query<{ id: string; category: string; name: string; platform: string | null; currency: string; cost: string | null; current_value: string | null; as_of: string | null; meta: Record<string, unknown>; status: string; notes: string | null; live: boolean }>(
+    "SELECT id, category, name, platform, currency, cost::text, current_value::text, to_char(as_of, 'YYYY-MM-DD') AS as_of, meta, status, notes, (coalesce(import_key, '') LIKE 'mkt:%' OR (meta->>'valuation' = 'spot' AND meta ? 'ounces')) AS live FROM wealth.holdings WHERE wm_client_id = $1 AND status NOT IN ('sold','written_off') ORDER BY category, name", [clientId])).rows
   const accounts = (await db().query<{ id: string; provider: string; institution: string; kind: string; name: string | null; currency: string; balance: string; cash_part: string | null; as_of: string; managed_by: string | null }>(
     "SELECT id, provider, institution, kind, name, currency, balance::text, cash_part::text, to_char(as_of, 'YYYY-MM-DD') AS as_of, managed_by FROM wm.accounts WHERE client_id = $1 ORDER BY institution", [clientId])).rows
   const banks = (await db().query<{ id: string; name: string; mask: string | null; type: string | null; subtype: string | null; currency: string; current: string | null; institution: string | null; updated_at: string }>(
@@ -44,7 +44,9 @@ export async function clientSummary(clientId: string) {
   const risk = riskFit(lvl, rv, await riskConfig())
   const r = (x: number) => Math.round(x * 100) / 100
   await db().query('INSERT INTO wm.snapshots (organization_id, client_id, as_of, net_worth, invested, cash) SELECT organization_id, id, current_date, $2, $3, $4 FROM wm.clients WHERE id = $1 ON CONFLICT (client_id, as_of) DO UPDATE SET net_worth = EXCLUDED.net_worth, invested = EXCLUDED.invested, cash = EXCLUDED.cash', [clientId, r(invested + cash - liabilities), r(invested), r(cash)]).catch(() => {})
-  return { risk, holdings, accounts, banks, totals: { net_worth: r(invested + cash - liabilities), invested: r(invested), cash: r(cash), cost: r(cost), gain: r(invested - cost), liabilities: r(liabilities) },
+  // Net worth at each month end (the last snapshot in each month), for the value-over-time chart.
+  const history = (await db().query<{ m: string; v: string }>("SELECT to_char(date_trunc('month', as_of), 'YYYY-MM') AS m, net_worth::text AS v FROM (SELECT DISTINCT ON (date_trunc('month', as_of)) as_of, net_worth FROM wm.snapshots WHERE client_id = $1 AND as_of > current_date - 730 ORDER BY date_trunc('month', as_of), as_of DESC) x ORDER BY 1", [clientId]).catch(() => ({ rows: [] as { m: string; v: string }[] }))).rows.map((x) => ({ m: x.m, v: Math.round(Number(x.v)) }))
+  return { risk, holdings, accounts, banks, history, totals: { net_worth: r(invested + cash - liabilities), invested: r(invested), cash: r(cash), cost: r(cost), gain: r(invested - cost), liabilities: r(liabilities) },
     by_class: Object.entries(byClass).filter(([k]) => k !== 'Liabilities').map(([label, value]) => ({ label, value: r(value) })).filter((x) => x.value > 0),
     by_platform: Object.entries(byPlatform).map(([label, value]) => ({ label, value: r(value) })).sort((a, b) => b.value - a.value) }
 }
