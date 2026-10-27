@@ -492,5 +492,46 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('book rates read from a two-column FX rates tab', r.get('NGN')?.get('2026-07') === 1368 && r.get('NGN')?.get('2026-08') === 1355, JSON.stringify([...(r.get('NGN') ?? new Map())]))
 }
 
+// 16. Public Markets valuation maths against the spec's fixtures (to 0.1%), and the pieces checked against each other.
+{
+  const Q = await jiti.import(join(root, 'shared/quant.ts'))
+  const near = (a, b, tol = 0.001) => Math.abs(a - b) <= Math.abs(b) * tol
+  check('PEP cost of equity 4.5% + 0.67 × 3.5% = 6.8%', Math.round(Q.costOfEquity(4.5, 0.67, 3.5) * 10) / 10 === 6.8)
+  check('NVDA cost of equity 4.5% + 1.56 × 3.5% = 10.0%', Math.round(Q.costOfEquity(4.5, 1.56, 3.5) * 10) / 10 === 10.0)
+  check('Qualcomm WACC with no debt 4.25% + 1.25 × 5% = 10.5%', Q.wacc({ equity: 100, debt: 0, re: Q.costOfEquity(4.25, 1.25, 5), rd: 5, tax: 21 }) === 10.5)
+  const np = [-33.8, 11.6, 17.6, 17.6, 17.6, 6.0]
+  check('NetPhone NPV at 10.5% = 19.60m', Math.round(Q.npv(10.5, np) * 100) / 100 === 19.6, String(Q.npv(10.5, np)))
+  check('NetPhone IRR = 32.1%', Math.round(Q.irr(np) * 10) / 10 === 32.1, String(Q.irr(np)))
+  check('NetPhone expected NPV 75/10/15 = 11.7m', Math.round(Q.expectedValue([{ p: 75, v: 19.6 }, { p: 10, v: -24.75 }, { p: 15, v: -3.74 }]) * 10) / 10 === 11.7)
+  // McDonald's (Jan 2019): the terminal value of 206,707 at 5.5% for ten years, and TEV 170,183 to equity 139,962 and
+  // $182.96 a share. The ten years of free cash flow come from the sheet, which is not in the repo yet.
+  const pvTv = Q.pvAt(206707, 5.5, 10)
+  check('McDonald\'s terminal value 206,707 at 5.5% over 10 years = 121,013 today', Math.round(pvTv) === 121013, String(pvTv))
+  check('McDonald\'s TEV 170,183 less net debt 30,221 over 765.0m shares = $182.96', near(Q.perShare(170183, 170183 - 139962, 139962 / 182.96), 182.96, 0.0001))
+  // Beta: a made-up stock moving 0.8 × the market plus noise; the regression finds 0.8 and the adjustment pulls to 1.
+  const px = (f) => { const out = []; let p = 100; for (let i = 0; i < 61; i++) { p *= 1 + f(i); out.push({ d: new Date(Date.UTC(2021, i, 28)).toISOString().slice(0, 10), close: p }) } return out }
+  const mk = (i) => Math.sin(i * 1.7) * 0.04 + 0.005, st = (i) => 0.002 + 0.8 * (mk(i) - 0.003) + 0.003 + Math.cos(i * 2.3) * 0.005
+  const b = Q.betaOf(px(st), px(mk), Object.fromEntries(Array.from({ length: 61 }, (_, i) => [new Date(Date.UTC(2021, i, 28)).toISOString().slice(0, 7), 3.6])), 60, '2026-02')
+  check('beta from monthly excess returns', b && Math.abs(b.beta - 0.8) < 0.02 && b.r2 > 0.9 && b.months === 60 && b.ci[0] < b.beta && b.ci[1] > b.beta, b ? [b.beta, b.r2, b.months].join(' ') : 'none')
+  check('Blume adjusted beta 0.67 × 0.6 + 0.33', Math.round(Q.blume(0.6) * 1000) / 1000 === 0.732)
+  check('beta needs 36 months', Q.betaOf(px(st).slice(0, 30), px(mk).slice(0, 30), { '2021-01': 3 }, 60, '2026-02') === null)
+  // DCF: value, reverse DCF and break-evens agree with each other.
+  const d = Q.seedDrivers({ revenue: [100, 110, 121, 133.1], ebit: [10, 11, 12.1, 13.3], tax_rate: [21, 21, 21], reinvest: [3, 3, 3], nwc: [5, 5, 5] })
+  check('starting growth: last three years\' median, fading to long-run growth by year 10', d.growth[0] === 10 && d.growth[2] === 10 && d.growth[9] === 2.5 && d.margin[0] === 10)
+  const v = { base: { revenue: 133.1, ebit: 13.3 }, netDebt: 10, shares: 10, wacc: 8, rfLong: 4.2 }
+  const one = Q.dcf(v.base, d, 8, 4.2), byHand = one.rows.reduce((a, r) => a + r.fcf / 1.08 ** r.year, 0) + (one.rows[9].fcf * 1.025 / (0.08 - 0.025)) / 1.08 ** 10
+  check('DCF: PV of ten years plus the terminal value', near(one.ev, byHand, 1e-9) && near(Q.valuePerShare(v, d), (one.ev - 10) / 10, 1e-9))
+  const price = 12, g = Q.impliedGrowth(v, d, price)
+  check('reverse DCF: the growth found gives back the price', g !== null && near(Q.valuePerShare(v, { ...d, growth: Array(10).fill(g) }), price, 1e-6), String(g))
+  const tw = Q.tornado(v, d, price), w = tw.find((x) => x.key === 'wacc')
+  check('break-even WACC gives back the price', w.break_even !== null && near(Q.valuePerShare(v, d, w.break_even), price, 1e-6) && tw[0].swing >= tw[tw.length - 1].swing, String(w.break_even))
+  check('no value when long-run growth is within 1 point of the WACC', Q.dcf(v.base, { ...d, terminal_growth: 7.5 }, 8) === null)
+  const sc = Q.scenarios(v, d)
+  check('scenarios: bear < base < bull, weighted 25/50/25', sc.bear < sc.base && sc.base < sc.bull && near(sc.weighted, 0.25 * sc.bear + 0.5 * sc.base + 0.25 * sc.bull, 1e-9))
+  check('signal: margin of safety bands', Q.signalOf(30, 12, 7, true) === 'strong_buy' && Q.signalOf(30, 12, 7, false) === 'buy' && Q.signalOf(5, 8, 7, true) === 'hold' && Q.signalOf(-15, 3, 7, true) === 'trim' && Q.signalOf(-30, 0, 7, true) === 'sell')
+  check('expected return: cost of equity when price equals value', near(Q.expectedReturn(100, 100, 7, 3), 7, 1e-9))
+  check('drawdown and volatility', Q.maxDrawdown([{ d: '2026-01-01', close: 100 }, { d: '2026-01-02', close: 120 }, { d: '2026-01-03', close: 90 }, { d: '2026-01-04', close: 130 }]) === -25 && Q.volatility(Array.from({ length: 40 }, (_, i) => ({ d: '2026-01-' + String(i + 1).padStart(2, '0'), close: 100 })), 30) === 0)
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)

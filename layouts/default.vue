@@ -58,7 +58,7 @@ const COMPANY_MENU: { label: string | null; items: WsDef[] }[] = [
 const AIDI_MENU: { label: string | null; items: WsDef[] }[] = [
   { label: 'Venture capital', items: [{ label: 'Pitches', codes: ['pitches'] }, { label: 'Investments', codes: ['pipeline', 'portfolio', 'credit'] }, { label: 'Funds & LPs', codes: ['funds', 'contacts', 'updates', 'decks', 'investor_page', 'directory'] }] },
   { label: 'Money', items: [{ label: 'Financials', codes: ['financials', 'boards', 'equity', 'forecast'] }, { label: 'Payments', codes: ['expenses'] }, { label: 'Accounting', codes: ['banking', 'books', 'deployments'] },
-    { label: 'Wealth', codes: ['wealth_mgmt', 'wealth', 'secondaries', 'rentals'] }, { label: 'Tax documents', codes: ['tax_docs'] }] },
+    { label: 'Wealth', codes: ['wealth_mgmt', 'public_markets', 'wealth', 'secondaries', 'rentals'] }, { label: 'Tax documents', codes: ['tax_docs'] }] },
   { label: 'Company', items: [{ label: 'Governance', codes: ['entities', 'governance', 'compliance'] }, { label: 'Meeting minutes', codes: ['meetings'] }, { label: 'Documents', codes: ['documents'] }, { label: 'Notices', codes: ['notices'] }] },
   { label: 'Administration', items: [{ label: 'Team', codes: ['team'] }, { label: 'Blog', codes: ['blog'] }, { label: 'Settings', codes: ['settings', 'modules'] }] }]
 // On Finvry every workspace is a company one: never fall back to the Aidi OS menu there.
@@ -76,7 +76,7 @@ const disclaimer = computed(() => {
   if (isCompany.value) return DISC.finvry
   if (platformMode.value || !me.value?.org) return ''
   const c = wsCurrent.value
-  if (c?.it.tabs.some((t) => ['wealth_mgmt', 'wealth', 'secondaries', 'rentals'].includes(t.code))) return DISC.wealth
+  if (c?.it.tabs.some((t) => ['wealth_mgmt', 'public_markets', 'wealth', 'secondaries', 'rentals'].includes(t.code))) return DISC.wealth
   if (c?.s.label === 'Venture capital') return DISC.ventures
   return DISC.office
 })

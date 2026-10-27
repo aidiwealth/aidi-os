@@ -27,7 +27,7 @@ export default defineNuxtConfig({
     plaidClientId: '', plaidSecret: '', plaidEnv: 'sandbox',
     premblyApiKey: '',
     premblyAppId: '',
-    premblyBaseUrl: '', quickbooksEnv: '', quickbooksClientSecret: '', quickbooksClientId: '', bushaWebhookSecret: '', bushaBaseUrl: '', bushaApiKey: '', fincraWebhookSecret: '', fincraBaseUrl: '', fincraApiKey: '', alpacaBaseUrl: '', alpacaClientSecret: '', alpacaClientId: '',
+    premblyBaseUrl: '', quickbooksEnv: '', quickbooksClientSecret: '', quickbooksClientId: '', bushaWebhookSecret: '', bushaBaseUrl: '', bushaApiKey: '', fincraWebhookSecret: '', fincraBaseUrl: '', fincraApiKey: '', alpacaBaseUrl: '', alpacaClientSecret: '', alpacaClientId: '', secUserAgent: '', aiModelMarkets: 'claude-sonnet-5-5',
     creditchekSecretKey: '', usBureauEnabled: '', opencorporatesToken: '', inboundEmailToken: '', supportInbox: 'support@finvry.com',
     defaultOrgSlug: 'the-aidi-group', // public pitch form without ?org= goes here
     r2AccountId: '',

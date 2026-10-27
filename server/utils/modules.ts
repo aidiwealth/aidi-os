@@ -28,6 +28,7 @@ export const MODULES: ModuleDef[] = [
   { code: 'wealth_mgmt', group: 'wm', label: 'Wealth management', to: '/wealth-mgmt', roles: ['admin', 'gp', 'team'], api: ['/api/wm'], pages: ['/wealth-mgmt'], switchable: true },
   { code: 'secondaries', group: 'wm', label: 'Secondaries', to: '/secondaries', roles: ['admin', 'gp', 'team'], api: ['/api/secondaries'], pages: ['/secondaries'], switchable: true },
   { code: 'rentals', group: 'wm', label: 'Rental & Real Estate', to: '/rentals', roles: ['admin', 'gp', 'team'], api: ['/api/rentals'], pages: ['/rentals'], switchable: true },
+  { code: 'public_markets', group: 'wm', label: 'Public markets', to: '/markets', roles: ['admin', 'gp'], api: ['/api/markets'], pages: ['/markets'], switchable: true },
   { code: 'wm_portal', group: 'wm', label: 'My wealth', to: '/w', roles: ['wealth_client'], api: ['/api/w/'], pages: ['/w'], switchable: false },
   { code: 'tax_docs', group: 'admin', label: 'Tax documents', to: '/tax-documents', roles: ['admin', 'gp', 'team'], api: ['/api/tax-docs'], pages: ['/tax-documents'], switchable: true },
   { code: 'expenses', group: 'fin', label: 'Payments', to: '/expenses', roles: ['admin', 'gp'], api: ['/api/expenses'], pages: ['/expenses'], switchable: true },
@@ -104,6 +105,8 @@ export async function scopeBlocks(event: H3Event, code: string): Promise<boolean
   const scope = String(event.context.entityScope ?? '').split(',').filter(Boolean)
   if (!scope.length) return false
   if (code === 'rentals') { const h = await havenEntityId(); return !!h && !scope.includes(h) }
+  // Public Markets values the group's and clients' positions: not for people limited to some companies.
+  if (code === 'public_markets') return true
   return false
 }
 export async function requireModule(event: H3Event, code: string): Promise<void> {

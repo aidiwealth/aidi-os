@@ -120,6 +120,32 @@ export const aidiExtra: ATool[] = [
       }
       return out
     } },
+  { name: 'analyse_ticker', module: 'public_markets', description: 'Public Markets: value a US-listed stock, ETF or crypto by symbol (e.g. PEP, NVDA, GLD, BTC). Returns the price with its time and source, the beta, the cost of equity and WACC, the fair value (bear, base, bull and weighted), the margin of safety, expected and required return, the signal, what growth today\'s price assumes, the drivers that matter most with break-evens, warnings, and the version and sources. All figures are worked out by the valuation model; quote them, never recompute them. ETFs get no cash-flow value and crypto is sized by risk only.', input_schema: S({ symbol: { type: 'string' } }, ['symbol']),
+    run: async (a) => {
+      const sym = normSymbol(a.symbol), i = symbolOk(sym) ? await ensureInstrument(sym) : null
+      if (!i) return { error: 'Not a US-listed stock, ETF or crypto we can price: ' + str(a.symbol, 20) }
+      const v = await valueSymbol(i), q = await quoteOf(i)
+      if (!v || !q) return { error: 'No price for ' + sym + ' yet.' }
+      const as = await marketAssumptions(), lv = liveSignal(v, q.price, as.horizon_years.value ?? 3), r = v.result, rd = (x: unknown, n = 2) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 10 ** n) / 10 ** n : null)
+      return { symbol: sym, name: i.name, kind: i.kind, method: r.method, price: { value: q.price, as_of: q.as_of, source: q.source },
+        beta: v.inputs.beta ? { raw: rd(v.inputs.beta.beta), adjusted: rd(v.inputs.beta.adjusted), used: rd(v.inputs.beta_used), r2: rd(v.inputs.beta.r2), months: v.inputs.beta.n } : null,
+        risk_free_10y_pct: v.inputs.rf_long?.value ?? null, market_risk_premium_pct: v.inputs.mrp?.value ?? null, cost_of_equity_pct: rd(r.re), wacc_pct: rd(r.wacc),
+        fair_value: r.scenarios ? { bear: rd(r.scenarios.bear), base: rd(r.scenarios.base), bull: rd(r.scenarios.bull), weights_pct: r.scenarios.p, weighted: rd(r.scenarios.weighted) } : null, dividend_model: rd(r.ddm),
+        margin_of_safety_pct: rd(lv?.mos ?? null, 1), expected_return_pct_a_year: rd(lv?.er ?? null, 1), required_return_pct: rd(r.re, 1), signal: lv?.label ?? null, implied_growth_pct: rd(r.implied_growth, 1), past_growth_pct: rd(r.history_growth, 1),
+        top_drivers: (r.tornado ?? []).slice(0, 3).map((t: any) => ({ driver: t.label, now: rd(t.now), break_even: rd(t.break_even) })), risk: { volatility_90d_pct: rd(r.risk?.vol_90, 1), max_drawdown_1y_pct: rd(r.risk?.drawdown_1y, 1) },
+        crypto: r.crypto ?? undefined, warnings: r.warnings, drivers_set_by: v.inputs.drivers_by ?? 'history',
+        ai_review: await (async () => { const rv = await latestReview(sym); return rv ? { date: rv.created_at.slice(0, 10), headline: rv.review.headline, stance: rv.review.stance, thesis: rv.review.thesis, what_changed: rv.review.what_changed, risks: rv.review.risks, guidance: rv.review.guidance, thesis_break: rv.review.thesis_break ? rv.review.thesis_break_why : null } : null })(), valuation_version: v.version, model_version: v.model_version, sources: ['Alpaca/Stooq prices', 'FRED DGS10 and DTB3', v.inputs.filings ? 'SEC EDGAR filings' : null, 'market risk premium entered ' + (v.inputs.mrp?.effective_date ?? 'not set')].filter(Boolean),
+        note: 'Guide only, not a recommendation to any client.' }
+    } },
+  { name: 'get_beta', module: 'public_markets', description: 'Public Markets: the beta of a symbol against the S&P 500 (SPY) from monthly excess returns over the 3-month T-bill: beta, adjusted beta, alpha, R², 95% range, number of months and any warning about the fit.', input_schema: S({ symbol: { type: 'string' } }, ['symbol']),
+    run: async (a) => {
+      const sym = normSymbol(a.symbol), i = symbolOk(sym) ? await ensureInstrument(sym) : null
+      if (!i) return { error: 'Not a symbol we can price: ' + str(a.symbol, 20) }
+      const v = await valueSymbol(i), b = v?.inputs.beta
+      if (!b) return { error: 'Not enough monthly prices for ' + sym + ' (needs 36 months).' }
+      const rd = (x: number) => Math.round(x * 1000) / 1000
+      return { symbol: sym, beta: rd(b.beta), adjusted_beta: rd(b.adjusted), alpha_monthly: rd(b.alpha), r2: rd(b.r2), range_95: [rd(b.ci[0]), rd(b.ci[1])], months: b.n, from: b.from, to: b.to, warnings: b.flags.map((f: string) => (f === 'low_r2' ? 'R² under 0.15: the market explains little of this price' : 'wide range: the estimate is uncertain')) }
+    } },
   { name: 'pitches', module: 'pitches', description: 'Pitches received (company, sector, stage, country, raising, status) with the latest AI screening score and recommendation. Filter by status or text.', input_schema: S({ status: { type: 'string' }, q: { type: 'string' } }),
     run: async (a) => (await db().query(`SELECT p.company, p.one_liner, p.sector, p.stage, p.country, p.raising_usd::float, p.status, p.funding_type, to_char(p.received_at, 'YYYY-MM-DD') AS received, s.score, s.recommendation
         FROM deals.pitches p LEFT JOIN LATERAL (SELECT score, recommendation FROM deals.screenings x WHERE x.pitch_id = p.id ORDER BY x.created_at DESC LIMIT 1) s ON true

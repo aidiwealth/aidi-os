@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Where a figure went over a period: the start, each step up or down, and the end, as floating bars.
-const props = withDefaults(defineProps<{ title: string; sub?: string; start: { label: string; value: number }; steps: { label: string; value: number }[]; endLabel: string; currency?: string; foot?: string }>(), { sub: '', currency: 'USD', foot: '' })
+const props = withDefaults(defineProps<{ title: string; sub?: string; start: { label: string; value: number }; steps: { label: string; value: number }[]; endLabel: string; currency?: string; foot?: string; noChange?: boolean }>(), { sub: '', currency: 'USD', foot: '', noChange: false })
 const W = 560, H = 190, PAD = 18
 const bars = computed(() => {
   let run = props.start.value
@@ -13,7 +13,7 @@ const hi = computed(() => Math.max(1, ...bars.value.map((b) => Math.max(b.from, 
 const y = (v: number) => PAD + (1 - v / hi.value) * (H - PAD * 2)
 const slot = computed(() => W / bars.value.length), bw = computed(() => Math.min(56, slot.value * 0.62))
 const fmt = (v: number) => (v < 0 ? '−' : v > 0 ? '' : '') + briefMoney(Math.abs(v), props.currency)
-const change = computed(() => { const a = props.start.value, b = bars.value[bars.value.length - 1]!.to; return a ? (b / a - 1) * 100 : null })
+const change = computed(() => { if (props.noChange) return null; const a = props.start.value, b = bars.value[bars.value.length - 1]!.to; return a ? (b / a - 1) * 100 : null })
 </script>
 
 <template>

@@ -1,0 +1,17 @@
+# Public Markets: prices every 30 minutes while US markets are open (weekdays 13:30-21:00 UTC covers summer and winter
+# time), and a full pass after the close with the AI reviews. Needs the repository secret CRON_SECRET.
+name: Public Markets
+on:
+  schedule:
+    - cron: '*/30 13-20 * * 1-5'
+    - cron: '15 22 * * 1-5'
+    - cron: '15 3 * * 2-6'
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prices, rates, valuations and AI reviews
+        run: |
+          curl -fsS -m 900 -X POST https://app.theaidigroup.com/api/public/cron/markets \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" -H "content-type: application/json" -d '{}'
