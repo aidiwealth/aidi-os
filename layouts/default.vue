@@ -167,7 +167,7 @@ const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/
 // Wealth clients: their own sections as the side menu (the portal page follows ?t=).
 const wcOnly = computed(() => !!me.value?.roles?.length && me.value.roles.every((r: string) => r === 'wealth_client'))
 const WC_MENU: [string, [string, string, string][]][] = [['', [['home', 'Overview', 'home']]], ['Planning', [['plan', 'Financial plan', 'forecast'], ['calculator', 'Calculator', 'gauge']]],
-  ['Money', [['holdings', 'Holdings', 'portfolio'], ['accounts', 'Accounts and investing', 'banking'], ['deals', 'Deal flow', 'pitches']]],
+  ['Money', [['holdings', 'Holdings', 'portfolio'], ['accounts', 'Accounts', 'banking'], ['deals', 'Deal flow', 'pitches']]],
   ['Records', [['statements', 'Statements', 'books'], ['docs', 'Documents', 'documents'], ['billing', 'Invoices', 'billing']]],
   ['Your account', [['identity', 'Identity', 'compliance'], ['family', 'Family', 'team']]]]
 const wcOn = (k: string) => route.path === '/w' && String(route.query.t ?? 'home') === k
