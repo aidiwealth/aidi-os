@@ -50,7 +50,7 @@ export async function livePositions(accountIds: string[]): Promise<Map<string, {
 }
 
 // ── Investments & AUM: each position (and the account's cash) is a line there, valued live ────────────────────────
-async function syncHolding(a: MarketAccount, symbol: string | null, qty: number, cost: number, value: number, realised = 0): Promise<string> {
+export async function syncHolding(a: MarketAccount, symbol: string | null, qty: number, cost: number, value: number, realised = 0): Promise<string> {
   const i = symbol ? await marketInstrument(symbol) : null
   const key = 'mkt:' + a.id + ':' + (symbol ?? '$CASH')
   const section = a.owner_type === 'client' ? 'client' : 'family'
@@ -112,6 +112,8 @@ export async function proposeFor(a: MarketAccount, userId: string | null): Promi
     if (q && lv) cand.push({ symbol: w.symbol, kind: 'stock', qty: 0, price: q.price, signal: lv.signal, mos: lv.mos, dataOk: v!.result?.data_ok !== false, priceFresh: q.live || Date.now() - Date.parse(q.as_of) < 4 * 86400e3, label: (await latestReview(w.symbol))?.review.headline ?? null })
   }
   const open = (await db().query<{ symbol: string }>("SELECT symbol FROM markets.proposals WHERE account_id = $1 AND status IN ('waiting', 'approved', 'ticket')", [a.id])).rows.map((r) => r.symbol)
+  // Shares from a pre-IPO holding stay put until the lock-up ends.
+  open.push(...(await db().query<{ symbol: string }>('SELECT symbol FROM markets.positions WHERE account_id = $1 AND lockup_until > current_date', [a.id])).rows.map((r) => r.symbol))
   const used = Number((await db().query<{ s: string }>("SELECT coalesce(sum(notional), 0)::text AS s FROM markets.proposals WHERE account_id = $1 AND status IN ('approved', 'ticket', 'filled') AND decided_at > now() - interval '1 day'", [a.id])).rows[0]!.s)
   const drafts = T.sizeTrades({ cash: live.cash, risk: a.risk_level, fractional: a.execution === 'alpaca', open, dailyUsed: used, dailyLimit: a.daily_limit,
     holdings: live.positions.filter((p) => p.price != null).map((p) => ({ symbol: p.symbol, kind: p.kind, qty: p.qty, price: p.price!, signal: p.signal as T.Holding['signal'], mos: p.mos, dataOk: p.data_ok, priceFresh: p.live || (p.as_of ? Date.now() - Date.parse(p.as_of) < 4 * 86400e3 : false), label: p.ai_headline })),

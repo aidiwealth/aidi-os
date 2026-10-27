@@ -5,13 +5,13 @@
 import { usd, signed, pct } from '~/shared/market-format'
 useHead({ title: 'Public markets' })
 const route = useRoute(); const router = useRouter()
-const U: [string, string][] = [['watchlist', 'Watchlist'], ['sp100', 'S&P 100'], ['etf', 'ETFs'], ['crypto', 'Crypto']]
+const U: [string, string][] = [['watchlist', 'Watchlist'], ['sp100', 'S&P 100'], ['etf', 'ETFs'], ['crypto', 'Crypto'], ['private', 'Private (pre-IPO)']]
 const u = computed({ get: () => String(route.query.u ?? 'watchlist'), set: (v: string) => router.replace({ query: { ...route.query, u: v } }) })
 const q = ref(''), qd = ref('')
 let t: ReturnType<typeof setTimeout> | null = null
 watch(q, (v) => { if (t) clearTimeout(t); t = setTimeout(() => { qd.value = v.trim() }, 250) })
 interface Row { symbol: string; name: string; kind: string; sector: string | null; watch: boolean; price: number | null; change_pct: number | null; live: boolean; fair_value: number | null; method: string | null; mos: number | null; signal: string | null; signal_label: string | null; version: number | null; spark: number[]; ai_headline: string | null; ai_stance: string | null; ai_break: boolean }
-const { data, pending, refresh } = await useFetch<{ rows: Row[]; counts: { watchlist: number }; mrp_set: boolean }>('/api/markets', { query: { u, q: qd } })
+const { data, pending, refresh } = await useFetch<{ rows: Row[]; counts: { watchlist: number }; mrp_set: boolean }>('/api/markets', { query: { u: computed(() => (u.value === 'private' ? 'watchlist' : u.value)), q: qd } })
 const go = (s: string) => navigateTo('/markets/' + encodeURIComponent(s))
 function open() { const s = q.value.trim().toUpperCase(); if (/^[A-Z0-9.\-]{1,12}$/.test(s)) go(s) }
 const msg = ref('')
@@ -31,10 +31,11 @@ const valueNote = (r: Row) => (r.kind === 'crypto' ? 'Sized by risk' : r.kind ==
     <p v-if="data && !data.mrp_set" class="warn">The market risk premium is not set yet, so stocks show a beta but no value. The AI looks it up when you open Assumptions or any stock; you can also <NuxtLink to="/markets/assumptions">enter it yourself</NuxtLink>.</p>
     <div class="tools">
       <nav class="tabs" aria-label="Lists"><button v-for="[k, l] in U" :key="k" :class="{ on: u === k && !qd }" @click="q = ''; u = k">{{ l }}<em v-if="k === 'watchlist' && data">{{ data.counts.watchlist }}</em></button></nav>
-      <form class="srch" @submit.prevent="open"><input v-model="q" type="search" placeholder="Symbol or company, e.g. PEP" aria-label="Find a symbol" autocapitalize="characters"><button class="btn sm" type="submit" :disabled="!q.trim()">Open</button></form>
+      <form v-if="u !== 'private'" class="srch" @submit.prevent="open"><input v-model="q" type="search" placeholder="Symbol or company, e.g. PEP" aria-label="Find a symbol" autocapitalize="characters"><button class="btn sm" type="submit" :disabled="!q.trim()">Open</button></form>
     </div>
     <p v-if="msg" class="error">{{ msg }}</p>
-    <div v-if="data?.rows.length" class="box" :class="{ dim: pending }">
+    <MarketsPrivate v-if="u === 'private' && !qd" />
+    <div v-else-if="data?.rows.length" class="box" :class="{ dim: pending }">
       <table class="table" data-nosearch>
         <thead><tr><th class="st"><span class="sr-only">Watch</span></th><th>Symbol</th><th class="nm">Name</th><th class="sp">30 days</th><th class="n">Price</th><th class="n">Today</th><th class="n">Value<InfoTip text="The probability-weighted fair value per share from the cash-flow model (bear, base and bull cases)." /></th><th class="n">Margin of safety<InfoTip text="How far the price is below the value. Positive means the price is under the value; a bigger gap leaves more room if our estimates are wrong." /></th><th>Signal</th></tr></thead>
         <tbody><tr v-for="r in data.rows" :key="r.symbol" @click="go(r.symbol)">

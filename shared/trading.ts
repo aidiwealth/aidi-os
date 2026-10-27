@@ -5,12 +5,13 @@
 import type { Signal } from './quant'
 
 // Limits by risk level (percent of the account): the most in one company, the most in crypto, the least in cash.
-export const RISK_LIMITS: Record<string, { label: string; single: number; crypto: number; cash: number }> = {
-  conservative: { label: 'Conservative', single: 3, crypto: 0, cash: 30 },
-  moderately_conservative: { label: 'Moderately conservative', single: 5, crypto: 2, cash: 25 },
-  moderate: { label: 'Moderate', single: 7, crypto: 5, cash: 20 },
-  growth: { label: 'Growth', single: 10, crypto: 8, cash: 10 },
-  aggressive: { label: 'Aggressive', single: 15, crypto: 15, cash: 5 }
+// private: the most in pre-IPO companies (secondaries through SPVs), which are illiquid for years.
+export const RISK_LIMITS: Record<string, { label: string; single: number; crypto: number; cash: number; private: number }> = {
+  conservative: { label: 'Conservative', single: 3, crypto: 0, cash: 30, private: 0 },
+  moderately_conservative: { label: 'Moderately conservative', single: 5, crypto: 2, cash: 25, private: 5 },
+  moderate: { label: 'Moderate', single: 7, crypto: 5, cash: 20, private: 10 },
+  growth: { label: 'Growth', single: 10, crypto: 8, cash: 10, private: 15 },
+  aggressive: { label: 'Aggressive', single: 15, crypto: 15, cash: 5, private: 20 }
 }
 export const limitsFor = (risk: string) => RISK_LIMITS[risk] ?? RISK_LIMITS.moderate!
 
@@ -100,4 +101,39 @@ export function fillJournal(e: FillEffect, side: 'buy' | 'sell', kind: 'stock' |
   if (e.realised > 0) lines.push({ account: 'Realised gain on investments', debit: 0, credit: e.realised })
   if (e.realised < 0) lines.push({ account: 'Realised loss on investments', debit: -e.realised, credit: 0 })
   return lines
+}
+
+// ── Pre-IPO (secondaries through an SPV) ─────────────────────────────────────────────────────────────────────────
+// What an investor really pays per share once the SPV's fee is added, the gap to our base value (positive: the price
+// is below the value) and the signal: strong buy 25% or more below, buy 10%, hold within 10% either side, else pass.
+export type PrivateSignal = 'strong_buy' | 'buy' | 'hold' | 'pass'
+export function privateSignal(base: number | null, offer: number | null, feePct: number): { effective: number | null; mos: number | null; signal: PrivateSignal | null } {
+  if (!(offer && offer > 0)) return { effective: null, mos: null, signal: null }
+  const effective = r2(offer * (1 + (feePct || 0) / 100))
+  if (!(base && base > 0)) return { effective, mos: null, signal: null }
+  const mos = Math.round(((base - effective) / base) * 1000) / 10
+  return { effective, mos, signal: mos >= 25 ? 'strong_buy' : mos >= 10 ? 'buy' : mos > -10 ? 'hold' : 'pass' }
+}
+// How much one account should put in: up to its pre-IPO limit (a strong buy uses all the room, a buy half), in whole
+// thousands, never below the deal's minimum. Retirement plans and client accounts get nothing here (clients say they
+// are interested from their portal; plans cannot hold SPV interests).
+export function sizePrivate(i: { value: number; privateNow: number; risk: string; signal: PrivateSignal | null; min: number; retirement: boolean; client: boolean; open: boolean }): { amount: number; reason: string; checks: Check[] } {
+  const L = limitsFor(i.risk), now = i.value > 0 ? (i.privateNow / i.value) * 100 : 0
+  const room = Math.max(0, (L.private / 100) * i.value - i.privateNow)
+  const share = i.signal === 'strong_buy' ? 1 : i.signal === 'buy' ? 0.5 : 0
+  const amount = Math.floor((room * share) / 1000) * 1000
+  const after = i.value > 0 ? ((i.privateNow + amount) / i.value) * 100 : 0
+  const checks: Check[] = [
+    { name: 'Pre-IPO limit', ok: after <= L.private + 0.01, detail: pctS(now) + ' → ' + pctS(after) + ' of ' + L.private + '%' },
+    { name: 'Not a retirement plan', ok: !i.retirement, detail: i.retirement ? 'plans cannot hold SPV interests' : 'taxable account' },
+    { name: 'Not a client account', ok: !i.client, detail: i.client ? 'the client decides in their portal' : 'group account' },
+    { name: 'Deal minimum', ok: amount >= i.min, detail: '$' + Math.round(i.min).toLocaleString('en-US') + ' minimum' },
+    { name: 'No open commitment in it', ok: !i.open, detail: i.open ? 'already waiting' : 'none waiting' }]
+  const reason = i.retirement ? 'Retirement plans cannot hold SPV interests.' : i.client ? 'Client account: the client says they are interested from their portal.' : !share ? 'The signal is ' + (i.signal ?? 'not set') + ': no new money.' : L.private === 0 ? 'The ' + L.label + ' level holds no pre-IPO companies.' : amount < i.min ? 'Room left under the ' + L.private + '% limit ($' + Math.round(room).toLocaleString('en-US') + ') is below the deal minimum.' : (i.signal === 'strong_buy' ? 'Strong buy' : 'Buy') + ': ' + pctS(now) + ' in pre-IPO now, up to ' + pctS(after) + ' of the ' + L.private + '% limit.'
+  return { amount: amount >= i.min && checks.every((c) => c.ok) ? amount : 0, reason, checks }
+}
+// The journal when a commitment is confirmed (a company account): the investment at cost, paid from the bank.
+export function privateJournal(amount: number, fees: number): { account: string; debit: number; credit: number }[] {
+  const t = r2(amount + fees)
+  return [{ account: 'Investments: private securities', debit: t, credit: 0 }, { account: 'Cash at bank', debit: 0, credit: t }]
 }

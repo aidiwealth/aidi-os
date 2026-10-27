@@ -2,7 +2,7 @@
 // A wealth client's accounts and investing in one place: what sits in banks and in accounts held elsewhere, the
 // investing account's progress in four steps, money in and out by month, then the investing and savings tools.
 // Staff see provider names and can add accounts; the client sees the same view without vendor names.
-const props = defineProps<{ s: Record<string, any>; staff?: boolean; investApi?: string | null; clientId?: string; canLinkBank?: boolean }>()
+const props = defineProps<{ s: Record<string, any>; onboarding?: { status: string; account_status: string | null } | null; markets?: { id: string; name: string; broker: string; kind: string; status: string; value: number; as_of: string | null }[]; staff?: boolean; investApi?: string | null; clientId?: string; canLinkBank?: boolean }>()
 const emit = defineEmits<{ invite: []; linkBank: []; addAccount: [institution: string]; editAccount: [a: Record<string, any>] }>()
 const { data: inv } = await useFetch<Record<string, any>>(() => props.investApi ?? '', { key: 'inv-' + (props.investApi ?? 'none'), immediate: !!props.investApi })
 const money = (v: number | string | null | undefined, c = 'USD') => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(Number(v)))
@@ -50,7 +50,13 @@ const flows = computed(() => {
     <div v-if="steps.length" class="card">
       <div class="h"><h3>Investing account</h3><span class="mut">{{ staff ? 'Alpaca · US stocks, ETFs and crypto' : 'US stocks, ETFs and crypto' }}</span></div>
       <ol class="st"><li v-for="x in steps" :key="x.n" :class="x.state"><span class="nb">{{ x.state === 'done' ? '✓' : x.n }}</span><b>{{ x.t }}</b><em>{{ x.sub }}</em></li></ol>
-      <div v-if="staff && steps[0]?.state === 'now'" class="inv"><button class="btn sm" @click="emit('invite')">Send the client their invite</button><span class="mut">They open it themselves; you see each step here as it happens.</span></div>
+      <div v-if="staff && steps[0]?.state === 'now' && (onboarding?.account_status === 'failed' || onboarding?.account_status === 'held')" class="inv"><NuxtLink to="/wealth-mgmt?t=onboarding" class="btn sm">Open onboarding</NuxtLink><span class="mut">{{ onboarding.account_status === 'held' ? 'The client gave a disclosure; the brokerage needs more details before opening.' : 'The client finished onboarding but the account did not open. Retry it from Onboarding.' }}</span></div>
+      <div v-else-if="staff && steps[0]?.state === 'now' && onboarding?.status === 'in_progress'" class="inv"><span class="mut">The client is setting up their account in the onboarding conversation.</span></div>
+      <div v-else-if="staff && steps[0]?.state === 'now'" class="inv"><button class="btn sm" @click="emit('invite')">Send the client their invite</button><span class="mut">They open it themselves; you see each step here as it happens.</span></div>
+    </div>
+    <div v-if="staff && markets?.length" class="card">
+      <div class="h"><h3>Managed in Public markets</h3><span class="mut">Positions, trades and fills live there</span></div>
+      <div v-for="a in markets" :key="a.id" class="rw"><span><b>{{ a.name }}</b><em>{{ a.kind === 'retirement' ? 'Retirement' : 'Brokerage' }} · {{ a.broker.charAt(0).toUpperCase() + a.broker.slice(1) }}{{ a.status === 'closed' ? ' · closed' : '' }}</em></span><span class="rr"><b>{{ money(a.value) }}</b><NuxtLink :to="'/markets/accounts/' + a.id" class="lk">Trades →</NuxtLink></span></div>
     </div>
     <div class="g2">
       <div class="card">

@@ -87,10 +87,9 @@ const gated = computed(() => (data.value?.mode ?? 'open') !== 'open' && !inv.val
       <div v-if="brand.key !== 'finvry'" class="form"><h1>Create an account</h1><p class="hint">Sign-up is on Finvry. <a href="https://app.finvry.com/start">Go to app.finvry.com/start →</a></p></div>
       <div v-else class="form">
         <div class="prog"><span>Step {{ step }} of 4</span><i><b :style="{ width: Math.max(6, pct) + '%' }" /></i></div>
-        <form v-if="step === 1" :class="{ gate: !humanReady }" @submit.prevent="next"><h1>Create your account</h1><p class="hint">{{ inv ? 'Welcome, ' + inv.name.split(' ')[0] + '. Your details are filled in from your request.' : 'Every plan starts with a 14-day free trial.' }}</p>
+        <form v-if="step === 1" id="st1" :class="{ gate: !humanReady }" @submit.prevent="next"><h1>Create your account</h1><p class="hint">{{ inv ? 'Welcome, ' + inv.name.split(' ')[0] + '. Your details are filled in from your request.' : 'Every plan starts with a 14-day free trial.' }}</p>
           <label class="fl">Your full name<input v-model="f.name" required maxlength="120" autocomplete="name" placeholder="Ada Okafor" autofocus></label>
-          <label class="fl">Work email<input v-model="f.email" type="email" required maxlength="254" autocomplete="email" placeholder="ada@yourcompany.com" :readonly="!!inv"></label>
-          <button class="go" type="submit">Continue</button></form>
+          <label class="fl">Work email<input v-model="f.email" type="email" required maxlength="254" autocomplete="email" placeholder="ada@yourcompany.com" :readonly="!!inv"></label></form>
         <form v-else-if="step === 2" @submit.prevent="next"><h1>About your company</h1><p class="hint">We use this to set your currency and filing reminders.</p>
           <label class="fl">Company name<input v-model="f.company" required maxlength="200" autocomplete="organization" placeholder="Acme Technologies"></label>
           <div class="fl">Where is your company based?
@@ -119,7 +118,9 @@ const gated = computed(() => (data.value?.mode ?? 'open') !== 'open' && !inv.val
           <div class="otp" @paste="onPaste"><input v-for="(d, i) in digits" :key="i" :ref="(el) => { if (el) boxes[i] = el as HTMLInputElement }" :value="d" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :aria-label="'Digit ' + (i + 1)" @input="onDigit(i, $event)" @keydown="onKey(i, $event)"></div>
           <button class="go" type="submit" :disabled="busy || f.code.length !== 6">{{ busy ? 'Checking…' : 'Open Finvry' }}</button>
           <p class="hint sm">Didn't get it? Check spam, or <button type="button" class="lnk" :disabled="cool > 0" @click="resend">{{ cool > 0 ? 'resend in ' + cool + 's' : 'send a new code' }}</button>. <button type="button" class="lnk" @click="step = 1">Use a different email</button></p></form>
-        <HumanCheck v-show="step < 4" ref="hc" v-model="human" v-model:ready="humanReady" />
+        <!-- The human check sits above Continue on the first step only (it has passed by step 2). -->
+        <HumanCheck v-show="step === 1 || (step < 4 && !humanReady)" ref="hc" v-model="human" v-model:ready="humanReady" />
+        <button v-if="step === 1" class="go go1" type="submit" form="st1" :disabled="!humanReady">Continue</button>
         <p v-if="msg" class="error" role="alert">{{ msg }}</p>
         <p v-if="step < 4" class="foot">Already have an account? <NuxtLink to="/login">Sign in</NuxtLink></p>
       </div>
@@ -143,7 +144,7 @@ const gated = computed(() => (data.value?.mode ?? 'open') !== 'open' && !inv.val
 .form { width: 100%; max-width: 460px; }
 .prog { display: flex; align-items: center; gap: 14px; margin-bottom: 34px; font-size: 13px; color: var(--c-muted); font-weight: 500; } .prog i { flex: 1; height: 3px; background: #e6e9ee; display: block; } .prog b { display: block; height: 100%; background: #0c1a2e; transition: width .3s; }
 h1 { font-family: var(--font-heading); font-size: 32px; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 8px; color: #0c1a2e; font-weight: 600; } .hint { color: var(--c-muted); margin: 0 0 26px; font-size: 15px; } .hint.sm { font-size: 13.5px; margin: 18px 0 0; }
-form { display: flex; flex-direction: column; gap: 16px; } .fl { display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; font-weight: 500; color: #3b4658; } .fl small { font-weight: 400; color: var(--c-muted); }
+form { display: flex; flex-direction: column; gap: 16px; } .go1 { width: 100%; margin-top: 16px; } .fl { display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; font-weight: 500; color: #3b4658; } .fl small { font-weight: 400; color: var(--c-muted); }
 input, select, :deep(select) { font: inherit; font-size: 15.5px; padding: 12px 14px; border: 1px solid #cfd5dd; background: #fff; color: #0c1a2e; width: 100%; } input:focus, select:focus { outline: none; border-color: #0c1a2e; box-shadow: 0 0 0 3px rgba(95,168,211,.25); }
 .note { margin: -4px 0 0; font-size: 13px; color: var(--c-muted); } .note.card { margin: -14px 0 4px; background: #f3f8fc; border-left: 3px solid #5fa8d3; padding: 9px 12px; color: #3b4658; }
 .mk2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; margin-top: 2px; } .mt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid #dfe3e9; background: #fff; font: inherit; cursor: pointer; text-align: left; }

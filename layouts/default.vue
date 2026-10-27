@@ -164,6 +164,10 @@ const sbScrolled = ref(false)
 const mobileOpen = ref(false)
 const wsOpen = ref(false)
 const initials = (n: string) => { const w = n.split(/\s+/).filter((x) => x && !/^(the|of|and|&)$/i.test(x)); return (w.length ? w : n.split(/\s+/)).map((x) => x[0]).slice(0, 2).join('').toUpperCase() }
+// Wealth clients: their own sections as the side menu (the portal page follows ?t=).
+const wcOnly = computed(() => !!me.value?.roles?.length && me.value.roles.every((r: string) => r === 'wealth_client'))
+const WC_MENU: [string, string, string][] = [['home', 'Overview', 'home'], ['plan', 'Financial plan', 'forecast'], ['holdings', 'Holdings', 'portfolio'], ['deals', 'Deal flow', 'pitches'], ['accounts', 'Accounts and investing', 'banking'], ['identity', 'Identity', 'compliance'], ['statements', 'Statements', 'books'], ['docs', 'Documents', 'documents'], ['family', 'Family', 'team'], ['billing', 'Invoices', 'billing'], ['calculator', 'Calculator', 'gauge']]
+const wcOn = (k: string) => route.path === '/w' && String(route.query.t ?? 'home') === k
 const isOn = (to: string, exact = false) => (exact ? nowPath.value === to : nowPath.value === to || (nowPath.value.startsWith(to + '/') && !(to === '/client' && nowPath.value.startsWith('/client/messages')) && !(to === '/financials' && nowPath.value.startsWith('/financials/boards'))))
 const crumbs = computed(() => {
   if (platformMode.value && deskPath.value) { const n = SERVICES_NAV.find((x) => navOn(x)); return ['Finvry Services', n?.label ?? 'Jobs'] }
@@ -202,7 +206,8 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
       <nav class="sb-nav">
         <template v-if="!platformMode">
           <NuxtLink v-if="!(me?.roles ?? []).every((r: string) => r === 'wealth_client') || !(me?.roles ?? []).length" to="/" class="sb-link" :class="{ on: isOn('/', true) }" :title="me?.org?.kind === 'company' ? 'Dashboard' : 'Overview'"><AppIcon name="home" class="sb-icon" /><span class="sb-label">{{ me?.org?.kind === 'company' ? 'Dashboard' : 'Overview' }}</span></NuxtLink>
-          <template v-for="g in wsMenu" :key="g.label ?? ''">
+          <template v-if="wcOnly"><p class="sb-group">My wealth</p><NuxtLink v-for="[k, l, ic] in WC_MENU" :key="k" :to="{ path: '/w', query: k === 'home' ? {} : { t: k } }" class="sb-link" :class="{ on: wcOn(k) }" :title="l"><AppIcon :name="ic" class="sb-icon" /><span class="sb-label">{{ l }}</span></NuxtLink></template>
+          <template v-for="g in (wcOnly ? [] : wsMenu)" :key="g.label ?? ''">
             <p v-if="g.label" class="sb-group">{{ g.label }}</p>
             <NuxtLink v-for="it in g.items" :key="it.label" :to="it.to" class="sb-link" :class="{ on: wsItemOn(it), lockd: it.tabs.every((t) => t.locked) }" :title="it.tabs.every((t) => t.locked) ? it.label + ' (upgrade to unlock)' : it.label"><AppIcon :name="it.icon" class="sb-icon" /><span class="sb-label">{{ it.label }}</span><span v-if="wsBadge(it)" class="sb-badge">{{ wsBadge(it) > 99 ? '99+' : wsBadge(it) }}</span><svg v-if="it.tabs.every((t) => t.locked)" class="sb-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></NuxtLink>
           </template>

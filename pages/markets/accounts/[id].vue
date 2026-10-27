@@ -41,7 +41,7 @@ async function saveTrade() {
     <div v-if="error" class="card"><p class="error">{{ (error as any).data?.error?.message ?? 'Could not load this account.' }}</p></div>
     <template v-else-if="data && a">
       <div class="hd">
-        <div><p class="label">{{ a.broker_name }} · {{ OWNER[a.owner_type] }}{{ a.owner ? ': ' + a.owner : '' }}{{ a.kind === 'retirement' ? ' · retirement' : '' }}</p><h1>{{ a.name }}</h1>
+        <div><p class="label">{{ a.broker_name }} · {{ OWNER[a.owner_type] }}<template v-if="a.owner">: <NuxtLink v-if="a.wm_client_id" :to="'/wealth-mgmt/clients/' + a.wm_client_id" class="ow">{{ a.owner }}</NuxtLink><template v-else>{{ a.owner }}</template></template>{{ a.kind === 'retirement' ? ' · retirement' : '' }}</p><h1>{{ a.name }}</h1>
           <div class="px"><b>{{ usd(data.value) }}</b><span class="mut">cash {{ usd(data.cash) }} · {{ gain >= 0 ? 'gain' : 'loss' }} <span :class="gain >= 0 ? 'up' : 'dn'">{{ usd(Math.abs(gain)) }}</span> on positions</span></div></div>
         <div class="acts"><button class="btn secondary" @click="openOpening">Set holdings and cash</button><button class="btn secondary" @click="openTrade">Record a trade</button><button v-if="a.owner_type !== 'client'" class="btn" @click="propose">Ask for proposals</button></div>
       </div>
@@ -96,6 +96,7 @@ async function saveTrade() {
   </section>
 </template>
 <style scoped>
+.ow { color: var(--c-blue-deep); text-decoration: none; }
 .ad { display: flex; flex-direction: column; gap: 14px; } .back { font-size: 13px; color: var(--c-blue-deep); text-decoration: none; }
 .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; } .hd h1 { margin: 2px 0 6px; }
 .px { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 13.5px; } .px b { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }

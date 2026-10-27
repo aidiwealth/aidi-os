@@ -37,7 +37,7 @@ async function save() {
     </div>
     <div v-if="data?.accounts.length" class="grid">
       <article v-for="a in data.accounts" :key="a.id" class="card acct">
-        <div class="top"><div><NuxtLink :to="'/markets/accounts/' + a.id" class="nm">{{ a.name }}</NuxtLink><div class="mut sm">{{ a.broker_name }} · {{ OWNER[a.owner_type] }}{{ a.owner ? ': ' + a.owner : '' }}{{ a.kind === 'retirement' ? ' · retirement' : '' }}</div></div>
+        <div class="top"><div><NuxtLink :to="'/markets/accounts/' + a.id" class="nm">{{ a.name }}</NuxtLink><div class="mut sm">{{ a.broker_name }} · {{ OWNER[a.owner_type] }}<template v-if="a.owner">: <NuxtLink v-if="a.wm_client_id" :to="'/wealth-mgmt/clients/' + a.wm_client_id" class="ow">{{ a.owner }}</NuxtLink><template v-else>{{ a.owner }}</template></template>{{ a.kind === 'retirement' ? ' · retirement' : '' }}</div></div>
           <span class="pill" :class="{ blue: a.execution === 'alpaca' }">{{ a.execution === 'alpaca' ? 'Orders by API' : 'Manual tickets' }}</span></div>
         <div class="val"><b>{{ usd(a.value) }}</b><span v-if="a.today_pct != null" :class="a.today_pct >= 0 ? 'up' : 'dn'">{{ signed(a.today_pct, 2) }} today</span><span class="mut">· cash {{ usd(a.cash) }}</span></div>
         <div class="mix"><span class="mut sm">Mix against target <i class="tm" /> target</span>
@@ -71,6 +71,7 @@ async function save() {
   </section>
 </template>
 <style scoped>
+.ow { color: var(--c-blue-deep); text-decoration: none; }
 .ac { display: flex; flex-direction: column; gap: 14px; } .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; } .head h1 { margin: 2px 0 4px; } .lead { margin: 0; color: var(--c-muted); font-size: 14px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .acct { padding: 0; display: flex; flex-direction: column; } .top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; padding: 16px 18px 6px; } .nm { font-weight: 600; font-size: 16px; color: var(--c-ink); text-decoration: none; }

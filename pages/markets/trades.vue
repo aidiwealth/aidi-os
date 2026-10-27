@@ -13,7 +13,7 @@ const waiting = computed(() => (data.value?.proposals ?? []).filter((p: any) => 
 const tickets = computed(() => (data.value?.proposals ?? []).filter((p: any) => p.status === 'ticket'))
 const toConfirm = computed(() => (data.value?.fills ?? []).filter((f: any) => f.status === 'pending'))
 const history = computed(() => [...(data.value?.proposals ?? []).filter((p: any) => !['waiting', 'ticket'].includes(p.status)).map((p: any) => ({ ...p, what: 'Proposal', at: p.decided_at ?? p.created_at })), ...(data.value?.fills ?? []).filter((f: any) => f.status !== 'pending').map((f: any) => ({ ...f, what: 'Fill', at: f.decided_at ?? f.created_at }))].sort((a, b) => (a.at < b.at ? 1 : -1)))
-const TABS = computed(() => [['waiting', 'Waiting', waiting.value.length], ['tickets', 'Tickets', tickets.value.length], ['fills', 'Fills to confirm', toConfirm.value.length], ['history', 'History', 0]] as [string, string, number][])
+const TABS = computed(() => [['waiting', 'Waiting', waiting.value.length], ['tickets', 'Tickets', tickets.value.length], ['fills', 'Fills to confirm', toConfirm.value.length], ['private', 'Pre-IPO', 0], ['history', 'History', 0]] as [string, string, number][])
 const tab = computed({ get: () => String(route.query.t ?? (waiting.value.length ? 'waiting' : tickets.value.length ? 'tickets' : toConfirm.value.length ? 'fills' : 'waiting')), set: (t: string) => router.replace({ query: { t } }) })
 const STATUS: Record<string, string> = { filled: 'Filled', rejected: 'Rejected', expired: 'Expired', cancelled: 'Cancelled', confirmed: 'Confirmed', approved: 'Approved' }
 const err = (e: unknown) => (e as { data?: { error?: { message?: string } } }).data?.error?.message ?? 'Could not do that.'
@@ -88,6 +88,7 @@ async function fillDo(f: any, action: 'confirm' | 'reject') { fb[f.id] = ''; if 
       <EmptyState v-if="!toConfirm.length" card icon="check" title="No fills to confirm" text="Fills entered from tickets, or trades recorded on an account, wait here." />
     </div>
 
+    <PrivateCommitments v-else-if="tab === 'private'" :code-method="data?.code_method" />
     <div v-else class="card tbl">
       <table v-if="history.length" class="table" data-nosearch><thead><tr><th>When</th><th>What</th><th>Trade</th><th>Account</th><th class="n">Amount</th><th>Status</th><th>By</th></tr></thead>
         <tbody><tr v-for="h in history" :key="h.what + h.id"><td class="nw">{{ ptTime(h.at) }}</td><td>{{ h.what }}</td><td>{{ h.side === 'buy' ? 'Buy' : 'Sell' }} {{ q(h.qty) }} {{ h.symbol }}</td><td>{{ h.account }}</td><td class="n">{{ usd(h.notional ?? h.qty * h.price) }}</td><td>{{ STATUS[h.status] ?? h.status }}</td><td>{{ h.decided_by ?? '—' }}</td></tr></tbody></table>

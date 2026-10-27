@@ -453,3 +453,8 @@ export async function sendWealthDecline(to: string, first: string, note: string)
   const html = shell(h1('Thank you, ' + esc(first)) + para('Thank you for your interest in Aidi Wealth. After looking at your answers, we don\'t think we\'re the right fit for you just now.') + (note ? para(esc(note)) : '') + para('We have deleted the identity details you gave us. If your situation changes, you are welcome to ask again.'), 'About your Aidi Wealth request')
   await sendEmail({ to, subject: 'About your Aidi Wealth request', text: 'Thank you for your interest in Aidi Wealth. After looking at your answers, we don\'t think we\'re the right fit for you just now.' + (note ? ' ' + note : '') + ' We have deleted the identity details you gave us.', html })
 }
+export async function sendWealthIdentity(to: string, first: string, what: string): Promise<void> {
+  const link = '{{APP_URL}}/login?email=' + encodeURIComponent(to)
+  const html = shell(h1('Your identity check') + para('Hi ' + esc(first) + ', ' + esc(what)) + button('Open my portal →', link) + divider() + `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">We check who you are once, as the law requires. Your documents are encrypted and seen only by our compliance team.</p>`, 'Your Aidi Wealth identity check')
+  await sendEmail({ to, subject: 'Aidi Wealth: your identity check', text: 'Hi ' + first + ', ' + what + ' Sign in: ' + link, html })
+}

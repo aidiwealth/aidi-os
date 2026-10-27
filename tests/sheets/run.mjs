@@ -567,5 +567,21 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('journal: buy, sale at a gain and sale at a loss all balance', bal(jb) && bal(js) && bal(jl) && js.some((l) => l.account === 'Realised gain on investments' && l.credit === 197.6) && jl.some((l) => l.account === 'Realised loss on investments' && l.debit === 200) && jb[1].account === 'Cash at broker: Robinhood')
 }
 
+// 18. Pre-IPO: the signal after the SPV fee, sizing under the pre-IPO limit, and the journal.
+{
+  const T = await jiti.import(join(root, 'shared/trading.ts'))
+  const sg = T.privateSignal(22, 18.1, 2)
+  check('pre-IPO: fee added to the price before the gap', sg.effective === 18.46 && Math.abs(sg.mos - 16.1) < 0.05 && sg.signal === 'buy', JSON.stringify(sg))
+  check('pre-IPO: 25% or more below is a strong buy; above the value is a pass', T.privateSignal(30, 20, 0).signal === 'strong_buy' && T.privateSignal(20, 25, 0).signal === 'pass' && T.privateSignal(null, 10, 0).signal === null)
+  const base = { value: 500000, privateNow: 10000, risk: 'growth', signal: 'strong_buy', min: 10000, retirement: false, client: false, open: false }
+  const a = T.sizePrivate(base)
+  check('pre-IPO: a strong buy fills the room under the limit, in thousands', a.amount === 65000 && a.checks.every((c) => c.ok), JSON.stringify(a))
+  check('pre-IPO: a buy takes half the room', T.sizePrivate({ ...base, signal: 'buy' }).amount === 32000)
+  check('pre-IPO: nothing for conservative, plans, clients or a hold', T.sizePrivate({ ...base, risk: 'conservative' }).amount === 0 && T.sizePrivate({ ...base, retirement: true }).amount === 0 && T.sizePrivate({ ...base, client: true }).amount === 0 && T.sizePrivate({ ...base, signal: 'hold' }).amount === 0)
+  check('pre-IPO: room below the deal minimum gives nothing', T.sizePrivate({ ...base, privateNow: 70000, min: 10000 }).amount === 0)
+  const j = T.privateJournal(10000, 200)
+  check('pre-IPO: the journal balances at cost with fees', j[0].debit === 10200 && j[1].credit === 10200)
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)
