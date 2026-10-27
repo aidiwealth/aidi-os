@@ -1,4 +1,5 @@
 {
+ "server/api/admin/member-access/index.post.ts": 1,
  "server/api/admin/module-roles.post.ts": 1,
  "server/api/admin/users/[id].delete.ts": 1,
  "server/api/api-keys.post.ts": 1,
@@ -213,9 +214,8 @@
  "server/utils/tenancy.ts": 1,
  "server/utils/wallet.ts": 14,
  "server/utils/wm-billing.ts": 1,
- "server/utils/wm-market.ts": 7,
+ "server/utils/wm-market.ts": 6,
  "server/utils/wm-rails.ts": 3,
  "server/utils/wm-statement.ts": 1,
- "server/utils/workspaces.ts": 1,
- "server/api/admin/member-access/index.post.ts": 1
+ "server/utils/workspaces.ts": 1
 }

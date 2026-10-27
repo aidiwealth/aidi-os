@@ -10,6 +10,8 @@ export default defineEventHandler(async (event) => {
   if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) throw apiError('forbidden', 'Forbidden', 403)
   const open = usMarketOpen(new Date())
   await refreshRates(true)
+  // Gold and silver too, so their history has a point every run even when nobody has a page open.
+  await metalPrices().catch((e) => console.error('[markets] metals', (e as Error).message))
   const all = (await db().query<{ symbol: string }>('SELECT symbol FROM markets.instruments ORDER BY symbol')).rows.map((r) => r.symbol)
   const prices = await refreshPrices(all, true)
   let valued = 0, reviews = 0, premium = false

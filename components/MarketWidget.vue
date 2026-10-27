@@ -1,9 +1,14 @@
 <script setup lang="ts">
-// Three charts side by side: gold, silver and an interest rate, each over the last 24 months by default.
+// Three charts side by side: gold, silver and an interest rate, each over the last 24 months by default. Gold and silver
+// are live (refreshed every minute while the page is open, today's price as the last point); US rates are daily from FRED.
 const props = defineProps<{ editable?: boolean; country?: 'US' | 'NG' | null }>()
-interface M { price: number; as_of: string; day_change_pct: number | null; series: { d: string; price: number }[] }
+interface M { price: number; as_of: string; live?: boolean; day_change_pct: number | null; series: { d: string; price: number }[] }
 interface R { country: string; product: string; source: string | null; points: { as_of: string; rate: number }[]; latest: { as_of: string; rate: number } | null }
 const { data, refresh } = await useFetch<{ metals: { gold: M | null; silver: M | null }; rates: R[] }>(() => '/api/wm/market' + (props.country ? '?country=' + props.country : ''), { key: 'wm-market-' + (props.country ?? 'all') })
+// Every minute while the page is visible.
+let poll: ReturnType<typeof setInterval> | null = null
+onMounted(() => { poll = setInterval(() => { if (!document.hidden) void refresh() }, 60_000) })
+onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 const RANGES: [string, number][] = [['6M', 183], ['1Y', 366], ['2Y', 731], ['5Y', 1830]]
 const range = ref('2Y')
 const since = computed(() => new Date(Date.now() - RANGES.find((r) => r[0] === range.value)![1] * 86400e3).toISOString().slice(0, 10))
@@ -15,10 +20,10 @@ function view(m: M | null) {
   const first = pts.length > 1 ? pts[0]!.price : null
   return { pts: pts.map((s) => ({ x: s.d, y: s.price })), growth: first ? ((m.price - first) / first) * 100 : null, from: pts[0]?.d ?? null }
 }
-const metals = computed(() => ([['gold', 'Gold', '#b8860b'], ['silver', 'Silver', '#6b7280']] as const).map(([k, l, c]) => ({ k, l, c, m: data.value?.metals[k] ?? null, v: view(data.value?.metals[k] ?? null) })))
+const metals = computed(() => ([['gold', 'Gold', '#1c547d'], ['silver', 'Silver', '#6e737b']] as const).map(([k, l, c]) => ({ k, l, c, m: data.value?.metals[k] ?? null, v: view(data.value?.metals[k] ?? null) })))
 const rateKey = ref('')
 const rates = computed(() => data.value?.rates ?? [])
-watchEffect(() => { if (!rateKey.value && rates.value.length) { const pref = rates.value.find((r) => r.country === (props.country ?? 'US')) ?? rates.value[0]!; rateKey.value = pref.country + '|' + pref.product } })
+watchEffect(() => { if (!rateKey.value && rates.value.length) { const pref = rates.value.find((r) => r.product === 'US 3-month T-bill' && (props.country ?? 'US') === 'US') ?? rates.value.find((r) => r.country === (props.country ?? 'US')) ?? rates.value[0]!; rateKey.value = pref.country + '|' + pref.product } })
 const rate = computed(() => rates.value.find((r) => r.country + '|' + r.product === rateKey.value) ?? null)
 const ratePts = computed(() => (rate.value?.points ?? []).filter((p) => p.as_of >= since.value))
 const rateDelta = computed(() => (ratePts.value.length > 1 ? ratePts.value[ratePts.value.length - 1]!.rate - ratePts.value[0]!.rate : null))
@@ -31,7 +36,7 @@ async function addRate() { msg.value = ''; try { await $fetch('/api/wm/rates', {
     <div v-if="nf.open" class="nf card"><select v-model="nf.country"><option value="NG">Nigeria</option><option value="US">United States</option></select><input v-model="nf.product" placeholder="Product, e.g. Nigerian T-bills (364-day), 12-month bank CD"><input v-model="nf.rate" type="number" step="0.01" placeholder="Rate %"><input v-model="nf.as_of" type="date"><input v-model="nf.source" placeholder="Source (CBN, bank…)"><button class="btn sm" :disabled="!nf.product || nf.rate === ''" @click="addRate">Save</button><span v-if="msg" class="error">{{ msg }}</span></div>
     <div class="g3">
       <div v-for="x in metals" :key="x.k" class="card col"><div class="top"><span class="nm">{{ x.l }} <em>USD/oz</em></span><span class="pr">{{ x.m ? usd(x.m.price) : '—' }}</span></div>
-        <div class="chg"><span v-if="x.m?.day_change_pct != null" :class="x.m.day_change_pct >= 0 ? 'up' : 'dn'">{{ pct(x.m.day_change_pct) }} today</span><span v-else class="mut">live</span><span v-if="x.v?.growth != null" :class="x.v.growth >= 0 ? 'up' : 'dn'"><b>{{ pct(x.v.growth) }}</b> over {{ range }}</span></div>
+        <div class="chg"><span v-if="x.m?.day_change_pct != null" :class="x.m.day_change_pct >= 0 ? 'up' : 'dn'">{{ pct(x.m.day_change_pct) }} today{{ x.m.live ? ' · live' : '' }}</span><span v-else class="mut">{{ x.m?.live ? 'live' : '' }}</span><span v-if="x.v?.growth != null" :class="x.v.growth >= 0 ? 'up' : 'dn'"><b>{{ pct(x.v.growth) }}</b> over {{ range }}</span></div>
         <AreaTrend v-if="x.v && x.v.pts.length > 1" :points="x.v.pts" :color="x.c" :height="150" :format="usd" /><p v-else class="mut ld">Loading price history…</p></div>
       <div class="card col"><div class="top"><select v-if="rates.length > 1" v-model="rateKey" class="rsel"><option v-for="r in rates" :key="r.country + r.product" :value="r.country + '|' + r.product">{{ r.product }} ({{ r.country }})</option></select><span v-else class="nm">{{ rate?.product ?? 'Interest rates' }}</span><span class="pr">{{ rate?.latest ? rate.latest.rate.toFixed(2) + '%' : '—' }}</span></div>
         <div class="chg"><span class="mut">{{ rate?.source ?? '' }}{{ rate?.latest ? ' · ' + rate.latest.as_of : '' }}</span><span v-if="rateDelta != null" :class="rateDelta >= 0 ? 'up' : 'dn'"><b>{{ rateDelta >= 0 ? '+' : '' }}{{ (rateDelta * 100).toFixed(0) }} bps</b> over {{ range }}</span></div>
