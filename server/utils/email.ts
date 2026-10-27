@@ -412,3 +412,17 @@ export async function sendExportEmail(to: string, what: string, link: string, da
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">The link works for ${days} days and only for you: you will be asked to sign in.</p>`, 'Your export is ready')
   await sendEmail({ to, subject: 'Your {{PRODUCT}} export is ready', text, html })
 }
+
+// A one-time code to approve a trade or a policy change (for people without an authenticator app).
+export async function sendApprovalCode(to: string, code: string, what: string): Promise<void> {
+  const text = 'Your code to approve ' + what + ' in {{PRODUCT}}: ' + code + '\n\nIt expires in 10 minutes. If you did not ask for it, tell your admin.'
+  const html = shell(
+    h1('Approve in {{PRODUCT}}') +
+    para('Enter this code to approve ' + what + '. It expires in 10 minutes.') +
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 6px;"><tr><td style="background:${BRAND.soft};border:1px solid ${BRAND.rule};padding:16px 26px;">` +
+    `<span style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:32px;letter-spacing:0.32em;font-weight:600;color:${BRAND.navy};">${code}</span></td></tr></table>` +
+    divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">If you didn't ask for this code, tell your admin.</p>`,
+    'Your approval code is ' + code)
+  await sendEmail({ to, subject: 'Your {{PRODUCT}} approval code', text, html })
+}

@@ -17,9 +17,13 @@ export default defineEventHandler(async (event) => {
   let valued = 0, reviews = 0, premium = false
   const t0 = Date.now()
   const ai = !!useRuntimeConfig().anthropicApiKey
+  let proposed = 0
   for (const org of await liveOrgs()) {
     setOrgContext(org.id)
     if (!(await enabledModules()).has('public_markets')) continue
+    // Accounts: live values in Investments & AUM, and (after the close) the day's proposals for company and plan accounts.
+    await revalueMarketHoldings().catch((e) => console.error('[markets] revalue', (e as Error).message))
+    if (!open) for (const a of await marketAccounts()) if (a.owner_type !== 'client') { try { proposed += await proposeFor(a, null) } catch (e) { console.error('[markets] propose ' + a.name, (e as Error).message) } }
     if (ai) premium = !!(await aiMarketRiskPremium()) || premium
     for (const { symbol } of (await db().query<{ symbol: string }>('SELECT symbol FROM markets.watchlist ORDER BY symbol')).rows) {
       try {
@@ -34,5 +38,5 @@ export default defineEventHandler(async (event) => {
     }
   }
   setOrgContext(null)
-  return { ok: true, market_open: open, symbols: all.length, prices, valued, reviews, premium }
+  return { ok: true, market_open: open, symbols: all.length, prices, valued, reviews, premium, proposed }
 })

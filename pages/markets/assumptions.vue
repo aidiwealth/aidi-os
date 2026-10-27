@@ -19,7 +19,7 @@ const show = (k: string, v: number | null) => (v == null ? 'Not set' : fixed(v, 
 </script>
 <template>
   <section class="as">
-    <NuxtLink to="/markets" class="back">← Public markets</NuxtLink>
+    <MarketsNav />
     <div><h1>Assumptions</h1><p class="lead">The inputs every valuation uses. The AI sets the market risk premium each month from its published source; the rest keep their defaults unless you change them. Setting one yourself overrides the AI until its next monthly update. Earlier values are kept, and every change is recorded with who made it.</p></div>
     <div v-if="data" class="card">
       <table class="table" data-nosearch><thead><tr><th>Assumption</th><th class="n">In force</th><th>Since</th><th>Source</th><th /></tr></thead>

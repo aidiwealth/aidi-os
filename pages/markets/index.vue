@@ -25,8 +25,9 @@ const valueNote = (r: Row) => (r.kind === 'crypto' ? 'Sized by risk' : r.kind ==
 <template>
   <section class="pm">
     <p class="label">Wealth management</p>
-    <div class="head"><div><h1>Public markets</h1><p class="lead">Live prices, and values the AI keeps up to date. Nothing here places orders.</p></div>
-      <div class="row"><NuxtLink class="btn secondary" to="/markets/assumptions">Assumptions</NuxtLink></div></div>
+    <div class="head"><div><h1>Public markets</h1><p class="lead">Live prices, and values the AI keeps up to date.</p></div>
+      </div>
+    <MarketsNav />
     <p v-if="data && !data.mrp_set" class="warn">The market risk premium is not set yet, so stocks show a beta but no value. The AI looks it up when you open Assumptions or any stock; you can also <NuxtLink to="/markets/assumptions">enter it yourself</NuxtLink>.</p>
     <div class="tools">
       <nav class="tabs" aria-label="Lists"><button v-for="[k, l] in U" :key="k" :class="{ on: u === k && !qd }" @click="q = ''; u = k">{{ l }}<em v-if="k === 'watchlist' && data">{{ data.counts.watchlist }}</em></button></nav>

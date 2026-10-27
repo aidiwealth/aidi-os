@@ -533,5 +533,39 @@ const bsChecks = (grids, map) => AI.previewOf(AI.readWithMap(grids, map, TODAY))
   check('drawdown and volatility', Q.maxDrawdown([{ d: '2026-01-01', close: 100 }, { d: '2026-01-02', close: 120 }, { d: '2026-01-03', close: 90 }, { d: '2026-01-04', close: 130 }]) === -25 && Q.volatility(Array.from({ length: 40 }, (_, i) => ({ d: '2026-01-' + String(i + 1).padStart(2, '0'), close: 100 })), 30) === 0)
 }
 
+// 17. Public Markets trading: sizing, checks, and what a fill does to the position, cash and books.
+{
+  const T = await jiti.import(join(root, 'shared/trading.ts'))
+  const h = (symbol, kind, qty, price, signal, mos) => ({ symbol, kind, qty, price, signal, mos, dataOk: true, priceFresh: true })
+  // $100k account, moderate (7% single limit, 20% cash floor): $30k cash, four stocks at 4% each.
+  const base = { cash: 30000, risk: 'moderate', fractional: false, open: [], dailyUsed: 0, dailyLimit: 25000 }
+  const d1 = T.sizeTrades({ ...base, holdings: [h('AAA', 'stock', 40, 100, 'hold', 0), h('BBB', 'stock', 40, 100, 'sell', -30), h('CCC', 'stock', 40, 100, 'buy', 15), h('ETF1', 'etf', 540, 100, null, null), h('XYZ', 'stock', 40, 100, 'trim', -12)], candidates: [h('NEW', 'stock', 0, 50, 'strong_buy', 30)] })
+  const by = Object.fromEntries(d1.map((d) => [d.symbol + d.side, d]))
+  check('sizing: a sell signal sells the whole position', by.BBBsell && by.BBBsell.qty === 40, JSON.stringify(d1.map((d) => [d.symbol, d.side, d.qty])))
+  check('sizing: a trim takes about 2 points', by.XYZsell && by.XYZsell.qty === 20)
+  check('sizing: buys stay under the single-company limit and start new positions', by.CCCbuy && by.CCCbuy.weight_after <= 7.01 && by.NEWbuy && by.NEWbuy.weight_after <= 7.01)
+  check('sizing: no trade for a hold or an ETF', !d1.some((d) => d.symbol === 'AAA' || d.symbol === 'ETF1'))
+  check('sizing: limit prices just above for buys, below for sells', by.CCCbuy.limit === 100.2 && by.BBBsell.limit === 99.8)
+  check('sizing: whole shares at a manual broker', d1.every((d) => Number.isInteger(d.qty)))
+  const over = T.sizeTrades({ ...base, cash: 2000, holdings: [h('BIG', 'stock', 200, 100, 'hold', 0), h('ETF1', 'etf', 780, 100, null, null)], candidates: [] })
+  check('sizing: a position over the limit is trimmed back to it', over.length === 1 && over[0].symbol === 'BIG' && over[0].side === 'sell' && Math.abs(over[0].weight_after - 7) < 0.2, JSON.stringify(over.map((d) => [d.qty, d.weight_after])))
+  const floor = T.sizeTrades({ ...base, cash: 21000, holdings: [h('ETF1', 'etf', 790, 100, null, null)], candidates: [h('NEW', 'stock', 0, 50, 'buy', 20)] })
+  check('sizing: buys never take cash below the floor', floor.length === 0 || floor.every((d) => d.checks.find((c) => c.name === 'Cash floor').ok), JSON.stringify(floor))
+  const dl = T.sizeTrades({ ...base, dailyUsed: 24000, holdings: [h('ETF1', 'etf', 700, 100, null, null)], candidates: [h('NEW', 'stock', 0, 50, 'buy', 20)] })
+  check('sizing: the daily limit check fails when it would be passed', dl.length === 1 && dl[0].checks.find((c) => c.name === 'Daily limit').ok === false)
+  const cr = T.sizeTrades({ ...base, risk: 'conservative', cash: 40000, holdings: [h('BTC', 'crypto', 0.5, 60000, null, null), h('ETF1', 'etf', 300, 100, null, null)], candidates: [] })
+  check('sizing: crypto above its limit is trimmed (conservative: none)', cr.length === 1 && cr[0].symbol === 'BTC' && cr[0].side === 'sell' && cr[0].qty === 0.5)
+  // Fills: average cost, realised gain, journals that balance.
+  const b1 = T.applyFill(null, { side: 'buy', qty: 10, price: 100, fees: 1 })
+  check('fill: a buy adds shares and cost (fees included) and spends cash', b1.qty === 10 && b1.cost === 1001 && b1.cash_change === -1001)
+  const s1 = T.applyFill({ qty: 10, cost: 1001 }, { side: 'sell', qty: 4, price: 150, fees: 2 })
+  check('fill: a sale takes out its share of cost and books the gain', s1.qty === 6 && s1.cost_out === 400.4 && s1.cash_change === 598 && s1.realised === 197.6 && s1.cost === 600.6, JSON.stringify(s1))
+  let threw = false; try { T.applyFill({ qty: 1, cost: 10 }, { side: 'sell', qty: 2, price: 1, fees: 0 }) } catch { threw = true }
+  check('fill: cannot sell more than is held', threw)
+  const bal = (ls) => Math.round(ls.reduce((a, l) => a + l.debit - l.credit, 0) * 100) === 0
+  const jb = T.fillJournal(b1, 'buy', 'stock', 'Robinhood'), js = T.fillJournal(s1, 'sell', 'stock', 'Robinhood'), jl = T.fillJournal(T.applyFill({ qty: 10, cost: 1000 }, { side: 'sell', qty: 10, price: 80, fees: 0 }), 'sell', 'crypto', 'Alpaca')
+  check('journal: buy, sale at a gain and sale at a loss all balance', bal(jb) && bal(js) && bal(jl) && js.some((l) => l.account === 'Realised gain on investments' && l.credit === 197.6) && jl.some((l) => l.account === 'Realised loss on investments' && l.debit === 200) && jb[1].account === 'Cash at broker: Robinhood')
+}
+
 console.log(failed ? '\n' + failed + ' check(s) failed' : '\nAll sheet checks passed')
 process.exit(failed ? 1 : 0)
