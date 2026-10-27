@@ -10,12 +10,12 @@ export default defineEventHandler(async (event) => {
   const b = await readBody<Record<string, any>>(event)
   const a = String(b?.action ?? '')
   const s = (k: string, max = 200) => (typeof b?.[k] === 'string' ? (b[k] as string).trim().slice(0, max) : '')
-  if (a.startsWith('alpaca') && !r.alpaca) throw apiError('off', 'Investing through Alpaca is not switched on for this account.', 400)
+  if (a.startsWith('alpaca') && !r.alpaca) throw apiError('off', 'Investing is not switched on for this account yet.', 400)
   if (a.startsWith('fincra') && !r.fincra) throw apiError('off', 'The wallet is not switched on for this account.', 400)
-  if (a.startsWith('busha') && !r.busha) throw apiError('off', 'Crypto through Busha is not switched on for this account.', 400)
+  if (a.startsWith('busha') && !r.busha) throw apiError('off', 'Crypto is not switched on for this account yet.', 400)
   if (a === 'alpaca_open') {
     if (await providerRow(id, 'alpaca').then((x) => x?.external_id)) throw apiError('exists', 'An investment account is already open.', 409)
-    if (!b.agree) throw apiError('invalid', 'Please accept the Alpaca customer agreement.')
+    if (!b.agree) throw apiError('invalid', 'Please accept the brokerage customer agreement.')
     const need = ['given_name', 'family_name', 'date_of_birth', 'tax_id', 'phone', 'street', 'city', 'state', 'postal_code']
     if (need.some((k) => !s(k))) throw apiError('invalid', 'Fill in your name, date of birth, Social Security number, phone and address.')
     const now = new Date().toISOString(), ip = ipOrNull(event) ?? '0.0.0.0'

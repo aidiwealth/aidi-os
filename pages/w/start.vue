@@ -110,7 +110,7 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
   </div>
 </template>
 <style scoped>
-.ob { min-height: 100vh; background: var(--c-paper-2); display: flex; flex-direction: column; font-size: 14.5px; }
+.ob { min-height: var(--vh100, 100vh); background: var(--c-paper-2); display: flex; flex-direction: column; font-size: 14.5px; }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px; background: #fff; border-bottom: 1px solid var(--c-rule); font-size: 13px; } .top b { color: var(--c-navy); font-size: 16px; } .top > span { display: flex; gap: 16px; align-items: center; }
 .mut { color: var(--c-muted); } .sm { font-size: 12.5px; } .pad { padding: 24px; } .error { color: var(--c-danger); margin: 0; padding: 0 22px 8px; font-size: 13px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; }
@@ -120,7 +120,7 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
 .rail ol { list-style: none; margin: 0; padding: 4px 8px 10px; } .rail li { display: flex; gap: 10px; align-items: center; padding: 8px; color: var(--c-ink-soft); } .rail li.now { background: var(--c-paper-2); color: var(--c-ink); font-weight: 500; }
 .nb { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--c-rule-strong); font-size: 12px; color: var(--c-blue-deep); } li.done .nb, li.ok .nb { border-color: var(--c-blue-deep); } li.now .nb { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
 .fine { margin: 0; padding: 12px 16px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
-.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 520px; }
+.chat { display: flex; flex-direction: column; height: calc(var(--vh100, 100vh) - 100px); min-height: 520px; }
 .msgs { flex: 1; overflow-y: auto; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .ai { display: flex; gap: 10px; align-items: flex-start; max-width: 640px; } .av { width: 28px; height: 28px; flex: none; background: var(--c-navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
 .bub { background: #fff; border: 1px solid var(--c-rule); padding: 11px 14px; line-height: 1.55; } .me { align-self: flex-end; background: #e6ecf2; color: var(--c-navy); padding: 10px 14px; max-width: 480px; line-height: 1.5; }

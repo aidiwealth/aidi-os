@@ -45,7 +45,7 @@ async function next() {
   </div>
 </template>
 <style scoped>
-.aw { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: #fff; }
+.aw { min-height: var(--vh100, 100vh); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: #fff; }
 .lf { background: var(--c-paper-2); padding: 36px 48px; display: flex; flex-direction: column; gap: 18px; } .br { display: flex; align-items: center; gap: 10px; color: var(--c-navy); text-decoration: none; } .br :deep(svg) { height: 20px; width: auto; } .br span { border-left: 1px solid var(--c-rule-strong); padding-left: 10px; font-size: 14px; color: var(--c-ink-soft); }
 .lf h1 { font-family: Garamond, 'EB Garamond', 'Cormorant Garamond', serif; font-weight: 400; font-size: 44px; line-height: 1.08; color: var(--c-navy); margin: 48px 0 0; max-width: 460px; } .lf p { color: var(--c-ink-soft); font-size: 15px; line-height: 1.6; margin: 0; max-width: 440px; }
 .lf ul { list-style: none; margin: auto 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; } .lf li::before { content: '✓  '; color: var(--c-blue-deep); } .lf small { font-size: 11.5px; color: var(--c-muted); }
