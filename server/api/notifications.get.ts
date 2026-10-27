@@ -3,6 +3,8 @@ export default defineEventHandler(async (event): Promise<Record<string, number>>
   const user = await requireUser(event)
   const org = await currentOrg()
   if (!org) return {}
+  // Wealth clients see only their own portal: no team counts (notices, secondaries, services) in their menu or tab title.
+  if (user.roles.length && user.roles.every((r) => r === 'wealth_client')) return {}
   const seen = async (area: string) => (await asPlatform(() => db().query<{ s: string }>("SELECT coalesce((SELECT seen_at FROM core.seen WHERE user_id = $1 AND organization_id = $2 AND area = $3), now() - interval '14 days')::text AS s", [user.userId, org.id, area]))).rows[0]!.s
   const out: Record<string, number> = {}
   try {
