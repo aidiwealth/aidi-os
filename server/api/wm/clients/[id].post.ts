@@ -48,12 +48,10 @@ export default defineEventHandler(async (event) => {
   } else if (a === 'invite') {
     if (!c.email) throw apiError('invalid', 'Add the client\'s email first.')
     const email = c.email, name = c.contact_name || c.name
-    let uid = (await db().query<{ id: string }>('SELECT id FROM core.users WHERE email = $1', [email])).rows[0]?.id
-    if (!uid) { const p = await one<{ id: string }>("INSERT INTO core.people (full_name, email, kind) VALUES ($1,$2,'client') ON CONFLICT (email) WHERE email IS NOT NULL DO UPDATE SET full_name = EXCLUDED.full_name RETURNING id", [name, email]); uid = (await one<{ id: string }>('INSERT INTO core.users (person_id, email) VALUES ($1,$2) RETURNING id', [p.id, email])).id }
-    await db().query('INSERT INTO core.memberships (user_id, invited_by) VALUES ($1,$2) ON CONFLICT DO NOTHING', [uid, user.userId])
-    if (!(await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'wealth_client'", [uid])).rowCount) await db().query("INSERT INTO core.user_roles (user_id, role_code, scope_entity_id, granted_by) VALUES ($1,'wealth_client',$2,$3)", [uid, c.entity_id, user.userId])
-    await db().query('UPDATE wm.clients SET user_id = $2, updated_at = now() WHERE id = $1', [id, uid])
-    try { await sendInviteEmail(email, name, user.email) } catch (err) { console.error('[wm] invite email', err) }
+    // Portal access, and the onboarding conversation waiting for them (unless already set up before onboarding existed).
+    await grantPortal(id, email, name, c.entity_id, user.userId, 'invite')
+    const by = (await db().query<{ full_name: string | null }>('SELECT p.full_name FROM core.users u JOIN core.people p ON p.id = u.person_id WHERE u.id = $1', [user.userId])).rows[0]?.full_name || 'Aidi Wealth'
+    try { await sendWealthStart(email, name, by) } catch (err) { console.error('[wm] invite email', err) }
     slack('aidi.wealth_client', c.name + ' was invited to the Aidi Wealth portal', [['By', user.email]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + id })
   } else if (a === 'account') {
     if (body.delete && s('account_id')) await db().query('DELETE FROM wm.accounts WHERE id = $1 AND client_id = $2', [s('account_id'), id])

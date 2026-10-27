@@ -133,6 +133,7 @@
  "server/api/public/u/[token]/react.post.ts": 1,
  "server/api/public/unsub/[token].post.ts": 2,
  "server/api/public/v/[token]/beat.post.ts": 1,
+ "server/api/public/wealth-request.post.ts": 1,
  "server/api/public/webhooks/busha.post.ts": 2,
  "server/api/public/webhooks/fincra.post.ts": 4,
  "server/api/public/webhooks/inbound-email.post.ts": 1,

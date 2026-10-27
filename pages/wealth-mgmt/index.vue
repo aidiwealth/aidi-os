@@ -4,7 +4,7 @@
 useHead({ title: 'Wealth management' })
 import { RISK_LEVELS, ASSET_CLASSES, RATING_LABEL, levelLabel, type RiskConfig } from '~/shared/risk'
 const route = useRoute(); const router = useRouter()
-const TABS: [string, string][] = [['overview', 'Overview'], ['clients', 'Clients'], ['metals', 'Gold & metals'], ['firms', 'Advisers & fees'], ['calculator', 'Calculator'], ['settings', 'Settings']]
+const TABS: [string, string][] = [['overview', 'Overview'], ['clients', 'Clients'], ['onboarding', 'Onboarding'], ['metals', 'Gold & metals'], ['firms', 'Advisers & fees'], ['calculator', 'Calculator'], ['settings', 'Settings']]
 const tab = computed({ get: () => String(route.query.t ?? 'overview'), set: (v: string) => router.replace({ query: { t: v } }) })
 interface Cl { risk_profile?: string | null; risk?: { ok: boolean; over: number; over_high: boolean; high_pct: number }; id: string; name: string; kind: string; tag: string | null; country: string; model: string; status: string; kyc_status: string; email: string | null; user_id: string | null; entity: string | null; totals: { net_worth: number; invested: number; cash: number } }
 // Fetched together, not one after another (each wait is a round trip to the server).
@@ -106,6 +106,7 @@ const SW: [string, string, string][] = [['advisor', 'Adviser-connected (referral
       <AppModal :open="fe.open" title="Record a referral fee" @close="fe.open = false"><div class="fm"><label>Firm<select v-model="fe.firm_id"><option value="">Choose</option><option v-for="x in data.firms" :key="x.id" :value="x.id">{{ x.name }}</option></select></label><div class="g3"><label>Period<input v-model="fe.period" placeholder="e.g. Q4 2026"></label><label>Amount<input v-model="fe.amount" type="number" min="0"></label><label>Currency<select v-model="fe.currency"><option>USD</option><option>NGN</option></select></label></div><label>Note<input v-model="fe.note"></label><p v-if="fe.msg" class="error">{{ fe.msg }}</p></div>
         <template #foot><button class="btn secondary" @click="fe.open = false">Cancel</button><button class="btn" :disabled="!fe.firm_id || fe.amount === ''" @click="addFee">Save</button></template></AppModal>
     </template>
+    <WmOnboarding v-else-if="tab === 'onboarding'" />
     <WealthCalculator v-else-if="tab === 'calculator'" />
     <template v-else-if="tab === 'settings' && cfg">
       <p v-if="!isAdmin" class="mut">Only admins can change these settings.</p>

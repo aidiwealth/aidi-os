@@ -426,3 +426,30 @@ export async function sendApprovalCode(to: string, code: string, what: string): 
     'Your approval code is ' + code)
   await sendEmail({ to, subject: 'Your {{PRODUCT}} approval code', text, html })
 }
+
+// Aidi Wealth onboarding: the link to start (an adviser's invite or a website request), "we're reviewing", "your
+// dashboard is open" and a kind no. Sign-in stays passwordless: the link opens the sign-in page with their email.
+export async function sendWealthStart(to: string, name: string, invitedBy: string | null): Promise<void> {
+  const first = esc(name.split(' ')[0] ?? name), link = '{{APP_URL}}/login?email=' + encodeURIComponent(to)
+  const html = shell(
+    h1(invitedBy ? esc(invitedBy) + ' invited you to Aidi Wealth' : 'Welcome to Aidi Wealth, ' + first) +
+    para('Hi ' + first + ', we\'ll set up your financial plan' + ' and your account together in a short conversation, about 8 minutes. No long forms: just answer as you would to your adviser, and you can stop and pick up where you left off.') +
+    para('The link opens the sign-in page with this email address. We\'ll send you a one-time code; there is no password.') +
+    button('Start the conversation →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">If you were not expecting this, you can ignore this email.</p>`,
+    'Set up your Aidi Wealth account')
+  await sendEmail({ to, subject: invitedBy ? invitedBy + ' invited you to Aidi Wealth' : 'Set up your Aidi Wealth account', text: 'Hi ' + first + ', set up your Aidi Wealth financial plan and account in a short conversation (about 8 minutes): ' + link + ' — sign in with this email address; we will send you a one-time code.', html })
+}
+export async function sendWealthReviewing(to: string, first: string): Promise<void> {
+  const html = shell(h1('Thanks, ' + esc(first)) + para('We have your answers. An adviser will look them over, usually within one working day, and we\'ll email you as soon as your dashboard opens.') + para('You can still change your answers until then by signing in.'), 'We\'re reviewing your answers')
+  await sendEmail({ to, subject: 'We\'re reviewing your Aidi Wealth answers', text: 'Thanks, ' + first + '. An adviser will look over your answers, usually within one working day, and we will email you as soon as your dashboard opens.', html })
+}
+export async function sendWealthOpen(to: string, first: string): Promise<void> {
+  const link = '{{APP_URL}}/login?email=' + encodeURIComponent(to)
+  const html = shell(h1('Your dashboard is open') + para('Hi ' + esc(first) + ', your Aidi Wealth account is approved. Your financial plan is ready to see, and your account details are on your dashboard.') + button('Go to my dashboard →', link), 'Your Aidi Wealth dashboard is open')
+  await sendEmail({ to, subject: 'Your Aidi Wealth dashboard is open', text: 'Hi ' + first + ', your Aidi Wealth account is approved. Sign in at ' + link + ' to see your plan and dashboard.', html })
+}
+export async function sendWealthDecline(to: string, first: string, note: string): Promise<void> {
+  const html = shell(h1('Thank you, ' + esc(first)) + para('Thank you for your interest in Aidi Wealth. After looking at your answers, we don\'t think we\'re the right fit for you just now.') + (note ? para(esc(note)) : '') + para('We have deleted the identity details you gave us. If your situation changes, you are welcome to ask again.'), 'About your Aidi Wealth request')
+  await sendEmail({ to, subject: 'About your Aidi Wealth request', text: 'Thank you for your interest in Aidi Wealth. After looking at your answers, we don\'t think we\'re the right fit for you just now.' + (note ? ' ' + note : '') + ' We have deleted the identity details you gave us.', html })
+}

@@ -6,6 +6,8 @@ const route = useRoute()
 const q = computed(() => (route.query.client ? '?client=' + route.query.client : ''))
 const { data, error, refresh } = await useFetch<Record<string, any>>(() => '/api/w/me' + q.value, { key: 'w-me' })
 const tab = ref('home')
+// Still in the onboarding conversation (or waiting for approval): that comes first.
+if (!route.query.client && data.value?.onboarding && data.value.onboarding !== 'done') await navigateTo('/w/start', { replace: true })
 // Private deals the Aidi team is offering clients: say you are interested, with an amount.
 interface Deal { website: string | null; logo_doc_id: string | null; about: string | null; id: string; company: string; title: string; sector: string | null; stage: string | null; lead: string | null; co_investors: string | null; min_investment: number | null; valuation: string | null; currency: string; received: string; closes_at: string | null; closed: boolean; my_status: string | null; my_amount: number | null }
 const { data: deals, refresh: refreshDeals } = await useFetch<{ deals: Deal[] }>(() => '/api/w/secondaries' + q.value, { key: 'w-deals', default: () => ({ deals: [] }) })
