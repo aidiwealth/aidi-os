@@ -5,6 +5,15 @@ useHead({ title: 'Wealth management' })
 import { RISK_LEVELS, ASSET_CLASSES, RATING_LABEL, levelLabel, type RiskConfig } from '~/shared/risk'
 const route = useRoute(); const router = useRouter()
 const TABS: [string, string][] = [['overview', 'Overview'], ['clients', 'Clients'], ['onboarding', 'Onboarding'], ['metals', 'Gold & metals'], ['firms', 'Advisers & fees'], ['calculator', 'Calculator'], ['settings', 'Settings']]
+// What needs the team now: onboarding waiting for approval, identity checks not finished, fees due.
+const { data: onb } = await useFetch<{ counts: { waiting: number } }>('/api/wm/onboarding', { key: 'wm-onb-counts', default: () => ({ counts: { waiting: 0 } }) })
+const needs = computed(() => {
+  const out: { text: string; label: string; to: string }[] = []
+  const w = onb.value?.counts?.waiting ?? 0; if (w) out.push({ text: w + ' onboarding' + (w === 1 ? '' : 's') + ' waiting for approval', label: 'Review', to: '/wealth-mgmt?t=onboarding' })
+  const k = (data.value?.clients ?? []).filter((c: any) => c.status === 'active' && c.kyc_status !== 'verified').length; if (k) out.push({ text: k + ' active client' + (k === 1 ? '' : 's') + ' without a finished identity check', label: 'Clients', to: '/wealth-mgmt?t=clients' })
+  for (const f of (data.value?.fees ?? []).filter((x: any) => x.status === 'due').slice(0, 6)) out.push({ text: 'Fee due: ' + (f.client ?? f.firm) + ' · ' + f.kind + (f.period ? ' · ' + f.period : '') + ' · ' + money(f.amount, f.currency), label: 'Billing', to: '/wealth-mgmt?t=firms' })
+  return out
+})
 const tab = computed({ get: () => String(route.query.t ?? 'overview'), set: (v: string) => router.replace({ query: { t: v } }) })
 interface Cl { risk_profile?: string | null; risk?: { ok: boolean; over: number; over_high: boolean; high_pct: number }; id: string; name: string; kind: string; tag: string | null; country: string; model: string; status: string; kyc_status: string; email: string | null; user_id: string | null; entity: string | null; totals: { net_worth: number; invested: number; cash: number } }
 // Fetched together, not one after another (each wait is a round trip to the server).
@@ -68,11 +77,10 @@ const SW: [string, string, string][] = [['advisor', 'Adviser-connected (referral
     <div class="hd"><div><p class="label">Aidi Wealth</p><h1>Wealth management</h1></div><div class="acts"><button class="btn" @click="nc.open = true">Add a wealth client</button></div></div>
     <nav class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
     <template v-if="tab === 'overview'">
-      <div class="kp"><div class="k"><span>Client assets tracked</span><b>{{ brief(usd(sum('net_worth'))) }}</b><em>{{ data.clients.length }} client{{ data.clients.length === 1 ? '' : 's' }}</em></div><div class="k"><span>United States</span><b>{{ brief(usd(sum('net_worth', 'US'))) }}</b><em>Aidi Wealth LLC</em></div><div class="k"><span>Nigeria</span><b>{{ brief(usd(sum('net_worth', 'NG'))) }}</b><em>Aidi Finance Limited</em></div><div class="k"><span>Cash with clients</span><b>{{ brief(usd(sum('cash'))) }}</b><em>linked banks and savings</em></div></div>
+      <WmAnalytics part="kpis" />
       <MarketWidget editable />
-      <WmAnalytics />
-      <div class="fees">
-        <div class="card"><h3>Fees due</h3><div v-for="f in data.fees.filter((x) => x.status === 'due').slice(0, 8)" :key="f.id" class="rw"><span>{{ f.client ?? f.firm }} · {{ f.kind }}{{ f.period ? ' · ' + f.period : '' }}</span><b>{{ money(f.amount, f.currency) }}</b></div><p v-if="!data.fees.some((x) => x.status === 'due')" class="mut">No fees due.</p></div></div>
+      <WmAnalytics part="charts" />
+      <div v-if="needs.length" class="card needs"><h3>Needs you</h3><div v-for="n in needs" :key="n.text" class="rw"><span>{{ n.text }}</span><NuxtLink :to="n.to" class="lk">{{ n.label }} →</NuxtLink></div></div>
       <div class="card note"><b>What is switched on</b><span v-for="c in ['US', 'NG']" :key="c">{{ c === 'US' ? 'US' : 'Nigeria' }}: {{ SW.filter(([k, , w]) => (w === 'both' || w === c) && data!.settings[c][k]).map(([, l]) => l.replace(/ \(.*\)/, '')).join(', ') || 'nothing yet' }}</span><span class="mut">US and Nigerian clients are run by separate entities and never cross-sold.</span></div>
     </template>
     <template v-else-if="tab === 'clients'">
@@ -149,6 +157,7 @@ const SW: [string, string, string][] = [['advisor', 'Adviser-connected (referral
   </section>
 </template>
 <style scoped>
+.needs h3 { margin: 0 0 6px; font-size: 15px; } .needs .lk { color: var(--c-blue-deep); text-decoration: none; font-size: 13px; white-space: nowrap; }
 .rkg { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; margin-top: 10px; } .rkt { display: block; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); margin-bottom: 6px; } .rkr { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .rkr select, .rkr input { font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--c-rule-strong); background: #fff; } .rkl { display: flex; gap: 6px; align-items: center; } .rkl input { width: 64px; } .rkl em { font-style: normal; font-size: 12px; color: var(--c-muted); } .s.rw { display: block; color: var(--c-warn); }
 @media (max-width: 800px) { .rkg { grid-template-columns: 1fr; } }
 .hd { display: flex; justify-content: space-between; align-items: flex-end; } .hd h1 { margin: 0; } .sub { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0; width: fit-content; max-width: 100%; overflow-x: auto; } .sub button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .sub .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }

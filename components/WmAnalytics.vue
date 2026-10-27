@@ -1,16 +1,18 @@
 <script setup lang="ts">
-// Wealth management analytics (Overview page and the Wealth management overview).
+// Wealth management analytics (Overview page and the Wealth management overview). part: only the figures ('kpis') or
+// only the charts ('charts'), so the Wealth management page can put the markets widget between them without repeating.
+const props = defineProps<{ part?: 'kpis' | 'charts' }>()
 const { data } = await useFetch<Record<string, any>>('/api/wm/analytics', { key: 'wm-analytics' })
 const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v ?? 0)
 </script>
 <template>
   <div v-if="data" class="wa">
-    <div class="hd"><h2>Wealth management</h2><NuxtLink to="/wealth-mgmt" class="lk">Open →</NuxtLink></div>
-    <div class="kp"><NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Client assets</span><b>{{ brief(usd(data.assets.total)) }}</b><em>US {{ usd(data.assets.us) }} · Nigeria {{ usd(data.assets.ng) }}</em></NuxtLink>
+    <div v-if="!props.part" class="hd"><h2>Wealth management</h2><NuxtLink to="/wealth-mgmt" class="lk">Open →</NuxtLink></div>
+    <div v-if="props.part !== 'charts'" class="kp"><NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Client assets</span><b>{{ brief(usd(data.assets.total)) }}</b><em>US {{ usd(data.assets.us) }} · Nigeria {{ usd(data.assets.ng) }}</em></NuxtLink>
       <NuxtLink to="/wealth-mgmt?t=clients" class="k"><span>Clients</span><b>{{ data.clients.active }} active</b><em>{{ data.clients.total }} total · {{ data.clients.kyc_pending }} KYC pending</em></NuxtLink>
       <NuxtLink to="/wealth-mgmt?t=firms" class="k"><span>Fees this year</span><b>{{ brief(usd(data.fees.ytd)) }}</b><em :class="{ warn: data.fees.due > 0 }">{{ usd(data.fees.due) }} due</em></NuxtLink>
       <div class="k"><span>Statements &amp; documents</span><b>{{ data.statements_quarter }} this quarter</b><em>{{ data.statements_unseen }} not opened · {{ data.awaiting_signature }} awaiting signature</em></div></div>
-    <div class="g3"><div class="card"><DonutChart title="By service model" total-label="Total" currency="USD" :segments="data.assets.by_model" /></div>
+    <div v-if="props.part !== 'kpis'" class="g3"><div class="card"><DonutChart title="By service model" total-label="Total" currency="USD" :segments="data.assets.by_model" /></div>
       <div class="card"><h3>Client assets over time</h3><AreaTrend v-if="data.history.length > 1" :points="data.history.map((h: any) => ({ x: h.m, y: h.v }))" :height="140" :format="usd" /><p v-else class="mut">Builds month by month as client accounts are valued.</p>
         <div class="split"><span>Invested <b>{{ usd(data.assets.invested) }}</b></span><span>Cash <b>{{ usd(data.assets.cash) }}</b></span></div></div>
       <div class="card"><h3>Largest clients</h3><NuxtLink v-for="t in data.top" :key="t.id" :to="'/wealth-mgmt/clients/' + t.id" class="tr"><span>{{ t.name }} <em>{{ t.country }}</em></span><b>{{ usd(t.net_worth) }}</b></NuxtLink><p v-if="!data.top.length" class="mut">No clients yet.</p></div></div>
