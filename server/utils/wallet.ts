@@ -135,9 +135,11 @@ export async function planDiscount(orgId: string): Promise<{ pct: number; name: 
 // of the workspace's own (settings.price_override: an amount, yearly or monthly, in its
 // wallet currency) or make it free; companies on the earlier plans keep their earlier monthly price this way.
 export interface PriceOverride { free?: boolean; amount?: number; interval?: 'month' | 'year'; note?: string; set_at?: string; set_by?: string }
-export async function planPrice(orgId: string): Promise<{ code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: PriceOverride | null; monthly: number; discount_pct: number } | null> {
+// code: price a plan the workspace is not on yet (an upgrade or downgrade), on the same cycle and override.
+export async function planPrice(orgId: string, code?: string): Promise<{ code: string; name: string; currency: string; list: number; interval: 'month' | 'year'; free: boolean; override: PriceOverride | null; monthly: number; discount_pct: number } | null> {
   const o = (await db().query<{ plan_code: string; ov: PriceOverride | null; cycle: string | null }>("SELECT plan_code, settings->'price_override' AS ov, settings->>'billing_cycle' AS cycle FROM core.organizations WHERE id = $1", [orgId])).rows[0]
   if (!o) return null
+  if (code) o.plan_code = code
   const currency = (await walletOf(orgId)).currency
   const p = (await db().query<{ name: string; usd: string | null; ngn: string | null; usd_y: string | null; ngn_y: string | null }>('SELECT name, price_monthly_usd::text AS usd, price_monthly_ngn::text AS ngn, price_annual_usd::text AS usd_y, price_annual_ngn::text AS ngn_y FROM core.plans WHERE code = $1', [o.plan_code])).rows[0]
   const ov = o.ov && typeof o.ov === 'object' ? o.ov : null

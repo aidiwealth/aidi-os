@@ -35,6 +35,7 @@ const ngn = computed(() => data.value?.currency === 'NGN')
 const currentPlan = computed(() => { const d = data.value; return d ? (d.plans.find((p) => p.code === d.plan)?.name ?? d.plan) : '' })
 const price = (p: P) => { const v = ngn.value ? p.ngn : p.usd; return v == null ? 'Contact us' : v === 0 ? 'Free' : (ngn.value ? '₦' : '$') + v.toLocaleString('en-US') }
 const FEAT = PLAN_FEATS
+const ORD = ['company_free', 'company_startup', 'company_medium', 'company_scale']
 </script>
 <template>
   <section v-if="data" class="cs">
@@ -80,8 +81,8 @@ const FEAT = PLAN_FEATS
             <p v-if="pok" class="ok">{{ pok }}</p><p v-if="pmsg" class="error">{{ pmsg }}</p></div>
           <div class="plans"><div v-for="p in data.plans" :key="p.code" class="card pl" :class="{ on: p.code === data.plan }"><b>{{ p.name }}</b><span class="pr">{{ price(p) }}<em v-if="(ngn ? p.ngn : p.usd)"> / month</em></span><small v-if="data.cycle === 'year' && (ngn ? p.ngn_year : p.usd_year)" class="yr">{{ (ngn ? '₦' : '$') + (ngn ? p.ngn_year : p.usd_year)!.toLocaleString('en-US', { maximumFractionDigits: 2 }) }} billed yearly</small>
             <ul><li v-for="x in FEAT[p.code] ?? []" :key="x">{{ x }}</li><li v-if="p.ai_w">AI: {{ Math.round((p.ai_w ?? 0) / 1000) }}K tokens a week</li></ul>
-            <button v-if="p.code !== data.plan" type="button" class="btn" :disabled="busy" @click="choose(p.code)">{{ !data.trial_used ? 'Start 14-day free trial' : 'Switch to ' + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
-          <p class="muted">Card billing after trials is coming soon. We will email you before any charge.</p>
+            <button v-if="p.code !== data.plan" type="button" class="btn" :disabled="busy" @click="choose(p.code)">{{ !data.trial_used && (ngn ? p.ngn : p.usd) ? 'Start 14-day free trial' : (ORD.indexOf(p.code) > ORD.indexOf(data.plan) ? 'Upgrade to ' : 'Downgrade to ') + p.name }}</button><span v-else class="curb">Your plan</span></div></div>
+          <p class="muted">Paid plans are paid from your wallet, or your card on file when the wallet is short. An upgrade charges the difference for the rest of the period; a downgrade takes effect straight away.</p>
         </div>
         <div v-else class="card frm"><h2>Team</h2><p class="muted wide">{{ data.members }} member{{ data.members === 1 ? '' : 's' }}.</p><div class="wide"><NuxtLink to="/team" class="btn">Manage team</NuxtLink></div></div>
       </div>
