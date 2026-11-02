@@ -11,8 +11,8 @@ import { deriveLines } from '~/shared/fin-view'
 //  - Net worth over 12 months: each holding at each month end — gold and silver at that day's price, stocks at that
 //    day's close, others at their valuation then (before the first one: cost, else today's value).
 // Prices refresh every 30 seconds; holdings and cash every 30 seconds; the books and the 12 months every 5 minutes.
-export const LB_NUMBERS: Record<string, string> = { net_worth: 'Group net worth', revenue: 'Revenue this year', profit: 'Profit this year', cash: 'Cash', client_assets: 'Client assets', venture: 'Venture portfolio', gold: 'Gold and silver', stocks: 'Stocks and ETFs', occupancy: 'Aidi Haven occupancy', tasks: 'Tasks done this week', finvry: 'New Finvry companies' }
-export const LB_PANELS: Record<string, string> = { mix: 'Where the wealth is', trend: 'Net worth · 12 months', revenue_by: 'Revenue by business', week: 'This week' }
+export const LB_NUMBERS: Record<string, string> = { net_worth: 'Group net worth', revenue: 'Revenue this year', profit: 'Profit this year', cash: 'Cash', client_assets: 'Client assets', venture: 'Portfolio allocation', gold: 'Gold and silver', stocks: 'Stocks and ETFs', occupancy: 'Aidi Haven occupancy', tasks: 'Tasks done this week', finvry: 'New Finvry companies' }
+export const LB_PANELS: Record<string, string> = { mix: 'Where the wealth is', trend: 'Net worth · 12 months', revenue_by: 'Revenue by business', revenue_mix: 'Revenue by company', week: 'This week' }
 export interface LbLayout { numbers: { key: string; on: boolean }[]; panels: { key: string; on: boolean }[]; ticker: boolean }
 export const LB_DEFAULT: LbLayout = {
   numbers: Object.keys(LB_NUMBERS).map((key, i) => ({ key, on: i < 5 })),
@@ -23,7 +23,8 @@ export function lbLayout(v: unknown): LbLayout {
   const fix = (saved: { key: string; on: boolean }[] | undefined, all: Record<string, string>, def: { key: string; on: boolean }[]) => {
     const s = (Array.isArray(saved) ? saved : []).filter((x) => x && all[x.key]).map((x) => ({ key: x.key, on: !!x.on }))
     if (!s.length) return def
-    for (const d of def) if (!s.some((x) => x.key === d.key)) s.push({ key: d.key, on: false })
+    // Added since the layout was saved: shown or hidden as by default.
+    for (const d of def) if (!s.some((x) => x.key === d.key)) s.push({ key: d.key, on: d.on })
     return s
   }
   return { numbers: fix(l.numbers, LB_NUMBERS, LB_DEFAULT.numbers), panels: fix(l.panels, LB_PANELS, LB_DEFAULT.panels), ticker: l.ticker !== false }
@@ -60,7 +61,7 @@ async function livePart() {
   const syms = [...new Set(hs.map(symOf).filter((s): s is string => !!s))]
   const kinds = new Map(hs.filter((h) => symOf(h)).map((h) => [symOf(h)!, h.category === 'crypto' ? 'crypto' as const : 'stock' as const]))
   const q = syms.length ? await quoteMany(syms.map((s) => ({ symbol: s, kind: kinds.get(s)! }))).catch(() => new Map()) : new Map()
-  let assets = 0, liab = 0, today = 0, gold = 0, goldOz = 0, goldDay = 0, stocks = 0, stocksDay = 0, venture = 0, clients = 0
+  let assets = 0, liab = 0, today = 0, gold = 0, goldOz = 0, goldDay = 0, stocks = 0, stocksDay = 0, venture = 0, clients = 0, ventureCost = 0, ventureN = 0
   const mix: Record<string, { label: string; value: number }> = {}
   for (const h of hs) {
     let v = usd(Number(h.current_value ?? h.cost ?? 0), h.currency), d = 0
@@ -73,7 +74,8 @@ async function livePart() {
     assets += v; today += d
     if (h.category === 'precious_metals') { gold += v; goldDay += d; goldOz += Number(h.meta?.ounces ?? 0) }
     if (['public_securities', 'retirement', 'fund'].includes(h.category) && s) { stocks += v; stocksDay += d }
-    if (['venture', 'private_stake', 'secondaries'].includes(h.category)) venture += v
+    // Our allocation in portfolio companies: what we put in (cost), and what that stake is worth now.
+    if (['venture', 'private_stake', 'secondaries'].includes(h.category)) { venture += v; ventureCost += usd(Number(h.cost ?? 0), h.currency); ventureN++ }
     const [k, label] = MIX[h.category] ?? ['other', 'Other']; mix[k] = { label, value: (mix[k]?.value ?? 0) + v }
   }
   // Cash: connected banks (live balances) and the latest statement of every other account.
@@ -83,7 +85,7 @@ async function livePart() {
   const cash = [...plaid, ...stmts].reduce((t, r) => t + usd(Number(r.v ?? 0), r.currency), 0)
   const accounts = Number((await db().query<{ n: number }>("SELECT ((SELECT count(*) FROM banking.plaid_accounts WHERE coalesce(type, 'depository') = 'depository') + (SELECT count(*) FROM banking.accounts WHERE active AND plaid_account_id IS NULL))::int AS n").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0)
   const nav = assets - liab
-  return { nav: r0(nav), today: r0(today), today_pct: nav - today ? Math.round((today / (nav - today)) * 10000) / 100 : 0, cash: r0(cash), accounts, client_assets: r0(clients), venture: r0(venture),
+  return { nav: r0(nav), today: r0(today), today_pct: nav - today ? Math.round((today / (nav - today)) * 10000) / 100 : 0, cash: r0(cash), accounts, client_assets: r0(clients), venture: r0(venture), venture_cost: r0(ventureCost), venture_count: ventureN,
     gold: { value: r0(gold), oz: Math.round(goldOz * 100) / 100, today: r0(goldDay) }, stocks: { value: r0(stocks), today: r0(stocksDay) },
     mix: Object.entries(mix).filter(([, x]) => x.value > 0).map(([key, x]) => ({ key, label: x.label, value: r0(x.value) })).sort((a, b) => b.value - a.value) }
 }

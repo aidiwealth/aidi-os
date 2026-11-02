@@ -4,15 +4,15 @@
 // everything to it; "editing" lets you drag numbers and panels into a new order and hide or show each.
 interface Mix { key: string; label: string; value: number }
 export interface LbData { at: string; year_change_pct: number | null
-  live: { nav: number; today: number; today_pct: number; cash: number; accounts: number; client_assets: number; venture: number; gold: { value: number; oz: number; today: number }; stocks: { value: number; today: number }; mix: Mix[] }
+  live: { nav: number; today: number; today_pct: number; cash: number; accounts: number; client_assets: number; venture: number; venture_cost: number; venture_count: number; gold: { value: number; oz: number; today: number }; stocks: { value: number; today: number }; mix: Mix[] }
   books: { revenue: number; profit: number; margin: number | null; revenue_growth: number | null; books_to: string | null; by: { name: string; revenue: number }[] }
   trend: { d: string; v: number }[]; week: { tasks_done: number; tasks_total: number; finvry_new: number; occupancy: number | null }
   ticker: { key: string; name: string; value: number; unit: 'usd' | 'usd_oz' | 'pct'; change: number | null; change_unit: 'pct' | 'pts'; closed?: boolean }[] }
 export interface LbLayout { numbers: { key: string; on: boolean }[]; panels: { key: string; on: boolean }[]; ticker: boolean }
 const props = defineProps<{ data: LbData; layout: LbLayout; tv?: boolean; editing?: boolean; name?: string; numbers?: Record<string, string>; panels?: Record<string, string> }>()
 const emit = defineEmits<{ 'update:layout': [l: LbLayout] }>()
-const NUM: Record<string, string> = props.numbers ?? { net_worth: 'Group net worth', revenue: 'Revenue this year', profit: 'Profit this year', cash: 'Cash', client_assets: 'Client assets', venture: 'Venture portfolio', gold: 'Gold and silver', stocks: 'Stocks and ETFs', occupancy: 'Aidi Haven occupancy', tasks: 'Tasks done this week', finvry: 'New Finvry companies' }
-const PAN: Record<string, string> = props.panels ?? { mix: 'Where the wealth is', trend: 'Net worth · 12 months', revenue_by: 'Revenue by business', week: 'This week' }
+const NUM: Record<string, string> = props.numbers ?? { net_worth: 'Group net worth', revenue: 'Revenue this year', profit: 'Profit this year', cash: 'Cash', client_assets: 'Client assets', venture: 'Portfolio allocation', gold: 'Gold and silver', stocks: 'Stocks and ETFs', occupancy: 'Aidi Haven occupancy', tasks: 'Tasks done this week', finvry: 'New Finvry companies' }
+const PAN: Record<string, string> = props.panels ?? { mix: 'Where the wealth is', trend: 'Net worth · 12 months', revenue_by: 'Revenue by business', revenue_mix: 'Revenue by company', week: 'This week' }
 
 // Money, in full or short ($1.26M, $486k).
 const full = (v: number) => (v < 0 ? '−' : '') + '$' + Math.abs(Math.round(v)).toLocaleString('en-US')
@@ -22,7 +22,7 @@ const sign = (v: number) => (v >= 0 ? 'up' : 'dn')
 
 // Numbers tween to their new value, and flash up or down when they change.
 const shown = reactive<Record<string, number>>({}); const flash = reactive<Record<string, string>>({})
-const target = computed<Record<string, number>>(() => { const d = props.data; return { net_worth: d.live.nav, revenue: d.books.revenue, profit: d.books.profit, cash: d.live.cash, client_assets: d.live.client_assets, venture: d.live.venture, gold: d.live.gold.value, stocks: d.live.stocks.value } })
+const target = computed<Record<string, number>>(() => { const d = props.data; return { net_worth: d.live.nav, revenue: d.books.revenue, profit: d.books.profit, cash: d.live.cash, client_assets: d.live.client_assets, venture: d.live.venture_cost, gold: d.live.gold.value, stocks: d.live.stocks.value } })
 let raf = 0
 watch(target, (t, old) => {
   if (typeof window === 'undefined') { Object.assign(shown, t); return }
@@ -43,7 +43,7 @@ const tile = (k: string): Tile => {
     case 'profit': return { big: short(v), sub: d.books.margin !== null ? d.books.margin + '% margin' : 'from the books' }
     case 'cash': return { big: short(v), sub: 'across ' + d.live.accounts + ' account' + (d.live.accounts === 1 ? '' : 's') }
     case 'client_assets': return { big: short(v), sub: 'Aidi Wealth' }
-    case 'venture': return { big: short(v), sub: 'at latest valuations' }
+    case 'venture': return { big: short(v), sub: 'in ' + d.live.venture_count + ' compan' + (d.live.venture_count === 1 ? 'y' : 'ies') + ' · worth ' + short(d.live.venture) + ' now', cls: sign(d.live.venture - d.live.venture_cost) }
     case 'gold': return { big: short(v), sub: d.live.gold.oz + ' oz · ' + arrow(d.live.gold.today) + short(Math.abs(d.live.gold.today)) + ' today', cls: sign(d.live.gold.today) }
     case 'stocks': return { big: short(v), sub: arrow(d.live.stocks.today) + short(Math.abs(d.live.stocks.today)) + ' today', cls: sign(d.live.stocks.today) }
     case 'occupancy': return { big: d.week.occupancy !== null ? d.week.occupancy + '%' : '—', sub: 'booked this month' }
@@ -60,26 +60,37 @@ const pans = computed(() => props.layout.panels.filter((p) => props.editing || p
 const numCols = computed(() => (nums.value.length <= 6 ? nums.value.map((n) => (n.key === 'net_worth' ? '1.5fr' : '1fr')).join(' ') : 'repeat(auto-fill, minmax(210px, 1fr))'))
 const wrapNums = computed(() => nums.value.length > 6)
 
-// Donut: arcs of the wealth mix.
 const COLORS = ['#0c1a2e', '#1c547d', '#2675b0', '#5fa8d3', '#9cc3de', '#c9dcea', '#e3edf5', '#b9cfe2']
-const mixTotal = computed(() => props.data.live.mix.reduce((t, m) => t + m.value, 0))
-const arcs = computed(() => {
-  let a = -Math.PI / 2; const R = 100, r = 66, out: { d: string; c: string }[] = []
-  props.data.live.mix.forEach((m, i) => {
-    const sweep = mixTotal.value ? (2 * Math.PI * m.value) / mixTotal.value : 0, b = a + sweep - (props.data.live.mix.length > 1 ? 0.012 : 0)
-    if (sweep > 0.002) { const p = (ang: number, rr: number) => [110 + rr * Math.cos(ang), 110 + rr * Math.sin(ang)]; const L = b - a > Math.PI ? 1 : 0, [x1, y1] = p(a, R), [x2, y2] = p(b, R), [x3, y3] = p(b, r), [x4, y4] = p(a, r)
+// Donuts: arcs for a list of parts (the wealth mix; revenue by company).
+function arcsOf(list: { value: number }[]) {
+  const total = list.reduce((t, m) => t + Math.max(0, m.value), 0); let a = -Math.PI / 2; const R = 100, r = 64, out: { d: string; c: string }[] = []
+  list.forEach((m, i) => {
+    const sweep = total ? (2 * Math.PI * Math.max(0, m.value)) / total : 0, b = a + sweep - (list.length > 1 ? 0.012 : 0)
+    // A single part is the whole ring (an arc from a point to itself draws nothing).
+    if (sweep >= 2 * Math.PI - 0.001) out.push({ d: 'M10 110 A100 100 0 1 1 210 110 A100 100 0 1 1 10 110 Z M46 110 A64 64 0 1 0 174 110 A64 64 0 1 0 46 110 Z', c: COLORS[i % COLORS.length]! })
+    else if (sweep > 0.002) { const p = (ang: number, rr: number) => [110 + rr * Math.cos(ang), 110 + rr * Math.sin(ang)]; const L = b - a > Math.PI ? 1 : 0, [x1, y1] = p(a, R), [x2, y2] = p(b, R), [x3, y3] = p(b, r), [x4, y4] = p(a, r)
       out.push({ d: `M${x1} ${y1} A${R} ${R} 0 ${L} 1 ${x2} ${y2} L${x3} ${y3} A${r} ${r} 0 ${L} 0 ${x4} ${y4} Z`, c: COLORS[i % COLORS.length]! }) }
     a += sweep
   })
-  return out
-})
+  return { arcs: out, total }
+}
+const mixD = computed(() => arcsOf(props.data.live.mix))
+const revD = computed(() => arcsOf(props.data.books.by.map((b) => ({ value: b.revenue }))))
 // Trend: net worth line with today as a live dot.
 const tr = computed(() => {
-  const v = props.data.trend.map((p) => p.v); if (v.length < 2) return null
-  const lo = Math.min(...v), hi = Math.max(...v), pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1, W = 1000, H = 300
-  const xy = v.map((x, i) => [(i / (v.length - 1)) * W, H - ((x - (lo - pad)) / (hi + pad - (lo - pad))) * H] as [number, number])
-  const line = xy.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')
-  return { line, area: '0,' + H + ' ' + line + ' ' + W + ',' + H, last: xy[xy.length - 1]!, change: v[v.length - 1]! - v[0]!, first: props.data.trend[0]!.d, hi, lo }
+  const pts = props.data.trend, v = pts.map((p) => p.v); if (v.length < 2) return null
+  const lo0 = Math.min(...v), hi0 = Math.max(...v), span = hi0 - lo0 || Math.abs(hi0) * 0.05 || 1
+  const lo = lo0 - span * 0.15, hi = hi0 + span * 0.15, W = 1000, H = 300
+  const xy = v.map((x, i) => [(i / (v.length - 1)) * W, H - ((x - lo) / (hi - lo)) * H] as [number, number])
+  // A smooth line that never overshoots the figures (monotone cubic, Fritsch–Carlson).
+  const n = xy.length, dx = xy.map((p, i) => (i < n - 1 ? xy[i + 1]![0] - p[0] : 0)), sl = xy.map((p, i) => (i < n - 1 ? (xy[i + 1]![1] - p[1]) / dx[i]! : 0))
+  const m = xy.map((_, i) => (i === 0 ? sl[0]! : i === n - 1 ? sl[n - 2]! : sl[i - 1]! * sl[i]! <= 0 ? 0 : (sl[i - 1]! + sl[i]!) / 2))
+  for (let i = 0; i < n - 1; i++) { if (sl[i] === 0) { m[i] = 0; m[i + 1] = 0; continue } const a = m[i]! / sl[i]!, b = m[i + 1]! / sl[i]!, h = a * a + b * b; if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * sl[i]!; m[i + 1] = t * b * sl[i]! } }
+  let d = 'M' + xy[0]![0].toFixed(1) + ',' + xy[0]![1].toFixed(1)
+  for (let i = 0; i < n - 1; i++) { const h = dx[i]! / 3, p1 = xy[i]!, p2 = xy[i + 1]!; d += ' C' + (p1[0] + h).toFixed(1) + ',' + (p1[1] + m[i]! * h).toFixed(1) + ' ' + (p2[0] - h).toFixed(1) + ',' + (p2[1] - m[i + 1]! * h).toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1) }
+  const grid = [0.25, 0.5, 0.75].map((f) => ({ y: f * 100, v: hi - f * (hi - lo) }))
+  const months = pts.map((p, i) => ({ x: (i / (pts.length - 1)) * 100, l: i === pts.length - 1 ? 'Today' : monthName(p.d).slice(0, 3) })).filter((_, i) => i % 2 === 0 || i === pts.length - 1)
+  return { d, area: d + ' L' + W + ',' + H + ' L0,' + H + ' Z', last: xy[xy.length - 1]!, change: v[v.length - 1]! - v[0]!, grid, months, now: v[v.length - 1]! }
 })
 const byMax = computed(() => Math.max(1, ...props.data.books.by.map((b) => b.revenue)))
 
@@ -122,13 +133,21 @@ const toggle = (zone: 'numbers' | 'panels', key: string) => emit('update:layout'
         :draggable="editing" @dragstart="drag = { zone: 'panels', key: p.key }" @dragover.prevent="over = 'p:' + p.key" @dragleave="over = ''" @drop.prevent="drop('panels', p.key)" @dragend="drag = null; over = ''">
         <div v-if="editing" class="ed"><span class="gr" aria-hidden="true">⠿ Drag</span><button type="button" class="eye" :aria-label="(p.on ? 'Hide ' : 'Show ') + PAN[p.key]" @click="toggle('panels', p.key)">{{ p.on ? 'Hide' : 'Show' }}</button></div>
         <template v-if="p.key === 'mix'"><h3>{{ PAN.mix }}</h3>
-          <div class="dnut"><svg viewBox="0 0 220 220" role="img" aria-label="Where the wealth is"><path v-for="(a, i) in arcs" :key="i" :d="a.d" :fill="a.c" /></svg><div class="dc"><span>Total</span><b>{{ short(mixTotal) }}</b></div></div>
-          <div class="leg"><div v-for="(m, i) in data.live.mix" :key="m.key"><i :style="{ background: COLORS[i % COLORS.length] }" /><span>{{ m.label }}</span><b>{{ short(m.value) }}</b><em>{{ mixTotal ? Math.round((m.value / mixTotal) * 100) : 0 }}%</em></div></div></template>
+          <div class="dwrap"><div class="dnut"><svg viewBox="0 0 220 220" role="img" aria-label="Where the wealth is"><path v-for="(a, i) in mixD.arcs" :key="i" :d="a.d" :fill="a.c" /></svg><div class="dc"><span>Total</span><b>{{ short(mixD.total) }}</b></div></div>
+          <div class="leg"><div v-for="(m, i) in data.live.mix" :key="m.key"><i :style="{ background: COLORS[i % COLORS.length] }" /><span>{{ m.label }}</span><b>{{ short(m.value) }}</b><em>{{ mixD.total ? Math.round((m.value / mixD.total) * 100) : 0 }}%</em></div></div></div></template>
+        <template v-else-if="p.key === 'revenue_mix'"><h3>{{ PAN.revenue_mix }} <small>this year</small></h3>
+          <div v-if="data.books.by.length" class="dwrap"><div class="dnut"><svg viewBox="0 0 220 220" role="img" aria-label="Revenue by company"><path v-for="(a, i) in revD.arcs" :key="i" :d="a.d" :fill="a.c" /></svg><div class="dc"><span>Revenue</span><b>{{ short(revD.total) }}</b></div></div>
+          <div class="leg"><div v-for="(b, i) in data.books.by" :key="b.name"><i :style="{ background: COLORS[i % COLORS.length] }" /><span>{{ b.name }}</span><b>{{ short(b.revenue) }}</b><em>{{ revD.total ? Math.round((b.revenue / revD.total) * 100) : 0 }}%</em></div></div></div>
+          <p v-else class="mut">No figures in the books yet this year.</p></template>
         <template v-else-if="p.key === 'trend'"><div class="ph"><h3>{{ PAN.trend }}</h3><span v-if="tr" :class="sign(tr.change)">{{ arrow(tr.change) }}{{ short(Math.abs(tr.change)) }}</span></div>
-          <div v-if="tr" class="tw"><svg class="tl" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="Net worth over 12 months"><polygon :points="tr.area" fill="#1c547d" fill-opacity=".08" /><polyline :points="tr.line" fill="none" stroke="#1c547d" stroke-width="3" vector-effect="non-scaling-stroke" /></svg>
-          <div class="dot" :style="{ left: tr.last[0] / 10 + '%', top: tr.last[1] / 3 + '%' }" /><span class="yl hi">{{ short(tr.hi) }}</span><span class="yl lo">{{ short(tr.lo) }}</span></div>
-          <div v-if="tr" class="ax"><span>{{ monthName(tr.first).slice(0, 3) }} {{ tr.first.slice(0, 4) }}</span><span>Today</span></div><p v-else class="mut">Not enough history yet.</p></template>
-        <template v-else-if="p.key === 'revenue_by'"><h3>{{ PAN.revenue_by }} · this year</h3>
+          <div v-if="tr" class="tw"><svg class="tl" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="Net worth over 12 months">
+            <defs><linearGradient id="lbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2675b0" stop-opacity=".22" /><stop offset="1" stop-color="#2675b0" stop-opacity="0" /></linearGradient></defs>
+            <line v-for="g in tr.grid" :key="g.y" x1="0" x2="1000" :y1="g.y * 3" :y2="g.y * 3" stroke="#0f1115" stroke-opacity=".07" stroke-dasharray="4 6" vector-effect="non-scaling-stroke" />
+            <path :d="tr.area" fill="url(#lbg)" /><path :d="tr.d" fill="none" stroke="#1c547d" stroke-width="3.5" stroke-linecap="round" vector-effect="non-scaling-stroke" /></svg>
+            <span v-for="g in tr.grid" :key="'l' + g.y" class="yl" :style="{ top: g.y + '%' }">{{ short(g.v) }}</span>
+            <div class="dot" :style="{ left: tr.last[0] / 10 + '%', top: tr.last[1] / 3 + '%' }" /><span class="nowl" :style="{ top: tr.last[1] / 3 + '%' }">{{ short(tr.now) }}</span></div>
+          <div v-if="tr" class="ax"><span v-for="m in tr.months" :key="m.x" :style="{ left: m.x + '%' }">{{ m.l }}</span></div><p v-else class="mut">Not enough history yet.</p></template>
+        <template v-else-if="p.key === 'revenue_by'"><h3>{{ PAN.revenue_by }} <small>this year</small></h3>
           <div v-for="b in data.books.by" :key="b.name" class="bz"><span>{{ b.name }}</span><div class="bb"><i :style="{ width: (b.revenue / byMax) * 100 + '%' }" /></div><b>{{ short(b.revenue) }}</b></div>
           <p v-if="!data.books.by.length" class="mut">No figures in the books yet this year.</p><p v-else-if="data.books.books_to" class="mut sm">Books to {{ monthName(data.books.books_to) }}</p></template>
         <template v-else-if="p.key === 'week'"><h3>{{ PAN.week }}</h3>
@@ -145,8 +164,10 @@ const toggle = (zone: 'numbers' | 'panels', key: string) => emit('update:layout'
   </div>
 </template>
 <style scoped>
-.lb { background: #f6f6f3; display: flex; flex-direction: column; gap: 14px; padding: 22px; color: var(--c-ink); --big: 38px; --hero: 52px; --lab: 14px; --sub: 14px; }
-.lb.tv { position: fixed; top: 0; left: 0; right: 0; z-index: 2000; height: var(--vh100, 100vh); padding: 2.6vh 2.2vw; gap: 1.6vh; box-sizing: border-box; overflow: hidden; --big: clamp(28px, 4.2vh, 64px); --hero: clamp(36px, 6vh, 96px); --lab: clamp(13px, 1.45vh, 22px); --sub: clamp(13px, 1.45vh, 22px); }
+.lb { background: #f6f6f3; display: flex; flex-direction: column; gap: 14px; padding: 22px; color: var(--c-ink); --big: 38px; --hero: 52px; --lab: 14px; --sub: 14px; --sm: 12.5px; }
+.lb.tv { position: fixed; top: 0; left: 0; right: 0; z-index: 2000; height: var(--vh100, 100vh); padding: 2.6vh 2.2vw; gap: 1.6vh; box-sizing: border-box; overflow: hidden; --big: clamp(34px, 3.5vw, 120px); --hero: clamp(44px, 4.7vw, 160px); --lab: clamp(16px, 1.3vw, 40px); --sub: clamp(15px, 1.15vw, 36px); --sm: clamp(13px, .95vw, 30px); }
+/* On the TV, read from across the room: bigger padding, charts and legends. */
+.lb.tv .kc, .lb.tv .pc { padding: 1.5vw 1.6vw; } .lb.tv .nums, .lb.tv .pans { gap: 1vw; } .lb.tv .live i { width: .7vw; height: .7vw; min-width: 9px; min-height: 9px; }
 .hd { display: flex; justify-content: space-between; align-items: center; } .nm { display: flex; align-items: center; gap: 16px; } .nm b { font-size: calc(var(--lab) * 1.75); letter-spacing: -.01em; }
 .live { display: inline-flex; align-items: center; gap: 8px; font-size: var(--sub); color: var(--c-blue-deep); } .live i { width: 9px; height: 9px; border-radius: 50%; background: #2675b0; animation: pulse 2s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(38, 117, 176, .45); } 70% { box-shadow: 0 0 0 9px rgba(38, 117, 176, 0); } 100% { box-shadow: 0 0 0 0 rgba(38, 117, 176, 0); } }
@@ -158,17 +179,18 @@ const toggle = (zone: 'numbers' | 'panels', key: string) => emit('update:layout'
 .kc em { font-style: normal; font-size: var(--sub); color: var(--c-ink-soft); } .up { color: var(--c-blue-deep) !important; } .dn { color: var(--c-danger) !important; }
 .kc.fu { background: #eef4f9; } .kc.fd { background: #fbf0ef; }
 .pans { display: flex; gap: 14px; flex: 1; min-height: 0; } .pc { flex: 1 1 0; padding: 20px 22px; min-width: 0; display: flex; flex-direction: column; } .pc.p-trend { flex-grow: 1.5; }
-.pc h3 { margin: 0 0 12px; font-size: calc(var(--lab) * 1.15); font-weight: 600; } .ph { display: flex; justify-content: space-between; align-items: baseline; } .ph span { font-size: var(--sub); }
-.dnut { position: relative; width: min(220px, 100%); aspect-ratio: 1; margin: 0 auto 14px; } .lb.tv .dnut { width: min(26vh, 100%); } .dnut svg { width: 100%; height: 100%; } .dc { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; } .dc span { font-size: 12.5px; color: var(--c-muted); } .dc b { font-size: calc(var(--lab) * 1.6); }
-.leg { display: flex; flex-direction: column; gap: 8px; font-size: var(--sub); } .leg div { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 46px; gap: 10px; align-items: center; } .leg i { width: 12px; height: 12px; } .leg em { font-style: normal; color: var(--c-muted); text-align: right; font-size: .9em; }
-.tw { position: relative; flex: 1; min-height: 160px; display: flex; } .tl { width: 100%; height: 100%; min-height: 160px; display: block; }
-.dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #2675b0; border: 3px solid #fff; animation: pulse 2s infinite; pointer-events: none; }
-.yl { position: absolute; left: 0; font-size: 12px; color: var(--c-muted); background: rgba(255, 255, 255, .8); padding: 0 4px; } .yl.hi { top: 4%; } .yl.lo { bottom: 4%; }
-.ax { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--c-muted); margin-top: 6px; }
-.bz { display: grid; grid-template-columns: minmax(0, 140px) minmax(0, 1fr) 80px; gap: 12px; align-items: center; font-size: var(--sub); padding: 9px 0; border-top: 1px solid var(--c-rule); } .bz span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bz b { text-align: right; }
-.bb { height: 12px; background: var(--c-paper-2); } .bb i { display: block; height: 100%; background: var(--c-blue-deep); transition: width .8s; }
-.wk { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .wk div { background: var(--c-paper-3); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; } .wk span { font-size: 12.5px; color: var(--c-muted); } .wk b { font-size: calc(var(--big) * .6); font-weight: 600; } .wk em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
-.mut { color: var(--c-muted); font-size: var(--sub); } .sm { font-size: 12.5px; margin: 10px 0 0; }
+.pc h3 { margin: 0 0 .8em; font-size: calc(var(--lab) * 1.15); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .pc h3 small { font-size: var(--sm); font-weight: 400; color: var(--c-muted); margin-left: .3em; } .ph { display: flex; justify-content: space-between; align-items: baseline; } .ph span { font-size: var(--sub); }
+.dwrap { display: flex; flex-direction: column; flex: 1; min-height: 0; } .dnut { position: relative; width: min(220px, 100%); aspect-ratio: 1; margin: 0 auto 14px; } .lb.tv .dnut { width: min(32vh, 92%); margin-bottom: 1.4vw; } .dnut svg { width: 100%; height: 100%; } .dc { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; } .dc span { font-size: var(--sm); color: var(--c-muted); } .dc b { font-size: calc(var(--big) * .62); font-weight: 600; letter-spacing: -.02em; }
+.leg { display: flex; flex-direction: column; gap: .55em; font-size: var(--sub); } .leg div { display: grid; grid-template-columns: .8em minmax(0, 1fr) auto 3em; gap: .6em; align-items: center; } .leg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .leg i { width: .8em; height: .8em; } .leg em { font-style: normal; color: var(--c-muted); text-align: right; font-size: .9em; }
+.tw { position: relative; flex: 1; min-height: 160px; display: flex; margin-left: 4.2em; font-size: var(--sm); } .tl { width: 100%; height: 100%; min-height: 160px; display: block; overflow: visible; }
+.dot { position: absolute; width: 1.15em; height: 1.15em; margin: -.575em 0 0 -.575em; font-size: var(--sub); border-radius: 50%; background: #2675b0; border: 3px solid #fff; animation: pulse 2s infinite; pointer-events: none; }
+.yl { position: absolute; right: 100%; margin-right: .6em; transform: translateY(-50%); font-size: var(--sm); color: var(--c-muted); white-space: nowrap; }
+.nowl { position: absolute; right: 0; transform: translate(0, -160%); font-size: var(--sub); font-weight: 600; color: var(--c-navy); background: rgba(255, 255, 255, .85); padding: 0 .3em; }
+.ax { position: relative; height: 1.6em; margin: .5em 0 0 calc(4.2 * var(--sm)); font-size: var(--sm); color: var(--c-muted); } .ax span { position: absolute; transform: translateX(-50%); white-space: nowrap; } .ax span:last-child { transform: translateX(-100%); } .ax span:first-child { transform: none; }
+.bz { display: grid; grid-template-columns: minmax(0, 8em) minmax(0, 1fr) 4.5em; gap: 12px; align-items: center; font-size: var(--sub); padding: 9px 0; border-top: 1px solid var(--c-rule); } .bz span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bz b { text-align: right; }
+.bb { height: .7em; background: var(--c-paper-2); } .bb i { display: block; height: 100%; background: var(--c-blue-deep); transition: width .8s; }
+.wk { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .wk div { background: var(--c-paper-3); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; } .wk span { font-size: var(--sm); color: var(--c-muted); } .wk b { font-size: calc(var(--big) * .6); font-weight: 600; } .wk em { font-style: normal; font-size: var(--sm); color: var(--c-muted); }
+.mut { color: var(--c-muted); font-size: var(--sub); } .sm { font-size: var(--sm); margin: 10px 0 0; }
 .tk { display: flex; align-items: stretch; background: #fff; border: 1px solid var(--c-rule); overflow: hidden; position: relative; }
 .tlv { display: flex; align-items: center; gap: 8px; padding: 0 18px; border-right: 1px solid var(--c-rule); font-size: var(--sub); color: var(--c-blue-deep); white-space: nowrap; } .tlv i { width: 8px; height: 8px; background: var(--c-blue); border-radius: 50%; }
 .vp { flex: 1; min-width: 0; overflow: hidden; }
