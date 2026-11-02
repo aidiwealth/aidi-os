@@ -61,7 +61,8 @@ async function livePart() {
   const syms = [...new Set(hs.map(symOf).filter((s): s is string => !!s))]
   const kinds = new Map(hs.filter((h) => symOf(h)).map((h) => [symOf(h)!, h.category === 'crypto' ? 'crypto' as const : 'stock' as const]))
   const q = syms.length ? await quoteMany(syms.map((s) => ({ symbol: s, kind: kinds.get(s)! }))).catch(() => new Map()) : new Map()
-  let assets = 0, liab = 0, today = 0, gold = 0, goldOz = 0, goldDay = 0, stocks = 0, stocksDay = 0, venture = 0, clients = 0, ventureCost = 0, ventureN = 0
+  let assets = 0, liab = 0, today = 0, gold = 0, goldOz = 0, goldDay = 0, stocks = 0, stocksDay = 0, venture = 0, clients = 0, ventureCost = 0, alloc = 0
+  const cos = new Set<string>()
   const mix: Record<string, { label: string; value: number }> = {}
   for (const h of hs) {
     let v = usd(Number(h.current_value ?? h.cost ?? 0), h.currency), d = 0
@@ -69,13 +70,17 @@ async function livePart() {
     if (m && spot[m]) { const oz = Number(h.meta.ounces); v = oz * spot[m]!.price; d = spot[m]!.prev ? oz * (spot[m]!.price - spot[m]!.prev!) : 0 }
     else if (s && q.get(s)) { const x = q.get(s)!; v = qtyOf(h) * x.price; d = x.prev_close ? qtyOf(h) * (x.price - x.prev_close) : 0 }
     if (h.section === 'client') { clients += v; continue }
+    // Portfolio allocation: our stake in portfolio companies (Aidi Ventures holdings, and strategic stakes valued from a
+    // portfolio company's own figures) at today's value — not group companies' own books.
+    if (h.category !== 'liability' && (h.section === 'venture' || typeof h.meta?.book_company === 'string')) {
+      alloc += v; ventureCost += usd(Number(h.cost ?? 0), h.currency); cos.add(String(h.meta?.book_company ?? h.meta?.company_id ?? h.id))
+    }
     if (!h.in_nav) continue
     if (h.category === 'liability') { liab += Math.abs(v); continue }
     assets += v; today += d
     if (h.category === 'precious_metals') { gold += v; goldDay += d; goldOz += Number(h.meta?.ounces ?? 0) }
     if (['public_securities', 'retirement', 'fund'].includes(h.category) && s) { stocks += v; stocksDay += d }
-    // Our allocation in portfolio companies: what we put in (cost), and what that stake is worth now.
-    if (['venture', 'private_stake', 'secondaries'].includes(h.category)) { venture += v; ventureCost += usd(Number(h.cost ?? 0), h.currency); ventureN++ }
+    if (['venture', 'private_stake', 'secondaries'].includes(h.category)) venture += v
     const [k, label] = MIX[h.category] ?? ['other', 'Other']; mix[k] = { label, value: (mix[k]?.value ?? 0) + v }
   }
   // Cash: connected banks (live balances) and the latest statement of every other account.
@@ -85,7 +90,7 @@ async function livePart() {
   const cash = [...plaid, ...stmts].reduce((t, r) => t + usd(Number(r.v ?? 0), r.currency), 0)
   const accounts = Number((await db().query<{ n: number }>("SELECT ((SELECT count(*) FROM banking.plaid_accounts WHERE coalesce(type, 'depository') = 'depository') + (SELECT count(*) FROM banking.accounts WHERE active AND plaid_account_id IS NULL))::int AS n").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0)
   const nav = assets - liab
-  return { nav: r0(nav), today: r0(today), today_pct: nav - today ? Math.round((today / (nav - today)) * 10000) / 100 : 0, cash: r0(cash), accounts, client_assets: r0(clients), venture: r0(venture), venture_cost: r0(ventureCost), venture_count: ventureN,
+  return { nav: r0(nav), today: r0(today), today_pct: nav - today ? Math.round((today / (nav - today)) * 10000) / 100 : 0, cash: r0(cash), accounts, client_assets: r0(clients), venture: r0(venture), venture_cost: r0(ventureCost), venture_count: cos.size, venture_alloc: r0(alloc),
     gold: { value: r0(gold), oz: Math.round(goldOz * 100) / 100, today: r0(goldDay) }, stocks: { value: r0(stocks), today: r0(stocksDay) },
     mix: Object.entries(mix).filter(([, x]) => x.value > 0).map(([key, x]) => ({ key, label: x.label, value: r0(x.value) })).sort((a, b) => b.value - a.value) }
 }
