@@ -21,6 +21,8 @@ export default defineEventHandler(async (event): Promise<Record<string, number>>
       const n = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM fundraise.nda_signatures WHERE signed_at > $1', [s2]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n
       if (n) out['/fundraising'] = n
     }
+    // Tasks: mine that are due today or late.
+    if (org.kind !== 'company') { const tn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM core.tasks WHERE assignee_id = $1 AND status <> 'done' AND due_on <= current_date", [user.userId]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (tn) out['/tasks'] = tn }
     if (org.kind !== 'company') { const nn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM inbox.notices WHERE status = 'new'").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (nn) out['/notices'] = nn }
     if (org.kind !== 'company') { const sc = (await db().query<{ n: number }>("SELECT ((SELECT count(*) FROM wm.secondaries WHERE status = 'new') + (SELECT count(*) FROM wm.secondary_interest WHERE status = 'interested'))::int AS n").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (sc) out['/secondaries'] = sc }
     if (org.kind !== 'company' && (org.settings.services_operator === true || org.settings.services_operator === 'true')) {

@@ -458,3 +458,10 @@ export async function sendWealthIdentity(to: string, first: string, what: string
   const html = shell(h1('Your identity check') + para('Hi ' + esc(first) + ', ' + esc(what)) + button('Open my portal →', link) + divider() + `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">We check who you are once, as the law requires. Your documents are encrypted and seen only by our compliance team.</p>`, 'Your Aidi Wealth identity check')
   await sendEmail({ to, subject: 'Aidi Wealth: your identity check', text: 'Hi ' + first + ', ' + what + ' Sign in: ' + link, html })
 }
+// Tasks: someone gave you a task.
+export async function sendTaskAssigned(to: string, first: string, by: string, t: { id: string; title: string; due: string | null; notes: string | null }): Promise<void> {
+  const link = '{{APP_URL}}/tasks?id=' + t.id
+  const due = t.due ? new Date(t.due + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : null
+  const html = shell(h1('A task for you') + para('Hi ' + esc(first) + ', ' + esc(by) + ' gave you a task' + (due ? ', due ' + esc(due) : '') + ':') + para('<b style="color:' + BRAND.ink + ';">' + esc(t.title) + '</b>' + (t.notes ? '<br>' + esc(t.notes.slice(0, 400)) : '')) + button('Open the task →', link), t.title)
+  await sendEmail({ to, subject: 'Task: ' + t.title, text: by + ' gave you a task' + (due ? ', due ' + due : '') + ': ' + t.title + '\n' + link, html, brand: 'aidi' })
+}
