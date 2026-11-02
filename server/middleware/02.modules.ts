@@ -11,6 +11,8 @@ export default defineEventHandler(async (event) => {
       if ((await blockedForUser(s)).has(code)) throw apiError('forbidden', 'Your admin has not given you access to this. Ask them for it.', 403)
     }
   }
+  // Finvry's Free plan has no AI analyst.
+  if (AI_ANALYST_API.some((p) => path === p || path.startsWith(p + '/'))) { const o = await currentOrg().catch(() => null); if (o?.kind === 'company' && o.plan_code === 'company_free') throw apiError('upgrade', 'The AI analyst comes with a paid plan. Upgrade in Settings → Plan.', 403) }
   let m = moduleForApi(path)
   // Aidi OS: Banking (/api/treasury) is part of Bank & cash, so it follows that module and its roles.
   if (m?.code === 'banking_treasury' && (await currentOrg())?.kind !== 'company') m = MODULES.find((x) => x.code === 'banking')

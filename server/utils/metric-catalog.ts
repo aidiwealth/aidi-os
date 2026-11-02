@@ -41,7 +41,13 @@ async function customersOn(subject?: string | null): Promise<boolean> {
   if (subject && subject !== 'entity:' + (await companyEntityId())) return false
   return Number((await db().query<{ n: string }>('SELECT count(*) AS n FROM financials.customers').catch(() => ({ rows: [{ n: '0' }] }))).rows[0]?.n ?? 0) > 0
 }
+// On Finvry's Free plan only the basic figures from the statements are offered (and shown): burn, runway, customer
+// metrics and the company's own KPIs come with a paid plan.
+export const FREE_METRICS = new Set(['revenue', 'gross_profit', 'gross_margin', 'opex_total', 'ebitda', 'net_income', 'cash', 'total_assets', 'equity'])
+export async function onFreePlan(): Promise<boolean> { const o = await currentOrg(); return o?.kind === 'company' && o.plan_code === 'company_free' }
+export const metricOnPlan = (key: string, free: boolean) => !free || FREE_METRICS.has(key)
 export async function metricCatalog(subject?: string | null): Promise<MetricDef[]> {
+  if (await onFreePlan()) return Object.entries(METRIC_LABEL).filter(([key]) => FREE_METRICS.has(key)).map(([key, label]) => ({ key, label, unit: metricUnit(key), group: 'Financials' as const }))
   const out: MetricDef[] = Object.entries(METRIC_LABEL).map(([key, label]) => ({ key, label, unit: metricUnit(key), group: 'Financials' as const }))
   if (await customersOn(subject)) {
     for (const [key, m] of Object.entries(CUST_METRICS)) out.push({ key, label: m.label, unit: m.unit, group: 'Customers and retention' })

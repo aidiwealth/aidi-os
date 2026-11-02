@@ -10,6 +10,8 @@ export default defineEventHandler(async (event) => {
   const isAdmin = user.roles.includes('admin')
   const company = (await currentOrg())?.kind === 'company'
   const paid = company ? new Set((await asPlatform(() => db().query<{ modules: string[] }>("SELECT modules FROM core.plans WHERE code IN ('company_startup', 'company_medium', 'company_scale')"))).rows.flatMap((r) => r.modules)) : new Set<string>()
+  // The AI analyst comes with a paid plan on Finvry (not on Free).
+  const freeCo = company && (await currentOrg())?.plan_code === 'company_free'
   const raiseOn = company && (await currentOrg())?.settings.raise_enabled === true
   const ov = await moduleRoleOverrides()
   const ops = !company && ((await currentOrg())?.settings.services_operator === true || (await currentOrg())?.settings.services_operator === 'true')
@@ -22,5 +24,5 @@ export default defineEventHandler(async (event) => {
     switchable: m.switchable, inPlan: !m.switchable || plan.has(m.code), enabled: on.has(m.code), usable: on.has(m.code) && canUse(m, user.roles, ov) && !blocked.has(m.code) && (m.code !== 'modules' || user.platform) && !(company && m.code === 'directory') && !(m.code === 'team' && !user.roles.includes('admin') && (company || !!String(event.context.entityScope ?? ''))),
     locked: company && !on.has(m.code) && paid.has(m.code) && canUse(m, user.roles),
     roles: isAdmin ? (ov[m.code] ?? m.roles) : undefined, defaultRoles: isAdmin ? m.roles : undefined, custom: isAdmin ? !!ov[m.code] : undefined
-  })).concat([{ navHidden: true, code: 'ai_analyst', group: 'admin', groupLabel: GROUP_LABEL.admin, label: 'AI analyst', to: '/ai', pages: [], switchable: false, inPlan: true, enabled: true, usable: !blocked.has('ai_analyst'), locked: false, roles: undefined, defaultRoles: undefined, custom: undefined } as never])
+  })).concat([{ navHidden: true, code: 'ai_analyst', group: 'admin', groupLabel: GROUP_LABEL.admin, label: 'AI analyst', to: '/ai', pages: [], switchable: false, inPlan: true, enabled: true, usable: !blocked.has('ai_analyst') && !freeCo, locked: freeCo, roles: undefined, defaultRoles: undefined, custom: undefined } as never])
 })

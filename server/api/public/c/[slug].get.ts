@@ -15,12 +15,15 @@ export default defineEventHandler(async (event) => {
   const rows = ent ? (await loadStatements('entity:' + ent, p.period_type, (org.settings.currency as string) || 'USD')).slice(-12) : []
   // Financial figures from the statements; customer metrics (retention, recurring revenue…) and the company's own KPIs
   // at the end of each period.
+  // Only what the company's plan includes: on Free, the basic figures; boards, updates and customer sectors need their features.
+  const on = await enabledModules(), free = await onFreePlan()
+  p.metrics = p.metrics.filter((m) => metricOnPlan(m, free) && (!isCustKey(m) || on.has('fin_customers')))
   const cust = await customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7)))
   const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : derive(x.lines, x.period_type)[m] ?? null })) }))
-  const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors ? await sectorShares().catch(() => null) : null
+  const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors && on.has('fin_customers') ? await sectorShares().catch(() => null) : null
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
-  const updates = (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows
+  const updates = on.has('updates') ? (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows : []
   const chosenDeck = (p as unknown as { deck_id: string | null }).deck_id
   const rl = (p as unknown as { room_link_id: string | null }).room_link_id
   const roomRow = rl ? (await db().query<{ slug: string | null; dead: boolean }>('SELECT slug, (revoked OR (expires_at IS NOT NULL AND expires_at < now())) AS dead FROM fundraise.links WHERE id = $1', [rl])).rows[0] : undefined
@@ -31,11 +34,10 @@ export default defineEventHandler(async (event) => {
   if (own && !(await db().query('SELECT 1 FROM fundraise.decks WHERE token = $1 AND active', [own])).rowCount) p.deck_url = null
   const mainDeck = p.deck_url && !chosenDeck ? null : (await db().query<{ token: string }>('SELECT token FROM fundraise.decks WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY primary_deck DESC, updated_at DESC LIMIT 1', [chosenDeck]).catch(() => ({ rows: [] as { token: string }[] }))).rows[0]
   const bid = (p as unknown as { board_id: string | null }).board_id
-  const bRow = bid ? (await db().query<{ name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number }>('SELECT name, kpis, charts, period, count FROM financials.boards WHERE id = $1', [bid])).rows[0] : undefined
+  const bRow = bid && on.has('boards') ? (await db().query<{ name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number }>('SELECT name, kpis, charts, period, count FROM financials.boards WHERE id = $1', [bid])).rows[0] : undefined
   const board = bRow ? { name: bRow.name, data: await boardData(bRow.kpis, bRow.charts, bRow.period, bRow.count), metrics: BOARD_METRICS } : null
   // A forecast and the cap table, when chosen (and the company's plan still includes them).
   const pp = p as unknown as { forecast_id: string | null; captable_id: string | null; captable_detail: 'summary' | 'holders' }
-  const on = await enabledModules()
   const fRow = pp.forecast_id && on.has('forecast') ? (await db().query<{ name: string; assumptions: unknown; updated_at: string }>('SELECT name, assumptions, updated_at FROM financials.forecasts WHERE id = $1', [pp.forecast_id])).rows[0] : undefined
   const forecast = fRow ? { name: fRow.name, assumptions: fRow.assumptions, updated_at: fRow.updated_at } : null
   let captable: unknown = null
