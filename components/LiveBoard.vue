@@ -90,7 +90,11 @@ onBeforeUnmount(() => { if (clk) clearInterval(clk) })
 const ago = computed(() => { if (!now.value) return ''; const s = Math.max(0, Math.round((now.value - Date.parse(props.data.at)) / 1000)); return s < 60 ? s + ' second' + (s === 1 ? '' : 's') + ' ago' : Math.round(s / 60) + ' min ago' })
 const clock = computed(() => (now.value ? new Date(now.value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''))
 const day = computed(() => (now.value ? new Date(now.value).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : ''))
-const tick = (t: LbData['ticker'][number]) => (t.unit === 'pct' ? t.value.toFixed(2) + '%' : '$' + t.value.toLocaleString('en-US', { maximumFractionDigits: t.value < 100 ? 2 : 0 }) + (t.unit === 'usd_oz' ? ' /oz' : ''))
+// The ticker, written like the Wealth pages' market strip.
+const tick = (t: LbData['ticker'][number]) => (t.unit === 'pct' ? t.value.toFixed(2) + '%' : '$' + (t.value >= 1000 ? Math.round(t.value).toLocaleString('en-US') : t.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + (t.unit === 'usd_oz' ? '/oz' : ''))
+const tchg = (t: LbData['ticker'][number]) => (t.change === null ? '' : t.change === 0 ? 'Unchanged' : (t.change > 0 ? '▲ ' : '▼ ') + Math.abs(t.change).toFixed(2) + (t.change_unit === 'pct' ? '%' : ' pts'))
+const tdir = (t: LbData['ticker'][number]) => (t.change === null || t.change === 0 ? 'flat' : t.change > 0 ? 'up' : 'dn')
+const tickAt = computed(() => (now.value ? new Date(props.data.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : ''))
 
 // Editing: drag to reorder within numbers or panels; the eye hides or shows.
 const drag = ref<{ zone: 'numbers' | 'panels'; key: string } | null>(null); const over = ref('')
@@ -132,7 +136,11 @@ const toggle = (zone: 'numbers' | 'panels', key: string) => emit('update:layout'
             <div><span>Aidi Haven occupancy</span><b>{{ data.week.occupancy !== null ? data.week.occupancy + '%' : '—' }}</b><em>this month</em></div><div><span>Gold held</span><b>{{ data.live.gold.oz }} oz</b><em :class="sign(data.live.gold.today)">{{ arrow(data.live.gold.today) }}{{ short(Math.abs(data.live.gold.today)) }} today</em></div></div></template>
       </section>
     </div>
-    <div v-if="layout.ticker || editing" class="tk" :class="{ off: !layout.ticker }"><div class="tr"><span v-for="(t, i) in [...data.ticker, ...data.ticker]" :key="i">{{ t.name }}<b>{{ tick(t) }}</b><em v-if="t.change !== null" :class="sign(t.change)">{{ arrow(t.change) }}{{ Math.abs(t.change).toFixed(2) }}{{ t.change_unit === 'pct' ? '%' : ' pts' }}</em></span></div>
+    <div v-if="layout.ticker || editing" class="tk" :class="{ off: !layout.ticker }">
+      <div class="tlv"><i aria-hidden="true" />Live<template v-if="tickAt"> · {{ tickAt }}</template></div>
+      <div class="vp"><div class="tr" :class="{ still: data.ticker.length < 4 }"><template v-for="n in (data.ticker.length < 4 ? 1 : 2)" :key="n">
+        <span v-for="t in data.ticker" :key="n + t.key" class="it" :aria-hidden="n === 2 ? 'true' : undefined"><span class="tn">{{ t.name }}</span><span class="tv">{{ tick(t) }}</span><span v-if="tchg(t)" class="tc" :class="tdir(t)">{{ tchg(t) }}</span></span>
+      </template></div></div>
       <button v-if="editing" type="button" class="eye tke" @click="emit('update:layout', { ...layout, ticker: !layout.ticker })">{{ layout.ticker ? 'Hide ticker' : 'Show ticker' }}</button></div>
   </div>
 </template>
@@ -161,9 +169,13 @@ const toggle = (zone: 'numbers' | 'panels', key: string) => emit('update:layout'
 .bb { height: 12px; background: var(--c-paper-2); } .bb i { display: block; height: 100%; background: var(--c-blue-deep); transition: width .8s; }
 .wk { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .wk div { background: var(--c-paper-3); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; } .wk span { font-size: 12.5px; color: var(--c-muted); } .wk b { font-size: calc(var(--big) * .6); font-weight: 600; } .wk em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 .mut { color: var(--c-muted); font-size: var(--sub); } .sm { font-size: 12.5px; margin: 10px 0 0; }
-.tk { background: #fff; border: 1px solid var(--c-rule); overflow: hidden; position: relative; padding: 14px 0; } .tr { display: inline-flex; gap: 48px; white-space: nowrap; animation: scroll 60s linear infinite; padding-left: 24px; font-size: calc(var(--sub) * 1.15); }
-.tr b { font-weight: 600; margin: 0 8px; } .tr em { font-style: normal; } @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-.lb.tv .tk:hover .tr { animation-play-state: running; } .tk:hover .tr { animation-play-state: paused; }
+.tk { display: flex; align-items: stretch; background: #fff; border: 1px solid var(--c-rule); overflow: hidden; position: relative; }
+.tlv { display: flex; align-items: center; gap: 8px; padding: 0 18px; border-right: 1px solid var(--c-rule); font-size: var(--sub); color: var(--c-blue-deep); white-space: nowrap; } .tlv i { width: 8px; height: 8px; background: var(--c-blue); border-radius: 50%; }
+.vp { flex: 1; min-width: 0; overflow: hidden; }
+.tr { display: flex; gap: 40px; width: max-content; padding: 14px 20px; white-space: nowrap; font-size: calc(var(--sub) * 1.1); animation: scroll 60s linear infinite; } .tr.still { animation: none; }
+.it { display: inline-flex; gap: 10px; align-items: baseline; } .tn { color: var(--c-muted); } .tv { font-weight: 600; font-variant-numeric: tabular-nums; } .tc { font-variant-numeric: tabular-nums; } .tc.up { color: var(--c-blue-deep); } .tc.dn { color: var(--c-danger); } .tc.flat { color: var(--c-muted); }
+@keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.lb:not(.tv) .tk:hover .tr { animation-play-state: paused; }
 /* Editing */
 .editing .kc, .editing .pc { cursor: grab; } .editing .off { opacity: .4; } .editing .over { border-color: var(--c-blue-deep); box-shadow: inset 0 0 0 2px var(--c-blue-deep); }
 .ed { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: -8px -8px 6px; padding-bottom: 6px; border-bottom: 1px dashed var(--c-rule-strong); } .gr { color: var(--c-muted); font-size: 12px; cursor: grab; letter-spacing: .02em; }
