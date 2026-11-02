@@ -3,7 +3,7 @@ import { mdRender } from '~/shared/markdown'
 // Log or edit a meeting: details, attendees, agenda, rough notes → AI → clean minutes, decisions and action items.
 const id = useRoute().params.id as string
 const isNew = id === 'new'
-interface Act { text: string; owner_id: string | null; owner: string | null; due: string | null; done: boolean }
+interface Act { id?: string; text: string; owner_id: string | null; owner: string | null; due: string | null; done: boolean }
 const { data: meta } = await useFetch<{ entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string>; scoped: boolean }>('/api/meetings', { transform: (d: { entities: { id: string; name: string }[]; people: { id: string; name: string }[]; kinds: Record<string, string>; scoped: boolean }) => ({ entities: d.entities, people: d.people, kinds: d.kinds, scoped: d.scoped }) })
 const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 const f = reactive({ title: '', kind: 'team', entity_id: '' as string, held_at: local(new Date()), minutes_long: 60 as number | string, location: '', attendees: [] as string[], guests: '', agenda: '', summary: '', notes: '', decisions: '', actions: [] as Act[], status: 'draft' as 'draft' | 'final' })
@@ -20,7 +20,7 @@ const msg = ref(''); const ok = ref(''); const busy = ref(''); const err = (e: u
 async function save(status?: 'draft' | 'final') {
   if (status) f.status = status
   busy.value = 'save'; msg.value = ''; ok.value = ''
-  try { const r = await $fetch<{ id: string }>('/api/meetings', { method: 'POST', body: { ...f, id: isNew ? undefined : id, entity_id: f.entity_id || null, held_at: new Date(f.held_at).toISOString(), minutes_long: f.minutes_long === '' ? null : Number(f.minutes_long) } }); ok.value = f.status === 'final' ? 'Minutes saved as final.' : 'Draft saved.'; if (isNew) await navigateTo('/meetings/' + r.id, { replace: true }); else view.value = 'read' }
+  try { const r = await $fetch<{ id: string; actions?: Act[] }>('/api/meetings', { method: 'POST', body: { ...f, id: isNew ? undefined : id, entity_id: f.entity_id || null, held_at: new Date(f.held_at).toISOString(), minutes_long: f.minutes_long === '' ? null : Number(f.minutes_long) } }); if (r.actions) f.actions = r.actions; ok.value = f.status === 'final' ? 'Minutes saved as final.' : 'Draft saved.'; if (isNew) await navigateTo('/meetings/' + r.id, { replace: true }); else view.value = 'read' }
   catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
 async function write() {
@@ -49,7 +49,7 @@ const when = computed(() => new Date(f.held_at).toLocaleString('en-GB', { weekda
           <div v-if="f.decisions" class="card"><h2>Decisions</h2><div class="mdb body" v-html="mdRender(f.decisions)" /></div>
           <div v-if="f.agenda" class="card"><h2>Agenda</h2><div class="mdb body" v-html="mdRender(f.agenda)" /></div></div>
         <aside class="col">
-          <div class="card"><h2>Action items</h2><label v-for="(a, i) in f.actions" :key="i" class="ai" :class="{ done: a.done }"><input type="checkbox" :checked="a.done" @change="toggleDone(a)"><span><b>{{ a.text }}</b><em>{{ pname(a.owner_id) || a.owner || 'No owner' }}{{ a.due ? ' · due ' + a.due : '' }}</em></span></label><p v-if="!f.actions.length" class="mut">No action items.</p></div>
+          <div class="card"><h2>Action items</h2><p v-if="f.actions.length" class="mut tsk">Each one is a task for its owner on <NuxtLink to="/tasks">Tasks</NuxtLink>; ticking it here or there does both.</p><label v-for="(a, i) in f.actions" :key="i" class="ai" :class="{ done: a.done }"><input type="checkbox" :checked="a.done" @change="toggleDone(a)"><span><b>{{ a.text }}</b><em>{{ pname(a.owner_id) || a.owner || 'No owner' }}{{ a.due ? ' · due ' + a.due : '' }}</em></span></label><p v-if="!f.actions.length" class="mut">No action items.</p></div>
           <div class="card"><h2>Attendees</h2><p class="mut">{{ f.attendees.map(pname).filter(Boolean).join(', ') || 'Not recorded' }}{{ f.guests ? ' · Guests: ' + f.guests : '' }}</p></div></aside></div>
     </template>
 
@@ -98,4 +98,5 @@ input, select, textarea { font: inherit; font-size: 14px; padding: 8px 10px; bor
 .lnk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: var(--c-blue-deep); cursor: pointer; text-align: left; margin-top: 8px; } .lnk.red { color: var(--c-danger); }
 .sv { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 16px; }
 @media (max-width: 1000px) { .cols, .frm { grid-template-columns: 1fr; } }
+.tsk { font-size: 12.5px; margin: -4px 0 6px; }
 </style>

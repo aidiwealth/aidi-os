@@ -1,6 +1,6 @@
 // Log or update a meeting's minutes.
 import { z } from 'zod'
-const Action = z.object({ text: z.string().trim().min(1).max(500), owner_id: z.string().uuid().nullable().optional(), owner: z.string().trim().max(200).nullable().optional(), due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), done: z.boolean().default(false) })
+const Action = z.object({ id: z.string().uuid().optional(), text: z.string().trim().min(1).max(500), owner_id: z.string().uuid().nullable().optional(), owner: z.string().trim().max(200).nullable().optional(), due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('').transform(() => null)), done: z.boolean().default(false) })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'family', 'admin')
   const b = z.object({ id: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), kind: z.enum(['team', 'board', 'investor', 'client', 'partner', 'one_on_one', 'other']).default('team'), entity_id: z.string().uuid().nullable().optional(),
@@ -18,6 +18,8 @@ export default defineEventHandler(async (event) => {
   let id = d.id
   if (id) { const r = await db().query('UPDATE core.meeting_minutes SET title = $2, kind = $3, entity_id = $4, held_at = $5, minutes_long = $6, location = $7, attendees = $8, guests = $9, agenda = $10, summary = $11, notes = $12, decisions = $13, actions = $14, status = $15, updated_at = now() WHERE id = $1', [id, ...vals]); if (!r.rowCount) throw apiError('not_found', 'Not found', 404) }
   else id = (await one<{ id: string }>('INSERT INTO core.meeting_minutes (title, kind, entity_id, held_at, minutes_long, location, attendees, guests, agenda, summary, notes, decisions, actions, status, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id', [...vals, user.userId])).id
+  // Action items are tasks for their owners (kept in step both ways).
+  const actions = await syncMeetingTasks(id, user.userId)
   await audit({ event, actorUserId: user.userId, action: 'meetings.saved', objectType: 'meeting', objectId: id, detail: { status: d.status } })
-  return { ok: true, id }
+  return { ok: true, id, actions }
 })

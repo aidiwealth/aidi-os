@@ -29,7 +29,7 @@ onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() =
   <Teleport to="body">
     <div class="scrim" @mousedown.self="emit('close')" />
     <aside v-if="t" class="dr" role="dialog" aria-modal="true" :aria-label="t.title">
-      <div class="top"><span class="biz">{{ bizName(t.business) }}</span><span class="ac"><span v-if="canDelete" class="mm"><button type="button" class="ic" aria-label="More" @click="menu = !menu">⋯</button><span v-if="menu" class="pop"><button type="button" @click="del">Delete task</button></span></span><button type="button" class="ic" aria-label="Close" @click="emit('close')">×</button></span></div>
+      <div class="top"><span class="biz">{{ bizName(t.business) }}</span><span class="ac"><span v-if="canDelete" class="mm"><button type="button" class="ic" aria-label="More" @click="menu = !menu">⋯</button><span v-if="menu" class="pop"><button type="button" @click="del">{{ t.meeting_id ? 'Delete task and its action in the minutes' : 'Delete task' }}</button></span></span><button type="button" class="ic" aria-label="Close" @click="emit('close')">×</button></span></div>
       <h2 v-if="!editT" title="Click to rename" @click="editT = true">{{ t.title }}</h2>
       <input v-else v-model="title" class="ti" maxlength="200" aria-label="Title" @blur="editT = false; title.trim() && title !== t.title && save({ title })" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()">
       <div class="seg" role="group" aria-label="Status"><button v-for="[k, l] in TASK_STATUS" :key="k" type="button" :class="{ on: t.status === k }" @click="save({ status: k })">{{ l }}</button></div>
@@ -39,7 +39,7 @@ onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() =
         <span>Priority</span><select :value="t.priority" aria-label="Priority" :class="'p-' + t.priority" @change="save({ priority: ($event.target as HTMLSelectElement).value })"><option v-for="[k, l] in TASK_PRI" :key="k" :value="k">{{ l }}</option></select>
         <span>Business</span><select :value="t.business" aria-label="Business" @change="save({ business: ($event.target as HTMLSelectElement).value })"><option v-for="[k, l] in TASK_BIZ_UI" :key="k" :value="k">{{ l }}</option></select>
         <span>Repeats</span><select :value="t.repeat" aria-label="Repeats" @change="save({ repeat: ($event.target as HTMLSelectElement).value })"><option value="none">No</option><option value="weekly">Every week</option><option value="monthly">Every month</option></select>
-        <template v-if="t.link"><span>Page</span><NuxtLink :to="t.link" class="lk">Open the page ↗</NuxtLink></template>
+        <template v-if="t.link"><span>{{ t.meeting_id ? 'Minutes' : 'Page' }}</span><NuxtLink :to="t.link" class="lk">{{ t.meeting_id ? 'Open the meeting minutes ↗' : 'Open the page ↗' }}</NuxtLink></template>
         <span>From</span><span class="mut">{{ t.creator_name ?? 'Aidi' }}<template v-if="mounted"> · {{ fmtStamp(t.created_at, false) }}</template></span>
       </div>
       <textarea v-model="notes" rows="3" maxlength="4000" placeholder="Add details…" aria-label="Details" class="nt" @blur="notes !== (t.notes ?? '') && save({ notes })" />

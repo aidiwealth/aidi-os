@@ -7,7 +7,16 @@ const view = computed(() => (['all', 'progress'].includes(String(route.query.v))
 const biz = ref(''); const st = ref('open'); const person = ref('')
 const q = computed(() => ({ view: view.value === 'all' ? 'all' : 'mine', status: st.value, business: biz.value || undefined, person: view.value === 'all' ? person.value || undefined : undefined }))
 const { data, refresh } = await useFetch<{ tasks: Task[]; people: TaskPerson[]; me: string; gp: boolean }>('/api/tasks', { query: q, key: 'tasks-list' })
-const groups = computed(() => taskGroups(data.value?.tasks ?? []))
+// Everyone: by person (each GP, each team member, all GPs, the whole team) or by date.
+const by = ref<'person' | 'date'>('person')
+const groups = computed(() => {
+  const list = data.value?.tasks ?? []
+  if (view.value !== 'all' || by.value === 'date') return taskGroups(list)
+  const m = new Map<string, { key: string; label: string; items: Task[] }>()
+  for (const t of list) { const k = t.assignee_group ?? t.assignee_id ?? 'none'; if (!m.has(k)) m.set(k, { key: 'p-' + k, label: t.assignee_id === data.value?.me ? whoName(t) + ' (me)' : whoName(t), items: [] }); m.get(k)!.items.push(t) }
+  const rank = (k: string) => (k === 'p-' + data.value?.me ? 0 : k === 'p-gp' ? 2 : k === 'p-team' ? 3 : k === 'p-none' ? 4 : 1)
+  return [...m.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label))
+})
 const openCount = computed(() => (data.value?.tasks ?? []).filter((t) => t.status !== 'done').length)
 const go = (v: string) => router.replace({ query: { ...route.query, v: v === 'mine' ? undefined : v, id: undefined } })
 const openId = computed(() => (typeof route.query.id === 'string' ? route.query.id : ''))
@@ -24,7 +33,7 @@ async function toggle(t: Task) {
   const prev = t.status; t.status = t.status === 'done' ? 'todo' : 'done'
   try { await $fetch('/api/tasks/' + t.id, { method: 'POST', body: { status: t.status } }); await refresh() } catch (e) { t.status = prev; msg.value = taskErr(e) }
 }
-const sub = (t: Task) => [t.checklist.length ? t.checklist.filter((c) => c.d).length + ' of ' + t.checklist.length + ' done' : '', t.repeat !== 'none' ? (t.repeat === 'weekly' ? 'every week' : 'every month') : '', t.status === 'doing' ? 'Doing' : t.status === 'waiting' ? 'Waiting' : ''].filter(Boolean).join(' · ')
+const sub = (t: Task) => [t.meeting_id ? 'From meeting minutes' : '', t.checklist.length ? t.checklist.filter((c) => c.d).length + ' of ' + t.checklist.length + ' done' : '', t.repeat !== 'none' ? (t.repeat === 'weekly' ? 'every week' : 'every month') : '', t.status === 'doing' ? 'Doing' : t.status === 'waiting' ? 'Waiting' : ''].filter(Boolean).join(' · ')
 </script>
 <template>
   <section v-if="data" class="tk">
@@ -32,13 +41,14 @@ const sub = (t: Task) => [t.checklist.length ? t.checklist.filter((c) => c.d).le
     <div class="bar"><div class="seg" role="tablist"><button role="tab" :aria-selected="view === 'mine'" :class="{ on: view === 'mine' }" @click="go('mine')">My tasks<template v-if="view === 'mine'"> · {{ openCount }}</template></button><button role="tab" :aria-selected="view === 'all'" :class="{ on: view === 'all' }" @click="go('all')">Everyone</button><button v-if="data.gp" role="tab" :aria-selected="view === 'progress'" :class="{ on: view === 'progress' }" @click="go('progress')">Progress</button></div>
       <div v-if="view !== 'progress'" class="fl"><select v-model="biz" aria-label="Business"><option value="">All businesses</option><option v-for="[k, l] in TASK_BIZ_UI" :key="k" :value="k">{{ l }}</option></select>
         <select v-model="st" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="all">All</option></select>
+        <div v-if="view === 'all'" class="sg2" role="group" aria-label="Group by"><button type="button" :class="{ on: by === 'person' }" @click="by = 'person'">By person</button><button type="button" :class="{ on: by === 'date' }" @click="by = 'date'">By date</button></div>
         <select v-if="view === 'all'" v-model="person" aria-label="Person"><option value="">Anyone</option><option v-for="p in data.people" :key="p.id" :value="p.id">{{ p.name }}</option><option v-if="data.gp" value="gp">All GPs</option><option value="team">Whole team</option></select></div></div>
     <TaskProgress v-if="view === 'progress' && data.gp" @open="openTask" />
     <template v-else>
       <form class="qa" @submit.prevent="quickAdd"><span class="pl" aria-hidden="true">+</span><input v-model="quick" maxlength="200" placeholder="Add a task for yourself and press Enter" aria-label="Add a task"><button type="button" class="lk" @click="newOpen = true">More options</button></form>
       <p v-if="msg" class="error">{{ msg }}</p>
       <div v-if="!groups.length" class="empty"><b>{{ st === 'done' ? 'Nothing done yet' : 'Nothing to do' }}</b><span class="mut">{{ view === 'mine' ? 'Tasks given to you, or to your group, show here.' : 'No tasks match.' }}</span></div>
-      <div v-for="g in groups" :key="g.key" class="grp"><div class="gl" :class="g.key"><b>{{ g.label }}</b><span>{{ g.items.length }}</span></div>
+      <div v-for="g in groups" :key="g.key" class="grp"><div class="gl" :class="g.key"><b>{{ g.label }}</b><span>{{ g.key.startsWith('p-') ? g.items.filter((x) => x.status !== 'done').length + ' open' + (g.items.some((x) => x.status !== 'done' && dueLabel(x.due_on).cls === 'od') ? ' · ' + g.items.filter((x) => x.status !== 'done' && dueLabel(x.due_on).cls === 'od').length + ' late' : '') : g.items.length }}</span></div>
         <div v-for="t in g.items" :key="t.id" class="tr" :class="{ sel: openId === t.id, done: t.status === 'done' }" @click="openTask(t.id)">
           <button type="button" class="cb" :class="{ d: t.status === 'done' }" :aria-label="t.status === 'done' ? 'Reopen ' + t.title : 'Mark done: ' + t.title" @click.stop="toggle(t)" />
           <div class="tt"><b>{{ t.title }}</b><span v-if="sub(t)">{{ sub(t) }}</span></div>
@@ -58,7 +68,7 @@ const sub = (t: Task) => [t.checklist.length ? t.checklist.filter((c) => c.d).le
 .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; } .hd h1 { margin: 0 0 4px; } .hd p { margin: 0; font-size: 14px; } .mut { color: var(--c-muted); }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .seg { display: inline-flex; background: var(--c-paper-2); padding: 3px; gap: 2px; } .seg button { background: none; border: 0; font: inherit; font-size: 13.5px; padding: 7px 14px; color: var(--c-ink-soft); cursor: pointer; } .seg button.on { background: #fff; color: var(--c-ink); font-weight: 500; }
-.fl { display: flex; gap: 8px; flex-wrap: wrap; } .fl select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
+.fl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .sg2 { display: inline-flex; border: 1px solid var(--c-rule-strong); } .sg2 button { background: #fff; border: 0; font: inherit; font-size: 13px; padding: 6px 10px; cursor: pointer; color: var(--c-ink-soft); } .sg2 button.on { background: var(--c-navy); color: #fff; } .fl select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .qa { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--c-rule-strong); background: #fff; } .qa input { flex: 1; border: 0; font: inherit; font-size: 14px; padding: 3px 0; outline: none; } .pl { color: var(--c-muted); font-size: 16px; }
 .lk { background: none; border: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; white-space: nowrap; }
 .error { color: var(--c-danger); margin: 0; font-size: 13px; }

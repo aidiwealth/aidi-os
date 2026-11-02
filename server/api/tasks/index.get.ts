@@ -1,7 +1,7 @@
 // Tasks: mine (given to me, or to a group I am in), or everyone's that I may see. GPs and admins see all; team members
 // never see tasks for GPs. Also the people tasks can go to.
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'gp', 'team')
+  const user = await requireRole(event, 'gp', 'family', 'team')
   const q = getQuery(event)
   const gp = isTaskGp(user.roles)
   const where: string[] = [TASK_SEE]; const args: unknown[] = [user.userId, gp]

@@ -1,7 +1,7 @@
 // For GPs: what everyone has done and has open (this month and this week), by person and by business, and what was
 // just finished.
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'gp')
+  const user = await requireRole(event, 'gp', 'family')
   if (!isTaskGp(user.roles)) throw apiError('forbidden', 'For GPs.', 403)
   const who = `CASE WHEN t.assignee_group = 'gp' THEN 'gp' WHEN t.assignee_group = 'team' THEN 'team' ELSE t.assignee_id::text END`
   const people = (await db().query<{ key: string; name: string; done_month: number; done_week: number; open: number; late: number; due_week: number }>(

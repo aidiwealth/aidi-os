@@ -1,6 +1,6 @@
 // Create a task (for me, a colleague, all GPs or the whole team). Team members can't give tasks to GPs.
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'gp', 'team')
+  const user = await requireRole(event, 'gp', 'family', 'team')
   const b = TASK_FIELDS.safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Give the task a title.')
   const [aid, grp] = await resolveAssignee(b.data.assignee, user)

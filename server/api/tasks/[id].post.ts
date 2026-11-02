@@ -2,7 +2,7 @@ import { z } from 'zod'
 // Change a task: its details, status, checklist or who it is for; add a note; or delete it (GPs, or whoever created it).
 const STATUS: Record<string, string> = { todo: 'To do', doing: 'Doing', waiting: 'Waiting', done: 'Done' }
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, 'gp', 'team')
+  const user = await requireRole(event, 'gp', 'family', 'team')
   const t = await taskFor(getRouterParam(event, 'id') ?? '', user)
   const body = await readBody(event) as Record<string, unknown>
   if (body.action === 'note') {
@@ -11,7 +11,9 @@ export default defineEventHandler(async (event) => {
   }
   if (body.action === 'delete') {
     if (!isTaskGp(user.roles) && t.created_by !== user.userId) throw apiError('forbidden', 'Only a GP or whoever created it can delete this task.', 403)
-    await db().query('DELETE FROM core.tasks WHERE id = $1', [t.id]); return { ok: true }
+    await db().query('DELETE FROM core.tasks WHERE id = $1', [t.id])
+    if (t.meeting_id && t.meeting_action) await dropActionForTask(t.meeting_id, t.meeting_action)
+    return { ok: true }
   }
   const s = z.object({ status: z.enum(['todo', 'doing', 'waiting', 'done']).optional() }).safeParse(body)
   const f = TASK_FIELDS.partial().safeParse(body)
@@ -48,6 +50,7 @@ export default defineEventHandler(async (event) => {
   if (!sets.length) return { ok: true }
   await db().query('UPDATE core.tasks SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', args)
   if (s.data.status === 'done') await nextRepeat(t.id)
+  if (t.meeting_id) await syncActionFromTask(t.id)
   if (newAssignee) await tellAssignee(t.id, newAssignee, user.userId)
   return { ok: true }
 })
