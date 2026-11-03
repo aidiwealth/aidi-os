@@ -140,6 +140,8 @@ const TABS: Tab[] = ['statements', 'shares', 'consolidation', 'reports']
 const tabOf = (t: unknown): Tab => TABS.find((x) => x === t) ?? 'overview'
 const tab = computed<Tab>({ get: () => { const t = tabOf(route0.query.tab); return (t === 'consolidation' && subject.value !== 'group') || (t === 'shares' && subject.value === 'group') ? 'overview' : t }, set: (v) => { void navigateTo({ query: { ...route0.query, tab: v === 'overview' ? undefined : v } }, { replace: true }) } })
 const { data: modsF } = useNuxtData<{ code: string; locked?: boolean }[]>('modules')
+// Bank balances come with Banking: on Finvry's Free plan (Banking locked) they are not shown here.
+const bankLocked = computed(() => !!modsF.value?.some((m) => m.code === 'banking_treasury' && m.locked))
 const custLocked = computed(() => !!modsF.value?.find((m) => m.code === 'fin_customers' && m.locked))
 // The monthly management report for the executive team (Startup and Scale).
 const rptMod = computed(() => (modsF.value as { code: string; locked?: boolean; usable?: boolean }[] | null | undefined)?.find((m) => m.code === 'fin_report') ?? null)
@@ -305,7 +307,7 @@ const SECS = [['pl', 'Profit and loss', 'Revenue, costs and profit for the perio
       <template #foot><span class="sp" /><button class="btn secondary" @click="bdOpen = false">Not now</button><button class="btn" :disabled="bdBusy || !bdPick.length" @click="acceptBd">{{ bdBusy ? 'Adding…' : 'Add ' + bdPick.length + ' month' + (bdPick.length === 1 ? '' : 's') }}</button></template>
     </AppModal>
     <ClientOnly><StructureAsk v-if="canEdit && baseCo && !baseCo.structure && !structDone && pages.length <= 1" :name="baseCo.name" @answered="structAnswered" /></ClientOnly>
-    <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group'" compact class="feeds" :link="canPath('/treasury') ? '/treasury' + (subject.startsWith('entity:') ? '?s=' + subject : '') : null" :entity="subject.startsWith('entity:') ? subject.slice(7) : null" /></ClientOnly>
+    <ClientOnly><BankFeeds v-if="canEdit && tab === 'overview' && subject !== 'group' && !bankLocked" compact class="feeds" :link="canPath('/treasury') ? '/treasury' + (subject.startsWith('entity:') ? '?s=' + subject : '') : null" :entity="subject.startsWith('entity:') ? subject.slice(7) : null" /></ClientOnly>
     <ClientOnly v-if="subject !== 'group' && tab !== 'shares'"><SheetLinks target="financials" :subject="co?.subject ?? subject" :subject-label="co?.name ?? subjLabel" :currency="co?.currency ?? currency" :can-edit="canEdit" @synced="refresh()" /></ClientOnly>
     <div v-if="view === 'custom' && monthly.length" class="rng"><label>From<input v-model="range.from" type="month" :max="range.to"></label><label>To<input v-model="range.to" type="month" :min="range.from"></label><span>{{ inRange.length }} month{{ inRange.length === 1 ? '' : 's' }}: totals for the range, balances at its end</span></div>
     <p v-if="rolled" class="hint">Added up from your monthly figures.</p>

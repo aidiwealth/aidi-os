@@ -20,7 +20,10 @@ const platformMode = computed(() => (canPlatform.value && (route.path === '/plat
 const customersLink = computed(() => !canPlatform.value && !!me.value?.customers_view && brand.key === 'aidi')
 const lockRouter = useRouter()
 const nowPath = computed(() => lockRouter.currentRoute.value.path)
-const lockedHere = computed(() => (mods.value ?? []).find((m) => m.locked && [m.to, ...(m.pages ?? [])].some((p) => nowPath.value === p || nowPath.value.startsWith(p + '/'))) ?? null)
+// A page is locked when a locked module claims it more closely than any module the person can use (Financials is
+// open on Free while the monthly report, which lives on the same page, is locked: the report locks, not the page).
+const claim = (m: Mod) => Math.max(-1, ...[m.to, ...(m.pages ?? [])].filter((p) => nowPath.value === p || nowPath.value.startsWith(p + '/')).map((p) => p.length))
+const lockedHere = computed(() => { const ms = mods.value ?? []; const open = Math.max(-1, ...ms.filter((m) => m.usable).map(claim)); return ms.find((m) => m.locked && claim(m) > open) ?? null })
 const badges = ref<Record<string, number>>({})
 async function loadBadges() { try { badges.value = await $fetch<Record<string, number>>('/api/notifications') } catch { /* signed out */ } }
 const AREA: [string, string][] = [['/client', 'client'], ['/fundraising', 'fundraising']]
