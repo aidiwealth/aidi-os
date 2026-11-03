@@ -49,8 +49,8 @@ function hide() { hidden.value = true; try { localStorage.setItem('finvry-setup-
       <div class="pv-cta"><p class="ol">Your dashboard</p><h3>Your numbers will fill this in.</h3><p>Add one month of figures to see revenue, margins, burn and runway.</p><div class="pv-acts"><NuxtLink to="/financials" class="btn">Add your first month</NuxtLink><NuxtLink to="/integrations/quickbooks/connect" class="btn secondary">Connect QuickBooks</NuxtLink></div></div></div>
     </template>
 
-    <!-- Bank balances: on paid plans (Banking); hidden on Free. -->
-    <ClientOnly><BankFeeds v-if="fin && canPath('/treasury')" compact class="feeds" link="/treasury" /></ClientOnly>
+    <!-- Bank balances: wherever Banking is open (every plan, Free included). -->
+    <ClientOnly><BankFeeds v-if="canPath('/treasury')" compact class="feeds" /></ClientOnly>
     <div class="three">
       <div v-if="canPath('/investor-page')" class="card"><h3>Investors</h3>
         <div class="li"><span>Investor page</span><b>{{ data.page?.published ? 'Live' : 'Not published' }}</b></div>
