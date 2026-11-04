@@ -1,4 +1,4 @@
-// Log (or remove) a pay run for a person (admins). Optionally also record it under Payments, with a payment voucher.
+// Log (or delete) a pay run for a person (admins). Optionally also record it under Payments, with a payment voucher.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireTeamManager(event)
@@ -7,7 +7,8 @@ export default defineEventHandler(async (event) => {
     record_payment: z.boolean().default(true), category: z.string().max(60).default('Salaries & contractors') }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the payment details.')
   const d = b.data
-  if (d.id && d.delete) { await db().query('DELETE FROM hr.payments WHERE id = $1', [d.id]); return { ok: true } }
+  // Deleting a pay run also deletes its entry under Payments and the book entries (database trigger, 177_payroll_reset.sql).
+  if (d.id && d.delete) { await db().query('DELETE FROM hr.payments WHERE id = $1', [d.id]); await audit({ event, actorUserId: user.userId, action: 'hr.payment_deleted', objectType: 'hr_payment', objectId: d.id, detail: {} }); return { ok: true } }
   // Link a logged payment to the bank line that paid it (or unlink with null).
   if (d.id && d.bank_txn_id !== undefined) {
     if (d.bank_txn_id && (await db().query('SELECT 1 FROM hr.payments WHERE bank_txn_id = $1 AND id <> $2', [d.bank_txn_id, d.id])).rowCount) throw apiError('duplicate', 'That bank line is already linked to another payment.', 409)
