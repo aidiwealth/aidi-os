@@ -1,4 +1,4 @@
-// Platform overview: real MRR and ARR from subscriptions, new and churned MRR this month, renewals, pipeline, customers.
+// Platform overview: real MRR and ARR from subscriptions (platform ones and plans paid from the wallet), new and churned MRR this month, renewals, pipeline, customers.
 export default defineEventHandler(async (event) => {
   await requirePlatform(event)
   return await asPlatform(async () => {
@@ -16,16 +16,20 @@ export default defineEventHandler(async (event) => {
               coalesce(sum(${MONTHLY_SQL}) FILTER (WHERE s.start_date >= date_trunc('month', current_date) AND NOT EXISTS (
                 SELECT 1 FROM platform.subscriptions x WHERE x.organization_id = s.organization_id AND x.id <> s.id AND x.ended_at = s.start_date)), 0)::text AS new_mrr,
               coalesce(sum(${MONTHLY_SQL}) FILTER (WHERE s.ended_at >= date_trunc('month', current_date) AND s.ended_at <= current_date AND s.end_reason IN ('cancelled','churned')), 0)::text AS churn_mrr
-         FROM platform.subscriptions s`)
+         FROM (${ALL_SUBS_SQL}) s`)
     const series = await db().query<{ b: string; v: string }>(
       `WITH months AS (SELECT (date_trunc('month', current_date) - (g || ' months')::interval)::date AS b FROM generate_series(0, 11) g)
        SELECT to_char(mo.b, 'YYYY-MM-DD') AS b, coalesce(sum(${MONTHLY_SQL}), 0)::text AS v
-         FROM months mo LEFT JOIN platform.subscriptions s ON s.start_date <= (mo.b + interval '1 month - 1 day')::date AND (s.ended_at IS NULL OR s.ended_at > (mo.b + interval '1 month - 1 day')::date)
+         FROM months mo LEFT JOIN (${ALL_SUBS_SQL}) s ON s.start_date <= (mo.b + interval '1 month - 1 day')::date AND (s.ended_at IS NULL OR s.ended_at > (mo.b + interval '1 month - 1 day')::date)
         GROUP BY mo.b ORDER BY mo.b`)
     const live = await db().query<{ id: string; customer: string; organization_id: string; start_date: string; billing: string; amount_usd: string }>(
       "SELECT s.id, o.name AS customer, s.organization_id, to_char(s.start_date, 'YYYY-MM-DD') AS start_date, s.billing, s.amount_usd::text FROM platform.subscriptions s JOIN core.organizations o ON o.id = s.organization_id WHERE s.status <> 'ended'")
+    // Wallet-paid plans renew on their next charge date.
+    const wl = await db().query<{ id: string; customer: string; organization_id: string; start_date: string; billing: string; amount_usd: string; renews: string }>(
+      `SELECT w.id, o.name AS customer, w.organization_id, to_char(w.start_date, 'YYYY-MM-DD') AS start_date, w.billing, w.amount_usd::text, to_char(w.next_charge_at, 'YYYY-MM-DD') AS renews
+         FROM (${WALLET_SUBS_SQL}) w JOIN core.organizations o ON o.id = w.organization_id WHERE w.status IN ('active', 'past_due')`)
     const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
-    const renewals = live.rows.map((s) => ({ ...s, renews: nextRenewal(s.start_date, s.billing) })).filter((s) => s.renews <= soon).sort((a, b) => a.renews.localeCompare(b.renews))
+    const renewals = live.rows.map((s) => ({ ...s, renews: nextRenewal(s.start_date, s.billing) })).concat(wl.rows).filter((s) => s.renews <= soon).sort((a, b) => a.renews.localeCompare(b.renews))
     const pipe = await one<{ open: number; value: string; weighted: string }>(
       `SELECT count(*)::int AS open, coalesce(sum(value_monthly_usd), 0)::text AS value,
               coalesce(sum(value_monthly_usd * CASE stage WHEN 'lead' THEN 0.1 WHEN 'qualified' THEN 0.25 WHEN 'demo' THEN 0.4 WHEN 'proposal' THEN 0.6 WHEN 'negotiation' THEN 0.8 ELSE 0 END), 0)::text AS weighted

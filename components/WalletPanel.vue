@@ -42,6 +42,30 @@ const short = computed(() => (nextSub.value && data.value ? Math.max(0, nextSub.
 
 // Add money opens in a pop-up (bank transfer or card); a card top-up return opens nothing.
 const addOpen = ref(false)
+// Statement: up to 31 days downloads now; longer, up to a year, is emailed.
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+const stOpen = ref(false); const st = reactive({ from: '', to: '', pick: 'd30', busy: false, msg: '', sent: '' })
+const ST_PICKS: [string, string][] = [['d30', 'Last 30 days'], ['tm', 'This month'], ['lm', 'Last month'], ['m3', 'Last 3 months'], ['m12', 'Last 12 months']]
+function pickSt(k: string) {
+  const t = new Date(), y = t.getUTCFullYear(), m = t.getUTCMonth()
+  st.pick = k; st.msg = ''; st.sent = ''
+  if (k === 'd30') { st.from = iso(new Date(t.getTime() - 29 * 864e5)); st.to = iso(t) }
+  else if (k === 'tm') { st.from = iso(new Date(Date.UTC(y, m, 1))); st.to = iso(t) }
+  else if (k === 'lm') { st.from = iso(new Date(Date.UTC(y, m - 1, 1))); st.to = iso(new Date(Date.UTC(y, m, 0))) }
+  else if (k === 'm3') { st.from = iso(new Date(Date.UTC(y, m - 3, t.getUTCDate() + 1))); st.to = iso(t) }
+  else { st.from = iso(new Date(Date.UTC(y - 1, m, t.getUTCDate() + 1))); st.to = iso(t) }
+}
+function openSt() { pickSt('d30'); stOpen.value = true }
+const stDays = computed(() => (st.from && st.to ? Math.round((Date.parse(st.to) - Date.parse(st.from)) / 864e5) + 1 : 0))
+const stErr = computed(() => (!st.from || !st.to ? 'Choose both dates.' : stDays.value < 1 ? 'The start date is after the end date.' : st.to > iso(new Date()) ? 'The end date is in the future.' : stDays.value > 366 ? 'A statement can cover up to one year.' : ''))
+const stEmail = computed(() => stDays.value > 31)
+async function getSt() {
+  if (stErr.value) return
+  if (!stEmail.value) { window.location.href = '/api/wallet/export?from=' + st.from + '&to=' + st.to; return }
+  st.busy = true; st.msg = ''
+  try { const r = await $fetch<{ email: string }>('/api/wallet/statement', { method: 'POST', body: { from: st.from, to: st.to } }); st.sent = r.email }
+  catch (e) { st.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not send the statement.' } finally { st.busy = false }
+}
 function openAdd(t: 'transfer' | 'card') { tab.value = data.value?.transfer ? t : 'card'; addOpen.value = true }
 // The balance, split into whole units and cents.
 const parts = computed(() => { const v = new Intl.NumberFormat('en-US', { style: 'currency', currency: data.value?.currency ?? 'USD', minimumFractionDigits: 2 }).format((data.value?.balance_minor ?? 0) / 100); const i = v.lastIndexOf('.'); return i > 0 ? [v.slice(0, i), v.slice(i)] : [v, ''] })
@@ -80,7 +104,7 @@ const CAT: Record<string, string> = { topup: 'Top-up', admin_credit: 'From Finvr
       <div class="btns">
         <button type="button" class="bt p" @click="openAdd('transfer')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>Add money</button>
         <button v-if="data.card" type="button" class="bt" @click="openAdd('card')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" /><path d="M3 10h18" /></svg>{{ data.card.brand ?? 'Card' }} ···· {{ data.card.last4 ?? '' }}</button>
-        <a href="/api/wallet/export" class="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg>Statement</a>
+        <button type="button" class="bt" @click="openSt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg>Statement</button>
       </div>
     </div>
     <p v-if="localCardCountry(data.country)" class="lcn">{{ LOCAL_CARD_NOTE }}</p>
@@ -144,6 +168,18 @@ const CAT: Record<string, string> = { topup: 'Top-up', admin_credit: 'From Finvr
         <template v-if="data.transfer && tab === 'transfer'"><button v-if="bank && !notice.done && !notice.open" class="btn" type="button" @click="notice.open = true">I've sent it</button><button v-else-if="bank && notice.open && !notice.done" class="btn" type="button" :disabled="busy || !notice.amount" @click="sendNotice">Send</button></template>
         <button v-else-if="!(data.transfer && tab === 'transfer')" class="btn" type="button" :disabled="busy || !amount || below || !data.canTopup" @click="topup">{{ busy ? 'Redirecting…' : 'Continue to pay' }}</button></template>
     </AppModal>
+    <AppModal :open="stOpen" title="Statement" @close="stOpen = false">
+      <div class="fund">
+        <div class="stp"><button v-for="[k, l] in ST_PICKS" :key="k" type="button" :class="{ on: st.pick === k }" @click="pickSt(k)">{{ l }}</button></div>
+        <div class="std"><label class="label">From<input v-model="st.from" type="date" @input="st.pick = ''; st.sent = ''"></label><label class="label">To<input v-model="st.to" type="date" :max="iso(new Date())" @input="st.pick = ''; st.sent = ''"></label></div>
+        <p class="mut" :class="{ red: !!stErr }">{{ stErr || (stEmail ? stDays + ' days. Longer than 31 days, so we build it and email it to you as a CSV.' : stDays + ' day' + (stDays === 1 ? '' : 's') + '. Downloads now as a CSV.') }}</p>
+        <p class="mut">Up to 31 days downloads straight away. Up to one year is emailed.</p>
+        <p v-if="st.sent" class="okm">On its way to {{ st.sent }}. It usually arrives within a few minutes.</p>
+        <p v-if="st.msg" class="error">{{ st.msg }}</p>
+      </div>
+      <template #foot><button class="btn secondary" type="button" @click="stOpen = false">Close</button>
+        <button class="btn" type="button" :disabled="st.busy || !!stErr || !!st.sent" @click="getSt">{{ st.busy ? 'Sending…' : stEmail ? 'Email it to me' : 'Download CSV' }}</button></template>
+    </AppModal>
   </section>
 </template>
 <style scoped>
@@ -172,4 +208,6 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } th { text-ali
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; } .quick button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 9px 4px; font: inherit; font-weight: 500; cursor: pointer; } .quick button.on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
 label.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; } input, select { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--c-rule-strong); } .kyc { display: flex; gap: 8px; } .kyc input { flex: 1; } .okm { color: var(--c-ok); font-size: 13px; margin: 0; } .error { color: var(--c-danger); font-size: 13px; margin: 0; }
 @media (max-width: 900px) { .g2 { grid-template-columns: 1fr; } .big { font-size: 36px; } th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { display: none; } }
+.stp { display: flex; flex-wrap: wrap; gap: 6px; } .stp button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer; } .stp button.on { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
+.std { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 </style>

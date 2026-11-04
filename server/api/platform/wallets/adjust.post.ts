@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Choose the workspace, amount and a reason.')
   const d = b.data
   const r = await postLedger(d.organization_id, d.direction, Math.round(d.amount * 100), d.direction === 'credit' ? (d.refund ? 'refund' : 'admin_credit') : 'admin_debit', d.reason, { userId: staff.userId })
+  if (d.direction === 'credit') await completePendingPlan(d.organization_id)
   await platformAudit(event, staff.userId, 'wallet_' + d.direction, d.organization_id, { amount: d.amount, reason: d.reason })
   return { ok: true, balance_minor: r?.balance ?? null }
 })

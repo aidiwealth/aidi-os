@@ -465,3 +465,10 @@ export async function sendTaskAssigned(to: string, first: string, by: string, t:
   const html = shell(h1('A task for you') + para('Hi ' + esc(first) + ', ' + esc(by) + ' gave you a task' + (due ? ', due ' + esc(due) : '') + ':') + para('<b style="color:' + BRAND.ink + ';">' + esc(t.title) + '</b>' + (t.notes ? '<br>' + esc(t.notes.slice(0, 400)) : '')) + button('Open the task →', link), t.title)
   await sendEmail({ to, subject: 'Task: ' + t.title, text: by + ' gave you a task' + (due ? ', due ' + due : '') + ': ' + t.title + '\n' + link, html, brand: 'aidi' })
 }
+
+// A wallet statement for a longer period (more than 31 days), built in the background and sent as a CSV.
+export async function sendWalletStatement(input: { to: string; company: string; from: string; till: string; file: { filename: string; content: Uint8Array } }): Promise<void> {
+  const head = 'Your Finvry wallet statement'
+  const body = 'Attached is the wallet statement for ' + input.company + ', ' + input.from + ' to ' + input.till + ' (CSV, opens in Excel, Numbers or Google Sheets).'
+  await sendEmail({ to: input.to, subject: head + ' · ' + input.from + ' to ' + input.till, text: head + '\n\n' + body, html: shell(h1(esc(head)) + para(esc(body)), body), brand: 'finvry', attachments: [input.file] })
+}

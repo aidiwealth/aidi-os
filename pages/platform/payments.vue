@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Finvry Platform → Payments: what customers paid for the platform (plan invoices, renewals) and wallet top-ups.
 useHead({ title: 'Finvry · Payments' })
-interface P { src: 'plan' | 'topup'; id: string; ref: string; organization_id: string; customer: string; currency: string; amount: number; date: string; method: string | null; what: string | null }
+interface P { src: 'plan' | 'topup' | 'charge'; id: string; ref: string; organization_id: string; customer: string; currency: string; amount: number; date: string; method: string | null; what: string | null }
 const { data } = await useFetch<{ rows: P[] }>('/api/platform/payments-received')
 const f = reactive({ src: 'all', cur: 'all', year: 'all', org: '' })
-const SRC: Record<string, string> = { plan: 'Plan invoice', topup: 'Wallet top-up' }
+const SRC: Record<string, string> = { plan: 'Plan invoice', topup: 'Wallet top-up', charge: 'Plan payment' }
 const METHOD: Record<string, string> = { manual: 'Recorded', stripe: 'Card', paystack: 'Paystack', wallet: 'From wallet', bank: 'Bank transfer' }
 const money = (v: number, c: string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(v)
 const rows = computed(() => (data.value?.rows ?? []).filter((r) => (f.src === 'all' || r.src === f.src) && (f.cur === 'all' || r.currency === f.cur) && (f.year === 'all' || r.date.startsWith(f.year)) && (!f.org || r.organization_id === f.org)))
@@ -12,14 +12,14 @@ const years = computed(() => [...new Set((data.value?.rows ?? []).map((r) => r.d
 const orgs = computed(() => [...new Map((data.value?.rows ?? []).map((r) => [r.organization_id, r.customer])).entries()].sort((a, b) => a[1].localeCompare(b[1])))
 const curs = computed(() => [...new Set(rows.value.map((r) => r.currency))].sort().reverse())
 const thisYear = String(new Date().getFullYear()), thisMonth = new Date().toISOString().slice(0, 7)
-// A plan invoice paid from the wallet is listed, but the top-up that funded it is the money received.
-const counted = (r: P) => !(r.src === 'plan' && r.method === 'wallet')
+// A plan paid from the wallet is listed, but the top-up that funded it is the money received.
+const counted = (r: P) => r.method !== 'wallet'
 const sum = (list: P[], c: string) => list.filter((r) => counted(r) && r.currency === c).reduce((s, r) => s + r.amount, 0)
 const kpis = computed(() => curs.value.map((c) => ({ c, all: sum(rows.value, c), year: sum(rows.value.filter((r) => r.date.startsWith(thisYear)), c), month: sum(rows.value.filter((r) => r.date.startsWith(thisMonth)), c) })))
 </script>
 <template>
   <section v-if="data">
-    <div class="head"><div><p class="eyebrow">Finvry Platform</p><h1>Payments</h1><p class="lead">What customers paid for the platform: plan invoices and renewals, and wallet top-ups. Service payments are under Finvry Services → Payments.</p></div></div>
+    <div class="head"><div><p class="eyebrow">Finvry Platform</p><h1>Payments</h1><p class="lead">What customers paid for the platform: plan invoices and renewals, wallet top-ups, and plans paid from the wallet (shown in grey, as the top-up was the money received). Service payments are under Finvry Services → Payments.</p></div></div>
     <div v-for="k in kpis" :key="k.c" class="kp"><div><span>All time · {{ k.c }}</span><b>{{ money(k.all, k.c) }}</b></div><div><span>This year</span><b>{{ money(k.year, k.c) }}</b></div><div><span>This month</span><b>{{ money(k.month, k.c) }}</b></div></div>
     <div class="flt">
       <select v-model="f.src" aria-label="Type"><option value="all">All types</option><option v-for="(l, k) in SRC" :key="k" :value="k">{{ l }}</option></select>
@@ -28,7 +28,7 @@ const kpis = computed(() => curs.value.map((c) => ({ c, all: sum(rows.value, c),
       <select v-model="f.org" aria-label="Customer"><option value="">All customers</option><option v-for="[id, n] in orgs" :key="id" :value="id">{{ n }}</option></select>
     </div>
     <div v-if="rows.length" class="card flat"><table class="table"><thead><tr><th>Date</th><th>Customer</th><th>Type</th><th>Reference</th><th>Method</th><th class="num">Amount</th></tr></thead>
-      <tbody><tr v-for="r in rows" :key="r.src + r.id"><td>{{ r.date }}</td><td><NuxtLink :to="'/platform/customers/' + r.organization_id">{{ r.customer }}</NuxtLink></td><td>{{ SRC[r.src] }}<span v-if="r.what && r.src === 'plan'" class="sub">{{ r.what }}</span></td>
+      <tbody><tr v-for="r in rows" :key="r.src + r.id"><td>{{ r.date }}</td><td><NuxtLink :to="'/platform/customers/' + r.organization_id">{{ r.customer }}</NuxtLink></td><td>{{ SRC[r.src] }}<span v-if="r.what && r.src !== 'topup'" class="sub">{{ r.what }}</span></td>
         <td><NuxtLink v-if="r.src === 'plan'" :to="{ path: '/platform/billing', query: { tab: 'inv', org: r.organization_id } }">{{ r.ref }}</NuxtLink><template v-else>{{ r.ref }}</template></td><td>{{ METHOD[r.method ?? ''] ?? r.method ?? '—' }}</td>
         <td class="num" :class="{ mut: !counted(r) }">{{ money(r.amount, r.currency) }}</td></tr></tbody></table></div>
     <EmptyState v-else card icon="billing" title="No payments yet" text="Paid plan invoices and wallet top-ups show here." />

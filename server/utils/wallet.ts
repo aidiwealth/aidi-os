@@ -27,7 +27,8 @@ export async function walletTopupSucceeded(reference: string, card: CardDetails 
   if (card.method_ref && card.reusable !== false && (t.provider === 'stripe' || t.provider === 'paystack')) await saveCard(t.organization_id, t.provider, card)
   try { await postLedger(t.organization_id, 'credit', Number(t.amount_minor), 'topup', 'Top-up by ' + (t.provider === 'paystack' ? 'Paystack' : 'card'), { reference: 'topup:' + reference })
     const cur = (await walletOf(t.organization_id)).currency
-    slack('finvry.payment', (await orgName(t.organization_id)) + ' topped up their wallet ' + minorMoney(t.amount_minor, cur), [['By', t.provider === 'paystack' ? 'Paystack' : 'Card']], { label: 'Wallets', path: '/platform/finance', brand: 'aidi' }) }
+    slack('finvry.payment', (await orgName(t.organization_id)) + ' topped up their wallet ' + minorMoney(t.amount_minor, cur), [['By', t.provider === 'paystack' ? 'Paystack' : 'Card']], { label: 'Wallets', path: '/platform/finance', brand: 'aidi' })
+    await completePendingPlan(t.organization_id) }
   catch (err) { console.error('[wallet] topup credit failed', reference, err); slack('critical.webhook', 'A paid wallet top-up could not be credited', [['Reference', reference], ['Error', (err as Error).message]]) }
 }
 export const MIN_TOPUP: Record<string, number> = { USD: 1000, NGN: 500000 }

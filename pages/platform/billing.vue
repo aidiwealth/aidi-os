@@ -130,13 +130,13 @@ const day = (d: string | null) => (d ? new Date(d + 'T00:00:00Z').toLocaleDateSt
       <table class="table">
         <thead><tr><th>Customer</th><th>Plan</th><th class="num">Price</th><th class="num">MRR</th><th>Renews</th><th>Status</th><th /></tr></thead>
         <tbody><tr v-for="s in subs" :key="s.id" :class="{ off: s.status === 'ended' }">
-          <td><NuxtLink :to="'/platform/customers/' + s.organization_id" class="co">{{ s.customer }}</NuxtLink><span class="sub">since {{ day(s.start_date) }} · {{ s.method === 'invoice' ? 'invoice' : s.method + ' card' }}<template v-if="cardOf(s.organization_id)"> · {{ cardOf(s.organization_id)!.brand ?? 'card' }} •••• {{ cardOf(s.organization_id)!.last4 }}</template></span></td>
+          <td><NuxtLink :to="'/platform/customers/' + s.organization_id" class="co">{{ s.customer }}</NuxtLink><span class="sub">since {{ day(s.start_date) }} · {{ s.method === 'invoice' ? 'invoice' : s.method === 'wallet' ? 'paid from wallet' : s.method + ' card' }}<template v-if="cardOf(s.organization_id)"> · {{ cardOf(s.organization_id)!.brand ?? 'card' }} •••• {{ cardOf(s.organization_id)!.last4 }}</template></span></td>
           <td>{{ s.plan }}<span class="sub">{{ s.billing }}</span></td>
           <td class="num">{{ cur(s.amount_usd, s.currency) }}<span class="sub">/ {{ s.billing === 'annual' ? 'year' : 'month' }}</span></td>
           <td class="num"><b>{{ usd(s.monthly) }}</b></td>
           <td>{{ day(s.renews) }}</td>
-          <td><span class="st" :data-s="s.status">{{ s.status === 'ended' ? 'Ended' + (s.end_reason ? ' (' + s.end_reason + ')' : '') : s.status === 'past_due' ? 'Past due' : 'Active' }}</span><span v-if="s.ended_at" class="sub">{{ day(s.ended_at) }}</span></td>
-          <td class="acts"><template v-if="s.status !== 'ended'"><button type="button" class="link" @click="newInv(s)">Invoice</button><button type="button" class="link" @click="endSub(s)">End</button></template></td>
+          <td><span class="st" :data-s="s.status">{{ s.status === 'ended' ? 'Ended' + (s.end_reason ? ' (' + s.end_reason + ')' : '') : s.status === 'past_due' ? 'Past due' : s.status === 'trial' ? 'Trial' : 'Active' }}</span><span v-if="s.ended_at" class="sub">{{ day(s.ended_at) }}</span></td>
+          <td class="acts"><template v-if="s.status !== 'ended' && s.method !== 'wallet'"><button type="button" class="link" @click="newInv(s)">Invoice</button><button type="button" class="link" @click="endSub(s)">End</button></template></td>
         </tr></tbody>
       </table>
       <EmptyState v-if="!subs.length" compact icon="customers" :title="`No subscriptions${org ? ' for this customer' : ''} yet`" />
