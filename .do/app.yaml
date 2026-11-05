@@ -14,7 +14,7 @@ ingress:
       path:
         prefix: /
 name: aidi-os
-region: nyc
+region: sfo
 services:
 - build_command: npm ci && npm run build
   environment_slug: node-js
