@@ -8,17 +8,17 @@ const props = defineProps<{ open: boolean; subject: string; company: string; onl
 const emit = defineEmits<{ close: []; done: [msg: string] }>()
 interface Sec { key: string; title: string; desc: string; on: boolean; available: boolean }
 interface Grp { by: string; value: string; customers: number }
-const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[]; has_securities?: boolean } | null>(null)
+const opts = ref<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; burn_checks?: boolean; groups?: Grp[]; has_securities?: boolean } | null>(null)
 // Treasury bills with cash or not: asked for every report (investor-facing), no default.
 const sec = ref<boolean | null>(null)
 const grp = ref('')
 const about0 = ref('')
-const f = reactive({ period: 'month' as 'month' | 'quarter' | 'year', chart: 'area', pies: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
+const f = reactive({ period: 'month' as 'month' | 'quarter' | 'year', chart: 'area', pies: true, burnChecks: true, update: false, about: '', month: '', picked: [] as string[], format: 'pdf', comments: '', priorities: '', room: false, busy: false, msg: '', loading: false })
 async function load() {
   f.loading = true; f.msg = ''
   try {
-    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; groups?: Grp[]; has_securities?: boolean }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined, cust: props.cust || undefined } })
-    opts.value = o; sec.value = null; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies
+    const o = await $fetch<{ months: string[]; sections: Sec[]; about: string; chart: string; pies: boolean; burn_checks?: boolean; groups?: Grp[]; has_securities?: boolean }>('/api/financials/mgmt-report', { query: { subject: props.subject || undefined, cust: props.cust || undefined } })
+    opts.value = o; sec.value = null; f.month = o.months[0] ?? ''; f.about = o.about; about0.value = o.about; f.chart = o.chart; f.pies = o.pies; f.burnChecks = o.burn_checks !== false
     f.picked = o.sections.filter((s) => (props.only ? props.only.includes(s.key) : s.on) && s.available).map((s) => s.key); grp.value = ''
   } catch (e) { f.msg = err(e, 'Could not load the report options.') } finally { f.loading = false }
 }
@@ -41,7 +41,7 @@ async function make() {
   f.busy = true; f.msg = ''
   try {
     const res = await fetch('/api/financials/mgmt-report' + (props.cust ? '?cust=' + encodeURIComponent(props.cust) : ''), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ cash_with_securities: opts.value?.has_securities ? sec.value : undefined, subject: props.subject || undefined, month: f.month, period: f.period, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
+      body: JSON.stringify({ cash_with_securities: opts.value?.has_securities ? sec.value : undefined, subject: props.subject || undefined, month: f.month, period: f.period, sections: MR_ORDER.value.filter((k) => f.picked.includes(k)), format: f.format, comments: f.comments, priorities: f.priorities, about: f.about !== about0.value ? f.about : undefined, room: f.room, update: f.update && canUpd.value && !grp.value, chart: f.chart, pies: f.pies, burn_checks: f.burnChecks, remember: !props.only, cust_group: grp.value ? { by: grp.value.split('|')[0], value: grp.value.split('|').slice(1).join('|') } : null }) })
     if (!res.ok) { const j = await res.json().catch(() => null) as { data?: { error?: { message?: string } } } | null; throw new Error(j?.data?.error?.message ?? 'Could not make the report.') }
     const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? 'management-report.' + f.format; a.click(); URL.revokeObjectURL(a.href)
     const upd = res.headers.get('x-update-id')
@@ -63,6 +63,7 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
           <label class="label">Format<select v-model="f.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label></div>
         <div class="g2"><label class="label">Charts over time<select v-model="f.chart"><option value="area">Area line (shaded)</option><option value="line">Line</option><option value="bar">Bars</option></select></label>
           <label class="label">Breakdowns (costs, assets, sectors, top customers)<select v-model="f.pies"><option :value="true">Pie charts</option><option :value="false">Bars</option></select></label></div>
+        <label class="ck"><input v-model="f.burnChecks" type="checkbox"> Include burn and cash checks <span class="mut">(e.g. "The burn figures disagree…" and checks that the balance sheet explains the change in cash)</span></label>
         <fieldset v-if="opts.has_securities" class="secq"><legend>Treasury bills and other securities</legend>
           <label><input v-model="sec" type="radio" :value="true"> With cash, as "Cash and marketable securities"</label>
           <label><input v-model="sec" type="radio" :value="false"> On their own line; cash is the bank balance</label></fieldset>
@@ -88,6 +89,7 @@ const MR_ORDER = computed(() => (opts.value?.sections ?? []).map((s) => s.key))
 </template>
 
 <style scoped>
+.ck { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; } .ck .mut { color: var(--c-muted); font-size: 12.5px; }
 .mr { display: flex; flex-direction: column; gap: 14px; font-size: 14px; }
 .hint { margin: 0; color: var(--c-muted); font-size: 13px; }
 .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

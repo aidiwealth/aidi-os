@@ -45,6 +45,8 @@ let PER: 'month' | 'quarter' | 'year' = 'month'
 const ML = (d: string, short = false) => PER === 'year' ? (short ? "'" + d.slice(2, 4) : d.slice(0, 4)) : PER === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + (short ? "'" + d.slice(2, 4) : d.slice(0, 4))
   : new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: short ? 'short' : 'long', year: short ? '2-digit' : 'numeric', timeZone: 'UTC' })
 // A key point as one sentence pair: the title, then the detail (no doubled full stops, no field names).
+// Write-ups about burn figures not agreeing, or cash the balance sheet does not explain (left out when switched off).
+const BURN_CHECK = /burn (figures|methods|numbers|estimates)[^.]*(disagree|differ|do not agree|don't agree)|(disagree|differ)[^.]*burn|does not explain the change in cash|doesn't explain the change in cash/i
 const point = (x: { title: string; detail: string }) => tidyText(x.title.replace(/[.\s]+$/, '') + '. ' + x.detail, 1100)
 // A month's name whatever the report's period (customer trends are monthly in every report).
 const MM = (d: string) => new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
@@ -88,6 +90,8 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   customers: Record<string, any> | null; comments: string; priorities: string
   about?: { text: string; facts: [string, string][]; leaders: [string, string][] } | null
   chart?: ChartKind; pies?: boolean; reviewRows?: FinRow[]; safe?: SafeTreatment
+  // false: no cross-checks of burn and cash ("The burn figures disagree…") anywhere in the report.
+  burnChecks?: boolean
 }): MReport {
   const rows = raw.filter((r) => r.period_type === 'month').sort((a, b) => a.period_end.localeCompare(b.period_end)).map((r) => ({ ...r, d: r.derived ?? deriveLines(r.lines, 1) }))
   const i = rows.findIndex((r) => r.period_end.slice(0, 7) === o.month.slice(0, 7))
@@ -156,7 +160,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
         { label: 'Monthly burn', value: review.profitable ? 'None' : short(review.burn), sub: '3-month average' },
         { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '–', sub: review.runway_at_loss ? review.runway_at_loss + ' at the loss rate' : undefined, tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }],
       tables: health.length ? [{ title: 'Health check', head: ['Area', 'Status', ''], rows: health.map((h) => ({ label: h.area, cells: [h.tone === 'good' ? 'Good' : h.tone === 'watch' ? 'Watch' : 'Risk', h.line], tones: [h.tone, ''] })) }] : undefined,
-      bullets: (o.analysis?.insights ?? []).slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) })
+      bullets: (o.analysis?.insights ?? []).filter((x) => o.burnChecks !== false || !BURN_CHECK.test(x.title + ' ' + x.detail)).slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) })
   }
 
   if (want('scorecard')) {
@@ -232,7 +236,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
       tiles: [{ label: o.withSecurities ? 'Cash and securities' : 'Cash', value: short(c1) }, { label: 'Change in the month', value: c0 !== null && c1 !== null ? short(c1 - c0) : '–', tone: c0 !== null && c1 !== null ? (c1 >= c0 ? 'good' : 'watch') : undefined }, { label: 'Monthly burn', value: review.profitable ? 'None' : short(review.burn) },
         { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '–', tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }, ...(review.runway_at_loss ? [{ label: 'Runway at the loss rate', value: review.runway_at_loss + ' months', sub: 'once unpaid bills are settled' }] : []), ...(review.loss_burn ? [{ label: 'Loss before depreciation', value: short(review.loss_burn), sub: 'a month, 3-month average' }] : [])],
       charts: [{ title: 'Cash at the end of each month', labels: last12.map((r) => ML(r.period_end, true)), values: last12.map((r) => g(r, 'cash')) }],
-      bullets: [...review.notes.map((t) => ({ text: t })), ...review.issues.map((t) => ({ text: t, tone: 'watch' as Tone }))] })
+      bullets: o.burnChecks === false ? undefined : [...review.notes.map((t) => ({ text: t })), ...review.issues.map((t) => ({ text: t, tone: 'watch' as Tone }))] })
   }
 
   if (want('balance')) {
@@ -316,7 +320,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   }
 
   if (want('actions')) {
-    const fl = o.analysis?.flags ?? []
+    const fl = (o.analysis?.flags ?? []).filter((f) => o.burnChecks !== false || !BURN_CHECK.test(f.item + ' ' + f.why))
     const by = ['Executive team', 'CFO', 'Board'].map((w) => ({ w, xs: fl.filter((f) => f.for === w) })).filter((x) => x.xs.length)
     // With nothing flagged, the areas the health check marks to watch or at risk are what to discuss.
     const hw = health.filter((h) => h.tone !== 'good')

@@ -6,7 +6,7 @@ import { customerFacts, analyseCustomers } from '~/server/utils/customer-analysi
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), period: z.enum(['month', 'quarter', 'year']).default('month'), sections: z.array(z.string().max(40)).max(20).transform((xs) => xs.filter((k) => MR_SECTIONS.some((s) => s.key === k))).pipe(z.array(z.string()).min(1)),
-  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
+  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), burn_checks: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
   cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional(), cash_with_securities: z.boolean().nullable().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'admin')
@@ -56,16 +56,16 @@ export default defineEventHandler(async (event) => {
     }
   }
   const { profile } = await reportProfile().catch(() => ({ profile: { fye_month: 12 } as { fye_month: number } }))
-  const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean }> | undefined) ?? {})[d.subject]
-  const chart = d.chart ?? prevSaved?.chart ?? 'area', pies = d.pies ?? prevSaved?.pies ?? true
+  const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean; burn_checks?: boolean }> | undefined) ?? {})[d.subject]
+  const chart = d.chart ?? prevSaved?.chart ?? 'area', pies = d.pies ?? prevSaved?.pies ?? true, burnChecks = d.burn_checks ?? prevSaved?.burn_checks ?? true
   let r
-  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
+  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), burnChecks, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Banking and Stage, for the same company (or the group), in the report's order.
   const extra = await growthSections(event, d.subject, d.sections, month.slice(0, 7)).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
   if (extra.length) { r.sections.push(...extra); r.sections.sort((a, b) => MR_SECTIONS.findIndex((s) => s.key === a.key) - MR_SECTIONS.findIndex((s) => s.key === b.key)) }
   // Remember the sections for next month.
-  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, growth_seen: true } }
+  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, burn_checks: burnChecks, growth_seen: true } }
   // Not when made from Retention or Customers (a customers-only report should not change next month's choice).
   if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()
