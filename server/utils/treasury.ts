@@ -38,6 +38,14 @@ export const RAILS: Rail[] = [
 
 // "POS DEBIT 2093 AMAZON WEB SERVICES AWS.AMAZON.CO" → "amazon web services".
 const NOISE = /\b(pos|debit|credit|card|purchase|payment|pymt|pmt|ach|trf|transfer|nip|web|online|recurring|autopay|ref|txn|trx|visa|mastercard|mc|chk|checkout|ltd|limited|llc|inc|plc|co|com|ng|us|www|https?)\b/g
+// A payee as people read it: bank wording taken off ("Orig Name Brex" is Brex, "Mobile To Fb" a transfer to FB) and
+// short names in capitals (ADP, FB).
+export function payeeName(n: string): string {
+  let t = n.replace(/^\s*(orig(inator)?\s+(co\s+)?name|orig\s+id|pos\s+(purchase|debit)?|debit\s+card\s+purchase|card\s+purchase|ach\s+(debit|credit)?)\s*:?\s+/i, '').trim()
+  t = t.replace(/^(mobile|nip|web)\s+(trf|transfer)?\s*to\s+/i, 'Transfer to ').replace(/^trf\s+to\s+/i, 'Transfer to ')
+  t = t.replace(/\b([A-Za-z]{2,3})\b/g, (w) => (/^(to|of|and|the|for|by|on|in|at|co|inc|ltd|llc|sms|pay|web|app|net)$/i.test(w) ? (/^sms$/i.test(w) ? 'SMS' : w) : w.toUpperCase()))
+  return t || n
+}
 export function vendorKey(desc: string, merchant?: string | null): { key: string; name: string } {
   const src = (merchant || desc).toLowerCase()
   const k = src.replace(/[*#:/\\|_.,@-]+/g, ' ').replace(/\d+/g, ' ').replace(NOISE, ' ').replace(/\s+/g, ' ').trim().split(' ').filter((w, i, all) => w.length > 1 && all.indexOf(w) === i).slice(0, 3).join(' ') || 'other'
@@ -204,7 +212,8 @@ export const savingOf = (v: { status: string; monthly: number; saving_pct: numbe
 // The spend view and the cut list, in the company's currency, from the last twelve months of the ledger.
 // The ledger for the company chosen at the top (transactions without a company count as the main one's), or every
 // company's for the group; amounts in that company's currency, or the group's reporting currency.
-export interface TScope { group: boolean; entity: string | null; currency: string }
+// until: the last month to include (a report for an earlier period), else up to last month.
+export interface TScope { group: boolean; entity: string | null; currency: string; until?: string }
 export async function rateTo(cur: string) { const m = new Map<string, number>(); return async (c: string) => { if (c === cur) return 1; if (!m.has(c)) m.set(c, (await fxRate(c, cur)) ?? 0); return m.get(c)! } }
 export async function treasuryView(sc: TScope) {
   const cur = sc.currency, rate = await rateTo(cur), main = await companyEntityId(), ent = sc.group ? null : sc.entity
@@ -212,8 +221,9 @@ export async function treasuryView(sc: TScope) {
     `SELECT to_char(txn_date, 'YYYY-MM') AS m, vendor_key, max(vendor) AS vendor, direction, category, currency, sum(amount)::text AS amt, max(txn_date)::text AS last FROM banking.ledger
      WHERE txn_date >= date_trunc('month', now()) - interval '12 months' AND coalesce(category, '') NOT IN ('transfer', 'investment') AND ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1) GROUP BY 1, 2, 4, 5, 6`, [ent, main])).rows
   const rows: { m: string; vendor_key: string; vendor: string; direction: string; category: string | null; amt: string; last: string }[] = []
-  for (const r of raw) rows.push({ ...r, amt: String(Number(r.amt) * await rate(r.currency)) })
-  const thisM = new Date().toISOString().slice(0, 7), full = [...new Set(rows.map((r) => r.m))].filter((m) => m < thisM).sort()
+  for (const r of raw) if (!sc.until || r.m <= sc.until) rows.push({ ...r, vendor: payeeName(r.vendor), amt: String(Number(r.amt) * await rate(r.currency)) })
+  const nextM = (ym: string) => { const d = new Date(ym + '-15T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return d.toISOString().slice(0, 7) }
+  const thisM = sc.until ? nextM(sc.until) : new Date().toISOString().slice(0, 7), full = [...new Set(rows.map((r) => r.m))].filter((m) => m < thisM).sort()
   const last3 = full.slice(-3), lastM = full[full.length - 1] ?? null, prevM = full[full.length - 2] ?? null
   const months: Record<string, { in: number; out: number }> = {}, cats: Record<string, Record<string, number>> = {}
   const vend = new Map<string, Vendor>()

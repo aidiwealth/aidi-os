@@ -28,7 +28,9 @@ export function factsOf(raw: FinRow[], model?: string | null): { facts: Record<s
   const ttm = within(end - 11, end)
   // A comparison window counts only when it is complete (the same number of periods as the latest one).
   const rev3 = sumK(last, 'revenue'), revP = prior.length === last.length ? sumK(prior, 'revenue') : null, revY = yearAgo.length === last.length ? sumK(yearAgo, 'revenue') : null
-  const gm3 = avg(last, 'gross_margin'), gmP = avg(prior, 'gross_margin')
+  // Gross margin over each window from its totals (gross profit over revenue), the same way the report shows it.
+  const wm = (rs: typeof rows) => { const r = sumK(rs, 'revenue'), gp = sumK(rs, 'gross_profit'); return r && gp !== null ? (gp / r) * 100 : avg(rs, 'gross_margin') }
+  const gm3 = last.length ? wm(last) : null, gmP = prior.length ? wm(prior) : null
   const ox3 = sumK(last, 'opex_total'), oxP = sumK(prior, 'opex_total')
   const cogs3 = sumK(last, 'cogs'), cogsP = sumK(prior, 'cogs')
   const ni3 = sumK(last, 'net_income'), niTtm = sumK(ttm, 'net_income')
@@ -116,7 +118,7 @@ export function contradicts(text: string, f: Record<string, number | string | nu
 export async function analyseFinancials(subject: string, rows: FinRow[], currency: string, company: string, force = false, model: string | null = null): Promise<Analysis> {
   const { facts, rules, flags, period } = factsOf(rows, model)
   const checks = checkRows(rows).filter((c) => c.severity === 'error').length
-  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 8 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 9 })).digest('hex').slice(0, 40)
   if (!force) {
     const hit = (await db().query<{ analysis: Analysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]
     if (hit) return hit.analysis
@@ -136,6 +138,7 @@ export async function analyseFinancials(subject: string, rows: FinRow[], currenc
           'Give a one-sentence headline; exactly 4 key insights, the most important first (what is going well, what to watch, what is a risk), each with the numbers behind it; and 2 to 6 flags: things to raise with the executive team, the CFO or the board, each with why it matters. ' +
           'Business type: ' + (facts.business_type ?? 'not set') + '. Judge gross margin against typical_gross_margin_pct for that type (' + (facts.typical_margin_why ?? 'no range: the type is not set, so do not compare with software or any other industry') + '); never call a margin low for software unless the business is software. ' +
           'Break-even is already worked out in the facts (gross_profit_monthly, opex_monthly, gross_profit_covers_opex_pct, breakeven_revenue_monthly, revenue_increase_to_breakeven_pct, opex_cut_to_breakeven_monthly): quote those, never work out your own. Never say anything the facts contradict: when gross_profit_monthly is positive the company would make money with no operating costs. ' +
+          'Never say there is no path to profit, or that the company is running out of cash, when runway is 18 months or more: say how long the cash lasts while losses continue and what closes the gap. Quote percentages and points exactly as the facts give them (gross_margin_change_pts, revenue_growth_qoq_pct); write amounts with k or M (81128 is 81k), never a field name. ' +
           'If cash_months_before_latest is 2 or more, the cash balance is out of date: give no runway and raise it as a CFO flag. If months_missing is above 0, say figures are missing for some months. ' +
           'Check burn and runway: burn_methods gives monthly burn worked out several ways (including cash flow worked out from the balance sheet), burn_notes explains a gap between cash burn and the loss (e.g. bills left unpaid), and burn_check_issues lists real disagreements. When burn_notes explains the gap, it is not a data problem: say what drives it and, if runway_if_bills_paid_months is given, that runway is shorter once those bills are paid. Raise a CFO flag only for burn_check_issues or stale cash. If the facts point to a data problem (missing cash, totals that do not add up), say so as a CFO flag. Never invent figures.',
         user: 'Company: ' + company + '\nPeriod: ' + period + '\nFacts: ' + JSON.stringify(facts) + '\nArithmetic errors found in the figures: ' + checks + '\nRule-based notes so far: ' + JSON.stringify({ insights: rules, flags }),

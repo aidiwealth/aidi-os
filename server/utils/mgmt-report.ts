@@ -4,7 +4,7 @@ import { shortAmount } from '~/shared/compact'
 // analysis' key points, what to raise, and the founder's own comments. Made as a PDF or an Excel file.
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { burnReview, checkRow, deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
+import { burnReview, deriveLines, rollUp, withSecurities, type FinRow } from '~/shared/fin-view'
 import { classifyBalance, classifiedRows, periodDetail, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 import { modelOf } from '~/shared/business-models'
 import type { ReportProfile } from './fin-report'
@@ -24,7 +24,6 @@ export const MR_SECTIONS: { key: string; title: string; desc: string; on: boolea
   { key: 'customers', title: 'Customers', desc: 'Paying customers, recurring revenue, average customer, concentration, sectors and top customers', on: false },
   { key: 'banking', title: 'Banking and spend', desc: 'Money in and out from the bank, spend by category against budget, the biggest payments and recurring costs', on: true },
   { key: 'stage', title: 'Stage and readiness', desc: 'Funding and operating stage, health, runway, and equity and debt readiness (indicative only)', on: true },
-  { key: 'checks', title: 'Data checks', desc: 'Totals in the figures that do not add up', on: false },
   { key: 'actions', title: 'For the executive team', desc: 'What to raise with the executive team, the CFO and the board', on: true },
   { key: 'comments', title: 'Management comments', desc: 'Your own commentary and priorities for next month', on: true }]
 
@@ -33,7 +32,7 @@ export interface MRow { label: string; cells: string[]; kind?: 'total' | 'sub' |
 export interface MTable { title?: string; head: string[]; rows: MRow[]; note?: string }
 export interface MChart { title: string; labels: string[]; values: (number | null)[]; pct?: boolean }
 // A breakdown (parts of a whole): drawn as a pie, or as bars when the founder prefers.
-export interface MPie { title: string; note?: string; slices: { label: string; value: number }[] }
+export interface MPie { title: string; note?: string; slices: { label: string; value: number }[]; pct?: boolean }
 export type ChartKind = 'area' | 'line' | 'bar'
 export interface MSection { key: string; title: string; intro?: string; facts?: [string, string][]; pies?: MPie[]; tiles?: MTile[]; tables?: MTable[]; charts?: MChart[]; bullets?: { text: string; tone?: Tone }[]; text?: { head: string; body: string }[] }
 export interface MReport { kind?: string; company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
@@ -45,14 +44,18 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : n
 let PER: 'month' | 'quarter' | 'year' = 'month'
 const ML = (d: string, short = false) => PER === 'year' ? (short ? "'" + d.slice(2, 4) : d.slice(0, 4)) : PER === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + (short ? "'" + d.slice(2, 4) : d.slice(0, 4))
   : new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: short ? 'short' : 'long', year: short ? '2-digit' : 'numeric', timeZone: 'UTC' })
+// A key point as one sentence pair: the title, then the detail (no doubled full stops, no field names).
+const point = (x: { title: string; detail: string }) => tidyText(x.title.replace(/[.\s]+$/, '') + '. ' + x.detail, 1100)
+// A month's name whatever the report's period (customer trends are monthly in every report).
+const MM = (d: string) => new Date(d.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const pctCh = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : ((a - b) / Math.abs(b)) * 100)
 const sumOf = (rs: { d: Record<string, number | null> }[], k: string) => { const v = rs.map((r) => num(r.d[k])).filter((x): x is number => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) : null }
 
 // Up to six slices, the rest grouped as "Other".
-function pieOf(title: string, xs: { label: string; value: number }[], note?: string): MPie {
+function pieOf(title: string, xs: { label: string; value: number }[], note?: string, pct = false): MPie {
   const s2 = xs.filter((x) => x.value > 0).sort((p, q) => q.value - p.value)
   const top = s2.slice(0, 6), rest = s2.slice(6).reduce((a, x) => a + x.value, 0)
-  return { title, note, slices: rest > 0 ? [...top, { label: 'Other', value: rest }] : top }
+  return { title, note, slices: rest > 0 ? [...top, { label: 'Other', value: rest }] : top, pct }
 }
 // Quarterly and annual reports: the months up to the chosen one rolled into quarters or years (flows added, balances
 // at the period's end); burn and runway still come from the monthly figures; the wording follows the period.
@@ -61,7 +64,7 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
   const months = raw.filter((r) => r.period_type === 'month' && r.period_end.slice(0, 7) <= o.month.slice(0, 7)).sort((a, b) => a.period_end.localeCompare(b.period_end))
   if (!months.length) throw new Error('No figures for that period.')
   // Each quarter or year: balance sheet categories from its latest month, profit and loss categories added up.
-  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month', detail: periodDetail(months, r.period_end, (r as { from?: string }).from ?? r.period_end) ?? undefined }))
+  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month', derived: withSecurities(r.derived ?? deriveLines(r.lines, 3), o.withSecurities), detail: periodDetail(months, r.period_end, (r as { from?: string }).from ?? r.period_end) ?? undefined }))
   const last = months[months.length - 1]!, sel = rolled[rolled.length - 1]!
   PER = o.period
   try {
@@ -115,6 +118,9 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   const want = (k: string) => o.sections.includes(k)
   const LBL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of sales', gross_profit: 'Gross profit', gross_margin: 'Gross margin', opex_payroll: 'Payroll', opex_marketing: 'Sales and marketing', opex_rnd: 'Research and development', opex_ga: 'General and administrative', opex_other: 'Other operating costs', opex_total: 'Total running costs', ebitda: 'EBITDA', depreciation: 'Depreciation', interest: 'Interest expense', other_income: 'Other income', tax: 'Tax', net_income: 'Net income (loss)', cash: 'Cash', burn: 'Monthly burn (3-month average)', runway: 'Runway (months)', receivables: 'Receivables', investments: 'Short-term investments', long_term_investments: 'Long-term investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
   const last12 = upTo.slice(-12)
+  // The last 12 months, from the monthly figures (a quarterly or annual report's rows are quarters or years).
+  const monthsUpTo = ((o.reviewRows ?? upTo) as typeof upTo).filter((r) => r.period_end.slice(0, 7) <= (o.reviewRows ? String((o.reviewRows as FinRow[])[(o.reviewRows as FinRow[]).length - 1]?.period_end ?? cur.period_end) : cur.period_end).slice(0, 7)).map((r) => ({ ...r, d: (r as { d?: Record<string, number | null> }).d ?? r.derived ?? deriveLines(r.lines, 1) }))
+  const ttm12 = monthsUpTo.slice(-12), ttmRev = sumOf(ttm12 as never, 'revenue')
 
   // Health check: four areas, each good / watch / risk with one line.
   const rev3 = sumOf(upTo.slice(-3), 'revenue'), rev3p = sumOf(upTo.slice(-6, -3), 'revenue')
@@ -133,7 +139,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const facts: [string, string][] = [...o.about.facts]
     if (team !== null) facts.push(['Team', Math.round(team).toLocaleString('en-US') + ' people'])
     if (bm) facts.push(['Business type', bm.label])
-    facts.push(['Revenue, last 12 months', short(sumOf(last12, 'revenue')) + (last12.length < 12 ? ' (' + last12.length + ' months)' : '')])
+    facts.push(['Revenue, last 12 months', short(ttmRev) + (ttm12.length < 12 ? ' (' + ttm12.length + ' months)' : '')])
     facts.push(...o.about.leaders)
     sections.push({ key: 'intro', title: 'About the company', text: o.about.text.trim() ? [{ head: '', body: o.about.text.trim() }] : undefined, facts })
   }
@@ -150,7 +156,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
         { label: 'Monthly burn', value: review.profitable ? 'None' : short(review.burn), sub: '3-month average' },
         { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '–', sub: review.runway_at_loss ? review.runway_at_loss + ' at the loss rate' : undefined, tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }],
       tables: health.length ? [{ title: 'Health check', head: ['Area', 'Status', ''], rows: health.map((h) => ({ label: h.area, cells: [h.tone === 'good' ? 'Good' : h.tone === 'watch' ? 'Watch' : 'Risk', h.line], tones: [h.tone, ''] })) }] : undefined,
-      bullets: (o.analysis?.insights ?? []).slice(0, 4).map((x) => ({ text: x.title + '. ' + x.detail, tone: x.tone })) })
+      bullets: (o.analysis?.insights ?? []).slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) })
   }
 
   if (want('scorecard')) {
@@ -171,12 +177,12 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   }
 
   if (want('growth')) {
-    const six = upTo.slice(-7), r0 = g(six[0] ?? null, 'revenue'), r6 = g(six[six.length - 1] ?? null, 'revenue')
+    const six = monthsUpTo.slice(-7), r0 = num(six[0]?.d.revenue), r6 = num(six[six.length - 1]?.d.revenue)
     const cmgr = six.length === 7 && r0 && r6 && r0 > 0 && r6 > 0 ? (Math.pow(r6 / r0, 1 / 6) - 1) * 100 : null
     const ytdG = pctCh(sumOf(ytd, 'revenue'), ytdLy.length === ytd.length ? sumOf(ytdLy, 'revenue') : null)
     sections.push({ key: 'growth', title: 'Revenue and growth',
       tiles: [{ label: 'On last month', value: pct(mom), tone: mom === null ? undefined : mom >= 0 ? 'good' : 'risk' }, { label: 'Last 3 months vs the 3 before', value: pct(g3), tone: g3 === null ? undefined : g3 >= 0 ? 'good' : 'risk' }, { label: 'On the same month last year', value: pct(yo), tone: yo === null ? undefined : yo >= 0 ? 'good' : 'risk' },
-        { label: 'Average monthly growth (6 months)', value: pct(cmgr) }, { label: 'Year to date vs last year', value: pct(ytdG) }, { label: 'Revenue, last 12 months', value: short(sumOf(last12, 'revenue')) }],
+        { label: 'Monthly growth (6 months)', value: pct(cmgr), sub: 'average a month' }, { label: 'Year to date vs last year', value: pct(ytdG) }, { label: 'Revenue, last 12 months', value: short(ttmRev) }],
       charts: [{ title: 'Revenue by month', labels: last12.map((r) => ML(r.period_end, true)), values: last12.map((r) => g(r, 'revenue')) }, { title: 'Gross profit by month', labels: last12.map((r) => ML(r.period_end, true)), values: last12.map((r) => g(r, 'gross_profit')) }] })
   }
 
@@ -205,10 +211,10 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const lines = ['cogs', 'opex_payroll', 'opex_marketing', 'opex_rnd', 'opex_ga', 'opex_other']
     const items: { label: string; a: number | null; b: number | null }[] = []
     for (const k of lines) {
-      const names = Object.keys(cur.detail ?? {}).filter((x) => x.startsWith(k + '|'))
+      const names = [...new Set([cur, prev].flatMap((r) => Object.keys(r?.detail ?? {})).filter((x) => x.startsWith(k + '|')))]
       if (names.length && k !== 'cogs') for (const n of names) items.push({ label: n.slice(k.length + 1), a: det(cur, n), b: det(prev, n) })
       // A group adds up companies that may itemise a line differently: what the categories do not explain stays as its own item.
-      if (names.length && k !== 'cogs') { const rest = (r: typeof cur | null) => { const t = g(r, k); return t === null ? null : t - names.reduce((a, n) => a + (det(r, n) ?? 0), 0) }; const a = rest(cur), b = rest(prev); if ((a !== null && Math.abs(a) >= 1) || (b !== null && Math.abs(b) >= 1)) items.push({ label: 'Other ' + LBL[k]!.toLowerCase(), a, b }) }
+      if (names.length && k !== 'cogs') { const rest = (r: typeof cur | null) => { const t = g(r, k); return t === null ? null : t - names.reduce((a, n) => a + (det(r, n) ?? 0), 0) }; const a = rest(cur), b = rest(prev); if ((a !== null && Math.abs(a) >= 1) || (b !== null && Math.abs(b) >= 1)) items.push({ label: LBL[k]!.startsWith('Other') ? 'Uncategorised ' + LBL[k]!.slice(6) : 'Other ' + LBL[k]!.toLowerCase(), a, b }) }
       else if (g(cur, k) !== null || g(prev, k) !== null) items.push({ label: LBL[k]!, a: g(cur, k), b: g(prev, k) })
     }
     const movers = items.filter((x) => x.a !== null && x.b !== null && x.a !== x.b).sort((p, q) => Math.abs(q.a! - q.b!) - Math.abs(p.a! - p.b!)).slice(0, 3)
@@ -240,7 +246,8 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const fx = (v: number | null, ratio: boolean) => (v === null ? '–' : ratio ? v.toFixed(2) + 'x' : money(v))
     const rowsB: MRow[] = t.rows.map((r) => {
       const ratio = r.key === 'current_ratio', a = r.values[0] ?? null, b = r.values[1] ?? null, c = r.values[2] ?? null
-      const ch = r.kind === 'head' || a === null || b === null ? null : a - b
+      // A line that is new this period (or gone) changes from (or to) nothing; ratios need both.
+      const ch = r.kind === 'head' || (a === null && b === null) || !P ? null : ratio ? (a === null || b === null ? null : a - b) : (a ?? 0) - (b ?? 0)
       return { label: r.label + (r.moved ? ' *' : ''), kind: r.kind === 'head' ? 'head' : r.kind === 'item' ? 'sub' : r.kind === 'ratio' ? 'line' : 'total',
         cells: r.kind === 'head' ? ['', '', '', ...(O ? [''] : [])] : [fx(a, ratio), P ? fx(b, ratio) : '–', ratio ? (ch === null ? '–' : (ch >= 0 ? '+' : '−') + Math.abs(ch).toFixed(2)) : money(ch), ...(O ? [fx(c, ratio)] : [])] }
     })
@@ -258,7 +265,15 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const CK = ['operating_cf', 'investing_cf', 'financing_cf']
     const net = (r: typeof cur | null) => (r && CK.some((k) => g(r, k) !== null) ? CK.reduce((s, k) => s + (g(r, k) ?? 0), 0) : null)
     const rowsCf: MRow[] = CK.filter((k) => g(cur, k) !== null || g(prev, k) !== null).map((k) => ({ label: LBL[k]!, cells: [money(g(cur, k)), money(g(prev, k)), money(sumOf(ytd, k))] }))
-    if (rowsCf.length) rowsCf.push({ label: 'Net change in cash', kind: 'total', cells: [money(net(cur)), money(net(prev)), money(ytd.some((r) => net(r) !== null) ? ytd.reduce((s, r) => s + (net(r) ?? 0), 0) : null)] }, { label: 'Cash at the end', cells: [money(g(cur, 'cash')), money(g(prev, 'cash')), money(g(cur, 'cash'))] })
+    // The change in cash on the balance sheet decides the net change; what the cash flow lines do not explain is shown
+    // as its own line, so the statement always agrees with the balance sheet.
+    const bank = (r: typeof cur | null) => (r ? num(r.lines.cash) : null)
+    const chg = (a2: typeof cur | null, b2: typeof cur | null) => (bank(a2) !== null && bank(b2) !== null ? bank(a2)! - bank(b2)! : null)
+    const prev2 = i > 1 ? rows[i - 2]! : null
+    const cols = [{ n: net(cur), c: chg(cur, prev) }, { n: net(prev), c: chg(prev, prev2) }, { n: ytd.some((r) => net(r) !== null) ? ytd.reduce((s, r) => s + (net(r) ?? 0), 0) : null, c: chg(cur, openRow) }]
+    const gap = cols.map((x) => (x.n !== null && x.c !== null && Math.abs(x.c - x.n) >= 1 ? x.c - x.n : null))
+    if (rowsCf.length && gap.some((x) => x !== null)) rowsCf.push({ label: 'Other cash movements', cells: gap.map((x) => money(x ?? 0)) })
+    if (rowsCf.length) rowsCf.push({ label: 'Net change in cash', kind: 'total', cells: cols.map((x) => money(x.c ?? x.n)) }, { label: 'Cash at the end', cells: [money(bank(cur)), money(bank(prev)), money(bank(cur))] })
     sections.push({ key: 'cashflow', title: 'Cash flow', intro: cur.cf_generated ? 'Worked out from the profit and loss and the balance sheet, as you asked.' : undefined, tables: rowsCf.length ? [{ head: ['', ML(cur.period_end, true), prev ? ML(prev.period_end, true) : 'Last month', 'Year to date'], rows: rowsCf }] : undefined, text: rowsCf.length ? undefined : [{ head: '', body: 'No cash flow in the figures for this month.' }] })
   }
 
@@ -272,11 +287,12 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
 
   if ((want('retention') || want('customers')) && o.customers) {
     const f = o.customers, l3 = f.last_3_months ?? {}, who = f.only ? String(f.only) + ' customers only. ' : ''
-    const lbls = f.trend ? (f.trend.labels as string[]).map((m) => ML(m + '-01', true)) : []
+    const lbls = f.trend ? (f.trend.labels as string[]).map((m) => MM(m + '-01')) : []
+    const mv = 'Change in monthly revenue, 3 months to ' + MM(String(f.as_of) + '-01')
     const P0 = (v: unknown) => (v == null ? '–' : v + '%')
     type Pts = { headline?: string; insights?: { title: string; detail: string; tone: Tone }[] } | null | undefined
-    const pts = (a: Pts) => (a?.insights?.length ? { bullets: a.insights.slice(0, 4).map((x) => ({ text: x.title + '. ' + x.detail, tone: x.tone })) } : {})
-    const head = (a: Pts) => (a?.headline ? ' ' + a.headline : '')
+    const pts = (a: Pts) => (a?.insights?.length ? { bullets: a.insights.slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) } : {})
+    const head = (a: Pts) => (a?.headline ? ' ' + tidyText(a.headline, 300) : '')
     const P = (f.points ?? {}) as { retention?: Pts; customers?: Pts }
     if (want('retention')) sections.push({ key: 'retention', title: 'Revenue retention' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '. Revenue retention compares the same customers a year apart: net includes customers who spend more, gross does not.' + head(P.retention), ...pts(P.retention),
       tiles: [{ label: 'Net revenue retention (12 months)', value: P0(f.nrr_12m_pct), tone: f.nrr_12m_pct == null ? undefined : f.nrr_12m_pct >= 100 ? 'good' : f.nrr_12m_pct >= 90 ? 'watch' : 'risk', sub: f.nrr_12m_pct_3_months_ago == null ? undefined : P0(f.nrr_12m_pct_3_months_ago) + ' three months ago' },
@@ -284,24 +300,19 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
         { label: 'Customers lost (12 months)', value: P0(f.logo_churn_12m_pct), sub: f.customers_a_year_ago ? 'of ' + Number(f.customers_a_year_ago).toLocaleString('en-US') + ' a year ago' : undefined },
         { label: 'Year-1 cohort retention', value: P0(f.cohort_m12_retention_pct), sub: 'average across cohorts' }],
       charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: lbls, values: f.trend.nrr, pct: true }, { title: 'Gross revenue retention, 12 months', labels: lbls, values: f.trend.grr ?? [], pct: true }, { title: 'Customers lost, 12 months', labels: lbls, values: f.trend.churn ?? [], pct: true }] : undefined,
-      pies: (() => { const sl = [['New customers', l3.new], ['Spending more', l3.expansion], ['Spending less', l3.contraction], ['Lost', l3.churned]].map(([l, v]) => ({ label: String(l), value: Math.abs(num(v) ?? 0) })); return sl.some((x) => x.value > 0) ? [pieOf('Where revenue came and went, last 3 months', sl, 'Size of each movement')] : [] })(),
-      tables: [{ title: 'Revenue movement, last 3 months', head: ['', 'Amount'], rows: [['New customers', l3.new], ['Existing customers spending more', l3.expansion], ['Existing customers spending less', l3.contraction], ['Customers lost', l3.churned]].map(([l, v]) => ({ label: String(l), cells: [money(num(v))] })) },
-        ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Customers', 'Share', 'Net', 'Gross', 'Lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [String(g.customers), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
+      pies: (() => { const sl = [['New customers', l3.new], ['Spending more', l3.expansion], ['Spending less', l3.contraction], ['Lost', l3.churned]].map(([l, v]) => ({ label: String(l), value: Math.abs(num(v) ?? 0) })); return sl.some((x) => x.value > 0) ? [pieOf(mv, sl, 'Size of each movement')] : [] })(),
+      tables: [{ title: mv, head: ['', 'Amount'], rows: [['New customers', l3.new], ['Existing customers spending more', l3.expansion], ['Existing customers spending less', l3.contraction], ['Customers lost', l3.churned]].map(([l, v]) => ({ label: String(l), cells: [money(num(v))] })) },
+        ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Paying customers', 'Share', 'Net', 'Gross', 'Lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [Number(g.customers).toLocaleString('en-US'), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
     if (want('customers')) sections.push({ key: 'customers', title: 'Customers' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '.' + head(P.customers), ...pts(P.customers),
       tiles: [{ label: 'Paying customers', value: f.active == null ? '–' : Number(f.active).toLocaleString('en-US') }, { label: 'Annual recurring revenue', value: short(f.arr ?? null) }, { label: 'Average customer', value: short(f.arpa_month ?? null), sub: 'a month' },
         { label: 'Top 10 customers', value: P0(f.top10_share_pct), sub: 'of revenue' }, ...(f.ltv_to_cac != null ? [{ label: 'Lifetime value to acquisition cost', value: f.ltv_to_cac + '×', tone: (f.ltv_to_cac >= 3 ? 'good' : f.ltv_to_cac >= 1.5 ? 'watch' : 'risk') as Tone }] : [])],
       charts: f.trend ? [{ title: 'Annual recurring revenue', labels: lbls, values: f.trend.arr }, { title: 'Paying customers', labels: lbls, values: f.trend.active ?? [] }] : undefined,
       pies: [
-        ...(Array.isArray(f.sectors) && f.sectors.length >= 2 ? [pieOf('Revenue by customer sector', (f.sectors as { sector: string; share_pct: number }[]).map((x) => ({ label: x.sector, value: x.share_pct })), 'Share of revenue, last 12 months')] : []),
-        ...(Array.isArray(f.top) && f.top.length ? [pieOf('How concentrated revenue is', [...(f.top as { name: string; share_pct: number }[]).map((x) => ({ label: x.name, value: x.share_pct })), { label: 'All other customers', value: Math.max(0, 100 - (f.top as { share_pct: number }[]).reduce((a2: number, x) => a2 + x.share_pct, 0)) }], 'Top 5 customers against the rest, last 12 months')] : [])],
+        ...(Array.isArray(f.sectors) && f.sectors.length >= 2 ? [pieOf('Revenue by customer sector', (() => { const xs = (f.sectors as { sector: string; share_pct: number }[]).map((x) => ({ label: x.sector, value: x.share_pct })); const left = 100 - xs.reduce((a2, x) => a2 + x.value, 0); return left >= 0.1 ? [...xs, { label: 'Other sectors', value: Math.round(left * 10) / 10 }] : xs })(), 'Share of revenue, last 12 months', true)] : []),
+        ...(Array.isArray(f.top) && f.top.length ? [pieOf('How concentrated revenue is', [...(f.top as { name: string; share_pct: number }[]).map((x) => ({ label: x.name, value: x.share_pct })), { label: 'All other customers', value: Math.max(0, 100 - (f.top as { share_pct: number }[]).reduce((a2: number, x) => a2 + x.share_pct, 0)) }], 'Top 5 customers against the rest, last 12 months', true)] : [])],
       tables: [
-        ...(Array.isArray(f.sectors) && f.sectors.length ? [{ title: 'Revenue by customer sector', head: ['', 'Share', 'Customers', 'Growth', 'Revenue retention'], rows: (f.sectors as { sector: string; share_pct: number; customers: number; growth_pct: number | null; nrr_pct: number | null }[]).map((x) => ({ label: x.sector, cells: [x.share_pct + '%', String(x.customers), pct(x.growth_pct), x.nrr_pct == null ? '–' : x.nrr_pct + '%'] })) }] : []),
+        ...(Array.isArray(f.sectors) && f.sectors.length ? [{ title: 'Revenue by customer sector', head: ['', 'Share', 'Paying customers', 'Growth', 'Revenue retention'], rows: (f.sectors as { sector: string; share_pct: number; customers: number; growth_pct: number | null; nrr_pct: number | null }[]).map((x) => ({ label: x.sector, cells: [x.share_pct + '%', Number(x.customers).toLocaleString('en-US'), pct(x.growth_pct), x.nrr_pct == null ? '–' : x.nrr_pct + '%'] })) }] : []),
         ...(Array.isArray(f.top) && f.top.length ? [{ title: 'Top customers (last 12 months)', head: ['', 'Revenue', 'Share', 'Growth'], rows: (f.top as { name: string; ttm: number; share_pct: number; growth_pct: number | null }[]).map((x) => ({ label: x.name, cells: [money(x.ttm), x.share_pct + '%', pct(x.growth_pct)] })) }] : [])] })
-  }
-
-  if (want('checks')) {
-    const cs = checkRow(cur)
-    sections.push({ key: 'checks', title: 'Data checks', bullets: cs.length ? cs.map((c) => ({ text: c.what + ': ' + c.detail, tone: c.severity === 'error' ? 'risk' : 'watch' as Tone })) : [{ text: 'All totals in this month\'s figures add up.', tone: 'good' }] })
   }
 
   if (want('actions')) {
@@ -449,7 +460,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   const PIE = [rgb(12 / 255, 26 / 255, 46 / 255), rgb(29 / 255, 100 / 255, 168 / 255), rgb(70 / 255, 167 / 255, 220 / 255), rgb(138 / 255, 164 / 255, 196 / 255), rgb(185 / 255, 201 / 255, 220 / 255), rgb(91 / 255, 127 / 255, 166 / 255), rgb(223 / 255, 231 / 255, 241 / 255)]
   const pie = (p: MPie) => {
     const total = p.slices.reduce((a, x) => a + x.value, 0); if (!total) return
-    const isPct = Math.abs(total - 100) < 0.6 && p.slices.every((x) => x.value <= 100)
+    const isPct = p.pct ?? (Math.abs(total - 100) < 0.6 && p.slices.every((x) => x.value <= 100))
     const amt = (v: number) => (isPct ? '' : '  ' + Math.round(v).toLocaleString('en-US'))
     const h = Math.max(120, p.slices.length * 16 + 30)
     ensure(h + 24)

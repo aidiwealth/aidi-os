@@ -34,24 +34,25 @@ export async function growthAvailable(event: H3Event, subject: string): Promise<
 
 const ML = (ym: string) => new Date(ym.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 
-export async function growthSections(event: H3Event, subject: string, keys: string[]): Promise<MSection[]> {
+export async function growthSections(event: H3Event, subject: string, keys: string[], until?: string): Promise<MSection[]> {
   const sc = await scopeOf(subject); if (!sc) return []
   const ok = await growthAvailable(event, subject), want = (k: string) => keys.includes(k) && ok[k]
   const cy = sc.currency, sym = cy === 'USD' ? '$' : cy === 'GBP' ? '£' : cy === 'EUR' ? '€' : cy === 'NGN' ? '₦' : cy + ' '
   const mo = (v: number | null | undefined) => (v === null || v === undefined ? '–' : shortAmount(v, sym))
-  const gs = { group: sc.group, entity: sc.entity, currency: cy, companies: sc.companies }
+  // Banking stops at the report's last month, so a Q3 report shows September, not October.
+  const gs = { group: sc.group, entity: sc.entity, currency: cy, companies: sc.companies, until }
   const who = sc.group ? 'Every company in the group' : sc.name
   const out: MSection[] = []
 
   if (want('banking')) {
-    const t = await treasuryView(gs), lm = t.last_month ? t.months.find((m) => m.month === t.last_month) : null
+    const t = await treasuryView(gs as never), lm = t.last_month ? t.months.find((m) => m.month === t.last_month) : null
     const ms = t.months.slice(-12)
     const bullets: { text: string; tone?: 'good' | 'watch' | 'risk' }[] = []
     if (t.marked_monthly) bullets.push({ text: 'Savings flagged on the cut list (cuts, downgrades, personal spend): ' + mo(t.marked_monthly) + ' a month' + (typeof t.runway_if_cut === 'number' ? ', taking runway to about ' + t.runway_if_cut + ' months.' : t.runway_if_cut ? ', which ends the burn.' : '.'), tone: 'good' })
     // Months the founder reconciled (bank against Financials) for this company or the group.
     const recd = (await db().query<{ month: string }>("SELECT month FROM banking.reconciled WHERE scope = $1 ORDER BY month DESC LIMIT 12", [sc.group ? 'group' : sc.entity ?? 'group']).catch(() => ({ rows: [] }))).rows.map((r) => r.month).reverse()
     if (recd.length) bullets.push({ text: 'Bank reconciled to Financials (month-end cash checked) for ' + recd.map(ML).join(', ') + '.', tone: 'good' })
-    for (const d of t.duplicates.slice(0, 3)) bullets.push({ text: 'Several tools for ' + d.job + ': ' + d.vendors.map((v) => v.name + ' (' + mo(v.monthly) + ')').join(', ') + '.', tone: 'watch' })
+    for (const d of t.duplicates.slice(0, 3)) bullets.push({ text: 'Several tools for ' + d.job + ': ' + d.vendors.map((v) => v.name + ' (' + mo(v.monthly) + ' a month)').join(', ') + '.', tone: 'watch' })
     for (const c of t.by_category.filter((c) => c.budget !== null && c.last > (c.budget ?? 0) * 1.1).slice(0, 3)) bullets.push({ text: c.label + ' spend of ' + mo(c.last) + ' is over its ' + mo(c.budget) + ' monthly budget.', tone: 'risk' })
     out.push({ key: 'banking', title: 'Banking and spend', intro: who + ', from the bank ledger (' + t.ledger.count.toLocaleString('en-US') + ' transactions' + (t.ledger.since ? ' since ' + ML(t.ledger.since) : '') + '; transfers between your own accounts left out). Latest full month ' + (t.last_month ? ML(t.last_month) : '–') + '. Amounts in ' + cy + '.',
       tiles: [{ label: 'Money in', value: mo(lm?.in ?? null) }, { label: 'Money out', value: mo(lm?.out ?? null) }, { label: 'Recurring payments', value: mo(t.recurring_total), sub: 'A month' }, { label: 'Runway', value: t.runway === null ? '–' : t.runway + ' months', sub: 'Same basis as Financials' }],
@@ -64,7 +65,7 @@ export async function growthSections(event: H3Event, subject: string, keys: stri
   if (want('stage')) {
     const s = await stageMonitor(event, sc).catch(() => null)
     if (s) {
-      const facts: [string, string][] = [['Funding stage', s.funding.label], ['Revenue stage', s.operating.label + (s.operating.arr_usd ? ', about $' + Math.round(s.operating.arr_usd).toLocaleString('en-US') + ' a year' : '') + '. ' + s.operating.note], ['Health', s.health.label],
+      const facts: [string, string][] = [['Funding stage', s.funding.label], ['Revenue stage', s.operating.label + (s.operating.arr_usd ? ', annual run rate about $' + Math.round(s.operating.arr_usd).toLocaleString('en-US') + ' (latest month × 12)' : '') + '. ' + s.operating.note], ['Health', s.health.label],
         ['Runway', s.runway.months === null ? '–' : s.runway.months + ' months' + (s.runway.cash_out ? ', to ' + ML(s.runway.cash_out) : '')]]
       if (s.alive?.cross) facts.push(['Revenue overtakes costs', ML(s.alive.cross) + ' at today\'s trends'])
       if (s.equity) facts.push(['Equity readiness', s.equity.total + ' / 100 · ' + s.equity.likelihood])
