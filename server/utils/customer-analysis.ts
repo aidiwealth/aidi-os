@@ -30,6 +30,8 @@ export function customerFacts(kind: 'retention' | 'customers', cs: Cust[], cfg: 
     last_3_months: { new: R(sum('new')), expansion: R(sum('expansion')), contraction: R(sum('contraction')), churned: R(sum('churned')) },
     nrr_change_vs_3_months_ago_pts: r12.nrr !== null && r12p.nrr !== null ? Math.round((r12.nrr - r12p.nrr) * 1000) / 10 : null,
     group_by: cfg.group_by, groups: groups.slice(0, 8).map((g) => ({ group: g.group, customers: g.active, customers_ever: g.customers, share_pct: P(g.share), nrr_pct: P(g.nrr), grr_pct: P(g.grr), logo_churn_pct: P(g.logo_churn), arpa_month: R(g.arpa), growth_pct: P(g.growth) })),
+    company_revenue_growth_3m_vs_prior_3m_pct: (() => { const a = recent3.map((m) => fin.revenue[m]), b = [3, 4, 5].map((i) => fin.revenue[addM(asOf, -i)]); return a.every((x) => typeof x === 'number') && b.every((x) => typeof x === 'number') && b.reduce((s, x) => s + x!, 0) > 0 ? P(a.reduce((s, x) => s + x!, 0) / b.reduce((s, x) => s + x!, 0) - 1) : null })(),
+    company_revenue_growth_yoy_3m_pct: (() => { const a = recent3.map((m) => fin.revenue[m]), b = recent3.map((m) => fin.revenue[addM(m, -12)]); return a.every((x) => typeof x === 'number') && b.every((x) => typeof x === 'number') && b.reduce((s, x) => s + x!, 0) > 0 ? P(a.reduce((s, x) => s + x!, 0) / b.reduce((s, x) => s + x!, 0) - 1) : null })(),
     customer_revenue_vs_financials_pct: fin3 ? P(cust3 / fin3 - 1) : null, cohort_m12_retention_pct: (() => { const v = co.length ? P(co.reduce((s, c) => s + c.cells[3]!, 0) / co.length) : null; return v !== null && v > 200 ? null : v })() }
   if (kind === 'customers') {
     const top = [...rows].sort((a, b) => b.ttm - a.ttm)
@@ -87,7 +89,8 @@ export function tidyText(s: string, max = 900): string {
   if (t.length > max) { const cut = t.slice(0, max), end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; ')); t = end > max * 0.5 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + '.' }
   return t
 }
-export async function analyseCustomers(kind: 'retention' | 'customers', force = false): Promise<CustAnalysis | null> {
+// rulesOnly: the factual points worked out from the numbers, without the AI write-up (reports below board level).
+export async function analyseCustomers(kind: 'retention' | 'customers', force = false, rulesOnly = false): Promise<CustAnalysis | null> {
   // What the company is (CPaaS, software…), so the write-up never takes its customers' sector for its own.
   const businessType = modelOf(await businessModelOf(custEntityId() ? 'entity:' + custEntityId() : 'group').catch(() => null))?.label ?? null
   const cfg = await customerConfig()
@@ -99,7 +102,8 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
   if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(sk, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
   // Each company's analysis and the group's are kept apart.
   const subject = 'customers:' + kind + (custEntityId() ? ':' + custEntityId() : '')
-  const hash = createHash('sha256').update(JSON.stringify({ facts, businessType, v: 4 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, businessType, v: 5 })).digest('hex').slice(0, 40)
+  if (rulesOnly) { const r = rules(kind, facts); return { headline: '', insights: r, ai: false, as_of: String(facts.as_of), kind } }
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }
   const ins = rules(kind, facts)
   let out: CustAnalysis = { headline: ins[0] ? ins.map((i) => i.title).slice(0, 2).join('; ') + '.' : 'Upload more months to see the analysis.', insights: ins, ai: false, as_of: String(facts.as_of), kind }
@@ -108,7 +112,7 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
       const { output } = await runAiTool({ task: 'customer_analysis', model: useRuntimeConfig().aiModelPitchScreen, promptVersion: 'customer-analysis-v4', inputRef: subject,
         system: 'You are a growth-stage CFO and investor reviewing a company\'s ' + (kind === 'retention' ? 'revenue retention and churn' : 'customer base (top and least performing customers, sectors, concentration, lifetime value and acquisition cost)') + '. Use only the facts given (amounts in ' + facts.currency + '). Business type: ' + (businessType ?? 'not set') + '; describe the company only as that, never as another industry (its customers\' sectors are not its own). ' +
           'Say whether a number rose or fell by its change field (nrr_change_vs_3_months_ago_pts: positive is up). Write amounts with k or M exactly from the number (81128 is 81k, 3211 is 3.2k), never as M when it is thousands. Never write a field name. Average revenue per customer is arpa_month in each group: quote it, never work it out. ' +
-          'Each customer group\'s customers is the number paying now. ' +
+          'Each customer group\'s customers is the number paying now. Company revenue is growing when company_revenue_growth_3m_vs_prior_3m_pct or company_revenue_growth_yoy_3m_pct is positive: never call the company or its revenue shrinking then. When cac is null, say nothing about acquisition cost or payback (other figures may hold it). Never compare a percentage with an amount. Keep a calm, factual tone for a management report: no metaphors or dramatic words (bleeding, wound, noise, crisis, collapse, imploding, myth). ' +
           'When billing is usage or prepaid (customers buy credit, like SMS units, and use it over months), a quiet month is not a lost customer and revenue is seasonal: the facts already count a customer lost only after months_without_revenue_before_lost months with nothing, and compare retention_windows; say so where it matters. ' +
           'Use only the numbers in the facts, exactly as given: never multiply, annualise or add them up yourself (a wrong total is worse than none). ' +
           'Read the facts by their names: customers_ever_billed is every customer ever billed, active_customers_billed_now is customers billed now; never compare one with the other as growth. last_3_months_revenue_movement_not_arr is revenue in those 3 months, never ARR. logo_churn_12m_pct counts customers; judge how much it matters by revenue_lost_with_lost_customers_12m_pct (when that is small, the customers lost are small accounts). A group with net revenue retention under 100% is shrinking, never call it expansion. ' +

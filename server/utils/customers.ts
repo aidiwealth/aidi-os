@@ -124,6 +124,7 @@ export async function financialsRevenue(currency: string): Promise<{ revenue: Re
     const d = deriveLines(r.lines, 1)
     if (typeof d.revenue === 'number') revenue[r.period_end.slice(0, 7)] = d.revenue
   }
-  for (const r of rows.filter((x) => x.currency === currency).slice(-12)) { const d = deriveLines(r.lines, 1); if (typeof d.revenue === 'number' && typeof d.gross_profit === 'number') { rv += d.revenue; gp += d.gross_profit } }
+  // Gross margin over the last 3 months (the latest quarter), as the report shows it.
+  for (const r of rows.filter((x) => x.currency === currency).slice(-3)) { const d = deriveLines(r.lines, 1); if (typeof d.revenue === 'number' && typeof d.gross_profit === 'number') { rv += d.revenue; gp += d.gross_profit } }
   return { revenue, gm: rv > 0 ? Math.max(-1, Math.min(1, gp / rv)) : null }
 }

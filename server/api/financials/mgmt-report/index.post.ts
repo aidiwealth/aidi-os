@@ -6,7 +6,7 @@ import { customerFacts, analyseCustomers } from '~/server/utils/customer-analysi
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 import { addM, groupOf, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), period: z.enum(['month', 'quarter', 'year']).default('month'), sections: z.array(z.string().max(40)).max(20).transform((xs) => xs.filter((k) => MR_SECTIONS.some((s) => s.key === k))).pipe(z.array(z.string()).min(1)),
-  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), burn_checks: z.boolean().optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
+  format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), burn_checks: z.boolean().optional(), audience: z.enum(['board', 'executive', 'investor']).optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
   cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional(), cash_with_securities: z.boolean().nullable().optional() })
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team', 'admin')
@@ -29,9 +29,12 @@ export default defineEventHandler(async (event) => {
   // from the figures up to that month are used.
   const upTo = rows.filter((r) => r.period_end.slice(0, 7) <= month.slice(0, 7))
   const latest = upTo.length === rows.filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)).length
+  const audience = d.audience ?? (((org.settings.mgmt_report as Record<string, { audience?: 'board' | 'executive' | 'investor' }> | undefined) ?? {})[d.subject]?.audience) ?? 'board'
   let analysis: { headline: string; insights: { title: string; detail: string; tone: 'good' | 'watch' | 'risk' }[]; flags: { for: string; item: string; why: string }[] } | null = null
   if (d.sections.includes('summary') || d.sections.includes('actions')) {
-    if (latest && upTo.length >= 3) analysis = await analyseFinancials(d.subject, upTo as unknown as FinRow[], upTo[upTo.length - 1]!.currency, name, false, model).catch(() => null)
+    // Below board level, only the factual points worked out from the figures (no AI strategy advice).
+    if (audience !== 'board' && upTo.length >= 3) { const f = factsOf(upTo as unknown as FinRow[], model); analysis = { headline: '', insights: f.rules, flags: f.flags } }
+    else if (latest && upTo.length >= 3) analysis = await analyseFinancials(d.subject, upTo as unknown as FinRow[], upTo[upTo.length - 1]!.currency, name, false, model).catch(() => null)
     else if (upTo.length >= 3) { const f = factsOf(upTo as unknown as FinRow[], model); analysis = { headline: '', insights: f.rules, flags: f.flags } }
   }
   let customers: Record<string, unknown> | null = null
@@ -52,20 +55,20 @@ export default defineEventHandler(async (event) => {
       customers.trend = { labels: ms, nrr: tr[keys[0]!] ?? [], grr: tr[keys[1]!] ?? [], churn: tr[keys[2]!] ?? [], arr: tr[keys[3]!] ?? [], active: tr[keys[4]!] ?? [] }
       // The write-up from the Retention and Customers pages (the headline and four key points) goes into the report,
       // so those pages can stay as charts. Not for one group only: the write-up is about all customers.
-      if (!g) customers.points = { retention: d.sections.includes('retention') ? await analyseCustomers('retention').catch(() => null) : null, customers: d.sections.includes('customers') ? await analyseCustomers('customers').catch(() => null) : null }
+      if (!g) customers.points = { retention: d.sections.includes('retention') ? await analyseCustomers('retention', false, audience !== 'board').catch(() => null) : null, customers: d.sections.includes('customers') ? await analyseCustomers('customers', false, audience !== 'board').catch(() => null) : null }
     }
   }
   const { profile } = await reportProfile().catch(() => ({ profile: { fye_month: 12 } as { fye_month: number } }))
-  const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean; burn_checks?: boolean }> | undefined) ?? {})[d.subject]
+  const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean; burn_checks?: boolean; audience?: 'board' | 'executive' | 'investor' }> | undefined) ?? {})[d.subject]
   const chart = d.chart ?? prevSaved?.chart ?? 'area', pies = d.pies ?? prevSaved?.pies ?? true, burnChecks = d.burn_checks ?? prevSaved?.burn_checks ?? true
   let r
-  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), burnChecks, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
+  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), burnChecks, audience, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Banking and Stage, for the same company (or the group), in the report's order.
-  const extra = await growthSections(event, d.subject, d.sections, month.slice(0, 7)).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
+  const extra = await growthSections(event, d.subject, d.sections, month.slice(0, 7), audience).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
   if (extra.length) { r.sections.push(...extra); r.sections.sort((a, b) => MR_SECTIONS.findIndex((s) => s.key === a.key) - MR_SECTIONS.findIndex((s) => s.key === b.key)) }
   // Remember the sections for next month.
-  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, burn_checks: burnChecks, growth_seen: true } }
+  const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, burn_checks: burnChecks, audience, growth_seen: true } }
   // Not when made from Retention or Customers (a customers-only report should not change next month's choice).
   if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()

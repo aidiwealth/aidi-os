@@ -35,7 +35,8 @@ export interface MChart { title: string; labels: string[]; values: (number | nul
 export interface MPie { title: string; note?: string; slices: { label: string; value: number }[]; pct?: boolean }
 export type ChartKind = 'area' | 'line' | 'bar'
 export interface MSection { key: string; title: string; intro?: string; facts?: [string, string][]; pies?: MPie[]; tiles?: MTile[]; tables?: MTable[]; charts?: MChart[]; bullets?: { text: string; tone?: Tone }[]; text?: { head: string; body: string }[] }
-export interface MReport { kind?: string; company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
+export type Audience = 'board' | 'executive' | 'investor'
+export interface MReport { audience?: Audience; kind?: string; company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
 type Tone = 'good' | 'watch' | 'risk'
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -61,7 +62,21 @@ function pieOf(title: string, xs: { label: string; value: number }[], note?: str
 }
 // Quarterly and annual reports: the months up to the chosen one rolled into quarters or years (flows added, balances
 // at the period's end); burn and runway still come from the monthly figures; the wording follows the period.
-export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>; cf_generated?: boolean })[], o: Parameters<typeof buildMonthly>[1] & { period?: 'month' | 'quarter' | 'year' }): MReport {
+// Who the report is for. Board: everything. Executive team: payroll folded into running costs, the balance sheet's
+// investments, loans, notes, related-party items and equity detail rolled up, runway as a range, no break-even maths,
+// and factual points only (no AI strategy advice). Investor: the full figures with factual points only.
+export function forAudience<T extends FinRow & { detail?: Record<string, number> | null }>(raw: T[], a: Audience | undefined, withSec: boolean): T[] {
+  if (a !== 'executive') return raw
+  return raw.map((r) => {
+    const l = { ...r.lines } as Record<string, number | null>, pay = typeof l.opex_payroll === 'number' ? l.opex_payroll : null
+    if (pay !== null) { l.opex_other = (typeof l.opex_other === 'number' ? l.opex_other : 0) + pay; delete l.opex_payroll }
+    const det = r.detail ? Object.fromEntries(Object.entries(r.detail).filter(([k]) => !k.startsWith('opex_payroll|'))) : r.detail
+    return { ...r, lines: l, detail: det, derived: withSecurities(deriveLines(l as never, 1), withSec) } as T
+  })
+}
+export function buildMgmtReport(raw0: (FinRow & { detail?: Record<string, number>; cf_generated?: boolean })[], o0: Parameters<typeof buildMonthly>[1] & { period?: 'month' | 'quarter' | 'year' }): MReport {
+  const o = { ...o0, withSecurities: o0.audience === 'executive' ? true : o0.withSecurities }
+  const raw = forAudience(raw0, o.audience, o.withSecurities)
   if (!o.period || o.period === 'month') return buildMonthly(raw, o)
   const months = raw.filter((r) => r.period_type === 'month' && r.period_end.slice(0, 7) <= o.month.slice(0, 7)).sort((a, b) => a.period_end.localeCompare(b.period_end))
   if (!months.length) throw new Error('No figures for that period.')
@@ -92,6 +107,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   chart?: ChartKind; pies?: boolean; reviewRows?: FinRow[]; safe?: SafeTreatment
   // false: no cross-checks of burn and cash ("The burn figures disagree…") anywhere in the report.
   burnChecks?: boolean
+  audience?: Audience
 }): MReport {
   const rows = raw.filter((r) => r.period_type === 'month').sort((a, b) => a.period_end.localeCompare(b.period_end)).map((r) => ({ ...r, d: r.derived ?? deriveLines(r.lines, 1) }))
   const i = rows.findIndex((r) => r.period_end.slice(0, 7) === o.month.slice(0, 7))
@@ -122,6 +138,13 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   const want = (k: string) => o.sections.includes(k)
   const LBL: Record<string, string> = { revenue: 'Revenue', cogs: 'Cost of sales', gross_profit: 'Gross profit', gross_margin: 'Gross margin', opex_payroll: 'Payroll', opex_marketing: 'Sales and marketing', opex_rnd: 'Research and development', opex_ga: 'General and administrative', opex_other: 'Other operating costs', opex_total: 'Total running costs', ebitda: 'EBITDA', depreciation: 'Depreciation', interest: 'Interest expense', other_income: 'Other income', tax: 'Tax', net_income: 'Net income (loss)', cash: 'Cash', burn: 'Monthly burn (3-month average)', runway: 'Runway (months)', receivables: 'Receivables', investments: 'Short-term investments', long_term_investments: 'Long-term investments', other_assets: 'Other assets', total_assets: 'Total assets', payables: 'Payables', debt: 'Debt', other_liabilities: 'Other liabilities', total_liabilities: 'Total liabilities', equity: 'Equity', operating_cf: 'Operating cash flow', investing_cf: 'Investing cash flow', financing_cf: 'Financing cash flow' }
   const last12 = upTo.slice(-12)
+  const exec = o.audience === 'executive', board = (o.audience ?? 'board') === 'board'
+  if (exec) { LBL.opex_other = 'Staff and other operating costs' }
+  // Runway: exact for the board and investors, a range for the executive team.
+  const RW = (v: number | null | undefined) => (v === null || v === undefined ? '–' : !exec ? v + ' months' : v >= 24 ? 'over 24 months' : v >= 12 ? '12 to 24 months' : v >= 6 ? '6 to 12 months' : 'under 6 months')
+  // Break-even arithmetic is left out of the executive version.
+  const BE = /break[- ]?even|more revenue or cut|cut (opex|running costs|costs) by|opex cut/i
+  const keepPoint = (x: { title?: string; detail?: string; item?: string; why?: string }) => !exec || !BE.test([x.title, x.detail, x.item, x.why].filter(Boolean).join(' '))
   // The last 12 months, from the monthly figures (a quarterly or annual report's rows are quarters or years).
   const monthsUpTo = ((o.reviewRows ?? upTo) as typeof upTo).filter((r) => r.period_end.slice(0, 7) <= (o.reviewRows ? String((o.reviewRows as FinRow[])[(o.reviewRows as FinRow[]).length - 1]?.period_end ?? cur.period_end) : cur.period_end).slice(0, 7)).map((r) => ({ ...r, d: (r as { d?: Record<string, number | null> }).d ?? r.derived ?? deriveLines(r.lines, 1) }))
   const ttm12 = monthsUpTo.slice(-12), ttmRev = sumOf(ttm12 as never, 'revenue')
@@ -136,7 +159,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   if (gBase !== null) health.push({ area: 'Growth', tone: gBase >= 5 ? 'good' : gBase >= -2 ? 'watch' : 'risk', line: g3 !== null ? 'Revenue ' + pct(g3) + ' over the last 3 months against the 3 before' + (yo !== null ? '; ' + pct(yo) + ' on the same month last year' : '') + '.' : 'Revenue ' + pct(mom) + ' on last month.' })
   if (gm !== null) { const r = bm?.gm; health.push({ area: 'Margins', tone: r ? (gm < r[0] ? 'risk' : gm < (r[0] + r[1]) / 2 ? 'watch' : 'good') : gm < 20 ? 'risk' : gm < 50 ? 'watch' : 'good', line: 'Gross margin ' + gm.toFixed(1).replace(/\.0$/, '') + '%' + (r ? ' (usual for ' + bm!.short + ': ' + r[0] + '–' + r[1] + '%)' : '') + '.' }) }
   if (oxg !== null && g3 !== null) health.push({ area: 'Costs', tone: oxg - g3 > 10 ? 'risk' : oxg - g3 > 0 ? 'watch' : 'good', line: 'Running costs ' + pct(oxg) + ' against revenue ' + pct(g3) + ' over the last 3 months.' })
-  if (review.status !== 'none') health.push({ area: 'Cash', tone: review.profitable ? 'good' : runLow === null ? 'watch' : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good', line: review.profitable ? 'Cash-flow positive.' : review.runway !== null ? review.runway + ' months of runway at ' + short(review.burn) + ' a month' + (review.runway_at_loss ? ' (' + review.runway_at_loss + ' at the loss rate)' : '') + '.' : 'Add a cash balance to see runway.' })
+  if (review.status !== 'none') health.push({ area: 'Cash', tone: review.profitable ? 'good' : runLow === null ? 'watch' : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good', line: review.profitable ? 'Cash-flow positive.' : review.runway !== null ? RW(review.runway) + ' of runway at ' + short(review.burn) + ' a month' + (review.runway_at_loss ? ' (' + RW(review.runway_at_loss) + ' at the loss rate)' : '') + '.' : 'Add a cash balance to see runway.' })
 
   if (want('intro') && o.about && (o.about.text.trim() || o.about.facts.length)) {
     const team = ['Headcount', 'Employees', 'Team size', 'FTE'].map((k) => num(cur.kpis?.[k])).find((v) => v !== null) ?? null
@@ -150,7 +173,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
 
   if (want('summary')) {
     const ni = g(cur, 'net_income')
-    const headline = o.analysis?.headline || [mom !== null ? 'Revenue ' + (mom >= 0 ? 'up ' : 'down ') + Math.abs(mom).toFixed(1).replace(/\.0$/, '') + '% on last month' : '', ni !== null ? (ni >= 0 ? 'a profit of ' : 'a loss of ') + short(Math.abs(ni)) : '', review.runway !== null ? review.runway + ' months of runway' : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) + '.'
+    const headline = o.analysis?.headline || [mom !== null ? 'Revenue ' + (mom >= 0 ? 'up ' : 'down ') + Math.abs(mom).toFixed(1).replace(/\.0$/, '') + '% on last month' : '', ni !== null ? (ni >= 0 ? 'a profit of ' : 'a loss of ') + short(Math.abs(ni)) : '', review.runway !== null ? RW(review.runway) + ' of runway' : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) + '.'
     sections.push({ key: 'summary', title: 'At a glance', intro: headline,
       tiles: [
         { label: 'Revenue', value: short(rev), sub: mom !== null ? pct(mom) + ' on last month' : undefined, tone: mom === null ? undefined : mom >= 0 ? 'good' : 'risk' },
@@ -158,9 +181,9 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
         { label: ni !== null && ni < 0 ? 'Net loss' : 'Net income', value: short(ni === null ? null : Math.abs(ni)), sub: rev && ni !== null ? Math.abs((ni / rev) * 100).toFixed(1).replace(/\.0$/, '') + '% of revenue' : undefined, tone: ni === null ? undefined : ni >= 0 ? 'good' : 'risk' },
         { label: o.withSecurities ? 'Cash and securities' : 'Cash', value: short(g(cur, 'cash')), sub: prev && g(prev, 'cash') !== null && g(cur, 'cash') !== null ? (g(cur, 'cash')! - g(prev, 'cash')! >= 0 ? 'up ' : 'down ') + short(Math.abs(g(cur, 'cash')! - g(prev, 'cash')!)) + ' in the month' : undefined },
         { label: 'Monthly burn', value: review.profitable ? 'None' : short(review.burn), sub: '3-month average' },
-        { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '–', sub: review.runway_at_loss ? review.runway_at_loss + ' at the loss rate' : undefined, tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }],
+        { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? RW(review.runway) : '–', sub: review.runway_at_loss ? RW(review.runway_at_loss) + ' at the loss rate' : undefined, tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }],
       tables: health.length ? [{ title: 'Health check', head: ['Area', 'Status', ''], rows: health.map((h) => ({ label: h.area, cells: [h.tone === 'good' ? 'Good' : h.tone === 'watch' ? 'Watch' : 'Risk', h.line], tones: [h.tone, ''] })) }] : undefined,
-      bullets: (o.analysis?.insights ?? []).filter((x) => o.burnChecks !== false || !BURN_CHECK.test(x.title + ' ' + x.detail)).slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) })
+      bullets: (o.analysis?.insights ?? []).filter(keepPoint).filter((x) => o.burnChecks !== false || !BURN_CHECK.test(x.title + ' ' + x.detail)).slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) })
   }
 
   if (want('scorecard')) {
@@ -175,7 +198,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
       const ch1 = pctCh(a, b), ch2 = pctCh(a, c)
       t.rows.push({ label: LBL[k]!, kind: ['gross_profit', 'net_income'].includes(k) ? 'total' : 'line', cells: [money(a), money(b), pct(ch1), money(c), pct(ch2), flows.has(k) ? money(sumOf(ytd, k)) : '–'], tones: ['', '', toneCh(k, ch1), '', toneCh(k, ch2), ''] })
     }
-    t.rows.push({ label: LBL.burn!, cells: [review.profitable ? 'None' : money(review.burn), '', '', '', '', ''] }, { label: LBL.runway!, cells: [review.runway === null ? '–' : String(review.runway), '', '', '', '', ''] })
+    t.rows.push({ label: LBL.burn!, cells: [review.profitable ? 'None' : money(review.burn), '', '', '', '', ''] }, { label: LBL.runway!, cells: [review.runway === null ? '–' : exec ? RW(review.runway) : String(review.runway), '', '', '', '', ''] })
     if (!yoy) { t.head.splice(4, 2); for (const rw of t.rows) { rw.cells.splice(3, 2); rw.tones?.splice(3, 2) } }
     sections.push({ key: 'scorecard', title: 'Key numbers', intro: 'Amounts in ' + cy + '. Year to date from ' + ML(fyStart + '-01') + '.', tables: [t] })
   }
@@ -234,7 +257,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const c0 = g(prev, 'cash'), c1 = g(cur, 'cash')
     sections.push({ key: 'cash', title: 'Cash, burn and runway', intro: review.basis ? 'Burn is the 3-month average from ' + review.basis.toLowerCase() + '. Runway is cash divided by burn.' : undefined,
       tiles: [{ label: o.withSecurities ? 'Cash and securities' : 'Cash', value: short(c1) }, { label: 'Change in the month', value: c0 !== null && c1 !== null ? short(c1 - c0) : '–', tone: c0 !== null && c1 !== null ? (c1 >= c0 ? 'good' : 'watch') : undefined }, { label: 'Monthly burn', value: review.profitable ? 'None' : short(review.burn) },
-        { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? review.runway + ' months' : '–', tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }, ...(review.runway_at_loss ? [{ label: 'Runway at the loss rate', value: review.runway_at_loss + ' months', sub: 'once unpaid bills are settled' }] : []), ...(review.loss_burn ? [{ label: 'Loss before depreciation', value: short(review.loss_burn), sub: 'a month, 3-month average' }] : [])],
+        { label: 'Runway', value: review.profitable ? 'Cash-flow positive' : review.runway !== null ? RW(review.runway) : '–', tone: runLow === null ? undefined : runLow < 9 ? 'risk' : runLow < 15 ? 'watch' : 'good' }, ...(review.runway_at_loss ? [{ label: 'Runway at the loss rate', value: RW(review.runway_at_loss), sub: 'once unpaid bills are settled' }] : []), ...(review.loss_burn ? [{ label: 'Loss before depreciation', value: short(review.loss_burn), sub: 'a month, 3-month average' }] : [])],
       charts: [{ title: 'Cash at the end of each month', labels: last12.map((r) => ML(r.period_end, true)), values: last12.map((r) => g(r, 'cash')) }],
       bullets: o.burnChecks === false ? undefined : [...review.notes.map((t) => ({ text: t })), ...review.issues.map((t) => ({ text: t, tone: 'watch' as Tone }))] })
   }
@@ -244,7 +267,21 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     // the company's own categories under each (shared/bs-classify.ts). SAFEs sit where the company chose (settings).
     // The figures as saved are used: cash is the bank balance, treasury bills are short-term investments.
     const cl = (r: typeof cur | null) => (r ? classifyBalance(r.lines, r.detail, { safe: o.safe ?? null }) : null)
-    const C = cl(cur)!, P = cl(prev), O = openRow ? cl(openRow) : null
+    // Executive team: one cash and securities line; investments, loans, notes and related-party items rolled into
+    // other assets; equity as one line.
+    const roll = (c: ReturnType<typeof classifyBalance> | null) => {
+      if (!c || !exec) return c
+      const out: typeof c.items = []
+      const add = (key: string, label: string, group: typeof c.items[number]['group'], v: number) => { const x = out.find((i) => i.key === key); if (x) x.value = Math.round((x.value + v) * 100) / 100; else out.push({ key, label, group, value: v }) }
+      for (const i of c.items) {
+        if (i.key === 'cash' || i.key === 'investments' || i.key.startsWith('cash|') || i.key.startsWith('investments|')) add('cash', 'Cash and securities', 'ca', i.value)
+        else if (i.group === 'eq') add('equity', "Shareholders' equity", 'eq', i.value)
+        else if ((i.group === 'ca' || i.group === 'nca') && (i.key.startsWith('long_term_investments') || /loan|notes? receivable|related[- ]party|intercompany/i.test(i.label))) add(i.group === 'ca' ? 'x_ca' : 'x_nca', i.group === 'ca' ? 'Other current assets' : 'Other non-current assets', i.group, i.value)
+        else out.push({ ...i })
+      }
+      return { ...c, items: out }
+    }
+    const C = roll(cl(cur))!, P = roll(cl(prev)), O = openRow ? roll(cl(openRow)) : null
     const empty = classifyBalance({}, null)
     const t = classifiedRows([C, P ?? empty, O ?? empty])
     const fx = (v: number | null, ratio: boolean) => (v === null ? '–' : ratio ? v.toFixed(2) + 'x' : money(v))
@@ -320,11 +357,11 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   }
 
   if (want('actions')) {
-    const fl = (o.analysis?.flags ?? []).filter((f) => o.burnChecks !== false || !BURN_CHECK.test(f.item + ' ' + f.why))
+    const fl = (o.analysis?.flags ?? []).filter(keepPoint).filter((f) => o.burnChecks !== false || !BURN_CHECK.test(f.item + ' ' + f.why))
     const by = ['Executive team', 'CFO', 'Board'].map((w) => ({ w, xs: fl.filter((f) => f.for === w) })).filter((x) => x.xs.length)
     // With nothing flagged, the areas the health check marks to watch or at risk are what to discuss.
     const hw = health.filter((h) => h.tone !== 'good')
-    sections.push({ key: 'actions', title: 'For the executive team', text: by.length ? by.map((x) => ({ head: x.w, body: x.xs.map((f) => '• ' + f.item + ': ' + f.why).join('\n') })) : hw.length ? [{ head: 'To discuss', body: hw.map((h) => '• ' + h.area + ' (' + (h.tone === 'risk' ? 'at risk' : 'to watch') + '): ' + h.line).join('\n') }] : [{ head: '', body: 'Nothing to raise this month.' }] })
+    if (o.audience !== 'investor') sections.push({ key: 'actions', title: board ? 'For the board' : 'For the executive team', text: by.length ? by.map((x) => ({ head: x.w, body: x.xs.map((f) => '• ' + f.item + ': ' + f.why).join('\n') })) : hw.length ? [{ head: 'To discuss', body: hw.map((h) => '• ' + h.area + ' (' + (h.tone === 'risk' ? 'at risk' : 'to watch') + '): ' + h.line).join('\n') }] : [{ head: '', body: 'Nothing to raise this month.' }] })
   }
 
   if (want('comments') && (o.comments.trim() || o.priorities.trim())) {
@@ -332,7 +369,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   }
   // Keep the founder's chosen order.
   sections.sort((a, b) => MR_SECTIONS.findIndex((s) => s.key === a.key) - MR_SECTIONS.findIndex((s) => s.key === b.key))
-  return { company: o.company, month: cur.period_end, label: ML(cur.period_end), currency: cy, sections, generated: !!cur.cf_generated, business: bm?.label ?? null, chart: o.chart ?? 'area', pies: o.pies !== false }
+  return { audience: o.audience ?? 'board', company: o.company, month: cur.period_end, label: ML(cur.period_end), currency: cy, sections, generated: !!cur.cf_generated, business: bm?.label ?? null, chart: o.chart ?? 'area', pies: o.pies !== false }
 }
 const fmtK = (v: number | null) => (v === null ? '–' : Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 100) / 100))
 
@@ -372,7 +409,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   if (img) { const h = 40, w = Math.min(160, (img.width / img.height) * h); page.drawImage(img, { x: M, y: y - h + 10, width: w, height: h }); y -= h + 8 }
   page.drawText((r.kind ?? 'Monthly management report').toUpperCase(), { x: M, y, size: 10, font: bold, color: mut }); y -= 26
   page.drawText(clean(r.label), { x: M, y, size: 24, font: bold, color: navy }); y -= 20
-  para('Prepared for the executive team. Management figures, unaudited.' + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
+  para('Prepared for ' + (r.audience === 'executive' ? 'the executive team' : r.audience === 'investor' ? 'investors' : 'the board') + '. Management figures, unaudited.' + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
 
   const tiles = (ts: MTile[]) => {
     const cols = 3, gap = 10, w = (W - M * 2 - gap * (cols - 1)) / cols, h = 54
