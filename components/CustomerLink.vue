@@ -12,13 +12,11 @@ const ago = (t: string | null) => { if (!t) return 'not yet'; const m = Math.rou
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 async function sync() { busy.value = 'sync'; msg.value = ''; try { const r = await $fetch<{ customers: number; possible: number }>('/api/financials/customers/sync', { query: custQ(), method: 'POST' }); msg.value = r.customers + ' customers read' + (r.possible ? '; ' + r.possible + ' possible duplicate' + (r.possible === 1 ? '' : 's') + ' to check' : '') + '.'; await refresh(); emit('changed') } catch (e) { msg.value = err(e); await refresh() } finally { busy.value = '' } }
 async function unlink() { if (!await askConfirm('Stop reading this sheet? Customers already saved stay.')) return; busy.value = 'un'; try { await $fetch('/api/financials/customers/link', { query: custQ(), method: 'DELETE' }); await refresh() } finally { busy.value = '' } }
+// One request: merged by name, taken off the list, and kept merged on every later read (no need to read the sheet again).
 async function merge(d: Dup) {
-  busy.value = d.to; msg.value = ''
-  try {
-    const cs = await $fetch<{ customers: { id: string; name: string }[] }>('/api/financials/customers', { query: custQ() })
-    const ids = cs.customers.filter((c) => d.names.includes(c.name)).map((c) => c.id), keep = cs.customers.find((c) => c.name === d.to)?.id ?? ids[0]
-    if (ids.length >= 2 && keep) { await $fetch('/api/financials/customers/merge', { query: custQ(), method: 'POST', body: { ids, keep } }); msg.value = 'Merged into ' + d.to + '; kept merged on every read.'; await sync() }
-  } catch (e) { msg.value = err(e) } finally { busy.value = '' }
+  busy.value = 'mg:' + d.names.join(); msg.value = ''
+  try { await $fetch('/api/financials/customers/merge', { query: custQ(), method: 'POST', body: { names: d.names, to: d.to } }); msg.value = 'Merged into ' + d.to + '; kept merged on every read.'; await refresh(); emit('changed') }
+  catch (e) { msg.value = err(e) } finally { busy.value = '' }
 }
 // Not duplicates: remembered, so the same names are not suggested again (uploads and every read of the sheet).
 async function notSame(d: Dup) {
@@ -37,7 +35,7 @@ const dupes = computed(() => data.value?.result?.possible ?? [])
       <a :href="data.url" target="_blank" rel="noopener" class="lk">Open sheet</a>
       <template v-if="props.canEdit"><button type="button" class="lk" :disabled="!!busy" @click="sync">{{ busy === 'sync' ? 'Reading…' : 'Read now' }}</button><button type="button" class="lk mu" :disabled="!!busy" @click="unlink">Unlink</button></template></div>
     <div v-if="dupes.length && props.canEdit" class="dp"><b>{{ dupes.length }} possible duplicate{{ dupes.length === 1 ? '' : 's' }}</b>
-      <div v-for="d in (allDupes ? dupes : dupes.slice(0, 6))" :key="d.names.join()" class="di"><span>{{ d.names.join('  ·  ') }}<em v-if="d.reason">{{ d.reason }}</em></span><span class="da"><button type="button" class="lk" :disabled="!!busy" @click="merge(d)">Merge as {{ d.to }}</button><button type="button" class="lk mut" :disabled="!!busy" :title="'These are different customers: keep them apart and stop suggesting them'" @click="notSame(d)">{{ busy === 'ns:' + d.names.join() ? 'Saving…' : 'Not the same' }}</button></span></div>
+      <div v-for="d in (allDupes ? dupes : dupes.slice(0, 6))" :key="d.names.join()" class="di"><span>{{ d.names.join('  ·  ') }}<em v-if="d.reason">{{ d.reason }}</em></span><span class="da"><button type="button" class="lk" :disabled="!!busy" @click="merge(d)">{{ busy === 'mg:' + d.names.join() ? 'Merging…' : 'Merge as ' + d.to }}</button><button type="button" class="lk mut" :disabled="!!busy" :title="'These are different customers: keep them apart and stop suggesting them'" @click="notSame(d)">{{ busy === 'ns:' + d.names.join() ? 'Saving…' : 'Not the same' }}</button></span></div>
       <button v-if="dupes.length > 6" type="button" class="lk more" @click="allDupes = !allDupes">{{ allDupes ? 'Show fewer' : 'Show all ' + dupes.length }}</button></div>
     <p v-if="msg" class="ms">{{ msg }}</p>
   </div>
@@ -46,7 +44,7 @@ const dupes = computed(() => data.value?.result?.possible ?? [])
 .cl { background: #fff; border: 1px solid var(--c-rule); padding: 10px 14px; margin: 0 0 12px; font-size: 13px; }
 .r { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; } .ic { width: 30px; height: 30px; background: var(--c-signal-soft); color: var(--c-blue-deep); display: flex; align-items: center; justify-content: center; } .ic svg { width: 16px; height: 16px; }
 .t { display: flex; flex-direction: column; margin-right: auto; } .t b { font-weight: 500; } .t span { font-size: 12px; color: var(--c-muted); }
-.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .lk.mu { color: var(--c-muted); } .er { color: var(--c-danger); font-size: 12.5px; }
+.lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .lk.mu { color: var(--c-muted); } .lk:disabled { opacity: .45; cursor: progress; } .er { color: var(--c-danger); font-size: 12.5px; }
 .dp { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 6px; } .di { display: flex; justify-content: space-between; gap: 12px; } .di span { color: var(--c-ink-soft); }
 .ms { margin: 8px 0 0; color: var(--c-ink-soft); }
 .di span em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); } .da { display: flex; gap: 16px; flex: none; } .lk.mut { color: var(--c-muted); } .lk.mut:hover { color: var(--c-ink); } .more { margin-top: 6px; align-self: flex-start; }

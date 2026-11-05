@@ -14,7 +14,7 @@ useHead({
 </script>
 
 <template>
-  <NuxtLoadingIndicator color="#5fa8d3" :height="2" :throttle="150" />
+  <NuxtLoadingIndicator color="#2f6db5" :height="3" :throttle="80" />
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>

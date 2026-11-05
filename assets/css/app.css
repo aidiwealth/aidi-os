@@ -90,3 +90,4 @@ a { text-decoration: none; } a:hover { text-decoration: underline; } .btn:hover 
 details.tbl { padding: 0; margin: 0 0 12px; } details.tbl > summary { list-style: none; cursor: pointer; padding: 14px 18px; font-size: 14px; font-weight: 500; color: var(--c-navy); display: flex; justify-content: space-between; align-items: center; }
 details.tbl > summary::-webkit-details-marker { display: none; } details.tbl > summary::after { content: 'Show'; font-size: 13px; font-weight: 400; color: var(--c-blue-deep); } details.tbl[open] > summary::after { content: 'Hide'; }
 details.tbl[open] > summary { border-bottom: 1px solid var(--c-rule); } details.tbl > :not(summary) { margin-left: 18px; margin-right: 18px; } details.tbl > .scroll { margin: 0; } details.tbl > p.mut { margin-top: 10px; }
+html.is-busy, html.is-busy * { cursor: progress !important; }
