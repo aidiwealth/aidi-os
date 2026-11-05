@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const prevSaved = ((org.settings.mgmt_report as Record<string, { about?: string; chart?: 'area' | 'line' | 'bar'; pies?: boolean }> | undefined) ?? {})[d.subject]
   const chart = d.chart ?? prevSaved?.chart ?? 'area', pies = d.pies ?? prevSaved?.pies ?? true
   let r
-  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
+  try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Banking and Stage, for the same company (or the group), in the report's order.
   const extra = await growthSections(event, d.subject, d.sections).catch((e) => { console.error('[mgmt-report] growth', e); return [] })

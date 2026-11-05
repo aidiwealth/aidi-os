@@ -5,6 +5,7 @@ import { shortAmount } from '~/shared/compact'
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { burnReview, checkRow, deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
+import { classifyBalance, classifiedRows, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 import { modelOf } from '~/shared/business-models'
 import type { ReportProfile } from './fin-report'
 
@@ -59,7 +60,7 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
   if (!o.period || o.period === 'month') return buildMonthly(raw, o)
   const months = raw.filter((r) => r.period_type === 'month' && r.period_end.slice(0, 7) <= o.month.slice(0, 7)).sort((a, b) => a.period_end.localeCompare(b.period_end))
   if (!months.length) throw new Error('No figures for that period.')
-  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month' }))
+  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month', detail: months.find((x) => x.period_end === r.period_end)?.detail ?? (r as { detail?: Record<string, number> }).detail }))
   const last = months[months.length - 1]!, sel = rolled[rolled.length - 1]!
   PER = o.period
   try {
@@ -82,7 +83,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   analysis: { headline: string; insights: { title: string; detail: string; tone: Tone }[]; flags: { for: string; item: string; why: string }[] } | null
   customers: Record<string, any> | null; comments: string; priorities: string
   about?: { text: string; facts: [string, string][]; leaders: [string, string][] } | null
-  chart?: ChartKind; pies?: boolean; reviewRows?: FinRow[]
+  chart?: ChartKind; pies?: boolean; reviewRows?: FinRow[]; safe?: SafeTreatment
 }): MReport {
   const rows = raw.filter((r) => r.period_type === 'month').sort((a, b) => a.period_end.localeCompare(b.period_end)).map((r) => ({ ...r, d: r.derived ?? deriveLines(r.lines, 1) }))
   const i = rows.findIndex((r) => r.period_end.slice(0, 7) === o.month.slice(0, 7))
@@ -205,6 +206,8 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     for (const k of lines) {
       const names = Object.keys(cur.detail ?? {}).filter((x) => x.startsWith(k + '|'))
       if (names.length && k !== 'cogs') for (const n of names) items.push({ label: n.slice(k.length + 1), a: det(cur, n), b: det(prev, n) })
+      // A group adds up companies that may itemise a line differently: what the categories do not explain stays as its own item.
+      if (names.length && k !== 'cogs') { const rest = (r: typeof cur | null) => { const t = g(r, k); return t === null ? null : t - names.reduce((a, n) => a + (det(r, n) ?? 0), 0) }; const a = rest(cur), b = rest(prev); if ((a !== null && Math.abs(a) >= 1) || (b !== null && Math.abs(b) >= 1)) items.push({ label: 'Other ' + LBL[k]!.toLowerCase(), a, b }) }
       else if (g(cur, k) !== null || g(prev, k) !== null) items.push({ label: LBL[k]!, a: g(cur, k), b: g(prev, k) })
     }
     const movers = items.filter((x) => x.a !== null && x.b !== null && x.a !== x.b).sort((p, q) => Math.abs(q.a! - q.b!) - Math.abs(p.a! - p.b!)).slice(0, 3)
@@ -226,14 +229,28 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   }
 
   if (want('balance')) {
-    const BK = ['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity']
-    // Cash in the balance sheet is the bank balance: with securities counted as cash, the headline cash already includes
-    // the short-term investments line, which is shown on its own row here.
-    const gb = (r: typeof cur | null, k: string) => (k === 'cash' && r && o.withSecurities && r.d.bank_cash !== undefined ? num(r.d.bank_cash) : g(r, k))
-    const bsPart = (keys: string[]) => keys.flatMap((k) => { const names = Object.keys(cur.detail ?? {}).filter((x) => x.startsWith(k + '|')); return names.length ? names.map((n) => ({ label: n.slice(k.length + 1), value: det(cur, n) ?? 0 })) : [{ label: LBL[k] ?? k, value: gb(cur, k) ?? 0 }] }).filter((x) => x.value > 0)
-    const balPies = [pieOf('What the company owns', bsPart(['cash', 'receivables', 'investments', 'long_term_investments', 'other_assets']), 'Assets at ' + ML(cur.period_end)), pieOf('What it owes', bsPart(['payables', 'debt', 'other_liabilities']), 'Liabilities at ' + ML(cur.period_end))].filter((x) => x.slices.length >= 2)
-    sections.push({ key: 'balance', title: 'Balance sheet', pies: balPies, tables: [{ head: ['', ML(cur.period_end, true), prev ? ML(prev.period_end, true) : 'Last month', 'Change', openRow ? 'Start of year' : ''].filter((h, n) => n < 4 || openRow),
-      rows: withCats(BK, [(k) => gb(cur, k), (k) => gb(prev, k), (k) => (gb(cur, k) !== null && gb(prev, k) !== null ? gb(cur, k)! - gb(prev, k)! : null), ...(openRow ? [(k: string) => gb(openRow, k)] : [])], [(n) => det(cur, n), (n) => det(prev, n), (n) => (det(cur, n) !== null && det(prev, n) !== null ? det(cur, n)! - det(prev, n)! : null), ...(openRow ? [(n: string) => det(openRow, n)] : [])]) }] })
+    // Classified like QuickBooks and audited accounts: current and non-current assets and liabilities, and equity, with
+    // the company's own categories under each (shared/bs-classify.ts). SAFEs sit where the company chose (settings).
+    // The figures as saved are used: cash is the bank balance, treasury bills are short-term investments.
+    const cl = (r: typeof cur | null) => (r ? classifyBalance(r.lines, r.detail, { safe: o.safe ?? null }) : null)
+    const C = cl(cur)!, P = cl(prev), O = openRow ? cl(openRow) : null
+    const empty = classifyBalance({}, null)
+    const t = classifiedRows([C, P ?? empty, O ?? empty])
+    const fx = (v: number | null, ratio: boolean) => (v === null ? '–' : ratio ? v.toFixed(2) + 'x' : money(v))
+    const rowsB: MRow[] = t.rows.map((r) => {
+      const ratio = r.key === 'current_ratio', a = r.values[0] ?? null, b = r.values[1] ?? null, c = r.values[2] ?? null
+      const ch = r.kind === 'head' || a === null || b === null ? null : a - b
+      return { label: r.label + (r.moved ? ' *' : ''), kind: r.kind === 'head' ? 'head' : r.kind === 'item' ? 'sub' : r.kind === 'ratio' ? 'line' : 'total',
+        cells: r.kind === 'head' ? ['', '', '', ...(O ? [''] : [])] : [fx(a, ratio), P ? fx(b, ratio) : '–', ratio ? (ch === null ? '–' : (ch >= 0 ? '+' : '−') + Math.abs(ch).toFixed(2)) : money(ch), ...(O ? [fx(c, ratio)] : [])] }
+    })
+    const note = safeNote(t.moved, o.safe ?? null, (v) => short(v))
+    const pick = (gs: string[]) => C.items.filter((x) => gs.includes(x.group) && x.value > 0).map((x) => ({ label: x.label, value: x.value }))
+    const balPies = [pieOf('What the company owns', pick(['ca', 'nca']), 'Assets at ' + ML(cur.period_end)), pieOf('What it owes', pick(['cl', 'ncl']), 'Liabilities at ' + ML(cur.period_end))].filter((x) => x.slices.length >= 2)
+    sections.push({ key: 'balance', title: 'Balance sheet', intro: note ? '* ' + note : undefined, pies: balPies,
+      tiles: [{ label: 'Working capital', value: short(C.workingCapital), sub: 'current assets less current liabilities', tone: C.workingCapital === null ? undefined : C.workingCapital >= 0 ? 'good' : 'risk' },
+        { label: 'Current ratio', value: C.currentRatio === null ? '–' : C.currentRatio.toFixed(2) + 'x', sub: 'current assets for each unit of current liabilities', tone: C.currentRatio === null ? undefined : C.currentRatio >= 1.2 ? 'good' : C.currentRatio >= 1 ? 'watch' : 'risk' },
+        { label: "Shareholders' equity", value: short(C.totals.eq), tone: C.totals.eq < 0 ? 'risk' : undefined }],
+      tables: [{ head: ['', ML(cur.period_end, true), prev ? ML(prev.period_end, true) : 'Last month', 'Change', ...(O ? ['Start of year'] : [])], rows: rowsB }] })
   }
 
   if (want('cashflow')) {
@@ -369,7 +386,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
       const lines = wide ? wrap(rw.cells[1] ?? '', reg, 8.5, colW[1]! - 8) : [null]
       const hh = Math.max(rowH, lines.length * 11 + 4)
       if (y - hh < M + 24) { newPage(); drawHead() }
-      const f = rw.kind === 'total' ? bold : reg, size = rw.kind === 'sub' ? 8.5 : 9
+      const f = rw.kind === 'total' || rw.kind === 'head' ? bold : reg, size = rw.kind === 'sub' ? 8.5 : 9
       page.drawText(fit(rw.label, f, size, labW - (rw.kind === 'sub' ? 14 : 4)), { x: M + (rw.kind === 'sub' ? 12 : 0), y, size, font: f, color: rw.kind === 'sub' ? mut : ink })
       rw.cells.forEach((c, j) => {
         const tone = rw.tones?.[j]; const col = tone ? TONE[tone] : rw.kind === 'sub' ? mut : ink
@@ -541,7 +558,7 @@ export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'j
       const hr = ws.addRow(['', ...t.head]); hr.eachCell((c) => { c.font = { ...font, bold: true, color: { argb: MUT } }; c.border = { bottom: { style: 'thin', color: { argb: 'FFD9DDE3' } } } })
       for (const rw of t.rows) {
         const row = ws.addRow(['', (rw.kind === 'sub' ? '   ' : '') + rw.label, ...rw.cells.map(toNum)])
-        row.eachCell((c, col) => { if (col < 2) return; c.font = { ...font, bold: rw.kind === 'total', color: { argb: rw.tones?.[col - 3] ? TONE[rw.tones[col - 3] as Tone] : rw.kind === 'sub' ? MUT : 'FF1A1A1F' } }; if (col > 2) { c.alignment = { horizontal: 'right' }; if (typeof c.value === 'number') c.numFmt = '#,##0;(#,##0);"-"' } })
+        row.eachCell((c, col) => { if (col < 2) return; c.font = { ...font, bold: rw.kind === 'total' || rw.kind === 'head', color: { argb: rw.tones?.[col - 3] ? TONE[rw.tones[col - 3] as Tone] : rw.kind === 'sub' ? MUT : 'FF1A1A1F' } }; if (col > 2) { c.alignment = { horizontal: 'right' }; if (typeof c.value === 'number') c.numFmt = '#,##0;(#,##0);"-"' } })
       }
       if (t.note) text(t.note, { color: MUT })
       ws.addRow([])

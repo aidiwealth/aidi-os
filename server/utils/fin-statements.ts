@@ -3,13 +3,14 @@
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
+import { classifiedRows, classifyBalance, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 
-export interface StRow { label: string; key?: string; values: (number | null)[]; kind?: 'head' | 'total' | 'sub' | 'pct' | 'line' }
+export interface StRow { label: string; key?: string; values: (number | null)[]; kind?: 'head' | 'total' | 'sub' | 'pct' | 'line' | 'ratio' }
 export interface StSection { title: string; rows: StRow[]; note?: string }
 export interface Statements { company: string; currency: string; periods: string[]; period_type: string; sections: StSection[]; comments: string; withSecurities: boolean }
 
 const lbl = (d: string, t: string) => (t === 'year' ? 'FY ' + d.slice(0, 4) : t === 'quarter' ? 'Q' + Math.ceil(Number(d.slice(5, 7)) / 3) + ' ' + d.slice(0, 4) : new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }))
-export function buildStatements(raw: FinRow[], o: { company: string; period_type: 'month' | 'quarter' | 'year'; count: number; withSecurities: boolean; comments: string; notes: Record<string, string> }): Statements {
+export function buildStatements(raw: FinRow[], o: { company: string; period_type: 'month' | 'quarter' | 'year'; count: number; withSecurities: boolean; comments: string; notes: Record<string, string>; safe?: SafeTreatment }): Statements {
   const today = new Date().toISOString().slice(0, 10)
   const months = raw.filter((r) => r.period_type === 'month')
   const native = raw.filter((r) => r.period_type === o.period_type)
@@ -34,15 +35,14 @@ export function buildStatements(raw: FinRow[], o: { company: string; period_type
     ...line('Other income (interest, dividends, gains)', 'other_income'),
     ...(any('tax') ? [{ label: 'Tax', values: neg(v('tax')) }] : []),
     ...line('Net income', 'net_income', 'total')]
-  const cash = v('cash'), sec = v('investments')
-  const cms = cash.map((c, i) => (c === null && sec[i] === null ? null : (c ?? 0) + (sec[i] ?? 0)))
-  const balance: StRow[] = [{ label: 'Assets', values: rows.map(() => null), kind: 'head' },
-    ...line('Cash and bank', 'cash', 'sub'), ...line(o.withSecurities ? 'Marketable securities (e.g. treasury bills)' : 'Short-term investments', 'investments', 'sub'),
-    ...(o.withSecurities && any('investments') ? [{ label: 'Cash and marketable securities', values: cms, kind: 'total' as const }] : []),
-    ...line('Receivables', 'receivables', 'sub'), ...line('Long-term investments and stakes', 'long_term_investments', 'sub'), ...line('Other assets', 'other_assets', 'sub'), ...line('Total assets', 'total_assets', 'total'),
-    { label: 'Liabilities', values: rows.map(() => null), kind: 'head' }, ...line('Payables', 'payables', 'sub'), ...line('Debt', 'debt', 'sub'), ...line('Other liabilities', 'other_liabilities', 'sub'), ...line('Total liabilities', 'total_liabilities', 'total'),
-    ...line("Shareholders' equity", 'equity', 'total'),
-    ...(any('total_liabilities') && any('equity') ? [{ label: 'Total liabilities and equity', values: rows.map((r) => (typeof r.derived.total_liabilities === 'number' || typeof r.derived.equity === 'number' ? ((r.derived.total_liabilities as number) ?? 0) + ((r.derived.equity as number) ?? 0) : null)), kind: 'total' as const }] : [])]
+  // Balance sheet, classified (current and non-current, with the company's own categories under each): the categories
+  // are the ones saved for the month each column ends in. SAFEs sit where the company chose (settings.safe_treatment).
+  type WithDetail = FinRow & { detail?: Record<string, number> | null }
+  const detailAt = (end: string) => (raw as WithDetail[]).find((x) => x.period_type === 'month' && x.period_end === end)?.detail ?? (raw as WithDetail[]).find((x) => x.period_end === end)?.detail ?? null
+  const cb = classifiedRows(rows.map((r) => classifyBalance(r.lines, detailAt(r.period_end), { safe: o.safe ?? null })))
+  const balance: StRow[] = cb.rows.map((r) => ({ label: r.label + (r.moved ? ' *' : ''), values: r.values, kind: r.kind === 'head' ? 'head' : r.kind === 'item' ? 'sub' : r.kind === 'ratio' ? (r.key === 'current_ratio' ? 'ratio' : 'line') : 'total' }))
+  const sNote = safeNote(cb.moved, o.safe ?? null, (x) => Math.round(x).toLocaleString('en-US'))
+  if (sNote) o.notes = { ...o.notes, balance: ['* ' + sNote, o.notes.balance].filter(Boolean).join(' ') }
   const cfK = ['operating_cf', 'investing_cf', 'financing_cf']
   const flow: StRow[] = [...line('Cash from operating activities', 'operating_cf'), ...line('Cash from investing activities', 'investing_cf'), ...line('Cash from financing activities', 'financing_cf'),
     ...(cfK.some(any) ? [{ label: 'Net change in cash', values: rows.map((r) => (cfK.some((k) => typeof r.derived[k] === 'number') ? cfK.reduce((a, k) => a + ((r.derived[k] as number) ?? 0), 0) : null)), kind: 'total' as const }] : []),
@@ -54,7 +54,7 @@ export function buildStatements(raw: FinRow[], o: { company: string; period_type
   return { company: o.company, currency: rows[rows.length - 1]?.currency ?? 'USD', periods: rows.map((r) => lbl(r.period_end, r.period_type)), period_type: o.period_type, sections, comments: o.comments, withSecurities: o.withSecurities }
 }
 
-const fmtN = (x: number | null, pct = false) => (x === null ? '' : pct ? x.toFixed(1) + '%' : x < 0 ? '(' + Math.round(Math.abs(x)).toLocaleString('en-US') + ')' : Math.round(x).toLocaleString('en-US'))
+const fmtN = (x: number | null, pct = false, ratio = false) => (x === null ? '' : ratio ? x.toFixed(2) + 'x' : pct ? x.toFixed(1) + '%' : x < 0 ? '(' + Math.round(Math.abs(x)).toLocaleString('en-US') + ')' : Math.round(x).toLocaleString('en-US'))
 const clean = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/•/g, '-').replace(/[^\x20-\x7E -ÿ]/g, '')
 
 export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Buffer> {
@@ -71,8 +71,8 @@ export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: '
     const head = ws.getRow(6); head.values = ['', ...s.periods]; head.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0C1A2E' } }; c.alignment = { horizontal: 'right' } }); head.getCell(1).alignment = { horizontal: 'left' }
     for (const r of sec.rows) {
-      const row = ws.addRow([(r.kind === 'sub' ? '   ' : '') + r.label, ...r.values.map((x) => (x === null ? null : r.kind === 'pct' ? x / 100 : Math.round(x)))])
-      row.eachCell((c, i) => { if (i > 1) c.numFmt = r.kind === 'pct' ? '0.0%' : fmt })
+      const row = ws.addRow([(r.kind === 'sub' ? '   ' : '') + r.label, ...r.values.map((x) => (x === null ? null : r.kind === 'pct' ? x / 100 : r.kind === 'ratio' ? x : Math.round(x)))])
+      row.eachCell((c, i) => { if (i > 1) c.numFmt = r.kind === 'pct' ? '0.0%' : r.kind === 'ratio' ? '0.00"x"' : fmt })
       if (r.kind === 'total') { row.font = { bold: true }; row.eachCell((c) => { c.border = { top: { style: 'thin', color: { argb: 'FF9CA3AF' } } } }) }
       if (r.kind === 'head') row.font = { bold: true, color: { argb: 'FF1C547D' } }
       if (r.kind === 'pct') row.font = { italic: true, color: { argb: 'FF6B7280' } }
@@ -123,7 +123,7 @@ export async function statementsPdf(s: Statements, logo: { data: Buffer; ext: 'p
         const f = r.kind === 'total' || r.kind === 'head' ? bold : r.kind === 'pct' ? ital : reg, size = 9
         if (r.kind === 'total') page.drawLine({ start: { x: M + labW, y: y + 11 }, end: { x: W - M, y: y + 11 }, thickness: 0.5, color: rule })
         page.drawText(clean(r.label), { x: M + (r.kind === 'sub' ? 12 : 0), y, size, font: f, color: r.kind === 'head' ? blue : r.kind === 'pct' ? mut : ink })
-        r.values.slice(start, start + PER).forEach((x, i) => { const t = fmtN(x, r.kind === 'pct'); if (!t) return; page.drawText(t, { x: M + labW + colW * (i + 1) - 6 - f.widthOfTextAtSize(t, size), y, size, font: f, color: x !== null && x < 0 && ['gross_profit', 'ebitda', 'net_income'].includes(r.key ?? '') ? red : r.kind === 'pct' ? mut : ink }) })
+        r.values.slice(start, start + PER).forEach((x, i) => { const t = fmtN(x, r.kind === 'pct', r.kind === 'ratio'); if (!t) return; page.drawText(t, { x: M + labW + colW * (i + 1) - 6 - f.widthOfTextAtSize(t, size), y, size, font: f, color: x !== null && x < 0 && ['gross_profit', 'ebitda', 'net_income'].includes(r.key ?? '') ? red : r.kind === 'pct' ? mut : ink }) })
         y -= r.kind === 'total' ? 18 : 15
       }
       if (sec.note && start + PER >= s.periods.length) {

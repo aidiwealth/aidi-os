@@ -5,6 +5,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { combine, deriveLines, type FinRow, type Lines } from '~/shared/fin-view'
+import { classifiedRows, classifyBalance, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 
 export interface Person { name: string; role: string }
 export interface Adviser { name: string; address: string }
@@ -137,7 +138,7 @@ export async function shareholding(end: string, start: string | null, classesInf
   return { as_of: end, classes: rows.map((r) => ({ name: r.name, kind: r.kind, shares: r.issued })), conv, table: rows, start_issued: startIssued, start_date: start, currency: conv[0]?.currency ?? 'USD' }
 }
 
-export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; withSecurities: boolean; comments: string; notes: Record<string, string>; subsidiaries: { name: string; country: string | null }[]; cap: CapNote | null }): Report {
+export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; withSecurities: boolean; comments: string; notes: Record<string, string>; subsidiaries: { name: string; country: string | null }[]; cap: CapNote | null; safe?: SafeTreatment }): Report {
   const p = o.p, fye = p.fye_month || 12
   const cur = yearFigures(raw, o.year, fye)
   if (!cur) throw apiError('empty', 'There are no figures for that year.')
@@ -173,36 +174,29 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
     ...L('Income (loss) before income taxes', pbt, 'total'), ...L('Income tax expense', neg(tax)), ...L('Net income (loss) for the period', netInc, 'grand'),
     ...L('EBITDA (non-GAAP, for reference)', V('ebitda'), 'memo')]
 
-  // Balance sheet (classified). Assets the figures total but do not itemise are shown as such, never invented.
-  // Short-term investments are current assets; long-term investments and stakes are not.
-  const cash = V('cash'), secv = V('investments'), lti = V('long_term_investments'), rec = V('receivables'), oth = V('other_assets')
-  const curA = add(cash, secv, rec)
-  const nonCurItem = add(lti, oth)
-  const ta = V('total_assets'), tl = V('total_liabilities'), eq = V('equity')
-  const itemised = add(curA, nonCurItem)
-  const unitem = figs.map((_, i) => (ta[i] !== null && itemised[i] !== null && Math.abs(ta[i]! - itemised[i]!) >= 1 ? ta[i]! - itemised[i]! : null))
-  const nonCur = add(nonCurItem, unitem)
-  const totA = figs.map((_, i) => ta[i] ?? itemised[i])
-  const liabItems = add(V('payables'), V('debt'), V('other_liabilities'))
-  const totL = figs.map((_, i) => tl[i] ?? liabItems[i])
-  const unL = figs.map((_, i) => (tl[i] !== null && liabItems[i] !== null && Math.abs(tl[i]! - liabItems[i]!) >= 1 ? tl[i]! - liabItems[i]! : null))
-  const bal: RLine[] = [
-    { label: 'ASSETS', v: figs.map(() => null), kind: 'head' }, { label: 'Current assets', v: figs.map(() => null), kind: 'head' },
-    ...L('Cash and cash equivalents', cash, 'sub', 'Note 1'), ...L(sec ? 'Marketable securities (treasury bills and similar)' : 'Short-term investments', secv, 'sub', sec ? 'Note 1' : undefined), ...L('Accounts receivable', rec, 'sub'),
-    ...L('Total current assets', curA, 'total'),
-    ...(nonCur.some((x) => x !== null) ? [{ label: 'Non-current assets', v: figs.map(() => null), kind: 'head' as const }] : []),
-    ...L('Long-term investments and stakes', lti, 'sub'), ...L('Other assets', oth, 'sub'), ...L('Other assets (not itemised in the figures)', unitem, 'sub'),
-    ...L('Total non-current assets', nonCur, 'total'), ...L('TOTAL ASSETS', totA, 'grand'),
-    { label: 'LIABILITIES AND SHAREHOLDERS\' EQUITY', v: figs.map(() => null), kind: 'head' }, { label: 'Liabilities', v: figs.map(() => null), kind: 'head' },
-    ...L('Accounts payable and accrued liabilities', V('payables'), 'sub'), ...L('Borrowings', V('debt'), 'sub'), ...L('Other liabilities', V('other_liabilities'), 'sub'),
-    ...L('Other liabilities (not itemised in the figures)', unL, 'sub'), ...L('Total liabilities', totL, 'total'),
-    ...L('Total shareholders\' equity', eq, 'total', o.cap && o.cap.classes.length ? 'Note 2' : undefined),
-    ...L('TOTAL LIABILITIES AND SHAREHOLDERS\' EQUITY', figs.map((_, i) => (totL[i] === null && eq[i] === null ? null : (totL[i] ?? 0) + (eq[i] ?? 0))), 'grand')]
-  const balFoot = figs.some((_, i) => totA[i] !== null && eq[i] !== null && totL[i] !== null && Math.abs(totA[i]! - totL[i]! - eq[i]!) > Math.max(1, Math.abs(totA[i]!) * 0.0005))
-    ? 'Total assets differ from liabilities plus equity in the figures provided; please check the balance sheet before issuing.' : undefined
+  // Balance sheet (classified): current and non-current assets and liabilities, and equity, with the company's own
+  // categories under each (shared/bs-classify.ts), from the figures saved for the month (or year) each column ends in.
+  // Assets the figures total but do not itemise are shown as such, never invented. SAFEs sit where the company chose.
+  type WithDetail = FinRow & { detail?: Record<string, number> | null }
+  const atEnd = (f: Fig | null) => (f ? (raw as WithDetail[]).find((r) => r.period_end === f.end && r.period_type === 'year') ?? (raw as WithDetail[]).find((r) => r.period_end === f.end && r.period_type === 'month') ?? null : null)
+  const clsOf = (f: Fig | null) => { const r = atEnd(f); return f ? classifyBalance(r?.lines ?? (f.d as Lines), r?.detail ?? null, { safe: o.safe ?? null }) : null }
+  const cls = figs.map((f) => clsOf(f)!)
+  const cb = classifiedRows(cls)
+  const cash = V('cash')
+  const bal: RLine[] = [{ label: 'ASSETS', v: figs.map(() => null), kind: 'head' }, ...cb.rows.flatMap((r): RLine[] => {
+    const label = r.label + (r.moved ? ' *' : '')
+    if (r.label === 'Current liabilities' || (r.label === 'Non-current liabilities' && !cb.rows.some((x) => x.label === 'Current liabilities'))) return [{ label: 'LIABILITIES AND SHAREHOLDERS\' EQUITY', v: figs.map(() => null), kind: 'head' }, { label, v: r.values, kind: 'head' }]
+    if (r.kind === 'ratio') return r.key === 'current_ratio' ? [] : [{ label, v: r.values, kind: 'memo' }]
+    return [{ label: r.kind === 'grand' ? label.toUpperCase() : label, v: r.values, kind: r.kind === 'item' ? 'sub' : r.kind, note: r.key === 'cash' ? 'Note 1' : r.label === "Total shareholders' equity" && o.cap && o.cap.classes.length ? 'Note 2' : undefined }]
+  })]
+  const ta = V('total_assets'), totA = cls.map((c) => c.totals.ta), totL = cls.map((c) => c.totals.tl)
+  const eq = cls.map((c, i) => (c.items.some((x) => x.group === 'eq') || V('equity')[i] !== null ? c.totals.eq : null))
+  const sNote = safeNote(cb.moved, o.safe ?? null, (x) => money(x, cur.currency))
+  const balFoot = [figs.some((_, i) => ta[i] !== null && Math.abs(ta[i]! - totL[i]! - (eq[i] ?? 0)) > Math.max(1, Math.abs(ta[i]!) * 0.0005))
+    ? 'Total assets differ from liabilities plus equity in the figures provided; please check the balance sheet before issuing.' : undefined, sNote ? '* ' + sNote : undefined].filter(Boolean).join(' ') || undefined
 
   // Changes in shareholders' equity: opening, the result, and everything else (capital raised, buy-backs, translation).
-  const openEq = opening.slice(0, figs.length).map((f) => (f ? f.d.equity ?? null : null))
+  const openEq = opening.slice(0, figs.length).map((f) => { const c = clsOf(f); return f && c && (c.items.some((i) => i.group === 'eq') || f.d.equity !== null) ? c.totals.eq : null })
   const movement = figs.map((_, i) => (eq[i] !== null && openEq[i] !== null ? eq[i]! - openEq[i]! - (netInc[i] ?? 0) : null))
   const eqLines: RLine[] = [...L('Balance at the beginning of the period', openEq), ...L('Net income (loss) for the period', netInc),
     ...L('Capital contributions and other movements', movement), ...L('Balance at the end of the period', eq, 'grand')]
@@ -218,6 +212,7 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
     { label: 'Investing activities', v: figs.map(() => null), kind: 'head' }, ...L('Net cash from (used in) investing activities', icf, 'total'),
     { label: 'Financing activities', v: figs.map(() => null), kind: 'head' }, ...L('Net cash from (used in) financing activities', fcf, 'total'),
     ...L('Net increase (decrease) in cash', net, 'total'), ...L('Cash at the beginning of the period', openCash), ...L('Effect of exchange rates and other differences', diff), ...L('Cash at the end of the period', cash, 'grand')]
+  const secv = V('investments')
   const secNote = sec && secv[0] !== null ? 'In addition to cash, the company held ' + money(secv[0]!, cur.currency) + ' in marketable securities (treasury bills and similar) at ' + longDate(cur.end) + '.' : undefined
   // Headings with nothing under them are dropped (a heading may sit directly over one sub-heading).
   const strip = (ls: RLine[]) => ls.filter((r, i) => r.kind !== 'head' || (ls[i + 1] && (ls[i + 1]!.kind !== 'head' || (ls[i + 2] && ls[i + 2]!.kind !== 'head'))))

@@ -81,7 +81,7 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
     by.set(x.period_end, list)
   }
   return [...by.entries()].map(([period_end, members]) => {
-    const { lines, eliminated } = consolidate(members, LINE_KEYS, tagged)
+    const { lines, eliminated, detail } = consolidate(members, LINE_KEYS, tagged)
     // KPIs: counts added, money KPIs converted then added, ratios (e.g. CAC per new customer) worked out again from the
     // group totals (kpi-consolidate.ts). The eliminations ride on the row (shown under the group figures), not as KPIs.
     const kpis: Record<string, number> = consolidateKpis(members, kpiRules)
@@ -93,7 +93,7 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
     // Each company's figures in the group currency, the rate used and where it came from: the consolidation table.
     const parts = members.map((m) => ({ who: m.who ?? '', currency: m.currency, rate: m.rate, uses: m.uses,
       lines: Object.fromEntries(LINE_KEYS.map((k) => [k, n(m.lines[k])]).filter(([, v]) => v !== null).map(([k, v]) => [k, Math.round((v as number) * m.rate * 100) / 100])) as L }))
-    return { id: null, period_end, period_type: periodType, currency, lines, kpis, notes, show_to_lps: false, source: 'group', document_id: null, eliminated, parts, left_out: missing.get(period_end) ?? [] }
+    return { id: null, period_end, period_type: periodType, currency, lines, kpis, notes, show_to_lps: false, source: 'group', document_id: null, detail, eliminated, parts, left_out: missing.get(period_end) ?? [] }
   })
 }
 
@@ -178,6 +178,11 @@ export async function cashFlowPolicy(subject: string): Promise<boolean | null> {
 //   chooses. Reports and updates ask each time; the pages use the answer saved in investor_cash_with_securities, and
 //   until the team answers, the earlier company-wide choice (cash_with_securities) still applies.
 export async function cashPolicy(): Promise<boolean> { return false }
+// Where SAFE and convertible notes are shown on the balance sheet (equity or liability); null: as the figures have them.
+export async function safeTreatment(): Promise<'equity' | 'liability' | null> {
+  const v = (await currentOrg())?.settings?.safe_treatment
+  return v === 'equity' || v === 'liability' ? v : null
+}
 export async function investorCashPolicy(override?: boolean | null): Promise<boolean> {
   if (typeof override === 'boolean') return override
   const st = (await currentOrg())?.settings ?? {}

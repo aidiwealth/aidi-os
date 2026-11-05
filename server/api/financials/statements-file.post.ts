@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
       const start = new Date(Date.UTC(year - 1, fye, 0)).toISOString().slice(0, 10)
       cap = await shareholding(end, start, profile.share_classes).catch(() => null)
     }
-    const r = buildReport(raw, { p: { ...profile, legal_name: isGroup ? (profile.legal_name || mainName) + ' and its subsidiaries' : d.subject === main ? profile.legal_name || name : name }, year, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, subsidiaries, cap })
+    const r = buildReport(raw, { p: { ...profile, legal_name: isGroup ? (profile.legal_name || mainName) + ' and its subsidiaries' : d.subject === main ? profile.legal_name || name : name }, year, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, subsidiaries, cap, safe: await safeTreatment() })
     const bytes = d.format === 'xlsx' ? await reportXlsx(r, logo0) : Buffer.from(await reportPdf(r, logo0))
     const fname = (r.company + ' financial statements ' + r.period).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
     const mime = d.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
     return bytes
   }
-  const s = buildStatements(raw, { company: name, period_type: d.period_type, count: d.count, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash } })
+  const s = buildStatements(raw, { company: name, period_type: d.period_type, count: d.count, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, safe: await safeTreatment() })
   if (!s.periods.length) throw apiError('empty', 'No ' + d.period_type + 'ly figures up to today.')
   const logo = logo0
   const bytes = d.format === 'xlsx' ? await statementsXlsx(s, logo) : Buffer.from(await statementsPdf(s, logo))

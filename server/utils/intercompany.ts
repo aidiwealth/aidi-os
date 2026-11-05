@@ -54,8 +54,11 @@ export function isIntercompany(name: string, tagged: Set<string> = new Set()): b
 // Adds the members together (each converted with its rate) and removes intercompany balances and trading.
 // The balance sheet still balances: equity moves by (receivables − payables) taken out, and the part the two sides
 // do not agree on is reported as `unreconciled` so the user can fix it in the books.
-export function consolidate(members: Member[], keys: string[], tagged: Set<string> = new Set()): { lines: L; eliminated: Eliminated } {
+// The group's categories (detail) are the companies' categories converted and added up by name, without the
+// intercompany ones, so the group balance sheet and P&L can list them like a single company's.
+export function consolidate(members: Member[], keys: string[], tagged: Set<string> = new Set()): { lines: L; eliminated: Eliminated; detail: Record<string, number> } {
   const t: L = {}
+  const detail: Record<string, number> = {}
   const e: Eliminated = { receivables: 0, payables: 0, equity: 0, unreconciled: 0, income: 0, costs: 0, items: [], gaps: [] }
   for (const m of members) {
     const ml = memberLines(m, e.gaps)
@@ -63,6 +66,7 @@ export function consolidate(members: Member[], keys: string[], tagged: Set<strin
     for (const [key, raw] of Object.entries(m.detail ?? {})) {
       const i = key.indexOf('|'); if (i < 0) continue
       const line = key.slice(0, i), name = key.slice(i + 1), v = n(raw)
+      if (v !== null && v !== 0 && line && !isIntercompany(name, tagged)) detail[key] = r2((detail[key] ?? 0) + v * m.rate)
       if (v === null || v === 0 || !line || !isIntercompany(name, tagged)) continue
       const x = v * m.rate
       if (ASSET.includes(line)) { adj(t, line, -x); adj(t, 'total_assets', -x); e.receivables += x }
@@ -85,5 +89,5 @@ export function consolidate(members: Member[], keys: string[], tagged: Set<strin
   e.unreconciled = r2(net - e.equity)
   for (const g of e.gaps) g.value = r2(g.value * (members.find((m) => (m.who ?? '') === g.who)?.rate ?? 1))
   for (const k of ['receivables', 'payables', 'equity', 'income', 'costs'] as const) e[k] = r2(e[k])
-  return { lines: t, eliminated: e }
+  return { lines: t, eliminated: e, detail }
 }

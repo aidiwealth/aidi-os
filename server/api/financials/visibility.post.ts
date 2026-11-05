@@ -3,12 +3,14 @@
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
-  const b = z.object({ investor_cash_with_securities: z.boolean().optional(), summary: z.boolean().optional(), link_id: z.string().uuid().optional(), show_source: z.boolean().optional() }).safeParse(await readBody(event))
+  const b = z.object({ investor_cash_with_securities: z.boolean().optional(), safe_treatment: z.enum(['equity', 'liability']).optional(), summary: z.boolean().optional(), link_id: z.string().uuid().optional(), show_source: z.boolean().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const org = (await currentOrg())!
   if (b.data.summary !== undefined) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('investor_fin_summary', $2::boolean) WHERE id = $1", [org.id, b.data.summary]))
   // Treasury bills with cash on the investor page, updates and data room (Financials always shows the bank balance).
   if (b.data.investor_cash_with_securities !== undefined) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('investor_cash_with_securities', $2::boolean) WHERE id = $1", [org.id, b.data.investor_cash_with_securities]))
+  // Where SAFE and convertible notes show on the balance sheet in reports and statements (the figures are not changed).
+  if (b.data.safe_treatment) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('safe_treatment', $2::text) WHERE id = $1", [org.id, b.data.safe_treatment]))
   if (b.data.link_id && b.data.show_source !== undefined && !(await db().query('UPDATE financials.sheet_links SET show_source = $2 WHERE id = $1', [b.data.link_id, b.data.show_source])).rowCount) throw apiError('not_found', 'Not found', 404)
   await audit({ event, actorUserId: user.userId, action: 'financials.investor_visibility', objectType: 'organization', objectId: org.id, detail: b.data })
   return { ok: true }
