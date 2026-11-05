@@ -5,7 +5,7 @@ import { shortAmount } from '~/shared/compact'
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { burnReview, checkRow, deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
-import { classifyBalance, classifiedRows, safeNote, type SafeTreatment } from '~/shared/bs-classify'
+import { classifyBalance, classifiedRows, periodDetail, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 import { modelOf } from '~/shared/business-models'
 import type { ReportProfile } from './fin-report'
 
@@ -60,7 +60,8 @@ export function buildMgmtReport(raw: (FinRow & { detail?: Record<string, number>
   if (!o.period || o.period === 'month') return buildMonthly(raw, o)
   const months = raw.filter((r) => r.period_type === 'month' && r.period_end.slice(0, 7) <= o.month.slice(0, 7)).sort((a, b) => a.period_end.localeCompare(b.period_end))
   if (!months.length) throw new Error('No figures for that period.')
-  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month', detail: months.find((x) => x.period_end === r.period_end)?.detail ?? (r as { detail?: Record<string, number> }).detail }))
+  // Each quarter or year: balance sheet categories from its latest month, profit and loss categories added up.
+  const rolled = rollUp(months as FinRow[], o.period).map((r) => ({ ...r, period_type: 'month', detail: periodDetail(months, r.period_end, (r as { from?: string }).from ?? r.period_end) ?? undefined }))
   const last = months[months.length - 1]!, sel = rolled[rolled.length - 1]!
   PER = o.period
   try {

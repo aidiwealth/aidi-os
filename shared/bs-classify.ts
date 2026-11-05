@@ -92,7 +92,8 @@ export function classifiedRows(periods: BsClassified[]): { rows: BsRow[]; moved:
   const tot = (k: keyof BsTotals) => periods.map((p) => (p.items.length ? p.totals[k] : null))
   for (const { g, head, total } of GROUPS) {
     const keys: { key: string; label: string; moved: boolean }[] = []
-    for (const p of periods) for (const i of p.items) if (i.group === g && !keys.some((x) => x.key === i.key)) keys.push({ key: i.key, label: i.label, moved: !!i.moved })
+    // No marker on moved lines: reports give the figures as presented, without explaining the setting.
+    for (const p of periods) for (const i of p.items) if (i.group === g && !keys.some((x) => x.key === i.key)) keys.push({ key: i.key, label: i.label, moved: false })
     const lines = keys.map((x) => ({ label: x.label, key: x.key, moved: x.moved, kind: 'item' as const, values: periods.map((p) => p.items.find((i) => i.key === x.key && i.group === g)?.value ?? null) })).filter((r) => any(r.values))
     if (lines.length) { rows.push({ label: head, kind: 'head', values: periods.map(() => null) }, ...lines, { label: total, kind: 'total', values: tot(g) }) }
     if (g === 'nca' && periods.some((p) => p.items.some((i) => i.group === 'ca' || i.group === 'nca'))) rows.push({ label: 'Total assets', kind: 'grand', values: tot('ta') })
@@ -106,10 +107,28 @@ export function classifiedRows(periods: BsClassified[]): { rows: BsRow[]; moved:
 }
 
 // The note to print under a balance sheet when SAFEs were moved for presentation.
+// Not printed any more (the founder asked for the figures as presented, with no explanation of the setting); kept so
+// callers stay simple.
 export function safeNote(moved: number[], t: SafeTreatment, fmt: (v: number) => string): string | null {
+  if (moved.length >= 0) return null
   const m = moved.find((x) => Math.abs(x) >= 1)
   if (m === undefined || !t) return null
   return t === 'equity'
     ? 'SAFE and convertible notes (' + fmt(Math.abs(m)) + ') are shown in equity, as chosen in settings: they convert into shares and are not repaid in cash. Under US GAAP (ASC 480) and on a US tax return they are often a liability.'
     : 'SAFE and convertible notes (' + fmt(Math.abs(m)) + ') are shown as a non-current liability, as chosen in settings (US GAAP, ASC 480).'
+}
+
+// Categories for a period that ends on `end`. A month or year saved as such has its own; a quarter or a year still
+// running (it "ends" in December) takes the balance sheet categories of its latest month at or before `end`, and the
+// profit and loss categories added up over its months (`from` is the first month's end).
+const BS_KEYS = new Set(['cash', 'investments', 'receivables', 'long_term_investments', 'other_assets', 'total_assets', 'payables', 'debt', 'other_liabilities', 'total_liabilities', 'equity'])
+type DRow = { period_type: string; period_end: string; detail?: Record<string, number> | null }
+export function periodDetail(rows: DRow[], end: string, from?: string): Record<string, number> | null {
+  const yearAgo = String(Number(end.slice(0, 4)) - 1) + end.slice(4)
+  const ms = rows.filter((r) => r.period_type === 'month' && r.period_end <= end && r.period_end > (from ? from.slice(0, 7) + '-00' : yearAgo)).sort((a, b) => a.period_end.localeCompare(b.period_end))
+  if (!ms.length) return null
+  const last = ms[ms.length - 1]!, out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(last.detail ?? {})) if (BS_KEYS.has(k.split('|')[0]!) && typeof v === 'number') out[k] = v
+  if (from) for (const m of ms) for (const [k, v] of Object.entries(m.detail ?? {})) if (!BS_KEYS.has(k.split('|')[0]!) && typeof v === 'number') out[k] = Math.round(((out[k] ?? 0) + v) * 100) / 100
+  return Object.keys(out).length ? out : null
 }

@@ -1,7 +1,7 @@
 // node --experimental-strip-types tests/bs-classify.test.ts
 // Termii Inc, 30 Sep 2026 (QuickBooks: total assets 1,959,230; liabilities 200,259; equity 1,758,972 with SAFEs in equity).
 // @ts-ignore TS5097: Node runs this file directly, so the import names the .ts file.
-import { classifyBalance, classifiedRows, safeNote } from '../shared/bs-classify.ts'
+import { classifyBalance, classifiedRows, periodDetail, safeNote } from '../shared/bs-classify.ts'
 
 let fail = 0
 const eq = (a: unknown, b: unknown, what: string) => { const ok = typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 0.01 : a === b; if (!ok) { fail++; console.error('FAIL', what, a, '!=', b) } else console.log('ok  ', what) }
@@ -47,10 +47,17 @@ eq(c.items.find((i) => i.label.startsWith('SAFE'))?.group, 'ncl', 'as a non-curr
 const d = classifyBalance({ cash: 100, receivables: 50, other_assets: 30, total_assets: 180, payables: 40, total_liabilities: 40, equity: 140 }, null)
 eq(d.totals.ca, 150, 'lines only: current assets'); eq(d.totals.nca, 30, 'lines only: other assets non-current'); eq(d.currentRatio, 3.75, 'current ratio')
 
-// Rows for two periods, and the note.
+// Rows for two periods; no note is printed.
 const t = classifiedRows([b, a])
 eq(t.rows[0]!.label, 'Current assets', 'first heading')
 eq(t.rows.find((r) => r.label === 'Total liabilities')!.values[0], 200258.67, 'table: liabilities')
 eq(t.rows.find((r) => r.label === 'Total liabilities and equity')!.values[0], 1959230.33, 'table: L+E = assets')
-eq(!!safeNote(t.moved, 'equity', (v) => '$' + Math.round(v).toLocaleString('en-US')), true, 'note written when moved')
+eq(safeNote(t.moved, 'equity', (v) => '$' + Math.round(v).toLocaleString('en-US')), null, 'no note printed (figures as presented)')
+// A year still running ends in December: its balance sheet categories come from its latest month.
+const ytd = periodDetail([{ period_type: 'month', period_end: '2026-08-31', detail: { 'equity|A': 1 } }, { period_type: 'month', period_end: '2026-09-30', detail: { 'other_liabilities|SAFE and convertible notes': 5, 'opex|Rent': 2 } }, { period_type: 'month', period_end: '2025-12-31', detail: { 'equity|Old': 9 } }], '2026-12-31')
+eq(ytd?.['other_liabilities|SAFE and convertible notes'], 5, 'year to date takes the latest month')
+eq(ytd?.['equity|A'], undefined, 'only the latest month for the balance sheet')
+const q = periodDetail([{ period_type: 'month', period_end: '2026-07-31', detail: { 'opex|Rent': 2 } }, { period_type: 'month', period_end: '2026-08-31', detail: { 'opex|Rent': 3 } }, { period_type: 'month', period_end: '2026-09-30', detail: { 'opex|Rent': 4, 'cash|Bank': 7 } }], '2026-09-30', '2026-07-31')
+eq(q?.['opex|Rent'], 9, 'quarter adds up profit and loss categories')
+eq(q?.['cash|Bank'], 7, 'quarter balance from its last month')
 if (fail) { console.error(fail + ' failed'); process.exit(1) } else console.log('all passed')

@@ -5,7 +5,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { combine, deriveLines, type FinRow, type Lines } from '~/shared/fin-view'
-import { classifiedRows, classifyBalance, safeNote, type SafeTreatment } from '~/shared/bs-classify'
+import { classifiedRows, classifyBalance, periodDetail, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 
 export interface Person { name: string; role: string }
 export interface Adviser { name: string; address: string }
@@ -179,7 +179,7 @@ export function buildReport(raw: FinRow[], o: { p: ReportProfile; year: number; 
   // Assets the figures total but do not itemise are shown as such, never invented. SAFEs sit where the company chose.
   type WithDetail = FinRow & { detail?: Record<string, number> | null }
   const atEnd = (f: Fig | null) => (f ? (raw as WithDetail[]).find((r) => r.period_end === f.end && r.period_type === 'year') ?? (raw as WithDetail[]).find((r) => r.period_end === f.end && r.period_type === 'month') ?? null : null)
-  const clsOf = (f: Fig | null) => { const r = atEnd(f); return f ? classifyBalance(r?.lines ?? (f.d as Lines), r?.detail ?? null, { safe: o.safe ?? null }) : null }
+  const clsOf = (f: Fig | null) => { const r = atEnd(f); return f ? classifyBalance(r?.lines ?? (f.d as Lines), r?.detail ?? periodDetail(raw as WithDetail[], f.end), { safe: o.safe ?? null }) : null }
   const cls = figs.map((f) => clsOf(f)!)
   const cb = classifiedRows(cls)
   const cash = V('cash')

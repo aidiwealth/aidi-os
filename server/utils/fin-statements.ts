@@ -3,7 +3,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
-import { classifiedRows, classifyBalance, safeNote, type SafeTreatment } from '~/shared/bs-classify'
+import { classifiedRows, classifyBalance, periodDetail, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 
 export interface StRow { label: string; key?: string; values: (number | null)[]; kind?: 'head' | 'total' | 'sub' | 'pct' | 'line' | 'ratio' }
 export interface StSection { title: string; rows: StRow[]; note?: string }
@@ -38,7 +38,7 @@ export function buildStatements(raw: FinRow[], o: { company: string; period_type
   // Balance sheet, classified (current and non-current, with the company's own categories under each): the categories
   // are the ones saved for the month each column ends in. SAFEs sit where the company chose (settings.safe_treatment).
   type WithDetail = FinRow & { detail?: Record<string, number> | null }
-  const detailAt = (end: string) => (raw as WithDetail[]).find((x) => x.period_type === 'month' && x.period_end === end)?.detail ?? (raw as WithDetail[]).find((x) => x.period_end === end)?.detail ?? null
+  const detailAt = (end: string) => (raw as WithDetail[]).find((x) => x.period_type === 'month' && x.period_end === end)?.detail ?? (raw as WithDetail[]).find((x) => x.period_end === end)?.detail ?? periodDetail(raw as WithDetail[], end)
   const cb = classifiedRows(rows.map((r) => classifyBalance(r.lines, detailAt(r.period_end), { safe: o.safe ?? null })))
   const balance: StRow[] = cb.rows.map((r) => ({ label: r.label + (r.moved ? ' *' : ''), values: r.values, kind: r.kind === 'head' ? 'head' : r.kind === 'item' ? 'sub' : r.kind === 'ratio' ? (r.key === 'current_ratio' ? 'ratio' : 'line') : 'total' }))
   const sNote = safeNote(cb.moved, o.safe ?? null, (x) => Math.round(x).toLocaleString('en-US'))
