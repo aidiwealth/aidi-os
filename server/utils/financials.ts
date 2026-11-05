@@ -54,7 +54,7 @@ export function parseSubject(s: string): { kind: 'group' } | { kind: 'entity' | 
   return { kind: m[1] as 'entity' | 'company', id: m[2]! }
 }
 
-export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number>; eliminated?: import('./intercompany').Eliminated; parts?: { who: string; currency: string; rate: number; uses: RateUse[]; lines: L }[]; left_out?: string[] }
+export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number>; eliminated?: import('./intercompany').Eliminated; parts?: { who: string; currency: string; rate: number; uses: RateUse[]; lines: L; detail?: Record<string, number> }[]; left_out?: string[] }
 // Statements for one subject, or the group: all entities plus subsidiary companies, summed per period in one currency.
 async function loadStatementsBase(subject: string, periodType: string, currency: string): Promise<FinRow[]> {
   const s = parseSubject(subject)
@@ -92,7 +92,8 @@ async function loadStatementsBase(subject: string, periodType: string, currency:
     const notes = noteParts.length ? noteParts.join(' ') : null
     // Each company's figures in the group currency, the rate used and where it came from: the consolidation table.
     const parts = members.map((m) => ({ who: m.who ?? '', currency: m.currency, rate: m.rate, uses: m.uses,
-      lines: Object.fromEntries(LINE_KEYS.map((k) => [k, n(m.lines[k])]).filter(([, v]) => v !== null).map(([k, v]) => [k, Math.round((v as number) * m.rate * 100) / 100])) as L }))
+      lines: Object.fromEntries(LINE_KEYS.map((k) => [k, n(m.lines[k])]).filter(([, v]) => v !== null).map(([k, v]) => [k, Math.round((v as number) * m.rate * 100) / 100])) as L,
+      detail: Object.fromEntries(Object.entries(m.detail ?? {}).filter(([, v]) => typeof v === 'number' && v !== 0).map(([k, v]) => [k, Math.round((v as number) * m.rate * 100) / 100])) as Record<string, number> }))
     return { id: null, period_end, period_type: periodType, currency, lines, kpis, notes, show_to_lps: false, source: 'group', document_id: null, detail, eliminated, parts, left_out: missing.get(period_end) ?? [] }
   })
 }
@@ -160,7 +161,8 @@ export async function loadStatements(subject: string, periodType: string, curren
     if (row.currency === rep) { out.push(row); continue }
     const k = await fxRate(row.currency, rep)
     if (!k) { out.push(row); continue }
-    out.push({ ...row, currency: rep, lines: Object.fromEntries(Object.entries(row.lines).map(([key, v]) => [key, typeof v === 'number' ? Math.round(v * k * 100) / 100 : v])) as typeof row.lines })
+    out.push({ ...row, currency: rep, lines: Object.fromEntries(Object.entries(row.lines).map(([key, v]) => [key, typeof v === 'number' ? Math.round(v * k * 100) / 100 : v])) as typeof row.lines,
+      detail: row.detail ? Object.fromEntries(Object.entries(row.detail).map(([key, v]) => [key, typeof v === 'number' ? Math.round(v * k * 100) / 100 : v])) as Record<string, number> : row.detail })
   }
   return out
 }

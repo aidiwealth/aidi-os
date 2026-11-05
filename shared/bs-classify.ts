@@ -47,7 +47,7 @@ export function classifyBalance(lines: L, detail: Record<string, number> | null 
     for (const c of cs) push(c.key, c.name, place(c.name), c.value)
     const sum = cs.reduce((a, c) => a + c.value, 0)
     const v = given
-    if (v !== null && (!cs.length || Math.abs(v - sum) >= 1)) push(k, cs.length ? 'Other ' + BS_LABEL[k]!.toLowerCase() : BS_LABEL[k]!, restGroup, cs.length ? v - sum : v)
+    if (v !== null && (!cs.length || Math.abs(v - sum) >= 1)) push(k, cs.length ? (BS_LABEL[k]!.startsWith('Other') ? BS_LABEL[k]! : 'Other ' + BS_LABEL[k]!.toLowerCase()) : BS_LABEL[k]!, restGroup, cs.length ? v - sum : v)
   }
   for (const [k, g] of ASSET_LINES) {
     const given = n(lines[k])
