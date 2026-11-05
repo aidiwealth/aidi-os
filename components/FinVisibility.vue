@@ -14,10 +14,11 @@ async function set(body: Record<string, unknown>) { busy.value = true; try { awa
       <label class="row"><input type="radio" name="fvsec" :checked="data.securities === true" :disabled="busy" @change="set({ investor_cash_with_securities: true })"><span><b>With cash, as "Cash and marketable securities"</b></span></label>
       <label class="row"><input type="radio" name="fvsec" :checked="data.securities === false" :disabled="busy" @change="set({ investor_cash_with_securities: false })"><span><b>Cash is the bank balance only</b></span></label>
       <p v-if="data.securities === null" class="hint ask">Used on your investor page, updates and data room.</p></div>
-    <div v-if="data.has_safe" class="srcs"><span class="lbl">SAFE and convertible notes on the balance sheet (reports and statements)</span>
+    <div class="srcs"><span class="lbl">SAFE and convertible notes on the balance sheet (reports and statements)</span>
       <label class="row"><input type="radio" name="fvsafe" :checked="data.safe === 'equity'" :disabled="busy" @change="set({ safe_treatment: 'equity' })"><span><b>In equity</b><em>As in QuickBooks ("VC funding"): they convert into shares and are not repaid in cash.</em></span></label>
       <label class="row"><input type="radio" name="fvsafe" :checked="data.safe === 'liability'" :disabled="busy" @change="set({ safe_treatment: 'liability' })"><span><b>As a non-current liability</b><em>As on a US tax return and often under US GAAP (ASC 480).</em></span></label>
-      <p v-if="!data.safe" class="hint ask">Until you choose, they show where your figures put them.</p></div>
+      <p v-if="!data.has_safe" class="hint ask">Your figures have no category named SAFE, convertible notes or VC funding yet, so there is nothing to move. Add one under the line it sits in (for example "SAFE notes" under Other liabilities): in Statements, Edit the month, then Your categories, or name the row that way in your linked sheet and sync.</p>
+      <p v-else-if="!data.safe" class="hint ask">Until you choose, they show where your figures put them.</p></div>
     <div v-if="data.links.length" class="srcs"><span class="lbl">Show where the figures come from</span>
       <label v-for="l in data.links" :key="l.id" class="row"><input type="checkbox" :checked="l.show_source" :disabled="busy" @change="set({ link_id: l.id, show_source: ($event.target as HTMLInputElement).checked })"><span><b>{{ l.name }}</b><em>Anyone with the link can open the sheet, so share it view-only.</em></span></label></div>
     <p v-else class="hint">Link your sheet (above) to show investors where the figures come from.</p>
