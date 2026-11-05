@@ -1,10 +1,13 @@
 <script setup lang="ts">
 // The founder decides what investors see about the figures: a financial summary on the data room, investor page and
 // updates, and which linked sheets are shown as the source.
-interface V { summary: boolean; links: { id: string; name: string; url: string; show_source: boolean }[]; preview: unknown; company: boolean; has_securities?: boolean; securities?: boolean | null; has_safe?: boolean; safe?: 'equity' | 'liability' | null }
+interface V { summary: boolean; links: { id: string; name: string; url: string; show_source: boolean }[]; preview: unknown; company: boolean; has_securities?: boolean; securities?: boolean | null; has_safe?: boolean; safe?: 'equity' | 'liability' | null; safe_rest?: string | null; rest_options?: { entity_id: string; name: string; period_end: string; currency: string; amount: number }[] }
 const { data, refresh } = await useLazyFetch<V>('/api/financials/visibility', { server: false })
 const busy = ref(false)
 async function set(body: Record<string, unknown>) { busy.value = true; try { await $fetch('/api/financials/visibility', { method: 'POST', body }); await refresh() } finally { busy.value = false } }
+const amt = (v: number, c: string) => (c === 'USD' ? '$' : c + ' ') + Math.round(v).toLocaleString('en-US')
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const mon = (d: string) => MON[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(0, 4)
 </script>
 <template>
   <div v-if="data?.company" class="card fv">
@@ -17,7 +20,13 @@ async function set(body: Record<string, unknown>) { busy.value = true; try { awa
     <div class="srcs"><span class="lbl">SAFE and convertible notes on the balance sheet (reports and statements)</span>
       <label class="row"><input type="radio" name="fvsafe" :checked="data.safe === 'equity'" :disabled="busy" @change="set({ safe_treatment: 'equity' })"><span><b>In equity</b><em>As in QuickBooks ("VC funding"): they convert into shares and are not repaid in cash.</em></span></label>
       <label class="row"><input type="radio" name="fvsafe" :checked="data.safe === 'liability'" :disabled="busy" @change="set({ safe_treatment: 'liability' })"><span><b>As a non-current liability</b><em>As on a US tax return and often under US GAAP (ASC 480).</em></span></label>
-      <p v-if="!data.has_safe" class="hint ask">Your figures have no category named SAFE, convertible notes or VC funding yet, so there is nothing to move. Add one under the line it sits in (for example "SAFE notes" under Other liabilities): in Statements, Edit the month, then Your categories, or name the row that way in your linked sheet and sync.</p>
+      <template v-if="!data.has_safe">
+        <template v-if="data.rest_options?.length">
+          <p class="hint">Your figures have no category named SAFE. If your SAFEs are the part of Other liabilities that no category explains, tick it:</p>
+          <label v-for="x in data.rest_options" :key="x.entity_id" class="row"><input type="checkbox" :checked="data.safe_rest === x.entity_id" :disabled="busy" @change="set({ safe_rest: ($event.target as HTMLInputElement).checked ? x.entity_id : null })"><span><b>{{ x.name }}: {{ amt(x.amount, x.currency) }} in Other liabilities is our SAFE and convertible notes</b><em>Not in any category at {{ mon(x.period_end) }}. Shown as "SAFE and convertible notes", every month; your figures are not changed.</em></span></label>
+        </template>
+        <p v-else class="hint ask">Your figures have no category named SAFE, convertible notes or VC funding yet, so there is nothing to move. Add one under the line it sits in (for example "SAFE notes" under Other liabilities): in Statements, Edit the month, then Your categories, or name the row that way in your linked sheet and sync.</p>
+      </template>
       <p v-else-if="!data.safe" class="hint ask">Until you choose, they show where your figures put them.</p></div>
     <div v-if="data.links.length" class="srcs"><span class="lbl">Show where the figures come from</span>
       <label v-for="l in data.links" :key="l.id" class="row"><input type="checkbox" :checked="l.show_source" :disabled="busy" @change="set({ link_id: l.id, show_source: ($event.target as HTMLInputElement).checked })"><span><b>{{ l.name }}</b><em>Anyone with the link can open the sheet, so share it view-only.</em></span></label></div>

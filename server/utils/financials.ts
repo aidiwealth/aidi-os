@@ -1,3 +1,4 @@
+import { SAFE_NAME } from '~/shared/bs-classify'
 import { fillCashFlow } from '~/shared/fin-view'
 import { consolidate, type Member } from './intercompany'
 import { consolidateKpis, type KpiRule } from './kpi-consolidate'
@@ -56,24 +57,43 @@ export function parseSubject(s: string): { kind: 'group' } | { kind: 'entity' | 
 
 export interface FinRow { id: string | null; period_end: string; period_type: string; currency: string; lines: L; kpis: Record<string, number>; notes: string | null; show_to_lps: boolean; source: string; document_id: string | null; detail?: Record<string, number>; eliminated?: import('./intercompany').Eliminated; parts?: { who: string; currency: string; rate: number; uses: RateUse[]; lines: L; detail?: Record<string, number> }[]; left_out?: string[] }
 // Statements for one subject, or the group: all entities plus subsidiary companies, summed per period in one currency.
+// SAFEs not in a category: the founder can say the part of one company's "Other liabilities" that no category explains is
+// its SAFE and convertible notes (settings.safe_rest = that company's entity id). It is then listed as a category named
+// "SAFE and convertible notes", so the balance sheet can show it where the company chose. The saved figures are unchanged.
+export const SAFE_REST_LABEL = 'SAFE and convertible notes'
+export function otherLiabRest(lines: L, detail: Record<string, number> | null | undefined): number {
+  const ol = typeof lines?.other_liabilities === 'number' ? lines.other_liabilities : null
+  if (ol === null) return 0
+  const cats = Object.entries(detail ?? {}).filter(([k, v]) => k.startsWith('other_liabilities|') && typeof v === 'number')
+  return Math.round((ol - cats.reduce((a, [, v]) => a + (v as number), 0)) * 100) / 100
+}
+function withSafeRest<T extends { lines: L; detail?: Record<string, number> | null }>(row: T, on: boolean): T {
+  if (!on) return row
+  if (Object.keys(row.detail ?? {}).some((k) => SAFE_NAME.test(k))) return row
+  const rest = otherLiabRest(row.lines, row.detail)
+  return rest >= 1 ? { ...row, detail: { ...(row.detail ?? {}), ['other_liabilities|' + SAFE_REST_LABEL]: rest } } : row
+}
 async function loadStatementsBase(subject: string, periodType: string, currency: string): Promise<FinRow[]> {
   const s = parseSubject(subject)
   if (s.kind !== 'group') {
     const r = await db().query<FinRow>(`SELECT id, to_char(period_end, 'YYYY-MM-DD') AS period_end, period_type, currency, lines, kpis, notes, show_to_lps, source, document_id, detail
       FROM financials.statements WHERE ${s.kind === 'entity' ? 'entity_id' : 'company_id'} = $1 AND period_type = $2 ORDER BY period_end`, [s.id, periodType])
-    return r.rows
+    const rest = s.kind === 'entity' && (await currentOrg())?.settings?.safe_rest === s.id
+    return r.rows.map((x) => withSafeRest(x, rest))
   }
   // A company with subsidiaries adds them all up and takes out intercompany balances and trading (see intercompany.ts).
   // Other currencies convert at the company's book rate for that month (fx-book.ts: its own rate, else its nearest own
   // rate, else that month's recorded daily rate, else today's), and each row says which rate each company used.
   const company = (await currentOrg())?.kind === 'company'
-  const r = await db().query<{ period_end: string; lines: L; detail: Record<string, number> | null; currency: string; who: string | null; kpis: Record<string, number> | null }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines, s.detail, s.kpis, s.currency, coalesce(e.name, c.name) AS who FROM financials.statements s
+  const r = await db().query<{ period_end: string; lines: L; detail: Record<string, number> | null; currency: string; who: string | null; kpis: Record<string, number> | null; entity_id: string | null }>(`SELECT to_char(s.period_end, 'YYYY-MM-DD') AS period_end, s.lines, s.detail, s.kpis, s.currency, coalesce(e.name, c.name) AS who, s.entity_id FROM financials.statements s
       LEFT JOIN portfolio.companies c ON c.id = s.company_id LEFT JOIN core.entities e ON e.id = s.entity_id WHERE s.period_type = $1 AND ($3 OR s.currency = $2) AND (s.entity_id IS NOT NULL OR c.relationship = 'subsidiary') ORDER BY s.period_end`, [periodType, currency, company])
   const tagged = new Set((await db().query<{ name: string }>('SELECT lower(name) AS name FROM financials.accounts WHERE intercompany').catch(() => ({ rows: [] as { name: string }[] }))).rows.map((x) => x.name))
   const kpiRules = ((await currentOrg())?.settings.kpi_rules ?? {}) as Record<string, KpiRule>
   const book = await rateBook()
   const by = new Map<string, (Member & { kpis: Record<string, number> | null; currency: string; uses: RateUse[] })[]>(), missing = new Map<string, string[]>()
-  for (const x of r.rows) {
+  const safeRest = (await currentOrg())?.settings?.safe_rest
+  for (const x0 of r.rows) {
+    const x = withSafeRest(x0, !!x0.entity_id && x0.entity_id === safeRest)
     const cv = book.convert(x.currency, currency, x.period_end.slice(0, 7))
     if (!cv) { missing.set(x.period_end, [...(missing.get(x.period_end) ?? []), x.who ?? x.currency]); continue }
     const list = by.get(x.period_end) ?? []
