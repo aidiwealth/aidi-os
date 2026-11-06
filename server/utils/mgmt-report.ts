@@ -415,6 +415,8 @@ const fmtK = (v: number | null) => (v === null ? '–' : Math.abs(v) >= 100 ? Ma
 
 // ---- PDF ------------------------------------------------------------------------------------------------------
 const clean = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/−/g, '-').replace(/•/g, '-').replace(/₦/g, 'NGN ').replace(/…/g, '...').replace(/[^\x20-\x7E\xA0-\xFF\n£€]/g, '')
+// Who the report is for and what the figures are; on the PDF cover and at the top of every Excel sheet.
+export const preparedFor = (r: MReport) => 'Prepared for ' + (r.audience === 'executive' ? 'the executive team' : r.audience === 'investor' ? 'investors' : 'the board') + (r.kind === 'Forecast' ? '. A forecast in ' + r.currency + ': estimates from the assumptions shown, not results.' : '. Management figures in ' + r.currency + ', unaudited.') + (r.business ? ' Business type: ' + r.business + '.' : '')
 export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
   pdf.setTitle(r.company + ' ' + (r.kind ?? 'Monthly management report').toLowerCase() + ', ' + r.label); pdf.setProducer('Finvry'); pdf.setCreator(clean(r.company))
@@ -449,7 +451,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   if (img) { const h = 40, w = Math.min(160, (img.width / img.height) * h); page.drawImage(img, { x: M, y: y - h + 10, width: w, height: h }); y -= h + 8 }
   page.drawText((r.kind ?? 'Monthly management report').toUpperCase(), { x: M, y, size: 10, font: bold, color: mut }); y -= 26
   page.drawText(clean(r.label), { x: M, y, size: 24, font: bold, color: navy }); y -= 20
-  para('Prepared for ' + (r.audience === 'executive' ? 'the executive team' : r.audience === 'investor' ? 'investors' : 'the board') + (r.kind === 'Forecast' ? '. A forecast in ' + r.currency + ': estimates from the assumptions shown, not results.' : '. Management figures in ' + r.currency + ', unaudited.') + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
+  para(preparedFor(r), { color: mut, size: 9.5, gap: 14 })
 
   const tiles = (ts: MTile[]) => {
     const cols = 3, gap = 10, w = (W - M * 2 - gap * (cols - 1)) / cols, h = 54
@@ -632,6 +634,14 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
 }
 
 // ---- Excel ----------------------------------------------------------------------------------------------------
+// Charts on the PDF label every third month; the Excel table names each one ("Oct 26" → "Nov 26").
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function nextMonthLabel(prev: string): string {
+  const m = /^([A-Z][a-z]{2}) (')?(\d{2})$/.exec(prev), i = m ? MON3.indexOf(m[1]!) : -1
+  if (!m || i < 0) return ''
+  const y = Number(m[3]) + (i === 11 ? 1 : 0)
+  return MON3[(i + 1) % 12] + ' ' + (m[2] ?? '') + String(y % 100).padStart(2, '0')
+}
 export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'jpeg' } | null): Promise<Buffer> {
   const { default: Excel } = await import('exceljs')
   const wb = new Excel.Workbook(); wb.creator = r.company
@@ -643,7 +653,8 @@ export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'j
     const ws = wb.addWorksheet(s.title.replace(/[\\/?*[\]:]/g, '').slice(0, 31), { views: [{ showGridLines: false }] })
     ws.getColumn(1).width = 3; ws.getColumn(2).width = 44; for (let c = 3; c <= 9; c++) ws.getColumn(c).width = 16
     if (logo) { const id = wb.addImage({ buffer: logo.data as unknown as ArrayBuffer, extension: logo.ext }); ws.addImage(id, { tl: { col: 6, row: 0 }, ext: { width: 110, height: 32 } }) }
-    ws.getCell('B1').value = r.company.toUpperCase() + ' · MANAGEMENT REPORT · ' + r.label.toUpperCase(); ws.getCell('B1').font = { ...font, bold: true, color: { argb: NAVY } }
+    ws.getCell('B1').value = r.company.toUpperCase() + (r.kind === 'Forecast' ? ' · FORECAST · ' : ' · MANAGEMENT REPORT · ') + r.label.toUpperCase(); ws.getCell('B1').font = { ...font, bold: true, color: { argb: NAVY } }
+    ws.getCell('B2').value = preparedFor(r); ws.getCell('B2').font = { ...font, size: 9.5, color: { argb: MUT } }
     ws.getCell('B3').value = s.title.toUpperCase(); ws.getCell('B3').font = { ...font, bold: true, size: 13, color: { argb: NAVY } }
     ws.addRow([])
     const text = (t: string, o: { bold?: boolean; color?: string } = {}) => { const row = ws.addRow(['', t]); ws.mergeCells(row.number, 2, row.number, 8); const c = row.getCell(2); c.alignment = { wrapText: true, vertical: 'top' }; c.font = { ...font, bold: o.bold, color: o.color ? { argb: o.color } : undefined }; row.height = Math.max(16, 15 * Math.ceil(t.length / 110) * t.split('\n').length) }
@@ -661,8 +672,8 @@ export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'j
       if (t.note) text(t.note, { color: MUT })
       ws.addRow([])
     }
-    for (const c of s.charts ?? []) { text(c.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', 'Month', 'Amount']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); c.labels.forEach((l, j) => { const row = ws.addRow(['', l, c.values[j] ?? null]); row.getCell(3).numFmt = '#,##0;(#,##0);"-"' }); ws.addRow([]) }
-    for (const p of s.pies ?? []) { const tot = p.slices.reduce((a2, x) => a2 + x.value, 0); text(p.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', '', 'Amount', 'Share']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); for (const x of p.slices) { const row = ws.addRow(['', x.label, x.value, tot ? x.value / tot : null]); row.getCell(3).numFmt = '#,##0.##'; row.getCell(4).numFmt = '0.0%' } ws.addRow([]) }
+    for (const c of s.charts ?? []) { text(c.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', 'Month', 'Amount']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); let last = ''; c.labels.forEach((l, j) => { last = l || nextMonthLabel(last); const v = c.values[j]; const row = ws.addRow(['', last, typeof v === 'number' ? Math.round(v) : null]); row.getCell(3).numFmt = '#,##0;(#,##0);"-"' }); ws.addRow([]) }
+    for (const p of s.pies ?? []) { const tot = p.slices.reduce((a2, x) => a2 + x.value, 0); text(p.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', '', 'Amount', 'Share']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); for (const x of p.slices) { const row = ws.addRow(['', x.label, Math.round(x.value), tot ? x.value / tot : null]); row.getCell(3).numFmt = '#,##0;(#,##0)'; row.getCell(4).numFmt = '0.0%' } ws.addRow([]) }
     for (const b of s.bullets ?? []) text('• ' + b.text, { color: b.tone ? TONE[b.tone] : undefined })
     for (const t of s.text ?? []) { if (t.head) text(t.head, { bold: true, color: NAVY }); text(t.body) }
   }

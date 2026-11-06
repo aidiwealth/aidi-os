@@ -83,7 +83,7 @@ export default defineEventHandler(async (event) => {
   if (d.remember) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('mgmt_report', $2::jsonb) WHERE id = $1", [org.id, JSON.stringify(all)]))
   const logo = await companyLogoImage()
   const bytes = d.format === 'xlsx' ? await mgmtXlsx(r, logo) : Buffer.from(await mgmtPdf(r, logo))
-  const fname = (name + ' ' + (d.period === 'year' ? 'annual' : d.period === 'quarter' ? 'quarterly' : 'monthly') + ' management report ' + r.label).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
+  const fname = (name + ' ' + (d.period === 'year' ? 'annual' : d.period === 'quarter' ? 'quarterly' : 'monthly') + ' management report ' + r.label + (r.audience === 'executive' ? ' (executive)' : r.audience === 'investor' ? ' (investors)' : '')).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + d.format
   const mime = d.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
   if (d.room || d.deliver === 'room') {
     const id = randomUUID(), key = 'documents/' + id + '.' + d.format
