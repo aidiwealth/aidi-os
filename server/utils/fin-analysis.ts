@@ -120,10 +120,17 @@ export function contradicts(text: string, f: Record<string, number | string | nu
   for (const m of t.matchAll(/(\d+(?:\.\d+)?)%\s+gross margin|gross margin\s+(?:of\s+|is\s+|at\s+)?(\d+(?:\.\d+)?)%/g)) { const v = Number(m[1] ?? m[2]); if (gm !== null && Math.abs(v - gm) > 1.5) return true }
   return false
 }
+// Points about burn figures not agreeing, or cash the balance sheet does not explain.
+export const BURN_TALK = /check burn and runway|burn (figures|methods|numbers|estimates|calculations)|figures disagree|methods disagree|does not explain the change in cash|doesn't explain the change in cash/i
 export async function analyseFinancials(subject: string, rows: FinRow[], currency: string, company: string, force = false, model: string | null = null): Promise<Analysis> {
-  const { facts, rules, flags, period } = factsOf(rows, model)
+  const { facts, rules, flags: flags0, period } = factsOf(rows, model)
+  // Burn cross-checks switched off (the management report's "Include burn and cash checks"): the analysis leaves out
+  // the burn methods and their disagreements, and any point about them.
+  const burnChecks = (await currentOrg())?.settings?.burn_checks !== false
+  if (!burnChecks) { delete facts.burn_methods; delete facts.burn_check_issues }
+  const flags = burnChecks ? flags0 : flags0.filter((x) => !BURN_TALK.test(x.item + ' ' + x.why))
   const checks = checkRows(rows).filter((c) => c.severity === 'error').length
-  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 11 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, burnChecks, v: 12 })).digest('hex').slice(0, 40)
   if (!force) {
     const hit = (await db().query<{ analysis: Analysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]
     if (hit) return hit.analysis
@@ -159,6 +166,7 @@ export async function analyseFinancials(subject: string, rows: FinRow[], currenc
       out = { ...base, headline: ok(output.headline) ? output.headline.slice(0, 300) : base.headline, insights: [...ins, ...rules.filter((r) => !ins.some((i) => i.title === r.title))].slice(0, 4), flags: fl.length ? fl : flags, ai: true }
     } catch (e) { console.error('[fin-analysis]', (e as Error).message) }
   }
+  if (!burnChecks) out = { ...out, insights: out.insights.filter((x) => !BURN_TALK.test(x.title + ' ' + x.detail)), flags: out.flags.filter((x) => !BURN_TALK.test(x.item + ' ' + x.why)), headline: BURN_TALK.test(out.headline) ? base.headline : out.headline }
   await db().query('INSERT INTO financials.analyses (subject, hash, analysis) VALUES ($1,$2,$3) ON CONFLICT (organization_id, subject) DO UPDATE SET hash = EXCLUDED.hash, analysis = EXCLUDED.analysis, created_at = now()', [subject, hash, JSON.stringify(out)])
   return out
 }

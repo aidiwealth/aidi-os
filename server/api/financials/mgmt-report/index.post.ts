@@ -30,6 +30,9 @@ export default defineEventHandler(async (event) => {
   const upTo = rows.filter((r) => r.period_end.slice(0, 7) <= month.slice(0, 7))
   const latest = upTo.length === rows.filter((r) => r.period_end <= new Date().toISOString().slice(0, 10)).length
   const audience = d.audience ?? (((org.settings.mgmt_report as Record<string, { audience?: 'board' | 'executive' | 'investor' }> | undefined) ?? {})[d.subject]?.audience) ?? 'board'
+  // The burn checks choice also applies to the analysis on the Financials pages (and so to drafted comments).
+  if (d.burn_checks !== undefined) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('burn_checks', $2::boolean) WHERE id = $1", [org.id, d.burn_checks]))
+  if (d.burn_checks !== undefined) org.settings.burn_checks = d.burn_checks
   let analysis: { headline: string; insights: { title: string; detail: string; tone: 'good' | 'watch' | 'risk' }[]; flags: { for: string; item: string; why: string }[] } | null = null
   if (d.sections.includes('summary') || d.sections.includes('actions')) {
     // Below board level, only the factual points worked out from the figures (no AI strategy advice).

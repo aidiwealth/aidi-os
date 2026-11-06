@@ -3,7 +3,7 @@
 // the reporting currency at one plan rate per currency and added together month by month. Money moving between the
 // companies (one company's settlement out, the other's in) cancels out when both forecasts carry it. Read only: each
 // company's forecast is built, imported and changed on that company.
-import { run, type Scenario, type GroupCo } from '~/shared/forecast'
+import { run, forecastRows, type Scenario, type GroupCo, type Month, type CostLine, type Part, type Assumptions } from '~/shared/forecast'
 const props = defineProps<{ data: { currency: string; name: string; companies: GroupCo[] }; canEdit: boolean }>()
 const emit = defineEmits<{ open: [id: string]; refresh: [] }>()
 const sc = ref<Scenario>('base'), msg = ref(''), ok = ref('')
@@ -25,33 +25,45 @@ const months = computed(() => {
 })
 const lateStart = computed(() => ready.value.filter((x) => months.value.length && x.a.start > months.value[0]!).map((x) => x.c.name))
 const shortEnd = computed(() => { const rs = ready.value; if (rs.length < 2) return null; const ends = rs.map((x) => x.r.months[x.r.months.length - 1]?.month ?? ''); return ends.some((e) => e !== ends[0]) ? months.value[months.value.length - 1] ?? null : null })
-interface GM { month: string; revenue: number; cogs: number; gross: number; payroll: number; other: number; opex: number; ebitda: number; tax: number; net: number; items: number; funding: number; flow: number; cash: number; customers: number | null; headcount: number; arr: number; by: Record<string, { revenue: number; net: number; cash: number }> }
+// The group month has the same shape as a company month, so the table uses the same rows as a company forecast:
+// cost lines merged by line, and each company's categories merged by name under their line.
+type GM = Month & { by: Record<string, { revenue: number; net: number; cash: number }> }
+const pk = (parent: string, label: string) => parent + '|' + label.trim().toLowerCase()
+const ga = computed(() => {
+  const costs: CostLine[] = [], parts: Part[] = []
+  for (const { a } of ready.value) {
+    for (const c of a.costs) if (!costs.some((y) => y.key === c.key)) costs.push({ ...c })
+    for (const p of a.parts ?? []) { const key = pk(p.parent, p.label); if (!parts.some((y) => y.key === key)) parts.push({ ...p, key }) }
+  }
+  return { costs, parts } as unknown as Assumptions
+})
 const g = computed<GM[]>(() => months.value.map((m) => {
-  const o: GM = { month: m, revenue: 0, cogs: 0, gross: 0, payroll: 0, other: 0, opex: 0, ebitda: 0, tax: 0, net: 0, items: 0, funding: 0, flow: 0, cash: 0, customers: null, headcount: 0, arr: 0, by: {} }
+  const o: GM = { month: m, parts: {}, revenue: 0, cogs: 0, gross_profit: 0, gross_margin: null, payroll: 0, costs: {}, opex: 0, ebitda: 0, tax: 0, net_income: 0, items: 0, funding: 0, cash_flow: 0, cash: 0, burn: 0, customers: null, headcount: 0, arr: 0, by: {} }
   for (const { c, per, a, r } of ready.value) {
     const k = 1 / per!, x = r.months.find((y) => y.month === m)
     if (!x) { const cash = a.opening.cash * k; o.cash += cash; o.by[c.id] = { revenue: 0, net: 0, cash }; continue }
-    o.revenue += x.revenue * k; o.cogs += x.cogs * k; o.payroll += x.payroll * k; o.opex += x.opex * k; o.tax += x.tax * k; o.net += x.net_income * k
-    o.items += x.items * k; o.funding += x.funding * k; o.flow += x.cash_flow * k; o.cash += x.cash * k; o.headcount += x.headcount
+    o.revenue += x.revenue * k; o.cogs += x.cogs * k; o.payroll += x.payroll * k; o.opex += x.opex * k; o.tax += x.tax * k; o.net_income += x.net_income * k
+    o.items += x.items * k; o.funding += x.funding * k; o.cash_flow += x.cash_flow * k; o.cash += x.cash * k; o.headcount += x.headcount
+    for (const [key, v] of Object.entries(x.costs)) o.costs[key] = (o.costs[key] ?? 0) + v * k
+    for (const p of a.parts ?? []) { const key = pk(p.parent, p.label); o.parts[key] = (o.parts[key] ?? 0) + (x.parts[p.key] ?? 0) * k }
     if (x.customers !== null) o.customers = (o.customers ?? 0) + x.customers
     o.by[c.id] = { revenue: x.revenue * k, net: x.net_income * k, cash: x.cash * k }
   }
-  o.gross = o.revenue - o.cogs; o.other = o.opex - o.payroll; o.ebitda = o.gross - o.opex; o.arr = o.revenue * 12
+  o.gross_profit = o.revenue - o.cogs; o.gross_margin = o.revenue ? Math.round(o.gross_profit / o.revenue * 1000) / 10 : null
+  o.ebitda = o.gross_profit - o.opex; o.burn = Math.max(0, -(o.net_income + o.items)); o.arr = o.revenue * 12
   return o
 }))
 const sum = computed(() => {
   const ms = g.value, last = ms[ms.length - 1]
   if (!last) return null
-  const zero = ms.find((x) => x.cash < 0), be = ms.find((x) => x.net >= 0 && x.revenue > 0), min = ms.reduce((a, x) => (x.cash < a.cash ? x : a), ms[0]!)
+  const zero = ms.find((x) => x.cash < 0), be = ms.find((x) => x.net_income >= 0 && x.revenue > 0), min = ms.reduce((a, x) => (x.cash < a.cash ? x : a), ms[0]!)
   return { cash_end: last.cash, zero: zero?.month ?? null, min: min.cash, min_month: min.month, be: be?.month ?? null, arr: last.arr, revenue: ms.reduce((s, x) => s + x.revenue, 0), end: last.month }
 })
 const m = (v: number | null | undefined, c = cur.value) => (v === null || v === undefined ? '—' : briefMoney(v, c))
 const full = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '(' : '') + Math.abs(Math.round(v)).toLocaleString('en-US') + (v < 0 ? ')' : ''))
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const chart = computed(() => g.value.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })))
-const ROWS: [string, (x: GM) => number | null, string?][] = [['Revenue', (x) => x.revenue, 'b'], ['Cost of revenue', (x) => -x.cogs], ['Gross profit', (x) => x.gross, 'b'], ['Gross margin %', (x) => (x.revenue ? Math.round(x.gross / x.revenue * 1000) / 10 : null), 'p'],
-  ['Payroll', (x) => -x.payroll], ['Other operating costs', (x) => -x.other], ['Operating costs', (x) => -x.opex, 'b'], ['EBITDA', (x) => x.ebitda, 'b'], ['Tax', (x) => -x.tax], ['Net income', (x) => x.net, 'b'],
-  ['One-off items', (x) => x.items], ['Funding', (x) => x.funding], ['Net cash flow', (x) => x.flow, 'b'], ['Cash at month end', (x) => x.cash, 'h'], ['Customers', (x) => x.customers, 'n'], ['Headcount', (x) => x.headcount, 'n'], ['ARR', (x) => x.arr]]
+const ROWS = computed(() => forecastRows(ga.value, g.value))
 const SRC: Record<string, string> = { plan: 'plan rate', book: 'latest book rate', daily: "today's rate", none: 'no rate yet', same: '' }
 const curs = computed(() => [...new Set(props.data.companies.filter((c) => c.currency !== cur.value).map((c) => c.currency))])
 const srcOf = (q: string) => props.data.companies.find((c) => c.currency === q)?.rate_source ?? 'none'
@@ -66,7 +78,7 @@ async function useFc(c: GroupCo, id: string) {
 }
 function csv() {
   const head = ['Line (' + cur.value + ')', ...g.value.map((x) => x.month)]
-  const rows = [head, ...ROWS.map(([l, f]) => [l, ...g.value.map((x) => { const v = f(x); return v === null ? '' : String(Math.round(v * 100) / 100) })]),
+  const rows = [head, ...ROWS.value.map((r) => [r.label, ...g.value.map((x) => { const v = r.get(x); return v === null ? '' : String(Math.round(v * 100) / 100) })]),
     ...ready.value.flatMap(({ c }) => [['Revenue: ' + c.name, ...g.value.map((x) => String(Math.round((x.by[c.id]?.revenue ?? 0) * 100) / 100))], ['Cash: ' + c.name, ...g.value.map((x) => String(Math.round((x.by[c.id]?.cash ?? 0) * 100) / 100))]])]
   const blob = new Blob([rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n')], { type: 'text/csv' })
   const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = props.data.name + ' group forecast (' + sc.value + ').csv'; a.click(); URL.revokeObjectURL(u)
@@ -103,7 +115,7 @@ function csv() {
       <div class="card"><ForecastChart :actual="[]" :forecast="chart" :currency="cur" /></div>
       <p v-if="lateStart.length || shortEnd" class="fine">{{ lateStart.length ? lateStart.join(', ') + (lateStart.length === 1 ? '\'s forecast starts' : '\'s forecasts start') + ' later: until then it counts its opening cash only. ' : '' }}{{ shortEnd ? 'The group runs to ' + mon(shortEnd) + ', where the shortest forecast ends.' : '' }}</p>
       <div class="card pad0"><div class="tw"><table class="t" data-nosearch><thead><tr><th class="st">{{ cur }}</th><th v-for="x in g" :key="x.month">{{ mon(x.month) }}</th></tr></thead>
-        <tbody><tr v-for="[l, f, k] in ROWS" :key="l" :class="k"><td class="st">{{ l }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (f(x) ?? 0) < 0 }">{{ k === 'p' ? (f(x) === null ? '—' : f(x) + '%') : k === 'n' ? (f(x) ?? '—') : full(f(x)) }}</td></tr>
+        <tbody><tr v-for="(r, i) in ROWS" :key="i + r.label" :class="r.kind"><td class="st">{{ r.label }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (r.get(x) ?? 0) < 0 }">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr>
           <tr class="sub"><td class="st">By company</td><td :colspan="g.length" /></tr>
           <template v-for="{ c } in ready" :key="c.id"><tr><td class="st">Revenue · {{ c.name }}</td><td v-for="x in g" :key="x.month">{{ full(x.by[c.id]?.revenue) }}</td></tr>
             <tr><td class="st">Net income · {{ c.name }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (x.by[c.id]?.net ?? 0) < 0 }">{{ full(x.by[c.id]?.net) }}</td></tr>
@@ -127,6 +139,7 @@ function csv() {
 .pad0 { padding: 0; } .tw { overflow-x: auto; }
 .t { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; width: max-content; min-width: 100%; } .t th { font-weight: 500; color: var(--c-muted); text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; background: #fbfaf7; }
 .t td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; color: var(--c-ink-soft); } .t .st { position: sticky; left: 0; background: #fff; text-align: left; min-width: 210px; color: var(--c-ink); z-index: 1; } .t th.st { background: #fbfaf7; }
+.t tr.s td { color: var(--c-muted); font-size: 12px; } .t tr.s td.st { padding-left: 24px; color: var(--c-ink-soft); }
 .t tr.b td { font-weight: 600; color: var(--c-ink); } .t tr.h td { font-weight: 600; color: var(--c-navy); background: #f4f6f9; } .t tr.h td.st { background: #f4f6f9; } .t td.neg { color: var(--c-danger); }
 .t tr.sub td { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); padding-top: 14px; }
 .t.sm { width: 100%; } .fine { margin: 0; font-size: 12px; color: var(--c-muted); }
