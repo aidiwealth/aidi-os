@@ -13,7 +13,26 @@ const err = (e: unknown, d: string) => (e as { data?: { data?: { error?: { messa
 const label = (k: string) => (k ? 'In ' + (data.value?.lines.find((l) => l.key === k)?.label ?? k) : 'Detail only')
 const SEC: Record<string, string> = { pl: 'Profit and loss', bs: 'Balance sheet', cf: 'Cash flow', '': 'Detail only' }
 const groups = computed(() => { const g: Record<string, Acc[]> = {}; for (const a of data.value?.accounts ?? []) { const s = data.value!.lines.find((l) => l.key === a.parent)?.section ?? ''; (g[s] ??= []).push(a) } return Object.entries(g) })
-async function save(a: Acc) { busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: edit[a.id] }); await load(); emit('changed') } catch (e) { msg.value = err(e, 'Could not save.') } finally { busy.value = '' } }
+async function save(a: Acc) {
+  busy.value = a.id; msg.value = ''
+  try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: edit[a.id] }); await load(); emit('changed') }
+  catch (e) {
+    // Renamed to a name another category has: offer to merge the two.
+    const same = data.value?.accounts.find((x) => x.id !== a.id && x.name.toLowerCase() === edit[a.id]!.name.trim().toLowerCase())
+    if (same) { busy.value = ''; await mergeInto(a, same.id); return }
+    msg.value = err(e, 'Could not save.')
+  } finally { busy.value = '' }
+}
+// Merge one category into another: its figures are added to the other's, period by period, and linked sheets follow.
+const merging = ref(''); const target = ref('')
+async function mergeInto(a: Acc, to: string) {
+  const t = data.value?.accounts.find((x) => x.id === to); if (!t) return
+  if (!await askConfirm('Merge "' + a.name + '" into "' + t.name + '"? Its figures are added to "' + t.name + '" in every period, linked sheets fill "' + t.name + '" from now on, and "' + a.name + '" goes.')) return
+  busy.value = a.id; msg.value = ''
+  try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: { merge_into: to } }); merging.value = ''; target.value = ''; await load(); emit('changed') }
+  catch (e) { msg.value = err(e, 'Could not merge.') } finally { busy.value = '' }
+}
+const sameSection = (a: Acc) => { const sec = data.value?.lines.find((l) => l.key === a.parent)?.section ?? ''; return (data.value?.accounts ?? []).filter((x) => x.id !== a.id && (data.value?.lines.find((l) => l.key === x.parent)?.section ?? '') === sec) }
 async function del(a: Acc) { if (!await askConfirm('Remove "' + a.name + '"? Figures already saved stay as a detail.')) return; busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'DELETE' }); await load() } catch (e) { msg.value = err(e, 'Could not remove it.') } finally { busy.value = '' } }
 async function create() { busy.value = 'new'; msg.value = ''; try { await $fetch('/api/financials/accounts', { method: 'POST', body: add }); add.name = ''; await load() } catch (e) { msg.value = err(e, 'Could not add it.') } finally { busy.value = '' } }
 async function setIc(a: Acc, on: boolean) { busy.value = a.id; msg.value = ''; try { await $fetch('/api/financials/accounts/' + a.id, { method: 'POST', body: { intercompany: on } }); await load(); emit('changed') } catch (e) { msg.value = err(e, 'Could not save.') } finally { busy.value = '' } }
@@ -31,7 +50,8 @@ const dirty = (a: Acc) => edit[a.id] && (edit[a.id]!.name !== a.name || edit[a.i
           <template v-else><b>{{ a.name }}</b><span>{{ label(a.parent) }}</span></template>
           <label class="ic" :title="a.ic_auto ? 'The name says it is intercompany, so the group view already takes it out' : 'Owed or billed between your group companies: taken out of the group view'"><input type="checkbox" :checked="a.ic_auto || a.intercompany" :disabled="!canEdit || a.ic_auto || busy === a.id" @change="setIc(a, ($event.target as HTMLInputElement).checked)"> Intercompany</label>
           <em>{{ a.periods ? a.periods + ' period' + (a.periods === 1 ? '' : 's') : 'No figures yet' }}</em>
-          <span v-if="canEdit" class="acts"><button v-if="dirty(a)" type="button" class="lk" :disabled="busy === a.id" @click="save(a)">Save</button><button type="button" class="lk mu" :disabled="busy === a.id" @click="del(a)">Remove</button></span>
+          <span v-if="canEdit" class="acts"><button v-if="dirty(a)" type="button" class="lk" :disabled="busy === a.id" @click="save(a)">Save</button><button type="button" class="lk" :disabled="busy === a.id" @click="merging = merging === a.id ? '' : a.id; target = ''">Merge</button><button type="button" class="lk mu" :disabled="busy === a.id" @click="del(a)">Remove</button></span>
+          <div v-if="merging === a.id" class="mg"><span>Merge "{{ a.name }}" into</span><select v-model="target" aria-label="Merge into"><option value="" disabled>Choose a category</option><option v-for="x in sameSection(a)" :key="x.id" :value="x.id">{{ x.name }} ({{ label(x.parent).replace(/^In /, '') }})</option></select><button class="btn sm" type="button" :disabled="!target || busy === a.id" @click="mergeInto(a, target)">Merge</button></div>
         </div></div>
       <p v-if="msg" class="error">{{ msg }}</p>
     </div>
@@ -47,5 +67,6 @@ input, select { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px 
 .row b { font-weight: 500; } .row span { color: var(--c-ink-soft); } .row em { font-style: normal; font-size: 12px; color: var(--c-muted); text-align: right; }
 .acts { display: flex; gap: 10px; justify-content: flex-end; } .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; } .lk.mu { color: var(--c-muted); }
 .error { color: var(--c-danger); margin: 0; }
+.mg { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; padding: 4px 0 2px; } .mg span { white-space: nowrap; color: var(--c-ink-soft); } .mg select { max-width: 360px; }
 @media (max-width: 700px) { .add, .row { grid-template-columns: 1fr; } }
 </style>

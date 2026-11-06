@@ -1,12 +1,25 @@
-// Rename a category, move it to another line, or mark it intercompany: saved figures and linked sheets follow.
+// Rename a category, move it to another line, mark it intercompany, or merge it into another category: saved figures
+// and linked sheets follow.
 import { z } from 'zod'
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'admin')
   const id = String(getRouterParam(event, 'id') ?? '')
-  const b = z.object({ name: z.string().trim().min(1).max(80).optional(), parent: z.string().max(40).optional(), intercompany: z.boolean().optional() }).safeParse(await readBody(event))
+  const b = z.object({ name: z.string().trim().min(1).max(80).optional(), parent: z.string().max(40).optional(), intercompany: z.boolean().optional(), merge_into: z.string().uuid().optional() }).safeParse(await readBody(event))
   if (!b.success || !/^[0-9a-f-]{36}$/.test(id) || (b.data.parent && !LINE_KEYS.includes(b.data.parent))) throw apiError('invalid', 'Check the category.')
   const a = (await db().query<{ name: string; parent: string }>('SELECT name, parent FROM financials.accounts WHERE id = $1', [id])).rows[0]
   if (!a) throw apiError('not_found', 'Not found', 404)
+  // Merge: every saved figure of this category is added to the other one (same period), linked sheet rows that filled
+  // it fill the other one from now on (they are added together), and this category goes.
+  if (b.data.merge_into) {
+    const t = (await db().query<{ name: string; parent: string }>('SELECT name, parent FROM financials.accounts WHERE id = $1', [b.data.merge_into])).rows[0]
+    if (!t || b.data.merge_into === id) throw apiError('invalid', 'Choose another category to merge into.')
+    const fromK = a.parent + '|' + a.name, toK = t.parent + '|' + t.name
+    await db().query(`UPDATE financials.statements SET detail = (detail - $1::text) || jsonb_build_object($2::text, round((coalesce((detail->>$2::text)::numeric, 0) + (detail->>$1::text)::numeric), 2)) WHERE detail ? $1::text AND jsonb_typeof(detail->$1::text) = 'number'`, [fromK, toK])
+    await db().query(`UPDATE financials.sheet_links SET mapping = replace(mapping::text, $1, $2)::jsonb, ai_map = CASE WHEN ai_map IS NULL THEN NULL ELSE replace(ai_map::text, $1, $2)::jsonb END WHERE mapping::text LIKE '%' || $1 || '%' OR coalesce(ai_map::text, '') LIKE '%' || $1 || '%'`, [JSON.stringify('cat:' + a.parent + ':' + a.name), JSON.stringify('cat:' + t.parent + ':' + t.name)])
+    await db().query('DELETE FROM financials.accounts WHERE id = $1', [id])
+    await audit({ event, actorUserId: user.userId, action: 'financials.account_merge', objectType: 'account', objectId: b.data.merge_into, detail: { from: fromK, to: toK } })
+    return { ok: true, merged: true }
+  }
   const name = (b.data.name ?? a.name).replace(/\s+/g, ' '), parent = b.data.parent ?? a.parent
   if (name.toLowerCase() !== a.name.toLowerCase() && (await db().query('SELECT 1 FROM financials.accounts WHERE lower(name) = lower($1)', [name])).rowCount) throw apiError('taken', 'You already have a category with that name.', 409)
   await db().query('UPDATE financials.accounts SET name = $2, parent = $3, updated_at = now() WHERE id = $1', [id, name, parent])
