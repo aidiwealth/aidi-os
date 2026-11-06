@@ -156,3 +156,58 @@ export function forecastRows(a: Assumptions, months: Month[]): FRow[] {
     { label: 'Net cash flow', get: (x) => x.cash_flow, kind: 'b' }, { label: 'Cash at month end', get: (x) => x.cash, kind: 'h' },
     { label: 'Customers', get: (x) => x.customers, kind: 'n' }, { label: 'Headcount', get: (x) => x.headcount, kind: 'n' }, { label: 'ARR', get: (x) => x.arr }]
 }
+
+// ---------- Categories as people outside the team see them (group view, reports, data room) ----------
+// The team's own lines are detailed and differ by company ("Hosting & IT services" in one, "Hosting & infrastructure"
+// in another; "…, USD customers"). Outside the team they are merged into plain categories: products by the name before
+// the colon, costs by kind. Lender and supplier names, interest rates and intercompany lines are never named: money
+// between the companies is left out (it cancels in a group) and borrowing shows as "Financing costs" or
+// "Borrowings drawn / repaid". Credits used against a cost are netted into that cost.
+const COST_CATS: [RegExp, string][] = [
+  [/hosting|infrastructure|cloud|server|data ?cent/i, 'Hosting & infrastructure'],
+  [/software|\bapps?\b|saas|dues|subscription/i, 'Software & subscriptions'],
+  [/telecom|internet|phone/i, 'Telecoms & internet'],
+  [/legal|accounting|audit|professional/i, 'Legal & professional fees'],
+  [/\brent\b|\blease/i, 'Rent'],
+  [/travel/i, 'Travel & office'],
+  [/office|repairs|insurance|utilit/i, 'Office, insurance & utilities'],
+  [/bank (charges|fees)/i, 'Bank charges'],
+  [/licen[cs]|regulat|lev(y|ies)|permit/i, 'Licences & regulatory levies'],
+  [/consult|outside services|contractor|freelanc/i, 'Consultants & outside services'],
+  [/market|advert|\bads\b|promotion|events?\b/i, 'Marketing & advertising'],
+  [/training|recruit|hiring|benefit|pension|welfare/i, 'People costs'],
+]
+const tidyLabel = (l: string) => l.replace(/,?\s*\(?\b[A-Z]{3}\b customers\)?/g, '').replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim()
+export function partCat(parent: string, label: string): string | null {
+  if (/intercompany|inter-company|management (&|and) shared services|related part/i.test(label)) return null
+  const fin = /credit line|line of credit|\bloans?\b|interest|overdraft|borrow|facility/i.test(label) && !/credits? used/i.test(label)
+  if (parent === 'items' || parent === 'funding') return fin ? (/repa|settle/i.test(label) ? 'Borrowings repaid' : 'Borrowings drawn') : tidyLabel(label)
+  if (parent === 'revenue' || parent === 'cogs') { const t = tidyLabel(label), i = t.indexOf(':'); return i > 0 ? t.slice(0, i).trim() : t }
+  if (parent === 'payroll' || parent === 'tax') return tidyLabel(label)
+  if (fin) return 'Financing costs'
+  for (const [re, cat] of COST_CATS) if (re.test(label)) return cat
+  return tidyLabel(label)
+}
+const catKey = (parent: string, cat: string) => parent + '|' + cat.toLowerCase()
+// The merged categories for one or more forecasts (share_pct added up), in the order they first appear.
+export function catParts(as: Assumptions[]): Part[] {
+  const out: Part[] = []
+  for (const a of as) for (const p of a.parts ?? []) {
+    const c = partCat(p.parent, p.label); if (c === null) continue
+    const key = catKey(p.parent, c), hit = out.find((x) => x.key === key)
+    if (hit) hit.share_pct += as.length === 1 ? p.share_pct : 0; else out.push({ key, label: c, parent: p.parent, share_pct: as.length === 1 ? p.share_pct : 0 })
+  }
+  return out
+}
+// One month's line figures re-keyed by category (times k, for a currency conversion).
+export function catValues(a: Assumptions, vals: Record<string, number>, k = 1, into: Record<string, number> = {}): Record<string, number> {
+  for (const p of a.parts ?? []) { const c = partCat(p.parent, p.label); if (c === null) continue; const key = catKey(p.parent, c); into[key] = (into[key] ?? 0) + (vals[p.key] ?? 0) * k }
+  return into
+}
+// The rows of a forecast as people outside the team see them: categories merged, sensitive lines left out (they stay
+// in the line's total, under "Other …"), and categories with nothing in them dropped.
+export function outsideRows(a: Assumptions, months: Month[]): { rows: FRow[]; months: Month[] } {
+  const ms = months.map((m) => ({ ...m, parts: catValues(a, m.parts) }))
+  const rows = forecastRows({ ...a, parts: catParts([a]) }, ms).filter((r) => r.kind !== 's' || ms.some((m) => Math.abs(r.get(m) ?? 0) > 0.5))
+  return { rows, months: ms }
+}

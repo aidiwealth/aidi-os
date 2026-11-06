@@ -1,10 +1,10 @@
 // The forecast for a report or an export: the forecast a company uses (its main one, else the newest), run for the base,
 // best and worst cases. For a group, each company's forecast is converted to the reporting currency (the plan rate the
 // team set, else the book rate) and added together month by month.
-import { run, COST_LINES, type Assumptions, type Month, type Result } from '~/shared/forecast'
+import { run, COST_LINES, catParts, catValues, type Assumptions, type Month, type Part, type Result } from '~/shared/forecast'
 import { shortAmount } from '~/shared/compact'
 import type { MSection, MRow, Tone } from '~/server/utils/mgmt-report'
-export interface ForecastPack { name: string; company: string; currency: string; start: string; months: number; a: Assumptions | null; base: Result; best: Result; worst: Result; companies: number }
+export interface ForecastPack { name: string; company: string; currency: string; start: string; months: number; a: Assumptions | null; base: Result; best: Result; worst: Result; companies: number; cats: Part[]; lines: { key: string; label: string }[] }
 const NUM: (keyof Month)[] = ['revenue', 'cogs', 'gross_profit', 'payroll', 'opex', 'ebitda', 'tax', 'net_income', 'items', 'funding', 'cash_flow', 'cash', 'customers', 'headcount', 'arr', 'burn']
 function scale(r: Result, k: number): Result {
   if (k === 1) return r
@@ -24,6 +24,7 @@ function combine(rs: Result[], opening: number): Result {
       if (!m) { const prev = [...r.months].reverse().find((x) => x.month < mo); if (prev) o.cash += prev.cash; continue }
       for (const f of NUM) (o as unknown as Record<string, number>)[f] += (m[f] as number) ?? 0
       for (const [k, v] of Object.entries(m.costs)) o.costs[k] = (o.costs[k] ?? 0) + v
+      for (const [k, v] of Object.entries(m.parts ?? {})) o.parts[k] = (o.parts[k] ?? 0) + v
     }
     o.gross_margin = o.revenue ? Math.round((o.gross_profit / o.revenue) * 1000) / 10 : null
     return o
@@ -57,9 +58,12 @@ export async function forecastPack(o: { subject?: string; id?: string; currency?
   return pack('Group forecast (each company\'s main forecast)', String(org.settings.group_name ?? '').trim() || org.name, to, parts, null)
 }
 function pack(name: string, company: string, currency: string, parts: { a: Assumptions; k: number }[], a: Assumptions | null): ForecastPack {
-  const go = (s: 'base' | 'best' | 'worst') => (parts.length === 1 ? scale(run(parts[0]!.a, s), parts[0]!.k) : combine(parts.map((p) => scale(run(p.a, s), p.k)), parts.reduce((t, p) => t + p.a.opening.cash * p.k, 0)))
-  const b = go('base')
-  return { name, company, currency, start: b.months[0]?.month ?? '', months: b.months.length, a, base: b, best: go('best'), worst: go('worst'), companies: parts.length }
+  // Each company's lines re-keyed by category (merged, sensitive lines left out) and converted, then added up.
+  const one = (p: { a: Assumptions; k: number }, s: 'base' | 'best' | 'worst'): Result => { const r = scale(run(p.a, s), p.k); return { ...r, months: r.months.map((m) => ({ ...m, parts: catValues(p.a, m.parts, p.k) })) } }
+  const go = (s: 'base' | 'best' | 'worst') => (parts.length === 1 ? one(parts[0]!, s) : combine(parts.map((p) => one(p, s)), parts.reduce((t, p) => t + p.a.opening.cash * p.k, 0)))
+  const b = go('base'), lines: { key: string; label: string }[] = []
+  for (const p of parts) for (const c of p.a.costs) if (!lines.some((x) => x.key === c.key)) lines.push({ key: c.key, label: c.label })
+  return { name, company, currency, start: b.months[0]?.month ?? '', months: b.months.length, a, base: b, best: go('best'), worst: go('worst'), companies: parts.length, cats: catParts(parts.map((p) => p.a)), lines }
 }
 
 // ---------- The Forecast section: figures, scenarios and what the forecast assumes ----------
@@ -103,10 +107,20 @@ export function forecastSection(fc: ForecastPack, o: { audience?: 'board' | 'exe
   const end = (label: string, f: (m: (typeof ms)[number]) => number, kind?: MRow['kind'], n = false): MRow => ({ label, kind, cells: [...shown.map((c) => fmtE(f(c.ms[c.ms.length - 1]!), n)), fmtE(f(shownMs[shownMs.length - 1]!), n), ...(restMs.length ? [fmtE(f(restMs[restMs.length - 1]!), n)] : [])] })
   const gmRow: MRow = { label: 'Gross margin', cells: [...shown.map((c) => { const r = sum(c.ms, (m) => m.revenue); return r ? ((sum(c.ms, (m) => m.gross_profit) / r) * 100).toFixed(1) + '%' : '–' }), ...[shownMs, ...(restMs.length ? [restMs] : [])].map((xs) => { const r = sum(xs, (m) => m.revenue); return r ? ((sum(xs, (m) => m.gross_profit) / r) * 100).toFixed(1) + '%' : '–' })] }
   // The cost lines the companies use (Sales & marketing, Product & engineering, …), where any has a figure.
-  const costKeys = [...COST_LINES, ...[...new Set(ms.flatMap((m) => Object.keys(m.costs ?? {})))].filter((k) => !COST_LINES.some((c) => c.key === k)).map((key) => ({ key, label: 'Other operating costs' }))].filter((c) => ms.some((m) => Math.abs(m.costs?.[c.key] ?? 0) > 0.5))
-  const rows: MRow[] = [line('Revenue', (m) => m.revenue, 'total'), line('Cost of revenue', (m) => m.cogs), line('Gross profit', (m) => m.gross_profit, 'total'), gmRow,
-    ...(exec ? [] : [line('Payroll', (m) => m.payroll), ...costKeys.map((c) => line(c.label, (m) => m.costs[c.key] ?? 0))]), line('Operating costs' + (exec ? '' : ' (incl. payroll)'), (m) => m.opex), line('EBITDA', (m) => m.ebitda, 'total'), line('Net income', (m) => m.net_income, 'total'),
-    ...(ms.some((m) => m.items) ? [line('One-off items', (m) => m.items)] : []), ...(ms.some((m) => m.funding) ? [line('Funding', (m) => m.funding)] : []),
+  const costKeys = [...fc.lines, ...COST_LINES.filter((c) => !fc.lines.some((x) => x.key === c.key))].filter((c) => ms.some((m) => Math.abs(m.costs?.[c.key] ?? 0) > 0.5))
+  // Under each line, its biggest categories (up to 5) and the rest as "Other …"; not for executives.
+  const subs = (parent: string, plabel: string, total: (m: (typeof ms)[number]) => number): MRow[] => {
+    if (exec) return []
+    const cs = fc.cats.filter((p) => p.parent === parent).map((p) => ({ p, t: Math.abs(sum(ms, (m) => m.parts?.[p.key] ?? 0)) })).filter((x) => x.t > 0.5).sort((x, y) => y.t - x.t).slice(0, 5).map((x) => x.p)
+    if (!cs.length) return []
+    const rows = cs.map((p) => ({ ...line(p.label, (m) => m.parts?.[p.key] ?? 0), kind: 'sub' as const }))
+    const rest = (m: (typeof ms)[number]) => total(m) - cs.reduce((t, p) => t + (m.parts?.[p.key] ?? 0), 0)
+    if (ms.some((m) => Math.abs(rest(m)) > 0.5)) rows.push({ ...line('Other ' + plabel.toLowerCase(), rest), kind: 'sub' as const })
+    return rows
+  }
+  const rows: MRow[] = [line('Revenue', (m) => m.revenue, 'total'), ...subs('revenue', 'Revenue', (m) => m.revenue), line('Cost of revenue', (m) => m.cogs), ...subs('cogs', 'Cost of revenue', (m) => m.cogs), line('Gross profit', (m) => m.gross_profit, 'total'), gmRow,
+    ...(exec ? [] : [line('Payroll', (m) => m.payroll), ...costKeys.flatMap((c) => [line(c.label, (m) => m.costs[c.key] ?? 0), ...subs(c.key, c.label, (m) => m.costs[c.key] ?? 0)])]), line('Operating costs' + (exec ? '' : ' (incl. payroll)'), (m) => m.opex), line('EBITDA', (m) => m.ebitda, 'total'), line('Net income', (m) => m.net_income, 'total'),
+    ...(!exec && ms.some((m) => m.items) ? [line('One-off items', (m) => m.items)] : []), ...(ms.some((m) => m.funding) ? [line('Funding', (m) => m.funding)] : []),
     end('Cash at the end', (m) => m.cash, 'total'), ...(ms.some((m) => m.customers) ? [end('Customers', (m) => m.customers ?? 0, undefined, true)] : []), ...(!exec && ms.some((m) => m.headcount) ? [end('Headcount', (m) => m.headcount ?? 0, undefined, true)] : [])]
   const yearRows = (ys: typeof years): MRow[] => {
     const L = (label: string, f: (m: (typeof ms)[number]) => number, kind?: MRow['kind']): MRow => ({ label, kind, cells: ys.map((y) => money(sum(y.ms, f))) })

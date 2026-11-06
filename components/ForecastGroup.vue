@@ -3,7 +3,7 @@
 // the reporting currency at one plan rate per currency and added together month by month. Money moving between the
 // companies (one company's settlement out, the other's in) cancels out when both forecasts carry it. Read only: each
 // company's forecast is built, imported and changed on that company.
-import { run, forecastRows, type Scenario, type GroupCo, type Month, type CostLine, type Part, type Assumptions } from '~/shared/forecast'
+import { run, forecastRows, catParts, catValues, type Scenario, type GroupCo, type Month, type CostLine, type Assumptions } from '~/shared/forecast'
 const props = defineProps<{ data: { currency: string; name: string; companies: GroupCo[] }; canEdit: boolean }>()
 const emit = defineEmits<{ open: [id: string]; refresh: [] }>()
 const sc = ref<Scenario>('base'), msg = ref(''), ok = ref('')
@@ -28,14 +28,11 @@ const shortEnd = computed(() => { const rs = ready.value; if (rs.length < 2) ret
 // The group month has the same shape as a company month, so the table uses the same rows as a company forecast:
 // cost lines merged by line, and each company's categories merged by name under their line.
 type GM = Month & { by: Record<string, { revenue: number; net: number; cash: number }> }
-const pk = (parent: string, label: string) => parent + '|' + label.trim().toLowerCase()
+// Categories merged across the companies by kind (see partCat); money between the companies is left out.
 const ga = computed(() => {
-  const costs: CostLine[] = [], parts: Part[] = []
-  for (const { a } of ready.value) {
-    for (const c of a.costs) if (!costs.some((y) => y.key === c.key)) costs.push({ ...c })
-    for (const p of a.parts ?? []) { const key = pk(p.parent, p.label); if (!parts.some((y) => y.key === key)) parts.push({ ...p, key }) }
-  }
-  return { costs, parts } as unknown as Assumptions
+  const costs: CostLine[] = []
+  for (const { a } of ready.value) for (const c of a.costs) if (!costs.some((y) => y.key === c.key)) costs.push({ ...c })
+  return { costs, parts: catParts(ready.value.map((x) => x.a)) } as unknown as Assumptions
 })
 const g = computed<GM[]>(() => months.value.map((m) => {
   const o: GM = { month: m, parts: {}, revenue: 0, cogs: 0, gross_profit: 0, gross_margin: null, payroll: 0, costs: {}, opex: 0, ebitda: 0, tax: 0, net_income: 0, items: 0, funding: 0, cash_flow: 0, cash: 0, burn: 0, customers: null, headcount: 0, arr: 0, by: {} }
@@ -45,7 +42,7 @@ const g = computed<GM[]>(() => months.value.map((m) => {
     o.revenue += x.revenue * k; o.cogs += x.cogs * k; o.payroll += x.payroll * k; o.opex += x.opex * k; o.tax += x.tax * k; o.net_income += x.net_income * k
     o.items += x.items * k; o.funding += x.funding * k; o.cash_flow += x.cash_flow * k; o.cash += x.cash * k; o.headcount += x.headcount
     for (const [key, v] of Object.entries(x.costs)) o.costs[key] = (o.costs[key] ?? 0) + v * k
-    for (const p of a.parts ?? []) { const key = pk(p.parent, p.label); o.parts[key] = (o.parts[key] ?? 0) + (x.parts[p.key] ?? 0) * k }
+    catValues(a, x.parts, k, o.parts)
     if (x.customers !== null) o.customers = (o.customers ?? 0) + x.customers
     o.by[c.id] = { revenue: x.revenue * k, net: x.net_income * k, cash: x.cash * k }
   }
@@ -63,7 +60,7 @@ const m = (v: number | null | undefined, c = cur.value) => (v === null || v === 
 const full = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '(' : '') + Math.abs(Math.round(v)).toLocaleString('en-US') + (v < 0 ? ')' : ''))
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const chart = computed(() => g.value.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })))
-const ROWS = computed(() => forecastRows(ga.value, g.value))
+const ROWS = computed(() => forecastRows(ga.value, g.value).filter((r) => r.kind !== 's' || g.value.some((x) => Math.abs(r.get(x) ?? 0) > 0.5)))
 const SRC: Record<string, string> = { plan: 'plan rate', book: 'latest book rate', daily: "today's rate", none: 'no rate yet', same: '' }
 const curs = computed(() => [...new Set(props.data.companies.filter((c) => c.currency !== cur.value).map((c) => c.currency))])
 const srcOf = (q: string) => props.data.companies.find((c) => c.currency === q)?.rate_source ?? 'none'
