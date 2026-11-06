@@ -2,6 +2,7 @@
 // accountants' report (only when the founder has one), accounting policies, balance sheet, statement of operations,
 // changes in equity, cash flows and notes. Standard presentation built from the company's own figures, with the
 // details only the founder knows (directors, CFO, offices, bankers, advisers) asked for and kept in settings.
+import { liveFormulas, howSheet, type XRow } from '~/server/utils/xlsx-formulas'
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { combine, deriveLines, type FinRow, type Lines } from '~/shared/fin-view'
@@ -451,6 +452,7 @@ export async function reportXlsx(r: Report, logo: { data: Buffer; ext: 'png' | '
   const wb = new Excel.Workbook(); wb.creator = r.company
   const NAVY = 'FF0C1A2E', MUT = 'FF6B7280', fmt = '#,##0;(#,##0);"-"'
   const font = { name: 'Instrument Sans', size: 10.5 }
+  let nf = 0
   const sheet = (name: string, title: string, sub?: string) => {
     const ws = wb.addWorksheet(name.slice(0, 31), { views: [{ showGridLines: false }] })
     ws.properties.defaultRowHeight = 16
@@ -501,12 +503,15 @@ export async function reportXlsx(r: Report, logo: { data: Buffer; ext: 'png' | '
     ws.getColumn(3).width = 8; r.cols.forEach((_, i) => { ws.getColumn(4 + i).width = 16 })
     ws.addRow([]); const h = ws.addRow(['', '', 'Note', ...r.cols]); h.font = { ...font, bold: true }; h.eachCell((c, i) => { if (i >= 3) c.alignment = { horizontal: 'right' } })
     const h2 = ws.addRow(['', '', '', ...r.cols.map(() => r.currency)]); h2.font = { ...font, color: { argb: MUT }, size: 9 }; h2.eachCell((c, i) => { if (i >= 4) c.alignment = { horizontal: 'right' } })
+    const xr: XRow[] = []
     for (const l of t.lines) {
       const row = ws.addRow(['', (l.kind === 'sub' ? '    ' : '') + l.label, l.note?.replace('Note ', '') ?? '', ...(l.kind === 'head' ? [] : l.v.map((x) => (x === null ? null : Math.round(x))))])
       row.font = { ...font, bold: l.kind === 'head' || l.kind === 'total' || l.kind === 'grand', italic: l.kind === 'memo', color: l.kind === 'memo' ? { argb: MUT } : undefined }
       row.eachCell((c, i) => { if (i >= 4) c.numFmt = fmt; if (i === 3) c.alignment = { horizontal: 'right' } })
       if (l.kind === 'total' || l.kind === 'grand') r.cols.forEach((_, i) => { row.getCell(4 + i).border = { top: { style: 'thin' }, ...(l.kind === 'grand' ? { bottom: { style: 'double' } } : {}) } })
+      if (l.kind !== 'memo') xr.push({ n: row.number, kind: l.kind, label: l.label })
     }
+    if (t.key !== 'equity') nf += liveFormulas(ws, { rows: xr, cols: r.cols.map((_, i) => 4 + i) })
     if (t.foot) { ws.addRow([]); text(ws, t.foot, { italic: true }) }
     if (t.comment) { ws.addRow([]); text(ws, 'Comment: ' + t.comment, { italic: true }) }
     if (t.key === 'equity' && r.cap?.table.length) {
@@ -532,6 +537,7 @@ export async function reportXlsx(r: Report, logo: { data: Buffer; ext: 'png' | '
     const nt = sheet('Notes', 'Notes to the financial statements'); nt.getColumn(3).width = 30; nt.addRow([])
     r.notes.forEach((x, i) => { text(nt, (i + 2) + '. ' + x.title, { bold: true }); text(nt, x.text); for (const [a, b] of x.rows ?? []) { const row = nt.addRow(['', '    ' + a, b]); row.font = font; row.getCell(3).alignment = { horizontal: 'right' } } nt.addRow([]) })
   }
+  howSheet(wb, { font, navy: NAVY, mut: MUT, title: r.company + ' · Financial statements', formulas: nf })
   // Finvry's typeface throughout (Excel falls back to a similar sans-serif where it is not installed).
   wb.eachSheet((ws) => ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => { c.font = { size: 10.5, ...(c.font ?? {}), name: 'Instrument Sans' } })))
   return Buffer.from(await wb.xlsx.writeBuffer())

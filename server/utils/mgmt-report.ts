@@ -1,3 +1,4 @@
+import { liveFormulas, howSheet, type XRow } from '~/server/utils/xlsx-formulas'
 import { shortAmount } from '~/shared/compact'
 // The monthly management report: how the business did in one month, for the executive team. The founder picks which
 // sections go in; every figure is worked out here from the company's own statements (nothing estimated), with the
@@ -648,6 +649,7 @@ export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'j
   const NAVY = 'FF0C1A2E', MUT = 'FF6B7280', BLUE = 'FF1D64A8', RED = 'FFBF2929', SOFT = 'FFF5F7FB'
   const TONE = { good: BLUE, watch: MUT, risk: RED } as const
   const font = { name: 'Instrument Sans', size: 10.5 }
+  let nf = 0
   const toNum = (s: string) => { const t = s.replace(/,/g, '').trim(); if (/^\(\d+(\.\d+)?\)$/.test(t)) return -Number(t.slice(1, -1)); return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : s }
   for (const s of r.sections) {
     const ws = wb.addWorksheet(s.title.replace(/[\\/?*[\]:]/g, '').slice(0, 31), { views: [{ showGridLines: false }] })
@@ -665,18 +667,23 @@ export async function mgmtXlsx(r: MReport, logo: { data: Buffer; ext: 'png' | 'j
     for (const t of s.tables ?? []) {
       if (t.title) text(t.title, { bold: true, color: NAVY })
       const hr = ws.addRow(['', ...t.head]); hr.eachCell((c) => { c.font = { ...font, bold: true, color: { argb: MUT } }; c.border = { bottom: { style: 'thin', color: { argb: 'FFD9DDE3' } } } })
+      const xr: XRow[] = []
       for (const rw of t.rows) {
-        const row = ws.addRow(['', (rw.kind === 'sub' ? '   ' : '') + rw.label, ...rw.cells.map(toNum)])
+        const row = ws.addRow(['', (rw.kind === 'sub' ? '   ' : '') + rw.label, ...rw.cells.map(toNum)]); xr.push({ n: row.number, kind: rw.kind, label: rw.label })
         row.eachCell((c, col) => { if (col < 2) return; c.font = { ...font, bold: rw.kind === 'total' || rw.kind === 'head', color: { argb: rw.tones?.[col - 3] ? TONE[rw.tones[col - 3] as Tone] : rw.kind === 'sub' ? MUT : 'FF1A1A1F' } }; if (col > 2) { c.alignment = { horizontal: 'right' }; if (typeof c.value === 'number') c.numFmt = '#,##0;(#,##0);"-"' } })
       }
+      // Live formulas: totals, margins and changes (this period against the column just before the change).
+      const ncol = t.head.length + 1, cols = Array.from({ length: Math.max(0, ncol - 2) }, (_, k) => k + 3).filter((c) => !/change|status/i.test(t.head[c - 2] ?? ''))
+      nf += liveFormulas(ws, { rows: xr, cols, changes: t.head.map((h, k) => ({ h, col: k + 2 })).filter((x) => /^change/i.test(x.h) && x.col > 4).map((x) => ({ col: x.col, cur: 3, other: x.col - 1 })) })
       if (t.note) text(t.note, { color: MUT })
       ws.addRow([])
     }
     for (const c of s.charts ?? []) { text(c.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', 'Month', 'Amount']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); let last = ''; c.labels.forEach((l, j) => { last = l || nextMonthLabel(last); const v = c.values[j]; const row = ws.addRow(['', last, typeof v === 'number' ? Math.round(v) : null]); row.getCell(3).numFmt = '#,##0;(#,##0);"-"' }); ws.addRow([]) }
-    for (const p of s.pies ?? []) { const tot = p.slices.reduce((a2, x) => a2 + x.value, 0); text(p.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', '', 'Amount', 'Share']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); for (const x of p.slices) { const row = ws.addRow(['', x.label, Math.round(x.value), tot ? x.value / tot : null]); row.getCell(3).numFmt = '#,##0;(#,##0)'; row.getCell(4).numFmt = '0.0%' } ws.addRow([]) }
+    for (const p of s.pies ?? []) { const tot = p.slices.reduce((a2, x) => a2 + x.value, 0); text(p.title, { bold: true, color: NAVY }); const hr = ws.addRow(['', '', 'Amount', 'Share']); hr.eachCell((x) => { x.font = { ...font, bold: true, color: { argb: MUT } } }); const pr: XRow[] = []; for (const x of p.slices) { const row = ws.addRow(['', x.label, Math.round(x.value), tot ? x.value / tot : null]); row.getCell(3).numFmt = '#,##0;(#,##0)'; row.getCell(4).numFmt = '0.0%'; pr.push({ n: row.number, label: x.label }) } nf += liveFormulas(ws, { rows: pr, cols: [], shares: { col: 4, of: 3 } }); ws.addRow([]) }
     for (const b of s.bullets ?? []) text('• ' + b.text, { color: b.tone ? TONE[b.tone] : undefined })
     for (const t of s.text ?? []) { if (t.head) text(t.head, { bold: true, color: NAVY }); text(t.body) }
   }
+  howSheet(wb, { font, navy: NAVY, mut: MUT, title: r.company + (r.kind === 'Forecast' ? ' · Forecast · ' : ' · Management report · ') + r.label, formulas: nf })
   return Buffer.from(await wb.xlsx.writeBuffer())
 }
 

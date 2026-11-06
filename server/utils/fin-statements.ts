@@ -3,6 +3,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { deriveLines, rollUp, type FinRow } from '~/shared/fin-view'
+import { liveFormulas, howSheet, type XRow } from '~/server/utils/xlsx-formulas'
 import { classifiedRows, classifyBalance, periodDetail, safeNote, type SafeTreatment } from '~/shared/bs-classify'
 
 export interface StRow { label: string; key?: string; values: (number | null)[]; kind?: 'head' | 'total' | 'sub' | 'pct' | 'line' | 'ratio' }
@@ -61,6 +62,7 @@ export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: '
   const { default: Excel } = await import('exceljs')
   const wb = new Excel.Workbook(); wb.creator = s.company
   const fmt = '#,##0;(#,##0);"-"'
+  let nf = 0
   for (const sec of s.sections) {
     const ws = wb.addWorksheet(sec.title.slice(0, 31), { views: [{ state: 'frozen', xSplit: 1, ySplit: 6 }] })
     ws.getColumn(1).width = 40; for (let i = 0; i < s.periods.length; i++) ws.getColumn(i + 2).width = 15
@@ -70,13 +72,16 @@ export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: '
     ws.getCell('B3').value = 'Prepared ' + new Date().toISOString().slice(0, 10) + '. Unaudited management figures.'; ws.getCell('B3').font = { italic: true, size: 9, color: { argb: 'FF6B7280' } }
     const head = ws.getRow(6); head.values = ['', ...s.periods]; head.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0C1A2E' } }; c.alignment = { horizontal: 'right' } }); head.getCell(1).alignment = { horizontal: 'left' }
+    const xr: XRow[] = []
     for (const r of sec.rows) {
       const row = ws.addRow([(r.kind === 'sub' ? '   ' : '') + r.label, ...r.values.map((x) => (x === null ? null : r.kind === 'pct' ? x / 100 : r.kind === 'ratio' ? x : Math.round(x)))])
       row.eachCell((c, i) => { if (i > 1) c.numFmt = r.kind === 'pct' ? '0.0%' : r.kind === 'ratio' ? '0.00"x"' : fmt })
       if (r.kind === 'total') { row.font = { bold: true }; row.eachCell((c) => { c.border = { top: { style: 'thin', color: { argb: 'FF9CA3AF' } } } }) }
       if (r.kind === 'head') row.font = { bold: true, color: { argb: 'FF1C547D' } }
       if (r.kind === 'pct') row.font = { italic: true, color: { argb: 'FF6B7280' } }
+      xr.push({ n: row.number, kind: r.kind, label: r.label })
     }
+    nf += liveFormulas(ws, { rows: xr, cols: s.periods.map((_, k) => k + 2) })
     if (sec.note) { ws.addRow([]); const n = ws.addRow(['Comment: ' + sec.note]); n.font = { italic: true }; ws.mergeCells(n.number, 1, n.number, Math.max(2, s.periods.length + 1)); n.alignment = { wrapText: true, vertical: 'top' }; n.height = Math.min(120, 15 * Math.ceil(sec.note.length / 120)) }
   }
   if (s.comments.trim()) {
@@ -84,6 +89,7 @@ export async function statementsXlsx(s: Statements, logo: { data: Buffer; ext: '
     ws.addRow([s.company + ': management comments']).font = { bold: true, size: 13 }; ws.addRow([])
     for (const p of s.comments.split(/\n{2,}/)) { const r = ws.addRow([p.trim()]); r.alignment = { wrapText: true, vertical: 'top' }; r.height = Math.min(300, 15 * Math.ceil(p.length / 100)) }
   }
+  howSheet(wb, { font: { name: 'Instrument Sans', size: 10.5 }, navy: 'FF0C1A2E', mut: 'FF6B7280', title: s.company + ' · Financial statements', formulas: nf })
   // Finvry's typeface throughout (Excel falls back to a similar sans-serif where it is not installed).
   wb.eachSheet((ws) => ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => { c.font = { size: 10.5, ...(c.font ?? {}), name: 'Instrument Sans' } })))
   return Buffer.from(await wb.xlsx.writeBuffer())
