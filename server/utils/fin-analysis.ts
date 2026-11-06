@@ -54,6 +54,8 @@ export function factsOf(raw: FinRow[], model?: string | null): { facts: Record<s
   const facts: Record<string, number | string | null> = {
     periods: rows.length, period_type: rows[0]?.period_type ?? 'month', latest: rows[rows.length - 1]?.period_end ?? null,
     revenue_last_quarter: rev3, revenue_growth_qoq_pct: pct(rev3, revP), revenue_growth_yoy_pct: pct(rev3, revY), revenue_ttm: sumK(ttm, 'revenue'),
+    // The last 12 months against the 12 before (only with 24 months of figures).
+    revenue_ttm_growth_pct: (() => { const p12 = within(end - 23, end - 12); return ttm.length === 12 / per && p12.length === ttm.length ? pct(sumK(ttm, 'revenue'), sumK(p12, 'revenue')) : null })(),
     gross_margin_pct: gm3 === null ? null : Math.round(gm3 * 10) / 10, gross_margin_change_pts: gm3 !== null && gmP !== null ? Math.round((gm3 - gmP) * 10) / 10 : null,
     cost_of_revenue_growth_pct: pct(cogs3, cogsP), opex_growth_qoq_pct: pct(ox3, oxP), opex_to_revenue_pct: ox3 !== null && rev3 ? Math.round((ox3 / rev3) * 1000) / 10 : null,
     payroll_to_revenue_pct: payroll3 !== null && rev3 ? Math.round((payroll3 / rev3) * 1000) / 10 : null,
@@ -121,7 +123,7 @@ export function contradicts(text: string, f: Record<string, number | string | nu
 export async function analyseFinancials(subject: string, rows: FinRow[], currency: string, company: string, force = false, model: string | null = null): Promise<Analysis> {
   const { facts, rules, flags, period } = factsOf(rows, model)
   const checks = checkRows(rows).filter((c) => c.severity === 'error').length
-  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 10 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, checks, v: 11 })).digest('hex').slice(0, 40)
   if (!force) {
     const hit = (await db().query<{ analysis: Analysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]
     if (hit) return hit.analysis
@@ -141,6 +143,7 @@ export async function analyseFinancials(subject: string, rows: FinRow[], currenc
           'Give a one-sentence headline; exactly 4 key insights, the most important first (what is going well, what to watch, what is a risk), each with the numbers behind it; and 2 to 6 flags: things to raise with the executive team, the CFO or the board, each with why it matters. ' +
           'Business type: ' + (facts.business_type ?? 'not set') + '. Judge gross margin against typical_gross_margin_pct for that type (' + (facts.typical_margin_why ?? 'no range: the type is not set, so do not compare with software or any other industry') + '); never call a margin low for software unless the business is software. ' +
           'Break-even is already worked out in the facts (gross_profit_monthly, opex_monthly, gross_profit_covers_opex_pct, breakeven_revenue_monthly, revenue_increase_to_breakeven_pct, opex_cut_to_breakeven_monthly): quote those, never work out your own. Never say anything the facts contradict: when gross_profit_monthly is positive the company would make money with no operating costs. ' +
+          'Name each comparison exactly as its fact does: revenue_growth_qoq_pct and opex_growth_qoq_pct are the last quarter against the quarter before (not the last 3 quarters); revenue_growth_yoy_pct is the last quarter against the same quarter a year earlier (not the last 12 months); revenue_ttm_growth_pct is the last 12 months against the 12 before. ' +
           'Keep a calm, factual tone for a management report: no metaphors or dramatic words (bleeding, wound, noise, crisis, collapse, imploding, myth). Never compare a percentage with an amount. ' +
           'Never say there is no path to profit, or that the company is running out of cash, when runway is 18 months or more: say how long the cash lasts while losses continue and what closes the gap. Quote percentages and points exactly as the facts give them (gross_margin_change_pts, revenue_growth_qoq_pct); write amounts with k or M (81128 is 81k), never a field name. ' +
           'If cash_months_before_latest is 2 or more, the cash balance is out of date: give no runway and raise it as a CFO flag. If months_missing is above 0, say figures are missing for some months. ' +
