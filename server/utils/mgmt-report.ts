@@ -24,6 +24,7 @@ export const MR_SECTIONS: { key: string; title: string; desc: string; on: boolea
   { key: 'customers', title: 'Customers', desc: 'Paying customers, recurring revenue, average customer, concentration, sectors and top customers', on: false },
   { key: 'banking', title: 'Banking and spend', desc: 'Money in and out from the bank, spend by category against budget, the biggest payments and recurring costs', on: true },
   { key: 'stage', title: 'Stage and readiness', desc: 'Funding and operating stage, health, runway, and equity and debt readiness (indicative only)', on: true },
+  { key: 'forecast', title: 'Forecast', desc: 'The forecast the company uses: the coming months by quarter, best and worst cases, and what it assumes against the actual figures', on: false },
   { key: 'actions', title: 'For the executive team', desc: 'What to raise with the executive team, the CFO and the board', on: true },
   { key: 'comments', title: 'Management comments', desc: 'Your own commentary and priorities for next month', on: true }]
 
@@ -39,7 +40,7 @@ export interface MSection { key: string; title: string; intro?: string; facts?: 
   raw?: boolean }
 export type Audience = 'board' | 'executive' | 'investor'
 export interface MReport { audience?: Audience; kind?: string; company: string; month: string; label: string; currency: string; sections: MSection[]; generated: boolean; business: string | null; chart: ChartKind; pies: boolean }
-type Tone = 'good' | 'watch' | 'risk'
+export type Tone = 'good' | 'watch' | 'risk'
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 // The report's period: a month, or (quarterly and annual reports) months rolled into quarters or years. Set while one
@@ -359,19 +360,24 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const mv = 'Change in monthly revenue (' + cur.currency + '), 3 months to ' + MM(String(f.as_of) + '-01')
     const n3 = (f.last_3_months_customers ?? {}) as Record<string, number | undefined>
     const P0 = (v: unknown) => (v == null ? '–' : v + '%')
+    // Thresholds for usage-based billing, and the strongest fact first: the customer group with most of the revenue.
+    const usage = f.billing === 'usage', gOk = usage ? 85 : 90, gWatch = usage ? 70 : 80
+    const top = !f.only && Array.isArray(f.groups) ? [...(f.groups as { group: string; share_pct: number | null; nrr_pct: number | null; logo_churn_pct: number | null }[])].filter((x) => x.share_pct !== null && x.group !== 'Not set').sort((a2, b2) => b2.share_pct! - a2.share_pct!)[0] : undefined
+    const lead = top && top.share_pct! >= 50 && top.nrr_pct !== null ? Math.round(top.share_pct!) + '% of revenue comes from ' + top.group + ' customers, who kept ' + P0(top.nrr_pct) + ' of their spend' + (top.logo_churn_pct === 0 ? '; none left' : top.logo_churn_pct !== null ? '; ' + P0(top.logo_churn_pct) + ' of them left' : '') + '. ' : ''
     type Pts = { headline?: string; insights?: { title: string; detail: string; tone: Tone }[] } | null | undefined
     const pts = (a: Pts) => (a?.insights?.length ? { bullets: a.insights.slice(0, 4).map((x) => ({ text: point(x), tone: x.tone, raw: true })) } : {})
     const head = (a: Pts) => (a?.headline ? ' ' + tidyText(a.headline, 300) : '')
     const P = (f.points ?? {}) as { retention?: Pts; customers?: Pts }
-    if (want('retention')) sections.push({ key: 'retention', title: 'Revenue retention' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '. Revenue retention compares the same customers a year apart: net includes customers who spend more, gross does not.' + head(P.retention), ...pts(P.retention),
+    if (want('retention')) sections.push({ key: 'retention', title: 'Revenue retention' + (f.only ? ' · ' + f.only : ''), intro: who + lead + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '. Revenue retention compares the same customers a year apart: net includes customers who spend more, gross does not.' + head(P.retention), ...pts(P.retention),
       tiles: [{ label: 'Net revenue retention (12 months)', value: P0(f.nrr_12m_pct), tone: f.nrr_12m_pct == null ? undefined : f.nrr_12m_pct >= 100 ? 'good' : f.nrr_12m_pct >= 90 ? 'watch' : 'risk', sub: f.nrr_12m_pct_3_months_ago == null ? undefined : P0(f.nrr_12m_pct_3_months_ago) + ' three months ago' },
-        { label: 'Gross revenue retention', value: P0(f.grr_12m_pct), tone: f.grr_12m_pct == null ? undefined : f.grr_12m_pct >= 90 ? 'good' : f.grr_12m_pct >= 80 ? 'watch' : 'risk' },
-        { label: 'Customers lost (12 months)', value: P0(f.logo_churn_12m_pct), sub: f.customers_a_year_ago ? 'of ' + Number(f.customers_a_year_ago).toLocaleString('en-US') + ' a year ago' : undefined },
+        { label: 'Gross revenue retention', value: P0(f.grr_12m_pct), tone: f.grr_12m_pct == null ? undefined : f.grr_12m_pct >= gOk ? 'good' : f.grr_12m_pct >= gWatch ? 'watch' : 'risk', sub: usage ? 'usage-based: 70–85% is common' : undefined },
+        ...(f.revenue_lost_with_lost_customers_12m_pct != null ? [{ label: 'Revenue churn (12 months)', value: P0(f.revenue_lost_with_lost_customers_12m_pct), sub: f.logo_churn_12m_pct != null ? P0(f.logo_churn_12m_pct) + ' of accounts left' + (f.logo_churn_12m_pct > f.revenue_lost_with_lost_customers_12m_pct * 2 ? ', mostly small' : '') : 'of last year\'s revenue', tone: (f.revenue_lost_with_lost_customers_12m_pct <= 5 ? 'good' : f.revenue_lost_with_lost_customers_12m_pct <= 10 ? 'watch' : 'risk') as Tone }]
+          : [{ label: 'Accounts lost (12 months)', value: P0(f.logo_churn_12m_pct), sub: f.customers_a_year_ago ? 'of ' + Number(f.customers_a_year_ago).toLocaleString('en-US') + ' a year ago' : undefined }]),
         { label: 'Year-1 cohort retention', value: P0(f.cohort_m12_retention_pct), sub: 'average across cohorts' }],
-      charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: lbls, values: f.trend.nrr, pct: true }, { title: 'Gross revenue retention, 12 months', labels: lbls, values: f.trend.grr ?? [], pct: true }, { title: 'Customers lost, 12 months', labels: lbls, values: f.trend.churn ?? [], pct: true }] : undefined,
+      charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: lbls, values: f.trend.nrr, pct: true }, { title: 'Gross revenue retention, 12 months', labels: lbls, values: f.trend.grr ?? [], pct: true }, (f.trend.rev_lost?.some((v: number | null) => v !== null) ? { title: 'Revenue churn (revenue lost with customers who left), 12 months', labels: lbls, values: f.trend.rev_lost, pct: true } : { title: 'Accounts lost, 12 months', labels: lbls, values: f.trend.churn ?? [], pct: true })] : undefined,
       pies: (() => { const sl = [['New customers', l3.new], ['Spending more', l3.expansion], ['Spending less', l3.contraction], ['Lost', l3.churned]].map(([l, v]) => ({ label: String(l), value: Math.abs(num(v) ?? 0) })); return sl.some((x) => x.value > 0) ? [pieOf(mv, sl, 'Size of each movement')] : [] })(),
       tables: [{ title: mv, head: ['', 'Customers', 'Change in monthly revenue (' + cur.currency + ')'], rows: [['New customers', l3.new, n3.new], ['Existing customers spending more', l3.expansion, n3.expansion], ['Existing customers spending less', l3.contraction, n3.contraction], ['Customers lost', l3.churned, n3.churned]].map(([l, v, n]) => ({ label: String(l), cells: [n === undefined ? '–' : Number(n).toLocaleString('en-US'), money(num(v))] })) },
-        ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Paying customers', 'Share', 'Net', 'Gross', 'Lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [Number(g.customers).toLocaleString('en-US'), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
+        ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Paying customers', 'Share', 'Net', 'Gross', 'Accounts lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [Number(g.customers).toLocaleString('en-US'), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
     if (want('customers')) sections.push({ key: 'customers', title: 'Customers' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '.' + head(P.customers), ...pts(P.customers),
       tiles: [{ label: 'Paying customers', value: f.active == null ? '–' : Number(f.active).toLocaleString('en-US') }, { label: 'Annual recurring revenue', value: short(f.arr ?? null) }, { label: 'Average customer', value: short(f.arpa_month ?? null), sub: 'a month' },
         { label: 'Top 10 customers', value: P0(f.top10_share_pct), sub: 'of revenue' }, ...(f.ltv_to_cac != null ? [{ label: 'Lifetime value to acquisition cost', value: f.ltv_to_cac + '×', tone: (f.ltv_to_cac >= 3 ? 'good' : f.ltv_to_cac >= 1.5 ? 'watch' : 'risk') as Tone }] : [])],
@@ -426,7 +432,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
     let nx = M
     if (img && pdf.getPageCount() > 1) { const h = 16, w = Math.min(70, (img.width / img.height) * h); page.drawImage(img, { x: M, y: y - 4, width: w, height: h }); nx = M + w + 8 }
     page.drawText(clean(r.company).toUpperCase(), { x: nx, y, size: 9, font: bold, color: navy })
-    const t = 'MANAGEMENT REPORT · ' + r.label.toUpperCase(); page.drawText(clean(t), { x: W - M - bold.widthOfTextAtSize(clean(t), 8), y, size: 8, font: bold, color: mut })
+    const t = (r.kind === 'Forecast' ? 'FORECAST' : 'MANAGEMENT REPORT') + ' · ' + r.label.toUpperCase(); page.drawText(clean(t), { x: W - M - bold.widthOfTextAtSize(clean(t), 8), y, size: 8, font: bold, color: mut })
     y -= 12; page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: rule }); y -= 20
   }
   const ensure = (h: number) => { if (y - h < M + 24) newPage() }
@@ -443,7 +449,7 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   if (img) { const h = 40, w = Math.min(160, (img.width / img.height) * h); page.drawImage(img, { x: M, y: y - h + 10, width: w, height: h }); y -= h + 8 }
   page.drawText((r.kind ?? 'Monthly management report').toUpperCase(), { x: M, y, size: 10, font: bold, color: mut }); y -= 26
   page.drawText(clean(r.label), { x: M, y, size: 24, font: bold, color: navy }); y -= 20
-  para('Prepared for ' + (r.audience === 'executive' ? 'the executive team' : r.audience === 'investor' ? 'investors' : 'the board') + '. Management figures in ' + r.currency + ', unaudited.' + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
+  para('Prepared for ' + (r.audience === 'executive' ? 'the executive team' : r.audience === 'investor' ? 'investors' : 'the board') + (r.kind === 'Forecast' ? '. A forecast in ' + r.currency + ': estimates from the assumptions shown, not results.' : '. Management figures in ' + r.currency + ', unaudited.') + (r.business ? ' Business type: ' + r.business + '.' : ''), { color: mut, size: 9.5, gap: 14 })
 
   const tiles = (ts: MTile[]) => {
     const cols = 3, gap = 10, w = (W - M * 2 - gap * (cols - 1)) / cols, h = 54

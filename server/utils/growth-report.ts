@@ -22,13 +22,15 @@ async function scopeOf(subject: string): Promise<ForecastScope | null> {
 
 // Which of the two sections can go in: the module on the plan (and open to this person) and something to show.
 export async function growthAvailable(event: H3Event, subject: string): Promise<Record<string, boolean>> {
-  const out: Record<string, boolean> = { banking: false, stage: false }
+  const out: Record<string, boolean> = { banking: false, stage: false, forecast: false }
   const sc = await scopeOf(subject).catch(() => null); if (!sc) return out
   const usable = await usableModules((event.context.user as SessionUser).roles, event)
   const ent = sc.group ? null : sc.entity, main = await companyEntityId()
   const n = async (sql: string, p: unknown[]) => ((await db().query<{ n: number }>(sql, p).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0)
   out.banking = usable.has('banking_treasury') && (await n('SELECT count(*)::int AS n FROM banking.ledger WHERE ($1::uuid IS NULL OR coalesce(entity_id, $2::uuid) = $1)', [ent, main])) > 0
   out.stage = usable.has('stage_monitor')
+  // Forecast: when the plan has it and a company in the report has a saved forecast.
+  out.forecast = usable.has('forecast') && (await n('SELECT count(*)::int AS n FROM financials.forecasts WHERE ($1::uuid IS NULL OR entity_id = $1)', [ent])) > 0
   return out
 }
 

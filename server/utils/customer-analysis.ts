@@ -57,9 +57,16 @@ function rules(kind: string, f: Record<string, unknown>): CustInsight[] {
   const cur = String(f.currency), money = (v: number | null) => (v == null ? '—' : cur + ' ' + Math.round(v).toLocaleString('en-US'))
   if (kind === 'retention') {
     const nrr = n('nrr_12m_pct'), grr = n('grr_12m_pct'), lc = n('logo_churn_12m_pct')
-    if (nrr !== null) out.push({ title: 'Net revenue retention ' + nrr + '%', detail: (nrr >= 100 ? 'Customers from a year ago pay more today than they did then: expansion outweighs churn.' : 'Customers from a year ago pay less today: churn and downgrades outweigh expansion.') + ' Strong B2B software is 110%+; under 90% needs attention.', tone: nrr >= 105 ? 'good' : nrr >= 90 ? 'watch' : 'risk' })
-    if (grr !== null) out.push({ title: 'Gross revenue retention ' + grr + '%', detail: 'Revenue kept from last year\'s customers before any expansion. Above 90% is healthy for enterprise; 80% is typical for SMB.', tone: grr >= 90 ? 'good' : grr >= 80 ? 'watch' : 'risk' })
-    if (lc !== null) out.push({ title: lc + '% of customers lost in 12 months', detail: (f.customers_a_year_ago as number) + ' customers paid a year ago; ' + Math.round((f.customers_a_year_ago as number) * (1 - lc / 100)) + ' still pay.', tone: lc <= 10 ? 'good' : lc <= 25 ? 'watch' : 'risk' })
+    if (nrr !== null) out.push({ title: 'Net revenue retention ' + nrr + '%', detail: (nrr >= 100 ? 'Customers from a year ago pay more today than they did then: expansion outweighs churn.' : nrr >= 98 ? 'Customers from a year ago pay about the same today: growth from existing customers balances what was lost.' : 'Customers from a year ago pay less today: churn and downgrades outweigh expansion.') + ' Strong B2B software is 110%+; under 90% needs attention.', tone: nrr >= 105 ? 'good' : nrr >= 90 ? 'watch' : 'risk' })
+    // Usage-based billing (messaging, payments, cloud) moves with customers' volumes, so gross retention runs lower than
+    // for subscriptions: around 70–85% is common, against 80–90%+ for subscription software.
+    const usage = f.billing === 'usage', gOk = usage ? 85 : 90, gWatch = usage ? 70 : 80
+    if (grr !== null) out.push({ title: 'Gross revenue retention ' + grr + '%', detail: 'Revenue kept from last year\'s customers before any expansion. ' + (usage ? 'With usage-based billing, 70–85% is common, as customers\' volumes move from month to month.' : 'Above 90% is healthy for enterprise; 80% is typical for SMB.'), tone: grr >= gOk ? 'good' : grr >= gWatch ? 'watch' : 'risk' })
+    // Customers who left, measured by the revenue they took (the standard view for a board): the share of accounts is
+    // given too, as most accounts that leave a usage-based business are small.
+    const rl = n('revenue_lost_with_lost_customers_12m_pct'), ago = f.customers_a_year_ago as number
+    if (rl !== null) out.push({ title: 'Customers who left took ' + rl + '% of last year\'s revenue', detail: (lc !== null ? lc + '% of accounts left (' + Math.round(ago * lc / 100).toLocaleString('en-US') + ' of ' + ago.toLocaleString('en-US') + ')' + (lc > rl * 2 ? ', mostly small ones' : '') + '. ' : '') + 'The revenue they took is what affects results.', tone: rl <= 5 ? 'good' : rl <= 10 ? 'watch' : 'risk' })
+    else if (lc !== null) out.push({ title: lc + '% of accounts left in 12 months', detail: ago + ' customers paid a year ago; ' + Math.round(ago * (1 - lc / 100)) + ' still pay.', tone: lc <= 10 ? 'good' : lc <= 25 ? 'watch' : 'risk' })
     const gs = (f.groups as { group: string; nrr_pct: number | null; share_pct: number | null }[]).filter((g) => g.nrr_pct !== null && g.group !== 'Not set')
     if (gs.length >= 2) { const s = [...gs].sort((a, b) => b.nrr_pct! - a.nrr_pct!); out.push({ title: s[0]!.group + ' retains best, ' + s[s.length - 1]!.group + ' least', detail: s.map((g) => g.group + ' ' + g.nrr_pct + '%').join(', ') + ' net retention.', tone: s[s.length - 1]!.nrr_pct! < 90 ? 'watch' : 'good' }) }
     const gap = n('customer_revenue_vs_financials_pct')
@@ -108,7 +115,7 @@ export async function analyseCustomers(kind: 'retention' | 'customers', force = 
   if (!facts) { facts = customerFacts(kind, await loadCustomers(), cfg, fin); if (!facts) return null; FACTS.set(sk, { key, facts }); if (FACTS.size > 60) FACTS.delete(FACTS.keys().next().value!) }
   // Each company's analysis and the group's are kept apart.
   const subject = 'customers:' + kind + (custEntityId() ? ':' + custEntityId() : '')
-  const hash = createHash('sha256').update(JSON.stringify({ facts, businessType, v: 5 })).digest('hex').slice(0, 40)
+  const hash = createHash('sha256').update(JSON.stringify({ facts, businessType, v: 6 })).digest('hex').slice(0, 40)
   if (rulesOnly) { const r = rules(kind, facts); return { headline: '', insights: r, ai: false, as_of: String(facts.as_of), kind } }
   if (!force) { const hit = (await db().query<{ analysis: CustAnalysis }>('SELECT analysis FROM financials.analyses WHERE subject = $1 AND hash = $2', [subject, hash])).rows[0]; if (hit) return hit.analysis }
   const ins = rules(kind, facts)

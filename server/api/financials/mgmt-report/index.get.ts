@@ -21,6 +21,6 @@ export default defineEventHandler(async (event) => {
   const has_securities = rows.some((r) => typeof r.lines.investments === 'number' && r.lines.investments !== 0)
   // Banking and Stage: offered when the plan has them and there is something to show.
   const growth = await growthAvailable(event, subject).catch(() => ({} as Record<string, boolean>))
-  const GROWTH = new Set(['banking', 'stage'])
+  const GROWTH = new Set(['banking', 'stage', 'forecast'])
   return { has_securities, subject, groups: customers ? ((await withCustFor(subject, () => customerGroups())) ?? []) : [], months, sections: MR_SECTIONS.map((s) => ({ ...s, on: on(s.key), available: GROWTH.has(s.key) ? !!growth[s.key] : (s.key !== 'customers' && s.key !== 'retention') || customers })), saved: !!saved, chart: mine?.chart ?? 'area', pies: mine?.pies ?? true, burn_checks: mine?.burn_checks ?? true, audience: mine?.audience ?? 'board', about: (await companyAbout(subject, mine?.about)).text }
 })

@@ -1,10 +1,10 @@
 // Makes the monthly management report (PDF or Excel) with the sections the founder picked, and remembers the choice.
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx } from '~/server/utils/mgmt-report'
+import { MR_SECTIONS, buildMgmtReport, companyAbout, mgmtPdf, mgmtXlsx, type MSection } from '~/server/utils/mgmt-report'
 import { customerFacts, analyseCustomers } from '~/server/utils/customer-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
-import { addM, groupOf, span } from '~/shared/customer-metrics'
+import { addM, groupOf, retention, span } from '~/shared/customer-metrics'
 const Body = z.object({ subject: z.string().regex(/^(group|(entity|company):[0-9a-f-]{36})$/).optional(), month: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(), period: z.enum(['month', 'quarter', 'year']).default('month'), sections: z.array(z.string().max(40)).max(20).transform((xs) => xs.filter((k) => MR_SECTIONS.some((s) => s.key === k))).pipe(z.array(z.string()).min(1)),
   format: z.enum(['pdf', 'xlsx']).default('pdf'), comments: z.string().max(8000).default(''), priorities: z.string().max(4000).default(''), about: z.string().max(4000).optional(), room: z.boolean().default(false), deliver: z.enum(['download', 'room']).default('download'), chart: z.enum(['area', 'line', 'bar']).optional(), pies: z.boolean().optional(), burn_checks: z.boolean().optional(), audience: z.enum(['board', 'executive', 'investor']).optional(), update: z.boolean().default(false), remember: z.boolean().default(true),
   cust_group: z.object({ by: z.enum(['size', 'segment', 'sector', 'plan', 'country']), value: z.string().min(1).max(60) }).nullable().optional(), cash_with_securities: z.boolean().nullable().optional() })
@@ -52,7 +52,9 @@ export default defineEventHandler(async (event) => {
       if (g) customers.only = g.value + (g.by === 'size' ? ' (by revenue size)' : '')
       const last = String(customers.as_of), ms = Array.from({ length: 12 }, (_, i) => addM(last, i - 11)), sfx = g ? '@' + g.by + '=' + g.value : ''
       const keys = ['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:active'].map((k) => k + sfx), tr = await customerSeries(keys, ms)
-      customers.trend = { labels: ms, nrr: tr[keys[0]!] ?? [], grr: tr[keys[1]!] ?? [], churn: tr[keys[2]!] ?? [], arr: tr[keys[3]!] ?? [], active: tr[keys[4]!] ?? [] }
+      // Revenue lost with customers who left, as a share of revenue a year earlier, month by month (the board's view of churn).
+      const basis = cfg.retention_basis ?? 'month', revLost = ms.map((m) => { const r = retention(cs, m, 12, basis); return r.base ? Math.round((r.churned / r.base) * 1000) / 10 : null })
+      customers.trend = { labels: ms, nrr: tr[keys[0]!] ?? [], grr: tr[keys[1]!] ?? [], churn: tr[keys[2]!] ?? [], arr: tr[keys[3]!] ?? [], active: tr[keys[4]!] ?? [], rev_lost: revLost }
       // The write-up from the Retention and Customers pages (the headline and four key points) goes into the report,
       // so those pages can stay as charts. Not for one group only: the write-up is about all customers.
       if (!g) customers.points = { retention: d.sections.includes('retention') ? await analyseCustomers('retention', false, audience !== 'board').catch(() => null) : null, customers: d.sections.includes('customers') ? await analyseCustomers('customers', false, audience !== 'board').catch(() => null) : null }
@@ -65,7 +67,12 @@ export default defineEventHandler(async (event) => {
   try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), burnChecks, audience, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Banking and Stage, for the same company (or the group), in the report's order.
-  const extra = await growthSections(event, d.subject, d.sections, month.slice(0, 7), audience).catch((e) => { console.error('[mgmt-report] growth', e); return [] })
+  const extra: MSection[] = await growthSections(event, d.subject, d.sections, month.slice(0, 7), audience).catch((e) => { console.error('[mgmt-report] growth', e); return [] as MSection[] })
+  // The forecast the company uses, with its scenarios and what it assumes against the actual months.
+  if (d.sections.includes('forecast') && (await growthAvailable(event, d.subject).catch(() => ({} as Record<string, boolean>))).forecast) {
+    const fc = await forecastPack({ subject: d.subject }).catch((e) => { console.error('[mgmt-report] forecast', e); return null })
+    if (fc) extra.push(forecastSection(fc, { audience, hist: forecastHistory(upTo as never) }))
+  }
   if (extra.length) { r.sections.push(...extra); r.sections.sort((a, b) => MR_SECTIONS.findIndex((s) => s.key === a.key) - MR_SECTIONS.findIndex((s) => s.key === b.key)) }
   // Remember the sections for next month.
   const all = { ...((org.settings.mgmt_report as Record<string, unknown> | undefined) ?? {}), [d.subject]: { sections: d.sections, about: d.about ?? prevSaved?.about ?? '', chart, pies, burn_checks: burnChecks, audience, growth_seen: true } }

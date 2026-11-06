@@ -37,6 +37,18 @@ const { data: me } = await useFetch<{ roles: string[] }>('/api/auth/me', { key: 
 const canEdit = computed(() => (me.value?.roles ?? []).some((r) => ['gp', 'admin'].includes(r)))
 // The forecast this company's figures in the group forecast come from (only when it is part of a group).
 const inGroup = computed(() => (one.value?.company?.companies ?? 0) > 1)
+// The forecast as a report (PDF or Excel): figures by quarter, scenarios and what it assumes, as saved.
+const ex = reactive({ open: false, format: 'pdf', audience: 'board', busy: false, msg: '' })
+async function exportReport() {
+  ex.busy = true; ex.msg = ''
+  try {
+    const res = await fetch('/api/forecast/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: sel.value, format: ex.format, audience: ex.audience }) })
+    if (!res.ok) { ex.msg = ((await res.json().catch(() => null)) as { data?: { error?: { message?: string } } } | null)?.data?.error?.message ?? 'Could not make the report.'; return }
+    const fn = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'forecast.' + ex.format
+    const url = URL.createObjectURL(await res.blob()), link = document.createElement('a'); link.href = url; link.download = fn; link.click(); setTimeout(() => URL.revokeObjectURL(url), 2000)
+    ex.open = false
+  } finally { ex.busy = false }
+}
 const isMain = computed(() => { const l = one.value?.forecasts ?? []; return !!sel.value && (l.find((f) => f.is_main)?.id ?? l[0]?.id) === sel.value })
 async function useForGroup() { msg.value = ''; ok.value = ''; try { await $fetch('/api/forecast', { method: 'POST', query: fq.value, body: { id: sel.value, main: true } }); await refresh(); ok.value = 'The group forecast now uses "' + name.value + '" for ' + (one.value?.company?.name ?? 'this company') + '.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not save.' } }
 const tplHref = computed(() => '/api/forecast/template' + (fq.value.cust ? '?cust=' + encodeURIComponent(fq.value.cust) : ''))
@@ -122,7 +134,7 @@ function csv() {
     <div class="hd"><div><h1 v-if="!scoped">Forecast</h1><p class="lead">Revenue, costs, profit and cash by month{{ scoped && one.company?.name ? ' for ' + one.company.name + ', in ' + one.currency : '' }}.</p></div>
       <div class="tb"><button class="btn" @click="build = true">Build from my numbers</button><button class="btn secondary" @click="imp = true">Import from a file</button><a class="btn secondary" :href="tplHref">Forecast template</a><button class="btn secondary" @click="pick('')">New forecast</button></div></div>
     <nav class="ft"><button v-for="f in one.forecasts" :key="f.id" :class="{ on: sel === f.id }" @click="pick(f.id)">{{ f.name }}<span v-if="f.views" class="vw">{{ f.views }} view{{ f.views === 1 ? '' : 's' }}</span></button><button v-if="!sel" class="on">{{ name || 'New forecast' }} <span class="vw">not saved</span></button></nav>
-    <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><span v-if="inGroup && sel && isMain" class="gm">Used for the group</span><button v-else-if="inGroup && sel && canEdit" class="lk" @click="useForGroup">Use for the group forecast</button><button v-if="sel" class="lk red" @click="del">Delete</button></div>
+    <div class="bar"><input v-model="name" maxlength="120" aria-label="Forecast name" class="nm"><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : dirty || !sel ? 'Save' : 'Saved' }}</button><button v-if="sel" class="btn secondary" :disabled="busy" @click="save(true)">Save as copy</button><button class="btn secondary" :disabled="!sel" :title="sel ? '' : 'Save the forecast first'" @click="shareOpen = true">Share{{ cur0?.views ? ' · ' + cur0.views + ' views' : '' }}</button><button class="btn secondary" :disabled="!sel || dirty" :title="!sel || dirty ? 'Save the forecast first' : ''" @click="ex.open = true; ex.msg = ''">Export report</button><button class="btn secondary" @click="csv">Export CSV</button><AddToRoom v-if="sel && hasRoom" kind="forecast" :id="sel" format="xlsx" label="Add to data room" /><span class="sp" /><span v-if="inGroup && sel && isMain" class="gm">Used for the group</span><button v-else-if="inGroup && sel && canEdit" class="lk" @click="useForGroup">Use for the group forecast</button><button v-if="sel" class="lk red" @click="del">Delete</button></div>
     <p v-if="a.fixed && Object.keys(a.fixed).length" class="note">{{ mon(Object.keys(a.fixed).sort()[0]!) }} to {{ mon(Object.keys(a.fixed).sort().pop()!) }} use figures from {{ a.source?.file || 'your accountant' }}; assumptions apply after. <button class="lk" @click="dropFixed">Use assumptions for every month instead</button></p>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok && !dirty" class="ok">{{ ok }}</p>
     </template>
@@ -184,7 +196,16 @@ function csv() {
     <ForecastImport :open="imp" :seed="one.seed" :q="fq" @close="imp = false" @done="imported" />
     <ShareLinks :open="shareOpen" kind="forecast" :object-id="sel" :title="name" @close="shareOpen = false" @changed="refresh()" />
     </template>
-  </section>
+    <AppModal :open="ex.open" title="Export the forecast" @close="ex.open = false">
+    <div class="exm">
+      <p class="hint">"{{ name }}" as saved: the coming months by quarter, the best and worst cases, and what the forecast assumes set against your actual figures.</p>
+      <label class="label">For<select v-model="ex.audience"><option value="board">The board (everything)</option><option value="executive">The executive team (no payroll or headcount; runway as a range)</option><option value="investor">Investors</option></select></label>
+      <label class="label">Format<select v-model="ex.format"><option value="pdf">PDF</option><option value="xlsx">Excel</option></select></label>
+      <p v-if="ex.msg" class="error">{{ ex.msg }}</p>
+    </div>
+    <template #foot><button class="btn secondary" type="button" @click="ex.open = false">Cancel</button><button class="btn" type="button" :disabled="ex.busy" @click="exportReport">{{ ex.busy ? 'Making it…' : 'Download' }}</button></template>
+  </AppModal>
+</section>
 </template>
 <style scoped>
 .fc { display: flex; flex-direction: column; gap: 16px; }
@@ -217,4 +238,5 @@ function csv() {
 .t tr.s td { color: var(--c-muted); font-size: 12px; } .t tr.s td.st { padding-left: 24px; color: var(--c-ink-soft); }
 .pl { display: grid; grid-template-columns: minmax(0, 1fr) 76px 14px 18px; gap: 6px; align-items: center; margin-top: 6px; } .pl em { font-style: normal; font-size: 11px; color: var(--c-muted); } .pg + .pg { margin-top: 6px; } .kl em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; } .kl em.over { color: var(--c-danger); }
 .addp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; } .addp input:first-child { grid-column: 1 / -1; } .addp .btn { justify-self: start; }
+.exm { display: flex; flex-direction: column; gap: 12px; } .exm .hint { margin: 0; font-size: 13px; color: var(--c-muted); }
 </style>
