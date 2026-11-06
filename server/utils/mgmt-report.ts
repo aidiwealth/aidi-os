@@ -329,7 +329,8 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
   if ((want('retention') || want('customers')) && o.customers) {
     const f = o.customers, l3 = f.last_3_months ?? {}, who = f.only ? String(f.only) + ' customers only. ' : ''
     const lbls = f.trend ? (f.trend.labels as string[]).map((m) => MM(m + '-01')) : []
-    const mv = 'Change in monthly revenue, 3 months to ' + MM(String(f.as_of) + '-01')
+    const mv = 'Change in monthly revenue (' + cur.currency + '), 3 months to ' + MM(String(f.as_of) + '-01')
+    const n3 = (f.last_3_months_customers ?? {}) as Record<string, number | undefined>
     const P0 = (v: unknown) => (v == null ? '–' : v + '%')
     type Pts = { headline?: string; insights?: { title: string; detail: string; tone: Tone }[] } | null | undefined
     const pts = (a: Pts) => (a?.insights?.length ? { bullets: a.insights.slice(0, 4).map((x) => ({ text: point(x), tone: x.tone })) } : {})
@@ -342,7 +343,7 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
         { label: 'Year-1 cohort retention', value: P0(f.cohort_m12_retention_pct), sub: 'average across cohorts' }],
       charts: f.trend ? [{ title: 'Net revenue retention, 12 months', labels: lbls, values: f.trend.nrr, pct: true }, { title: 'Gross revenue retention, 12 months', labels: lbls, values: f.trend.grr ?? [], pct: true }, { title: 'Customers lost, 12 months', labels: lbls, values: f.trend.churn ?? [], pct: true }] : undefined,
       pies: (() => { const sl = [['New customers', l3.new], ['Spending more', l3.expansion], ['Spending less', l3.contraction], ['Lost', l3.churned]].map(([l, v]) => ({ label: String(l), value: Math.abs(num(v) ?? 0) })); return sl.some((x) => x.value > 0) ? [pieOf(mv, sl, 'Size of each movement')] : [] })(),
-      tables: [{ title: mv, head: ['', 'Amount'], rows: [['New customers', l3.new], ['Existing customers spending more', l3.expansion], ['Existing customers spending less', l3.contraction], ['Customers lost', l3.churned]].map(([l, v]) => ({ label: String(l), cells: [money(num(v))] })) },
+      tables: [{ title: mv, head: ['', 'Customers', 'Change in monthly revenue (' + cur.currency + ')'], rows: [['New customers', l3.new, n3.new], ['Existing customers spending more', l3.expansion, n3.expansion], ['Existing customers spending less', l3.contraction, n3.contraction], ['Customers lost', l3.churned, n3.churned]].map(([l, v, n]) => ({ label: String(l), cells: [n === undefined ? '–' : Number(n).toLocaleString('en-US'), money(num(v))] })) },
         ...(!f.only && Array.isArray(f.groups) && f.groups.length > 1 ? [{ title: 'Retention by customer group (' + String(f.group_by) + ')', head: ['', 'Paying customers', 'Share', 'Net', 'Gross', 'Lost'], rows: (f.groups as { group: string; customers: number; share_pct: number | null; nrr_pct: number | null; grr_pct: number | null; logo_churn_pct: number | null }[]).map((g) => ({ label: g.group, cells: [Number(g.customers).toLocaleString('en-US'), P0(g.share_pct), P0(g.nrr_pct), P0(g.grr_pct), P0(g.logo_churn_pct)] })) }] : [])] })
     if (want('customers')) sections.push({ key: 'customers', title: 'Customers' + (f.only ? ' · ' + f.only : ''), intro: who + 'From your customer data up to ' + ML(String(f.as_of) + '-01') + '.' + head(P.customers), ...pts(P.customers),
       tiles: [{ label: 'Paying customers', value: f.active == null ? '–' : Number(f.active).toLocaleString('en-US') }, { label: 'Annual recurring revenue', value: short(f.arr ?? null) }, { label: 'Average customer', value: short(f.arpa_month ?? null), sub: 'a month' },

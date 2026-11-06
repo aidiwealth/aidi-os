@@ -28,6 +28,12 @@ export function customerFacts(kind: 'retention' | 'customers', cs: Cust[], cfg: 
     // are not read as a revenue problem.
     revenue_lost_with_lost_customers_12m_pct: r12.base ? P(r12.churned / r12.base) : null, revenue_lost_to_customers_spending_less_12m_pct: r12.base ? P(r12.contraction / r12.base) : null,
     last_3_months: { new: R(sum('new')), expansion: R(sum('expansion')), contraction: R(sum('contraction')), churned: R(sum('churned')) },
+    // How many different customers are behind each movement: each customer counted once, by comparing what they paid in
+    // the month before the 3 months with the last month.
+    last_3_months_customers: (() => { const a0 = addM(asOf, -3), n = { new: 0, expansion: 0, contraction: 0, churned: 0 }
+      for (const c of cs) { const a = c.rev[a0] ?? 0, b = c.rev[asOf] ?? 0, firstM = Object.keys(c.rev).filter((m) => (c.rev[m] ?? 0) > 0).sort()[0]
+        if (a <= 0 && b > 0) { if (firstM && firstM > a0) n.new++ } else if (a > 0 && b <= 0) n.churned++; else if (b > a) n.expansion++; else if (a > b) n.contraction++ }
+      return n })(),
     nrr_change_vs_3_months_ago_pts: r12.nrr !== null && r12p.nrr !== null ? Math.round((r12.nrr - r12p.nrr) * 1000) / 10 : null,
     group_by: cfg.group_by, groups: groups.slice(0, 8).map((g) => ({ group: g.group, customers: g.active, customers_ever: g.customers, share_pct: P(g.share), nrr_pct: P(g.nrr), grr_pct: P(g.grr), logo_churn_pct: P(g.logo_churn), arpa_month: R(g.arpa), growth_pct: P(g.growth) })),
     company_revenue_growth_3m_vs_prior_3m_pct: (() => { const a = recent3.map((m) => fin.revenue[m]), b = [3, 4, 5].map((i) => fin.revenue[addM(asOf, -i)]); return a.every((x) => typeof x === 'number') && b.every((x) => typeof x === 'number') && b.reduce((s, x) => s + x!, 0) > 0 ? P(a.reduce((s, x) => s + x!, 0) / b.reduce((s, x) => s + x!, 0) - 1) : null })(),
