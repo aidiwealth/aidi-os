@@ -114,22 +114,28 @@ export async function statementsPdf(s: Statements, logo: { data: Buffer; ext: 'p
     page.drawText(clean(title), { x: M, y, size: 17, font: bold, color: navy }); y -= 22
     page.drawText(pageNo + '', { x: W - M - 10, y: 22, size: 8, font: reg, color: mut }); page.drawText('Prepared ' + new Date().toISOString().slice(0, 10) + ' with Finvry', { x: M, y: 22, size: 8, font: reg, color: mut })
   }
+  // A label shortened with an ellipsis when it would run into the figures.
+  const fit = (t: string, f: PDFFont, size: number, w: number) => { if (f.widthOfTextAtSize(t, size) <= w) return t; let x = t; while (x.length > 1 && f.widthOfTextAtSize(x + '...', size) > w) x = x.slice(0, -1); return x.trimEnd() + '...' }
   const wrap = (t: string, f: PDFFont, size: number, w: number) => { const out: string[] = []; for (const para of clean(t).split(/\n/)) { let cur = ''; for (const word of para.split(/\s+/).filter(Boolean)) { const n = cur ? cur + ' ' + word : word; if (f.widthOfTextAtSize(n, size) > w && cur) { out.push(cur); cur = word } else cur = n } out.push(cur) } return out }
   const PER = 8
   for (const sec of s.sections) {
     for (let start = 0; start < s.periods.length; start += PER) {
       const cols = s.periods.slice(start, start + PER)
       header(sec.title + (s.periods.length > PER ? ' (' + (start / PER + 1) + ' of ' + Math.ceil(s.periods.length / PER) + ')' : ''))
-      const labW = 220, colW = (W - M * 2 - labW) / cols.length
+      // Large figures (naira, billions) get a narrower label column and then smaller type, so columns never run together.
+      const vw = Math.max(0, ...sec.rows.flatMap((r) => r.values.slice(start, start + PER).map((x) => bold.widthOfTextAtSize(fmtN(x, r.kind === 'pct', r.kind === 'ratio'), 9)))) + 10
+      let labW = 220
+      if (vw * cols.length > W - M * 2 - labW) labW = Math.max(150, Math.min(220, Math.max(0, ...sec.rows.map((r) => reg.widthOfTextAtSize(clean(r.label), 9) + (r.kind === 'sub' ? 16 : 4)))))
+      const colW = (W - M * 2 - labW) / cols.length, fs = Math.max(6.5, Math.min(9, Math.floor((9 * (colW - 10) / Math.max(1, vw - 10)) * 4) / 4))
       page.drawRectangle({ x: M, y: y - 6, width: W - M * 2, height: 20, color: navy })
       cols.forEach((p, i) => { const t = clean(p); page.drawText(t, { x: M + labW + colW * (i + 1) - 6 - bold.widthOfTextAtSize(t, 8.5), y: y, size: 8.5, font: bold, color: rgb(1, 1, 1) }) })
       y -= 24
       for (const r of sec.rows) {
         if (y < M + 30) header(sec.title + ' (continued)')
-        const f = r.kind === 'total' || r.kind === 'head' ? bold : r.kind === 'pct' ? ital : reg, size = 9
+        const f = r.kind === 'total' || r.kind === 'head' ? bold : r.kind === 'pct' ? ital : reg, size = 9, vs = fs
         if (r.kind === 'total') page.drawLine({ start: { x: M + labW, y: y + 11 }, end: { x: W - M, y: y + 11 }, thickness: 0.5, color: rule })
-        page.drawText(clean(r.label), { x: M + (r.kind === 'sub' ? 12 : 0), y, size, font: f, color: r.kind === 'head' ? blue : r.kind === 'pct' ? mut : ink })
-        r.values.slice(start, start + PER).forEach((x, i) => { const t = fmtN(x, r.kind === 'pct', r.kind === 'ratio'); if (!t) return; page.drawText(t, { x: M + labW + colW * (i + 1) - 6 - f.widthOfTextAtSize(t, size), y, size, font: f, color: x !== null && x < 0 && ['gross_profit', 'ebitda', 'net_income'].includes(r.key ?? '') ? red : r.kind === 'pct' ? mut : ink }) })
+        page.drawText(fit(clean(r.label), f, size, labW - (r.kind === 'sub' ? 16 : 4)), { x: M + (r.kind === 'sub' ? 12 : 0), y, size, font: f, color: r.kind === 'head' ? blue : r.kind === 'pct' ? mut : ink })
+        r.values.slice(start, start + PER).forEach((x, i) => { const t = fmtN(x, r.kind === 'pct', r.kind === 'ratio'); if (!t) return; page.drawText(t, { x: M + labW + colW * (i + 1) - 6 - f.widthOfTextAtSize(t, vs), y, size: vs, font: f, color: x !== null && x < 0 && ['gross_profit', 'ebitda', 'net_income'].includes(r.key ?? '') ? red : r.kind === 'pct' ? mut : ink }) })
         y -= r.kind === 'total' ? 18 : 15
       }
       if (sec.note && start + PER >= s.periods.length) {

@@ -471,18 +471,39 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   }
   const table = (t: MTable) => {
     if (t.title) { ensure(30); page.drawText(clean(t.title), { x: M, y, size: 9.5, font: bold, color: navy }); y -= 14 }
-    const n = t.head.length, labW = n > 4 ? 170 : n === 3 && t.rows.some((rw) => (rw.cells[1] ?? '').length > 20) ? 70 : 220
+    const n = t.head.length
+    let labW = n > 4 ? 170 : n === 3 && t.rows.some((rw) => (rw.cells[1] ?? '').length > 20) ? 70 : 220
     const wide = n === 3 && labW === 70
+    // Large figures (naira, billions): narrow the label column to what the labels need, then make the figures smaller,
+    // and only if they still do not fit write them in millions or billions ("1,796.5M") so columns never run together.
+    let fs = 9, rows = t.rows
+    if (!wide && n > 1) {
+      const numW = (rs: MRow[], sz: number) => Math.max(0, ...rs.flatMap((rw) => rw.cells.map((c) => bold.widthOfTextAtSize(clean(c), sz)))) + 8
+      const avail = () => (W - M * 2 - labW) / (n - 1)
+      if (numW(rows, 9) > avail()) {
+        const lw = Math.max(0, ...rows.map((rw) => reg.widthOfTextAtSize(clean(rw.label), 9) + (rw.kind === 'sub' ? 14 : 4)))
+        labW = Math.max(120, Math.min(labW, lw + 6))
+      }
+      if (numW(rows, 9) > avail()) fs = Math.max(7.5, Math.floor((9 * (avail() - 8) / (numW(rows, 9) - 8)) * 4) / 4)
+      if (numW(rows, fs) > avail()) {
+        const big = Math.max(0, ...rows.flatMap((rw) => rw.cells.map((c) => { const m = /^\(?-?[\d,]+(\.\d+)?\)?$/.exec(clean(c).trim()); return m ? Math.abs(Number(clean(c).replace(/[(),]/g, ''))) : 0 })))
+        const [div, u] = big >= 1e10 ? [1e9, 'B'] : big >= 1e7 ? [1e6, 'M'] : [1e3, 'K']
+        const cmp = (c: string) => { const t2 = clean(c).trim(); if (!/^\(?-?[\d,]+(\.\d+)?\)?$/.test(t2)) return c; const v = Number(t2.replace(/[(),]/g, '')) / div, neg = t2.startsWith('(') || v < 0; const sv = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + u; return neg ? '(' + sv + ')' : sv }
+        rows = rows.map((rw) => ({ ...rw, cells: rw.cells.map(cmp) }))
+        fs = Math.max(7.5, Math.min(9, Math.floor((9 * (avail() - 8) / Math.max(1, numW(rows, 9) - 8)) * 4) / 4))
+      }
+    }
+    const k = fs / 9
     const colW = wide ? [70, W - M * 2 - labW - 70] : Array(n - 1).fill((W - M * 2 - labW) / (n - 1))
     const xs = colW.reduce<number[]>((a, w, j) => [...a, (j ? a[j - 1]! : M + labW) + w], [])
     const rowH = 15
     const drawHead = () => { ensure(rowH * 2); t.head.forEach((h2, j) => { if (!j || !h2) return; const s = fit(h2, bold, 7.5, colW[j - 1]! - 4); page.drawText(s, wide ? { x: xs[j - 1]! - colW[j - 1]! + 4, y, size: 7.5, font: bold, color: mut } : { x: xs[j - 1]! - bold.widthOfTextAtSize(s, 7.5) - 4, y, size: 7.5, font: bold, color: mut }) }); y -= 6; page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: rule }); y -= 11 }
     drawHead()
-    for (const rw of t.rows) {
+    for (const rw of rows) {
       const lines = wide ? wrap(rw.cells[1] ?? '', reg, 8.5, colW[1]! - 8) : [null]
       const hh = Math.max(rowH, lines.length * 11 + 4)
       if (y - hh < M + 24) { newPage(); drawHead() }
-      const f = rw.kind === 'total' || rw.kind === 'head' ? bold : reg, size = rw.kind === 'sub' ? 8.5 : 9
+      const f = rw.kind === 'total' || rw.kind === 'head' ? bold : reg, size = (rw.kind === 'sub' ? 8.5 : 9) * k
       page.drawText(fit(rw.label, f, size, labW - (rw.kind === 'sub' ? 14 : 4)), { x: M + (rw.kind === 'sub' ? 12 : 0), y, size, font: f, color: rw.kind === 'sub' ? mut : ink })
       rw.cells.forEach((c, j) => {
         const tone = rw.tones?.[j]; const col = tone ? TONE[tone] : rw.kind === 'sub' ? mut : ink
@@ -545,7 +566,15 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
   const pie = (p: MPie) => {
     const total = p.slices.reduce((a, x) => a + x.value, 0); if (!total) return
     const isPct = p.pct ?? (Math.abs(total - 100) < 0.6 && p.slices.every((x) => x.value <= 100))
-    const amt = (v: number) => (isPct ? '' : '  ' + Math.round(v).toLocaleString('en-US'))
+    // Share and amount in two right-aligned columns, so long amounts never run into the percentage.
+    const amtS = (v: number) => (isPct ? '' : clean(Math.round(v).toLocaleString('en-US')))
+    const amtW = Math.max(0, ...p.slices.map((x) => bold.widthOfTextAtSize(amtS(x.value), 9)))
+    const nums = (x: { value: number }, yy: number) => {
+      const pc = clean((Math.round((x.value / total) * 1000) / 10).toString() + '%'), a = amtS(x.value)
+      if (a) page.drawText(a, { x: W - M - bold.widthOfTextAtSize(a, 9), y: yy, size: 9, font: bold, color: navy })
+      page.drawText(pc, { x: W - M - (a ? amtW + 14 : 0) - bold.widthOfTextAtSize(pc, 9), y: yy, size: 9, font: bold, color: navy })
+    }
+    const numsW = (a: number) => (isPct ? 0 : amtW + 14) + bold.widthOfTextAtSize('100.0%', 9) + a
     const h = Math.max(120, p.slices.length * 16 + 30)
     ensure(h + 24)
     page.drawText(clean(p.title), { x: M, y, size: 9.5, font: bold, color: navy }); y -= 12
@@ -571,20 +600,18 @@ export async function mgmtPdf(r: MReport, logo: { data: Buffer; ext: 'png' | 'jp
       p.slices.forEach((x, k) => {
         const lx = M + R * 2 + 30
         page.drawRectangle({ x: lx, y: ly - 1, width: 8, height: 8, color: PIE[k % PIE.length]!, borderColor: rule, borderWidth: 0.4 })
-        page.drawText(fit(x.label, reg, 9, 220), { x: lx + 14, y: ly, size: 9, font: reg, color: ink })
-        const t2 = clean((Math.round((x.value / total) * 1000) / 10).toString() + '%' + amt(x.value))
-        page.drawText(t2, { x: W - M - bold.widthOfTextAtSize(t2, 9), y: ly, size: 9, font: bold, color: navy })
+        page.drawText(fit(x.label, reg, 9, Math.min(220, W - M - numsW(12) - lx - 14)), { x: lx + 14, y: ly, size: 9, font: reg, color: ink })
+        nums(x, ly)
         ly -= 16
       })
       y = Math.min(cy - R - 12, ly - 4)
     } else {
       y -= 6
-      const max = Math.max(...p.slices.map((x) => x.value)), barX = M + 170, barW = W - M - barX - 110
+      const max = Math.max(...p.slices.map((x) => x.value)), barX = M + 170, barW = W - M - barX - numsW(16)
       p.slices.forEach((x) => {
         page.drawText(fit(x.label, reg, 9, 160), { x: M, y, size: 9, font: reg, color: ink })
         page.drawRectangle({ x: barX, y: y - 1, width: Math.max(1, (x.value / max) * barW), height: 8, color: blue })
-        const t2 = clean((Math.round((x.value / total) * 1000) / 10).toString() + '%' + amt(x.value))
-        page.drawText(t2, { x: W - M - bold.widthOfTextAtSize(t2, 9), y, size: 9, font: bold, color: navy }); y -= 15
+        nums(x, y); y -= 15
       })
       y -= 6
     }
