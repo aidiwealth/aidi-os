@@ -36,11 +36,13 @@ export async function growthAvailable(event: H3Event, subject: string): Promise<
 
 const ML = (ym: string) => new Date(ym.slice(0, 7) + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 
-export async function growthSections(event: H3Event, subject: string, keys: string[], until?: string, audience: 'board' | 'executive' | 'investor' = 'board'): Promise<MSection[]> {
+export async function growthSections(event: H3Event, subject: string, keys: string[], until?: string, audience: 'board' | 'executive' | 'investor' = 'board', currency?: string): Promise<MSection[]> {
   // The executive team's version: runway as a range, no payroll line or payroll payees.
   const exec = audience === 'executive'
   const RW = (v: number) => (!exec ? v + ' months' : v >= 24 ? 'over 24 months' : v >= 12 ? '12 to 24 months' : v >= 6 ? '6 to 12 months' : 'under 6 months')
   const sc = await scopeOf(subject); if (!sc) return []
+  // In the report's own currency (a Nigerian company's report is in naira, so its bank figures are too).
+  if (currency) sc.currency = currency
   const ok = await growthAvailable(event, subject), want = (k: string) => keys.includes(k) && ok[k]
   const cy = sc.currency, sym = cy === 'USD' ? '$' : cy === 'GBP' ? '£' : cy === 'EUR' ? '€' : cy === 'NGN' ? '₦' : cy + ' '
   const mo = (v: number | null | undefined) => (v === null || v === undefined ? '–' : shortAmount(v, sym))

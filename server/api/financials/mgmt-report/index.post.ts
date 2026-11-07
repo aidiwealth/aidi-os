@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
   try { r = buildMgmtReport(rows as never, { period: d.period, company: name, month, sections: d.sections, fyeMonth: profile.fye_month || 12, model, withSecurities: sec, safe: await safeTreatment(), burnChecks, audience, analysis: d.period === 'month' ? analysis : null, customers, comments: d.comments, priorities: d.priorities, about: d.sections.includes('intro') ? await companyAbout(d.subject, d.about) : null, chart, pies }) }
   catch (e) { throw apiError('empty', (e as Error).message, 422) }
   // Banking and Stage, for the same company (or the group), in the report's order.
-  const extra: MSection[] = await growthSections(event, d.subject, d.sections, month.slice(0, 7), audience).catch((e) => { console.error('[mgmt-report] growth', e); return [] as MSection[] })
+  const extra: MSection[] = await growthSections(event, d.subject, d.sections, month.slice(0, 7), audience, upTo[upTo.length - 1]?.currency).catch((e) => { console.error('[mgmt-report] growth', e); return [] as MSection[] })
   // The forecast the company uses, with its scenarios and what it assumes against the actual months.
   if (d.sections.includes('forecast') && (await growthAvailable(event, d.subject).catch(() => ({} as Record<string, boolean>))).forecast) {
     const fc = await forecastPack({ subject: d.subject }).catch((e) => { console.error('[mgmt-report] forecast', e); return null })
