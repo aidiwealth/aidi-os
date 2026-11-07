@@ -222,8 +222,8 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
     const out: MRow[] = []
     for (const k of keys) {
       const vals = cols.map((f) => f(k)); if (vals.every((v) => v === null)) continue
-      // Executive team: staff and other costs are only part of Total running costs (their categories still show).
-      if (!(exec && k === 'opex_other')) out.push({ label: LBL[k] ?? k, kind: ['gross_profit', 'ebitda', 'net_income', 'opex_total', 'total_assets', 'total_liabilities', 'equity'].includes(k) ? 'total' : 'line', cells: vals.map(money) })
+      // Executive team: payroll is folded into one "Staff and other running costs" line (its categories still show under it).
+      out.push({ label: exec && k === 'opex_other' ? 'Staff and other running costs' : LBL[k] ?? k, kind: ['gross_profit', 'ebitda', 'net_income', 'opex_total', 'total_assets', 'total_liabilities', 'equity'].includes(k) ? 'total' : 'line', cells: vals.map(money) })
       const names = [...new Set([cur, prev].flatMap((r) => Object.keys(r?.detail ?? {})).filter((x) => x.startsWith(k + '|')))]
       for (const n of names) out.push({ label: n.slice(k.length + 1), kind: 'sub', cells: detailCols.map((f) => money(f(n))) })
     }
@@ -246,8 +246,12 @@ function buildMonthly(raw: (FinRow & { detail?: Record<string, number>; cf_gener
       const names = [...new Set([cur, prev].flatMap((r) => Object.keys(r?.detail ?? {})).filter((x) => x.startsWith(k + '|')))]
       if (names.length && k !== 'cogs') for (const n of names) items.push({ label: n.slice(k.length + 1), a: det(cur, n), b: det(prev, n) })
       // A group adds up companies that may itemise a line differently: what the categories do not explain stays as its own item.
-      // Executive team: what staff and other costs' categories do not explain (payroll among it) stays in running costs.
-      if (exec && k === 'opex_other') { if (names.length) continue }
+      // Executive team: what the categories do not explain (payroll among it) is one "Staff and other costs" item.
+      if (exec && k === 'opex_other') {
+        const rest = (r: typeof cur | null) => { const t = g(r, k); return t === null ? null : t - names.reduce((a, n) => a + (det(r, n) ?? 0), 0) }
+        const a = rest(cur), b = rest(prev); if ((a !== null && Math.abs(a) >= 1) || (b !== null && Math.abs(b) >= 1)) items.push({ label: 'Staff and other costs', a, b })
+        continue
+      }
       if (names.length && k !== 'cogs') { const rest = (r: typeof cur | null) => { const t = g(r, k); return t === null ? null : t - names.reduce((a, n) => a + (det(r, n) ?? 0), 0) }; const a = rest(cur), b = rest(prev); if ((a !== null && Math.abs(a) >= 1) || (b !== null && Math.abs(b) >= 1)) items.push({ label: LBL[k]!.startsWith('Other') ? 'Uncategorised ' + LBL[k]!.slice(6) : 'Other ' + LBL[k]!.toLowerCase(), a, b }) }
       else if (!(exec && k === 'opex_other') && (g(cur, k) !== null || g(prev, k) !== null)) items.push({ label: LBL[k]!, a: g(cur, k), b: g(prev, k) })
     }
