@@ -6,9 +6,12 @@
 import { addM, arrOf, groupOf, span, win, type Cust } from '~/shared/customer-metrics'
 import { shortAmount } from '~/shared/compact'
 
-export type ChartSpec =
+// style: how it is drawn. Bars, line or area for figures over time; pie for shares (sectors, groups, concentration,
+// start years, distribution: the latest period as slices).
+export type ChartStyle = 'bar' | 'line' | 'area' | 'pie'
+export type ChartSpec = { style?: ChartStyle } & (
   | { kind: 'concentration'; top: number; names?: boolean; subject?: string; title?: string }
-  | { kind: 'metric'; metrics: string[]; period: 'month' | 'quarter' | 'year'; count: number; style?: 'bar' | 'line'; subject?: string; title?: string }
+  | { kind: 'metric'; metrics: string[]; period: 'month' | 'quarter' | 'year'; count: number; subject?: string; title?: string }
   | { kind: 'sectors'; subject?: string; title?: string }
   | { kind: 'bridge'; subject?: string; title?: string }
   | { kind: 'cohorts'; quarters: number; subject?: string; title?: string }
@@ -16,7 +19,8 @@ export type ChartSpec =
   | { kind: 'mix'; by: 'size' | 'segment'; quarters: number; subject?: string; title?: string }
   | { kind: 'top_trend'; quarters: number; subject?: string; title?: string }
   | { kind: 'arr' | 'traction'; quarters: number; subject?: string; title?: string }
-  | { kind: 'distribution'; subject?: string; title?: string }
+  | { kind: 'distribution'; subject?: string; title?: string })
+export const PIE_KINDS = ['sectors', 'concentration', 'mix', 'cohorts', 'distribution']
 
 export type Shape =
   | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string }
@@ -24,7 +28,8 @@ export type Shape =
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number }
   | { t: 'poly'; pts: [number, number][]; stroke: string; width: number }
   | { t: 'dot'; x: number; y: number; r: number; fill: string }
-export interface Drawing { w: number; h: number; shapes: Shape[]; alt: string }
+  | { t: 'path'; d: string; fill: string; opacity?: number }
+export interface Drawing { w: number; h: number; shapes: Shape[]; alt: string; title?: string; pie?: { sub: string; slices: { label: string; value: number }[]; currency: string | null } }
 
 const INK = '#111111', MUT = '#5f5f5f', RULE = '#cfcfc8', LAST = '#E3E3DE', NOW = '#C3C3BA', BLUE = '#3F76CF', RED = '#B42318'
 const SERIES = ['#1C3D63', '#3F76CF', '#8AA4C4', '#2B5A8C', '#B9C9DC']
@@ -33,6 +38,12 @@ const W = 760
 
 export function cleanSpec(x: unknown): ChartSpec | null {
   const o = (x ?? {}) as Record<string, unknown>
+  const sp = cleanBase(o); if (!sp) return null
+  const st = ['bar', 'line', 'area', 'pie'].includes(String(o.style)) ? (o.style as ChartStyle) : undefined
+  if (sp.kind === 'metric') return { ...sp, style: st === 'pie' ? 'bar' : st }
+  return st === 'pie' && PIE_KINDS.includes(sp.kind) ? { ...sp, style: 'pie' } : sp
+}
+function cleanBase(o: Record<string, unknown>): ChartSpec | null {
   const subject = typeof o.subject === 'string' && /^(group|entity:[0-9a-f-]{36})$/.test(o.subject) ? o.subject : undefined
   const title = typeof o.title === 'string' && o.title.trim() ? o.title.trim().slice(0, 140) : undefined
   if (o.kind === 'concentration') return { kind: 'concentration', top: Math.min(5, Math.max(1, Math.round(Number(o.top) || 2))), names: o.names === true, subject, title }
@@ -46,7 +57,7 @@ export function cleanSpec(x: unknown): ChartSpec | null {
     const metrics = (Array.isArray(o.metrics) ? o.metrics : []).filter((k): k is string => typeof k === 'string' && isMetricKey(k)).slice(0, 4)
     if (!metrics.length) return null
     const period = o.period === 'quarter' || o.period === 'year' ? o.period : 'month'
-    return { kind: 'metric', metrics, period, count: Math.min(36, Math.max(2, Math.round(Number(o.count) || 12))), style: o.style === 'line' ? 'line' : 'bar', subject, title }
+    return { kind: 'metric', metrics, period, count: Math.min(36, Math.max(2, Math.round(Number(o.count) || 12))), subject, title }
   }
   return null
 }
@@ -101,7 +112,7 @@ async function concentration(sp: Extract<ChartSpec, { kind: 'concentration' }>):
     const c = ch(g.now, g.then)
     if (c !== null) sh.push({ t: 'text', x: cx, y: base + 54, s: pctS(c), size: 15, bold: g.hi, fill: g.hi ? (c >= 0 ? BLUE : RED) : MUT, anchor: 'middle' })
   })
-  return { w: W, h: base + 66, shapes: sh, alt: title + '. ' + sub + '.' }
+  return { w: W, h: base + 66, shapes: sh, alt: title + '. ' + sub + '.', title, pie: { sub: 'Revenue in the 12 months to ' + ML(last) + ' · ' + cur, slices: groups.map((g) => ({ label: g.label, value: g.now })), currency: cur } }
 }
 
 async function metric(sp: Extract<ChartSpec, { kind: 'metric' }>): Promise<Drawing> {
@@ -129,7 +140,7 @@ async function metric(sp: Extract<ChartSpec, { kind: 'metric' }>): Promise<Drawi
   const vals = d.series.flatMap((x) => x.values.filter((v): v is number => v !== null))
   const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals), range = hi - lo || 1
   const plotTop = top0 + 30, plotH = 220, base = plotTop + plotH * (hi / range), y = (v: number) => plotTop + plotH * ((hi - v) / range)
-  const n = d.labels.length, gw = W / n, line = sp.style === 'line' || unit === 'pct' || unit === 'months'
+  const n = d.labels.length, gw = W / n, line = sp.style === 'line' || sp.style === 'area' || (!sp.style && (unit === 'pct' || unit === 'months'))
   const showVal = (i: number) => n <= 12 || i === n - 1 || i === 0 || i % Math.ceil(n / 6) === 0
   const showLab = (i: number) => n <= 12 || i % Math.ceil(n / 12) === 0 || i === n - 1
   sh.push({ t: 'line', x1: 0, y1: base, x2: W, y2: base, stroke: RULE, width: 1 })
@@ -137,6 +148,7 @@ async function metric(sp: Extract<ChartSpec, { kind: 'metric' }>): Promise<Drawi
     d.series.forEach((s, si) => {
       const col = SERIES[si % SERIES.length]!, pts: [number, number][] = []
       s.values.forEach((v, i) => { if (v === null) return; pts.push([gw * i + gw / 2, y(v)]) })
+      if (pts.length > 1 && sp.style === 'area') sh.push({ t: 'path', d: 'M' + pts[0]![0].toFixed(1) + ',' + base.toFixed(1) + pts.map(([x, yy]) => 'L' + x.toFixed(1) + ',' + yy.toFixed(1)).join('') + 'L' + pts[pts.length - 1]![0].toFixed(1) + ',' + base.toFixed(1) + 'Z', fill: col, opacity: d.series.length > 1 ? 0.18 : 0.22 })
       if (pts.length > 1) sh.push({ t: 'poly', pts, stroke: col, width: 2.5 })
       s.values.forEach((v, i) => { if (v === null) return; const cx = gw * i + gw / 2; sh.push({ t: 'dot', x: cx, y: y(v), r: 3.5, fill: col }); if (d.series.length === 1 && showVal(i)) sh.push({ t: 'text', x: cx, y: y(v) - 12, s: fmt(v), size: 13, bold: i === n - 1, fill: i === n - 1 ? INK : MUT, anchor: 'middle' }) })
     })
@@ -169,7 +181,7 @@ async function sectors(sp: Extract<ChartSpec, { kind: 'sectors' }>): Promise<Dra
     sh.push({ t: 'rect', x: 270, y: yy, w, h: 22, fill: i === 0 ? BLUE : NOW })
     sh.push({ t: 'text', x: 270 + w + 10, y: yy + 16, s: x.share + '%', size: 15, bold: i === 0, fill: INK })
   })
-  return { w: W, h: top0 + 12 + d.sectors.length * 34 + 6, shapes: sh, alt: title + ': ' + d.sectors.map((x) => x.sector + ' ' + x.share + '%').join(', ') }
+  return { w: W, h: top0 + 12 + d.sectors.length * 34 + 6, shapes: sh, alt: title + ': ' + d.sectors.map((x) => x.sector + ' ' + x.share + '%').join(', '), title, pie: { sub: 'Share of revenue over the 12 months to ' + ML(d.as_of), slices: d.sectors.map((x) => ({ label: x.sector, value: x.share })), currency: null } }
 }
 
 // ---- Customer charts over time (quarters are three-month windows ending at the latest month with revenue) ----
@@ -238,7 +250,7 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
     const title = sp.title ?? Math.round(oldShare) + '% of revenue in ' + labels[labels.length - 1] + ' came from customers won before ' + thisYear
     const top0 = head(sh, title, 'Quarterly revenue by the year each customer first paid · ' + cur, layers.map((l) => ({ label: l.label, fill: l.fill })))
     const h = bars(sh, top0 + 30, labels, layers, m$)
-    return { w: W, h, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + layers.map((x) => x.label + ' ' + m$(x.values[i] ?? 0)).join(', ')).join('; ') }
+    return { w: W, h, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + layers.map((x) => x.label + ' ' + m$(x.values[i] ?? 0)).join(', ')).join('; '), title, pie: { sub: 'Revenue in ' + labels[labels.length - 1] + ' · ' + cur, slices: layers.map((x) => ({ label: x.label, value: x.values[x.values.length - 1] ?? 0 })), currency: cur } }
   }
 
   if (sp.kind === 'logos') {
@@ -265,7 +277,7 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
     const title = sp.title ?? (lead && lastTot ? lead.label + ' customers: ' + Math.round(((lead.values[lead.values.length - 1] ?? 0) / lastTot) * 100) + '% of revenue in ' + labels[labels.length - 1] : 'Revenue by customer group')
     const top0 = head(sh, title, 'Quarterly revenue by ' + (sp.by === 'size' ? 'customer size (annual run-rate)' : 'customer segment') + ' · ' + cur, layers.map((l) => ({ label: l.label, fill: l.fill })))
     const h = bars(sh, top0 + 30, labels, layers, m$)
-    return { w: W, h, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + layers.map((x) => x.label + ' ' + m$(x.values[i] ?? 0)).join(', ')).join('; ') }
+    return { w: W, h, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + layers.map((x) => x.label + ' ' + m$(x.values[i] ?? 0)).join(', ')).join('; '), title, pie: { sub: 'Revenue in ' + labels[labels.length - 1] + ' · ' + cur, slices: layers.map((x) => ({ label: x.label, value: x.values[x.values.length - 1] ?? 0 })), currency: cur } }
   }
 
   if (sp.kind === 'arr' || sp.kind === 'traction') {
@@ -313,7 +325,7 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
       sh.push({ t: 'text', x: cx, y: base + 44, s: b.n.toLocaleString('en-US') + (b.n === 1 ? ' customer' : ' customers'), size: 12, fill: MUT, anchor: 'middle' })
     })
     sh.push({ t: 'line', x1: 0, y1: base, x2: W, y2: base, stroke: RULE, width: 1 })
-    return { w: W, h: base + 54, shapes: sh, alt: title + '. ' + bands.map((b) => b.label + ': ' + b.n + ' customers, ' + (tot ? Math.round((b.rev / tot) * 100) : 0) + '% of revenue').join('; ') }
+    return { w: W, h: base + 54, title, pie: { sub: 'Share of revenue by what customers paid in the 12 months to ' + ML(last) + ' · ' + cur, slices: bands.map((b) => ({ label: b.label + ' (' + b.n + ')', value: b.rev })), currency: cur }, shapes: sh, alt: title + '. ' + bands.map((b) => b.label + ': ' + b.n + ' customers, ' + (tot ? Math.round((b.rev / tot) * 100) : 0) + '% of revenue').join('; ') }
   }
 
   // top_trend: share of the last 12 months' revenue from the largest 1, 5 and 10 customers, at each quarter end.
@@ -333,8 +345,42 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
   return { w: W, h: plotTop + plotH + 40, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + series.map((x) => x.label + ' ' + (x.values[i] === null ? '–' : Math.round(x.values[i]!) + '%')).join(', ')).join('; ') }
 }
 
+// Shares as a ring: the slices clockwise from the top, largest first; a legend with each share and amount.
+const PIE = ['#1C3D63', BLUE, '#8AA4C4', '#C3C3BA', '#5E7FA6', '#D5DEEA', '#E3E3DE', '#2B5A8C']
+function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
+  const sl = pie.slices.filter((x) => x.value > 0).sort((a, b) => b.value - a.value)
+  const rest = sl.slice(7), shown = sl.slice(0, 7); if (rest.length) shown.push({ label: 'Other', value: rest.reduce((a, b) => a + b.value, 0) })
+  const tot = shown.reduce((a, b) => a + b.value, 0)
+  if (!tot) return empty(title, 'Nothing to show for this period.')
+  const sh: Shape[] = [], top0 = head(sh, title, pie.sub, []), cx = 150, cy = top0 + 150, r = 130, r0 = 76
+  let a = -Math.PI / 2
+  const pt = (rad: number, ang: number) => (cx + rad * Math.cos(ang)).toFixed(2) + ',' + (cy + rad * Math.sin(ang)).toFixed(2)
+  shown.forEach((x, i) => {
+    const sweep = (x.value / tot) * Math.PI * 2, b = a + Math.min(sweep, Math.PI * 2 - 0.0001), big = sweep > Math.PI ? 1 : 0
+    sh.push({ t: 'path', d: 'M' + pt(r, a) + ' A' + r + ',' + r + ' 0 ' + big + ' 1 ' + pt(r, b) + ' L' + pt(r0, b) + ' A' + r0 + ',' + r0 + ' 0 ' + big + ' 0 ' + pt(r0, a) + ' Z', fill: PIE[i % PIE.length]! })
+    a = b
+  })
+  const lead = shown[0]!
+  sh.push({ t: 'text', x: cx, y: cy + 2, s: Math.round((lead.value / tot) * 100) + '%', size: 26, bold: true, fill: INK, anchor: 'middle' })
+  sh.push({ t: 'text', x: cx, y: cy + 24, s: cut(lead.label, 18), size: 12.5, fill: MUT, anchor: 'middle' })
+  const lx = 340, step = Math.min(34, 260 / shown.length)
+  shown.forEach((x, i) => {
+    const yy = top0 + 30 + i * step + (260 - step * shown.length) / 2
+    sh.push({ t: 'rect', x: lx, y: yy - 12, w: 14, h: 14, fill: PIE[i % PIE.length]! })
+    sh.push({ t: 'text', x: lx + 24, y: yy, s: cut(x.label, 30), size: 15, fill: INK })
+    const pc = (x.value / tot) * 100
+    sh.push({ t: 'text', x: W - (pie.currency ? 110 : 0), y: yy, s: (pc < 1 ? Math.round(pc * 10) / 10 : Math.round(pc)) + '%', size: 15, bold: true, fill: INK, anchor: 'end' })
+    if (pie.currency) sh.push({ t: 'text', x: W, y: yy, s: money(x.value, pie.currency), size: 15, fill: MUT, anchor: 'end' })
+  })
+  return { w: W, h: Math.max(cy + r, top0 + 300) + 10, shapes: sh, alt: title + '. ' + shown.map((x) => x.label + ' ' + Math.round((x.value / tot) * 100) + '%').join(', ') }
+}
+
 // The drawing for a chart, worked out for the subject it is set to (a company, or the group).
 export async function chartDrawing(sp: ChartSpec): Promise<Drawing> {
+  const d = await chartDrawingRaw(sp)
+  return sp.style === 'pie' && d.pie ? pieDrawing(d.title ?? d.alt.split('.')[0]!, d.pie) : d
+}
+async function chartDrawingRaw(sp: ChartSpec): Promise<Drawing> {
   const subject: string = sp.subject ?? ((await currentOrg())?.kind === 'company' ? await companyEntityId().then((e) => (e ? 'entity:' + e : 'group')) : 'group')
   const run = async () => (sp.kind === 'concentration' ? concentration(sp) : sp.kind === 'sectors' ? sectors(sp) : sp.kind === 'metric' ? metric(sp) : customerChart(sp))
   if (sp.kind === 'metric' && !sp.metrics.some(isCustKey)) return run()
@@ -349,6 +395,7 @@ export function drawingSvg(d: Drawing): string {
     else if (s.t === 'text') out.push('<text x="' + (s.x + pad).toFixed(1) + '" y="' + (s.y + pad).toFixed(1) + '" font-size="' + s.size + '"' + (s.bold ? ' font-weight="600"' : '') + ' fill="' + s.fill + '"' + (s.anchor && s.anchor !== 'start' ? ' text-anchor="' + s.anchor + '"' : '') + '>' + escX(s.s) + '</text>')
     else if (s.t === 'line') out.push('<line x1="' + (s.x1 + pad) + '" y1="' + (s.y1 + pad).toFixed(1) + '" x2="' + (s.x2 + pad) + '" y2="' + (s.y2 + pad).toFixed(1) + '" stroke="' + s.stroke + '" stroke-width="' + s.width + '"/>')
     else if (s.t === 'poly') out.push('<polyline fill="none" stroke="' + s.stroke + '" stroke-width="' + s.width + '" stroke-linejoin="round" points="' + s.pts.map(([x, y]) => (x + pad).toFixed(1) + ',' + (y + pad).toFixed(1)).join(' ') + '"/>')
+    else if (s.t === 'path') out.push('<path transform="translate(' + pad + ',' + pad + ')" d="' + s.d + '" fill="' + s.fill + '"' + (s.opacity !== undefined ? ' fill-opacity="' + s.opacity + '"' : '') + '/>')
     else out.push('<circle cx="' + (s.x + pad).toFixed(1) + '" cy="' + (s.y + pad).toFixed(1) + '" r="' + s.r + '" fill="' + s.fill + '"/>')
   }
   const w = d.w + pad * 2, h = d.h + pad * 2

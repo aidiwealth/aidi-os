@@ -7,7 +7,7 @@ interface Opt { subjects: { value: string; label: string }[]; metrics: { key: st
 const opts = ref<Opt | null>(null)
 type Kind = 'concentration' | 'metric' | 'sectors' | 'bridge' | 'cohorts' | 'logos' | 'mix' | 'top_trend' | 'arr' | 'traction' | 'distribution'
 const tab = ref<'simple' | 'analysis'>('simple')
-const f = reactive({ kind: 'metric' as Kind, quarters: 8, by: 'size' as 'size' | 'segment', top: 2, names: false, subject: '', metrics: ['revenue'] as string[], period: 'year' as 'month' | 'quarter' | 'year', count: 5, style: 'bar' as 'bar' | 'line', title: '', freeze: false })
+const f = reactive({ kind: 'metric' as Kind, quarters: 8, by: 'size' as 'size' | 'segment', top: 2, names: false, subject: '', metrics: ['revenue'] as string[], period: 'year' as 'month' | 'quarter' | 'year', count: 5, style: 'bar' as 'bar' | 'line' | 'area' | 'pie', title: '', freeze: false })
 const svg = ref(''), busy = ref(false), msg = ref('')
 const KINDS: [Kind, string, string][] = [['arr', 'ARR growth', 'Annual recurring revenue at each quarter end, with growth'], ['traction', 'Customer traction', 'Paying customers each quarter, with growth'], ['distribution', 'Customer distribution', 'Customers by what they pay a year: share of customers against share of revenue'], ['concentration', 'Customer concentration', 'Largest customers against everyone else, year on year'], ['bridge', 'Revenue bridge', 'Last year to this year: new customers, growth, shrinkage, lost'],
   ['cohorts', 'Revenue by customer start year', 'Each quarter split by the year customers first paid'], ['logos', 'Customers won and lost', 'New and lost paying customers by quarter'],
@@ -24,9 +24,12 @@ const groups = computed(() => {
 })
 function per(p: 'month' | 'quarter' | 'year') { f.period = p; f.count = p === 'year' ? 5 : p === 'quarter' ? 8 : 12 }
 watch(tab, (t) => { if (t === 'simple') f.kind = 'metric'; else if (f.kind === 'metric') f.kind = 'arr' })
-const spec = computed(() => {
+const PIE_KINDS = ['sectors', 'concentration', 'mix', 'cohorts', 'distribution']
+const canPie = computed(() => PIE_KINDS.includes(f.kind))
+const spec = computed(() => ({ ...base.value, style: f.kind === 'metric' ? (f.style === 'pie' ? 'bar' : f.style) : canPie.value && f.style === 'pie' ? 'pie' : undefined }))
+const base = computed(() => {
   const subject = f.subject || undefined, title = f.title.trim() || undefined
-  return f.kind === 'concentration' ? { kind: f.kind, top: f.top, names: f.names, subject, title } : f.kind === 'sectors' || f.kind === 'bridge' || f.kind === 'distribution' ? { kind: f.kind, subject, title } : f.kind === 'mix' ? { kind: f.kind, by: f.by, quarters: f.quarters, subject, title } : ['cohorts', 'logos', 'top_trend', 'arr', 'traction'].includes(f.kind) ? { kind: f.kind, quarters: f.quarters, subject, title } : { kind: f.kind, metrics: f.metrics.filter(Boolean), period: f.period, count: f.count, style: f.style, subject, title }
+  return f.kind === 'concentration' ? { kind: f.kind, top: f.top, names: f.names, subject, title } : f.kind === 'sectors' || f.kind === 'bridge' || f.kind === 'distribution' ? { kind: f.kind, subject, title } : f.kind === 'mix' ? { kind: f.kind, by: f.by, quarters: f.quarters, subject, title } : ['cohorts', 'logos', 'top_trend', 'arr', 'traction'].includes(f.kind) ? { kind: f.kind, quarters: f.quarters, subject, title } : { kind: f.kind, metrics: f.metrics.filter(Boolean), period: f.period, count: f.count, subject, title }
 })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -64,15 +67,16 @@ function setMetric(i: number, v: string) { const a = [...f.metrics]; if (v) a[i]
           <label>Largest customers shown<select v-model.number="f.top"><option v-for="n in 5" :key="n" :value="n">{{ n === 1 ? 'Top customer' : 'Top ' + n }}</option></select></label>
           <label class="ck"><input v-model="f.names" type="checkbox"> Show customer names <span class="mut sm">(otherwise Customer A, B…)</span></label>
         </template>
+        <div v-if="tab === 'analysis' && canPie" class="seg"><span>Chart</span><button type="button" :class="{ on: f.style !== 'pie' }" @click="f.style = 'bar'">Bars</button><button type="button" :class="{ on: f.style === 'pie' }" @click="f.style = 'pie'">Pie</button></div>
         <label v-if="f.kind === 'mix'">Group customers by<select v-model="f.by"><option value="size">Size (annual run-rate)</option><option value="segment">Segment</option></select></label>
         <label v-if="['cohorts', 'logos', 'mix', 'top_trend', 'arr', 'traction'].includes(f.kind)">Quarters shown<select v-model.number="f.quarters"><option v-for="n in [4, 6, 8, 12]" :key="n" :value="n">{{ n }}</option></select></label>
         <template v-if="tab === 'simple'">
           <label>Show<select :value="f.metrics[0]" @change="setMetric(0, ($event.target as HTMLSelectElement).value)"><optgroup v-for="[g, ms] in groups" :key="g" :label="g"><option v-for="x in ms" :key="x.key" :value="x.key">{{ x.label }}</option></optgroup></select></label>
           <div class="seg"><span>By</span><button v-for="p in (['month', 'quarter', 'year'] as const)" :key="p" type="button" :class="{ on: f.period === p }" @click="per(p)">{{ p === 'month' ? 'Month' : p === 'quarter' ? 'Quarter' : 'Year' }}</button></div>
+          <div class="seg"><span>Chart</span><button v-for="st in (['bar', 'line', 'area'] as const)" :key="st" type="button" :class="{ on: f.style === st || (st === 'bar' && f.style === 'pie') }" @click="f.style = st">{{ st === 'bar' ? 'Bars' : st === 'line' ? 'Line' : 'Area' }}</button></div>
           <label>How many<select v-model.number="f.count"><option v-for="n in (f.period === 'year' ? [3, 4, 5, 6, 8, 10] : [4, 6, 8, 12, 18, 24, 36])" :key="n" :value="n">{{ n }} {{ f.period === 'year' ? 'years' : f.period === 'quarter' ? 'quarters' : 'months' }}</option></select></label>
           <details class="more"><summary>More options</summary>
             <label>Compare with (optional)<select :value="f.metrics[1] ?? ''" @change="setMetric(1, ($event.target as HTMLSelectElement).value)"><option value="">—</option><optgroup v-for="[g, ms] in groups" :key="g" :label="g"><option v-for="x in ms" :key="x.key" :value="x.key">{{ x.label }}</option></optgroup></select></label>
-            <label>Style<select v-model="f.style"><option value="bar">Bars</option><option value="line">Line</option></select></label>
           </details>
         </template>
         <label>Title <span class="mut sm">(optional; worked out for you)</span><input v-model="f.title" maxlength="140" placeholder="e.g. ARR passed $5M in 2026"></label>

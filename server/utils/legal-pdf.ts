@@ -61,6 +61,7 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
       else if (s.t === 'line') page.drawLine({ start: { x: X(s.x1), y: Y(s.y1) }, end: { x: X(s.x2), y: Y(s.y2) }, thickness: s.width * sc, color: hex(s.stroke) })
       else if (s.t === 'poly') for (let i = 1; i < s.pts.length; i++) page.drawLine({ start: { x: X(s.pts[i - 1]![0]), y: Y(s.pts[i - 1]![1]) }, end: { x: X(s.pts[i]![0]), y: Y(s.pts[i]![1]) }, thickness: s.width * sc, color: hex(s.stroke) })
       else if (s.t === 'dot') page.drawCircle({ x: X(s.x), y: Y(s.y), size: s.r * sc, color: hex(s.fill) })
+      else if (s.t === 'path') page.drawSvgPath(s.d, { x: M, y: top, scale: sc, color: hex(s.fill), opacity: s.opacity ?? 1, borderWidth: 0 })
       else { const f = s.bold ? bold : reg, t = clean(s.s), size = s.size * sc, tw = f.widthOfTextAtSize(t, size); page.drawText(t, { x: X(s.x) - (s.anchor === 'middle' ? tw / 2 : s.anchor === 'end' ? tw : 0), y: Y(s.y), size, font: f, color: hex(s.fill) }) }
     }
     y -= h + 16
