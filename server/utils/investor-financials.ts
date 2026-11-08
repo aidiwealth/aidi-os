@@ -4,6 +4,14 @@
 import { factsOf } from './fin-analysis'
 import { deriveLines, withSecurities, type FinRow } from '~/shared/fin-view'
 export interface InvestorFin { summary: { period: string; latest: string | null; currency: string; items: { label: string; value: number | null; unit: 'money' | 'pct' | 'months'; note?: string }[] } | null; sources: { name: string; url: string; synced: string | null }[] }
+// What the investor page shows: the group (every company combined, in the reporting currency) when the company has
+// subsidiaries on its plan, else the company itself.
+export async function investorSubject(): Promise<{ subject: string | null; currency: string }> {
+  const org = await currentOrg(), own = (org?.settings.currency as string) || 'USD'
+  if ((await custEntities().catch(() => [])).length > 1) return { subject: 'group', currency: await subjectCurrency('group') }
+  const ent = await companyEntityId()
+  return { subject: ent ? 'entity:' + ent : null, currency: own }
+}
 export async function investorFinancials(): Promise<InvestorFin | null> {
   const org = await currentOrg()
   if (!org || org.kind !== 'company') return null
@@ -13,9 +21,9 @@ export async function investorFinancials(): Promise<InvestorFin | null> {
   if (!on && !sources.length) return null
   let summary: InvestorFin['summary'] = null
   if (on) {
-    const ent = await companyEntityId()
+    const is = await investorSubject()
     const sec = await investorCashPolicy()
-    const rows = ent ? await loadStatements('entity:' + ent, 'month', (org.settings.currency as string) || 'USD') : []
+    const rows = is.subject ? await loadStatements(is.subject, 'month', is.currency) : []
     const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
     if (fr.length) {
       const { facts, period } = factsOf(fr)
