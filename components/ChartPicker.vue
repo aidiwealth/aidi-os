@@ -9,6 +9,8 @@ type Kind = 'concentration' | 'metric' | 'sectors' | 'bridge' | 'cohorts' | 'log
 const tab = ref<'simple' | 'analysis'>('simple')
 const f = reactive({ kind: 'metric' as Kind, quarters: 8, by: 'size' as 'size' | 'segment', top: 2, names: false, subject: '', metrics: ['revenue'] as string[], period: 'year' as 'month' | 'quarter' | 'year', count: 5, style: 'bar' as 'bar' | 'line' | 'area' | 'pie', title: '', freeze: false })
 const svg = ref(''), busy = ref(false), msg = ref('')
+// Words on the chart the user can rename (original → new); offered from the preview.
+const labels = ref<string[]>([]), names = reactive<Record<string, string>>({})
 const KINDS: [Kind, string, string][] = [['arr', 'ARR growth', 'Annual recurring revenue at each quarter end, with growth'], ['traction', 'Customer traction', 'Paying customers each quarter, with growth'], ['distribution', 'Customer distribution', 'Customers by what they pay a year: share of customers against share of revenue'], ['concentration', 'Customer concentration', 'Largest customers against everyone else, year on year'], ['bridge', 'Revenue bridge', 'Last year to this year: new customers, growth, shrinkage, lost'],
   ['cohorts', 'Revenue by customer start year', 'Each quarter split by the year customers first paid'], ['logos', 'Customers won and lost', 'New and lost paying customers by quarter'],
   ['mix', 'Revenue by customer group', 'By size (Enterprise, Mid-market, SMB) or segment, by quarter'], ['top_trend', 'Reliance on the largest customers', 'Share of revenue from the top 1, 5 and 10 over time'],
@@ -23,24 +25,25 @@ const groups = computed(() => {
   return [...g.entries()].filter(([, a]) => a.length)
 })
 function per(p: 'month' | 'quarter' | 'year') { f.period = p; f.count = p === 'year' ? 5 : p === 'quarter' ? 8 : 12 }
+watch(() => f.kind, () => { for (const k of Object.keys(names)) delete names[k] })
 watch(tab, (t) => { if (t === 'simple') f.kind = 'metric'; else if (f.kind === 'metric') f.kind = 'arr' })
 const PIE_KINDS = ['sectors', 'concentration', 'mix', 'cohorts', 'distribution']
 const canPie = computed(() => PIE_KINDS.includes(f.kind))
-const spec = computed(() => ({ ...base.value, style: f.kind === 'metric' ? (f.style === 'pie' ? 'bar' : f.style) : canPie.value && f.style === 'pie' ? 'pie' : undefined }))
+const spec = computed(() => ({ ...base.value, labels: Object.fromEntries(Object.entries(names).filter(([k, v]) => v.trim() && v.trim() !== k)), style: f.kind === 'metric' ? (f.style === 'pie' ? 'bar' : f.style) : canPie.value && f.style === 'pie' ? 'pie' : undefined }))
 const base = computed(() => {
   const subject = f.subject || undefined, title = f.title.trim() || undefined
   return f.kind === 'concentration' ? { kind: f.kind, top: f.top, names: f.names, subject, title } : f.kind === 'sectors' || f.kind === 'bridge' || f.kind === 'distribution' ? { kind: f.kind, subject, title } : f.kind === 'mix' ? { kind: f.kind, by: f.by, quarters: f.quarters, subject, title } : ['cohorts', 'logos', 'top_trend', 'arr', 'traction'].includes(f.kind) ? { kind: f.kind, quarters: f.quarters, subject, title } : { kind: f.kind, metrics: f.metrics.filter(Boolean), period: f.period, count: f.count, subject, title }
 })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 let timer: ReturnType<typeof setTimeout> | undefined
-async function preview() { msg.value = ''; try { svg.value = (await $fetch<{ svg: string }>('/api/charts/preview', { method: 'POST', body: { spec: spec.value } })).svg } catch (e) { svg.value = ''; msg.value = err(e) } }
+async function preview() { msg.value = ''; try { const r = await $fetch<{ svg: string; labels: string[] }>('/api/charts/preview', { method: 'POST', body: { spec: spec.value } }); svg.value = r.svg; labels.value = [...new Set([...Object.keys(names).filter((k) => names[k]?.trim()), ...r.labels.filter((l) => !Object.values(names).includes(l))])] } catch (e) { svg.value = ''; msg.value = err(e) } }
 watch(spec, () => { clearTimeout(timer); timer = setTimeout(preview, 350) }, { deep: true })
 watch(() => props.open, async (o) => {
   if (!o) return
   svg.value = ''; msg.value = ''
   if (!opts.value) try { opts.value = await $fetch<Opt>('/api/charts/options') } catch { opts.value = { subjects: [], metrics: [], customers: false } }
   if (props.chartId) {
-    try { const r = await $fetch<{ spec: Record<string, unknown> | null; frozen_at: string | null }>('/api/charts/' + props.chartId); if (r.spec) { Object.assign(f, { title: '', subject: '', ...r.spec, freeze: !!r.frozen_at }); tab.value = f.kind === 'metric' ? 'simple' : 'analysis' } } catch (e) { msg.value = err(e) }
+    try { const r = await $fetch<{ spec: Record<string, unknown> | null; frozen_at: string | null }>('/api/charts/' + props.chartId); if (r.spec) { for (const k of Object.keys(names)) delete names[k]; Object.assign(names, (r.spec.labels as Record<string, string> | undefined) ?? {}); Object.assign(f, { title: '', subject: '', ...r.spec, freeze: !!r.frozen_at }); tab.value = f.kind === 'metric' ? 'simple' : 'analysis' } } catch (e) { msg.value = err(e) }
   }
   preview()
 }, { immediate: true })
@@ -80,6 +83,9 @@ function setMetric(i: number, v: string) { const a = [...f.metrics]; if (v) a[i]
           </details>
         </template>
         <label>Title <span class="mut sm">(optional; worked out for you)</span><input v-model="f.title" maxlength="140" placeholder="e.g. ARR passed $5M in 2026"></label>
+        <details v-if="labels.length" class="more"><summary>Rename labels on the chart</summary>
+          <div class="labs"><label v-for="l in labels" :key="l"><span class="mut sm">{{ l }}</span><input v-model="names[l]" maxlength="80" :placeholder="l"></label></div>
+        </details>
         <label class="ck"><input v-model="f.freeze" type="checkbox"> Freeze at today's figures <span class="mut sm">(otherwise it updates as your figures change)</span></label>
       </div>
       <div class="pv"><div v-if="svg" class="svg" v-html="svg" /><div v-else class="ph mut">{{ msg || 'Preparing the preview…' }}</div></div>
@@ -94,6 +100,7 @@ function setMetric(i: number, v: string) { const a = [...f.metrics]; if (v) a[i]
 .kinds { display: flex; flex-direction: column; gap: 6px; max-height: 330px; overflow-y: auto; } .kinds button { text-align: left; border: 1px solid var(--c-rule); background: #fff; padding: 9px 11px; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 2px; } .kinds button b { font-size: 14px; color: var(--c-ink); font-weight: 600; } .kinds button span { font-size: 12.5px; color: var(--c-muted); }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--c-rule-strong); } .tabs button { font: inherit; font-size: 13.5px; padding: 8px; border: 0; background: #fff; cursor: pointer; color: var(--c-ink-soft); } .tabs button.on { background: var(--c-navy); color: #fff; } .tabs button:disabled { opacity: .5; cursor: default; }
 .seg { display: flex; align-items: center; gap: 0; font-size: 13px; color: var(--c-ink-soft); } .seg span { margin-right: 10px; } .seg button { font: inherit; font-size: 13.5px; padding: 6px 14px; border: 1px solid var(--c-rule-strong); background: #fff; cursor: pointer; margin-left: -1px; } .seg button.on { background: var(--c-paper-2); border-color: var(--c-navy); position: relative; }
+.labs { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-top: 6px; } .labs label { gap: 2px !important; }
 .more summary { cursor: pointer; font-size: 13px; color: var(--c-blue-deep); } .more[open] { display: flex; flex-direction: column; gap: 10px; }
 .kinds button.on { border-color: var(--c-navy); background: var(--c-paper-2); } .kinds button:disabled { opacity: .5; cursor: default; }
 .pv { border: 1px solid var(--c-rule); background: #fff; min-height: 320px; display: flex; align-items: center; justify-content: center; padding: 10px; } .svg { width: 100%; } .svg :deep(svg) { width: 100%; height: auto; display: block; } .ph { font-size: 14px; }

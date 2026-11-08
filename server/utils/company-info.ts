@@ -51,7 +51,8 @@ function request(u: URL, accept: string, max: number): Promise<{ status: number;
     req.on('timeout', () => { req.destroy(); resolve(null) }); req.on('error', () => resolve(null))
   })
 }
-// Follows up to 4 redirects, checking each address; stops reading after `max` bytes.
+// Follows up to 4 redirects, checking each address; stops reading after `max` bytes. Public addresses only.
+export async function safeGet(url: string, max = 1_500_000, accept = 'text/html,*/*') { return getUrl(url, max, accept) }
 async function getUrl(url: string, max = 1_500_000, accept = 'text/html,*/*'): Promise<{ url: string; type: string; body: Buffer } | null> {
   let u = new URL(url)
   for (let i = 0; i < 5; i++) {

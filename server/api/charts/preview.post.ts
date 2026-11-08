@@ -4,5 +4,5 @@ export default defineEventHandler(async (event) => {
   const spec = cleanSpec((await readBody(event))?.spec)
   if (!spec) throw apiError('invalid', 'Choose what the chart shows.')
   const d = await chartDrawing(spec)
-  return { svg: drawingSvg(d), alt: d.alt }
+  return { svg: drawingSvg(d), alt: d.alt, labels: d.labels }
 })

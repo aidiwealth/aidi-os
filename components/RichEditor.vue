@@ -27,8 +27,35 @@ const editor = useEditor({
     ...RICH_TABLE_EXTENSIONS,
     Markdown.configure({ html: true, tightLists: true, linkify: true, breaks: false, transformPastedText: true })],
   editorProps: { transformPastedHTML: cleanPastedHtml },
-  onUpdate: ({ editor: e }) => { let v = md(e); if (v.length > props.maxLength) v = v.slice(0, props.maxLength); last = v; emit('update:modelValue', v) }
+  onUpdate: ({ editor: e }) => { let v = md(e); if (v.length > props.maxLength) v = v.slice(0, props.maxLength); last = v; emit('update:modelValue', v); adopt() },
+  onCreate: () => adopt()
 })
+// Pictures pasted from elsewhere (an email signature, another site, a screenshot) are copied into the workspace so
+// they show here, on pages, in emails and in PDFs; the app does not load pictures from other sites.
+const tried = new Set<string>()
+let adopting = false
+async function adopt() {
+  const e = editor.value
+  if (!e || adopting || !withMedia.value || typeof window === 'undefined') return
+  const own = window.location.origin + '/api/public/'
+  const srcs = new Set<string>(); e.state.doc.descendants((n) => { if (n.type.name === 'image') { const src = String(n.attrs.src ?? ''); if (src && !src.startsWith(own) && !/\/api\/public\/(media|charts)\//.test(src) && !tried.has(src)) srcs.add(src) } })
+  if (!srcs.size) return
+  adopting = true
+  try {
+    for (const src of srcs) {
+      tried.add(src)
+      let url: string | null = null
+      try {
+        if (/^(data|blob):/.test(src)) { const b = await (await fetch(src)).blob(); url = await defaultUpload(new File([b], 'pasted-image.' + (b.type.split('/')[1] || 'png'), { type: b.type })) }
+        else url = (await $fetch<{ url: string }>('/api/media/import', { method: 'POST', body: { url: src } })).url
+      } catch { continue }
+      const ed = editor.value; if (!ed || !url) continue
+      const tr = ed.state.tr; let changed = false
+      ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image' && n.attrs.src === src) { tr.setNodeMarkup(pos, undefined, { ...n.attrs, src: url }); changed = true } })
+      if (changed) ed.view.dispatch(tr)
+    }
+  } finally { adopting = false }
+}
 watch(() => props.modelValue, (v) => { const e = editor.value; if (e && (v ?? '') !== last) { last = v ?? ''; e.commands.setContent(last, false) } })
 onBeforeUnmount(() => editor.value?.destroy())
 const block = computed({ get: () => { const e = editor.value; if (!e) return 'p'; for (const l of [1, 2, 3]) if (e.isActive('heading', { level: l })) return 'h' + l; return 'p' },

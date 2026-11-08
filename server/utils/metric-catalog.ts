@@ -111,7 +111,14 @@ export async function sectorShares(): Promise<{ as_of: string; sectors: { sector
   for (const c of cs) { let s = 0; for (let i = 0; i < 12; i++) s += c.rev[addM(last, -i)] ?? 0; if (s <= 0) continue; const k = c.sector?.trim() || 'Not set'; const g = by.get(k) ?? { rev: 0, n: 0 }; g.rev += s; g.n++; by.set(k, g) }
   const tot = [...by.values()].reduce((a, b) => a + b.rev, 0); if (!tot) return null
   const rows = [...by.entries()].map(([sector, g]) => ({ sector, share: Math.round((g.rev / tot) * 1000) / 10, customers: g.n })).sort((a, b) => b.share - a.share)
-  const top = rows.slice(0, 7), rest = rows.slice(7)
-  if (rest.length) top.push({ sector: 'Other sectors', share: Math.round(rest.reduce((a, b) => a + b.share, 0) * 10) / 10, customers: rest.reduce((a, b) => a + b.customers, 0) })
+  // One "Other" at the end: customers with no sector or an "other" sector, and the smaller sectors past the top six,
+  // named in brackets ("Other (Agriculture, Government, etc.)").
+  const vague = (x: string) => /^(other\b.*|not set|unclassified|uncategori[sz]ed|n\/?a|none|misc.*|-)$/i.test(x.trim())
+  const named = rows.filter((r) => !vague(r.sector)), top = named.slice(0, 6), rest = [...named.slice(6), ...rows.filter((r) => vague(r.sector))]
+  if (rest.length) {
+    const names = named.slice(6).map((r) => r.sector), shown = names.slice(0, 2)
+    const label = shown.length ? 'Other (' + shown.join(', ') + (names.length > 2 || rest.some((r) => vague(r.sector)) ? ', etc.' : '') + ')' : 'Other / unclassified'
+    top.push({ sector: label, share: Math.round(rest.reduce((a, b) => a + b.share, 0) * 10) / 10, customers: rest.reduce((a, b) => a + b.customers, 0) })
+  }
   return { as_of: last, sectors: top }
 }

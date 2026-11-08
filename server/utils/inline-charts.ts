@@ -9,7 +9,7 @@ import { shortAmount } from '~/shared/compact'
 // style: how it is drawn. Bars, line or area for figures over time; pie for shares (sectors, groups, concentration,
 // start years, distribution: the latest period as slices).
 export type ChartStyle = 'bar' | 'line' | 'area' | 'pie'
-export type ChartSpec = { style?: ChartStyle } & (
+export type ChartSpec = { style?: ChartStyle; labels?: Record<string, string> } & (
   | { kind: 'concentration'; top: number; names?: boolean; subject?: string; title?: string }
   | { kind: 'metric'; metrics: string[]; period: 'month' | 'quarter' | 'year'; count: number; subject?: string; title?: string }
   | { kind: 'sectors'; subject?: string; title?: string }
@@ -24,7 +24,7 @@ export const PIE_KINDS = ['sectors', 'concentration', 'mix', 'cohorts', 'distrib
 
 export type Shape =
   | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string }
-  | { t: 'text'; x: number; y: number; s: string; size: number; bold?: boolean; fill: string; anchor?: 'start' | 'middle' | 'end' }
+  | { t: 'text'; x: number; y: number; s: string; size: number; bold?: boolean; fill: string; anchor?: 'start' | 'middle' | 'end'; role?: 'title' | 'sub' }
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number }
   | { t: 'poly'; pts: [number, number][]; stroke: string; width: number }
   | { t: 'dot'; x: number; y: number; r: number; fill: string }
@@ -38,7 +38,11 @@ const W = 760
 
 export function cleanSpec(x: unknown): ChartSpec | null {
   const o = (x ?? {}) as Record<string, unknown>
-  const sp = cleanBase(o); if (!sp) return null
+  const b = cleanBase(o); if (!b) return null
+  // Labels the user renamed ("Customer A" → "Largest bank"): original → new, short texts only.
+  const lab: Record<string, string> = {}
+  if (o.labels && typeof o.labels === 'object') for (const [k, v] of Object.entries(o.labels as Record<string, unknown>).slice(0, 40)) if (typeof v === 'string' && v.trim() && k.length <= 80 && v.trim() !== k) lab[k] = v.trim().slice(0, 80)
+  const sp: ChartSpec = Object.keys(lab).length ? { ...b, labels: lab } : b
   const st = ['bar', 'line', 'area', 'pie'].includes(String(o.style)) ? (o.style as ChartStyle) : undefined
   if (sp.kind === 'metric') return { ...sp, style: st === 'pie' ? 'bar' : st }
   return st === 'pie' && PIE_KINDS.includes(sp.kind) ? { ...sp, style: 'pie' } : sp
@@ -67,13 +71,13 @@ const pctS = (v: number) => (v > 0 ? '+' : '') + (Math.abs(v) >= 10 ? Math.round
 const ML = (m: string) => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s)
 function empty(title: string, msg: string): Drawing {
-  return { w: W, h: 150, alt: title, shapes: [{ t: 'text', x: 0, y: 30, s: title, size: 20, bold: true, fill: INK }, { t: 'rect', x: 0, y: 52, w: W, h: 80, fill: '#F4F3EF' }, { t: 'text', x: W / 2, y: 97, s: msg, size: 14, fill: MUT, anchor: 'middle' }] }
+  return { w: W, h: 150, alt: title, shapes: [{ t: 'text', x: 0, y: 30, s: title, size: 20, bold: true, fill: INK, role: 'title' }, { t: 'rect', x: 0, y: 52, w: W, h: 80, fill: '#F4F3EF' }, { t: 'text', x: W / 2, y: 97, s: msg, size: 14, fill: MUT, anchor: 'middle' }] }
 }
 // Title, the line under it and a legend; returns where the plot can start.
 function head(sh: Shape[], title: string, sub: string, legend: { label: string; fill: string }[]): number {
-  sh.push({ t: 'text', x: 0, y: 30, s: cut(title, 70), size: 21, bold: true, fill: INK })
+  sh.push({ t: 'text', x: 0, y: 30, s: cut(title, 70), size: 21, bold: true, fill: INK, role: 'title' })
   let y = 30
-  if (sub) { y += 28; sh.push({ t: 'text', x: 0, y, s: cut(sub, 100), size: 15, fill: MUT }) }
+  if (sub) { y += 28; sh.push({ t: 'text', x: 0, y, s: cut(sub, 100), size: 15, fill: MUT, role: 'sub' }) }
   if (legend.length) {
     y += 32; let x = 0
     for (const l of legend) { sh.push({ t: 'rect', x, y: y - 13, w: 16, h: 16, fill: l.fill }); sh.push({ t: 'text', x: x + 26, y, s: l.label, size: 15, fill: MUT }); x += 26 + l.label.length * 8.2 + 34 }
@@ -177,9 +181,9 @@ async function sectors(sp: Extract<ChartSpec, { kind: 'sectors' }>): Promise<Dra
   const max = Math.max(...d.sectors.map((x) => x.share), 1)
   d.sectors.forEach((x, i) => {
     const yy = top0 + 12 + i * 34, w = Math.max(2, (x.share / max) * 380)
-    sh.push({ t: 'text', x: 0, y: yy + 16, s: cut(x.sector, 30), size: 15, fill: INK })
-    sh.push({ t: 'rect', x: 270, y: yy, w, h: 22, fill: i === 0 ? BLUE : NOW })
-    sh.push({ t: 'text', x: 270 + w + 10, y: yy + 16, s: x.share + '%', size: 15, bold: i === 0, fill: INK })
+    sh.push({ t: 'text', x: 0, y: yy + 16, s: cut(x.sector, 36), size: 15, fill: INK })
+    sh.push({ t: 'rect', x: 300, y: yy, w, h: 22, fill: i === 0 ? BLUE : NOW })
+    sh.push({ t: 'text', x: 300 + w + 10, y: yy + 16, s: x.share + '%', size: 15, bold: i === 0, fill: INK })
   })
   return { w: W, h: top0 + 12 + d.sectors.length * 34 + 6, shapes: sh, alt: title + ': ' + d.sectors.map((x) => x.sector + ' ' + x.share + '%').join(', '), title, pie: { sub: 'Share of revenue over the 12 months to ' + ML(d.as_of), slices: d.sectors.map((x) => ({ label: x.sector, value: x.share })), currency: null } }
 }
@@ -348,8 +352,11 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
 // Shares as a ring: the slices clockwise from the top, largest first; a legend with each share and amount.
 const PIE = ['#1C3D63', BLUE, '#8AA4C4', '#C3C3BA', '#5E7FA6', '#D5DEEA', '#E3E3DE', '#2B5A8C']
 function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
-  const sl = pie.slices.filter((x) => x.value > 0).sort((a, b) => b.value - a.value)
-  const rest = sl.slice(7), shown = sl.slice(0, 7); if (rest.length) shown.push({ label: 'Other', value: rest.reduce((a, b) => a + b.value, 0) })
+  // Largest first; anything called "Other…" and the slices past the seventh go into one "Other" at the end.
+  const isOther = (l: string) => /^(other\b|all other)/i.test(l)
+  const sl = pie.slices.filter((x) => x.value > 0 && !isOther(x.label)).sort((a, b) => b.value - a.value), others = pie.slices.filter((x) => x.value > 0 && isOther(x.label))
+  const shown = sl.slice(0, others.length ? 6 : 7), rest = [...sl.slice(shown.length), ...others]
+  if (rest.length) shown.push({ label: rest.length === 1 ? rest[0]!.label : others.length === 1 && /\(/.test(others[0]!.label) ? others[0]!.label : 'Other', value: rest.reduce((a, b) => a + b.value, 0) })
   const tot = shown.reduce((a, b) => a + b.value, 0)
   if (!tot) return empty(title, 'Nothing to show for this period.')
   const sh: Shape[] = [], top0 = head(sh, title, pie.sub, []), cx = 150, cy = top0 + 150, r = 130, r0 = 76
@@ -367,7 +374,7 @@ function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
   shown.forEach((x, i) => {
     const yy = top0 + 30 + i * step + (260 - step * shown.length) / 2
     sh.push({ t: 'rect', x: lx, y: yy - 12, w: 14, h: 14, fill: PIE[i % PIE.length]! })
-    sh.push({ t: 'text', x: lx + 24, y: yy, s: cut(x.label, 30), size: 15, fill: INK })
+    sh.push({ t: 'text', x: lx + 24, y: yy, s: cut(x.label, pie.currency ? 30 : 40), size: 15, fill: INK })
     const pc = (x.value / tot) * 100
     sh.push({ t: 'text', x: W - (pie.currency ? 110 : 0), y: yy, s: (pc < 1 ? Math.round(pc * 10) / 10 : Math.round(pc)) + '%', size: 15, bold: true, fill: INK, anchor: 'end' })
     if (pie.currency) sh.push({ t: 'text', x: W, y: yy, s: money(x.value, pie.currency), size: 15, fill: MUT, anchor: 'end' })
@@ -376,9 +383,18 @@ function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
 }
 
 // The drawing for a chart, worked out for the subject it is set to (a company, or the group).
-export async function chartDrawing(sp: ChartSpec): Promise<Drawing> {
-  const d = await chartDrawingRaw(sp)
-  return sp.style === 'pie' && d.pie ? pieDrawing(d.title ?? d.alt.split('.')[0]!, d.pie) : d
+export async function chartDrawing(sp: ChartSpec): Promise<Drawing & { labels: string[] }> {
+  const raw = await chartDrawingRaw(sp)
+  const d = sp.style === 'pie' && raw.pie ? pieDrawing(raw.title ?? raw.alt.split('.')[0]!, raw.pie) : raw
+  // The words on the chart a user can rename (names, groups, legend entries; not the title, figures or percentages).
+  const isLabel = (x: Shape): x is Extract<Shape, { t: 'text' }> => x.t === 'text' && !x.role && /[A-Za-z]/.test(x.s) && !/^[-+(]?\D{0,4}[\d,.]+\s?(%|[kMB]|mo|months|pts)?\)?$/.test(x.s)
+  const labels = [...new Set(d.shapes.filter(isLabel).map((x) => x.s))]
+  const rn = sp.labels ?? {}
+  if (Object.keys(rn).length) {
+    for (const x of d.shapes) if (isLabel(x) && rn[x.s]) x.s = rn[x.s]!
+    for (const [a, b] of Object.entries(rn)) d.alt = d.alt.split(a).join(b)
+  }
+  return { ...d, labels }
 }
 async function chartDrawingRaw(sp: ChartSpec): Promise<Drawing> {
   const subject: string = sp.subject ?? ((await currentOrg())?.kind === 'company' ? await companyEntityId().then((e) => (e ? 'entity:' + e : 'group')) : 'group')
