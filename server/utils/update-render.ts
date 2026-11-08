@@ -9,7 +9,8 @@ export function mdToHtml(src: string): string {
     ul: 'margin:0 0 14px;padding-left:22px', ol: 'margin:0 0 14px;padding-left:22px', li: 'margin:0 0 6px', quote: 'margin:0 0 14px;padding:4px 0 4px 16px;border-left:3px solid #c9c5ba;color:#4a4a4a', hr: 'border:none;border-top:1px solid #e6e4dd;margin:20px 0', a: 'color:#1c4f9c', code: 'font-family:Menlo,monospace;font-size:13px;background:#f4f3ef;padding:1px 5px' })
 }
 export interface Block { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
-type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string }
+type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string; ends?: string[] }
+export const kpiAdds = (name: string) => /volume|transaction|txn|message|sms|call|minute|sent|order|gmv|tpv|processed|payment|signup|sign-up|download|unit|request|session|booking|trip|delivery|ticket/i.test(name) && !/rate|%|per |average|avg|ratio|margin|price|headcount|staff|employee/i.test(name)
 const FLOWS = new Set(['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf', 'burn'])
 const COLORS = ['#1c3d63', '#5b8fd1', '#46a7dc', '#8aa4c4', '#2b5a8c', '#b9c9dc']
 // Metric series from the company's statements: monthly, quarterly or yearly (flows summed, balances at period end).
@@ -43,7 +44,13 @@ export async function metricSeries(metrics: string[], period: string, count: num
   const kfAt = (end: string) => { let v = kfMemo.get(end); if (!v) { v = keyFigures(rows.filter((r) => r.period_end <= end) as unknown as FinRow[]); kfMemo.set(end, v) } return v }
   const series = metrics.filter(isMetricKey).map((k) => ({ key: k, label: metricLabel(k), values: isCustKey(k) ? cust[k] ?? keys.map(() => null) : keys.map((gk) => {
     const g = groups.get(gk)!
-    if (k.startsWith('kpi:')) { for (let i = g.rows.length - 1; i >= 0; i--) { const v = g.rows[i]!.kpis?.[k.slice(4)]; if (typeof v === 'number') return v } return null }
+    // A KPI that counts activity in the month (transactions, messages, volume, orders…) adds up over a quarter or a
+    // year; one that is a level (headcount, customers, branches) is taken at the period's end.
+    if (k.startsWith('kpi:')) {
+      const name = k.slice(4), vs = g.rows.map((r) => r.kpis?.[name]).filter((v): v is number => typeof v === 'number')
+      if (!vs.length) return null
+      return kpiAdds(name) ? vs.reduce((a, b) => a + b, 0) : vs[vs.length - 1]!
+    }
     // Cash, burn and runway as every page shows them (keyFigures): at the period's last month, cash with treasury bills,
     // burn the 3-month average to then, runway cash ÷ burn.
     if (k === 'cash' || k === 'burn' || k === 'runway') { const kf = kfAt(g.rows[g.rows.length - 1]!.period_end); return k === 'cash' ? kf.cash : k === 'burn' ? kf.burn : kf.runway }
@@ -52,7 +59,7 @@ export async function metricSeries(metrics: string[], period: string, count: num
     if (k === 'gross_margin') { const rev = ds.reduce((a, x) => a + (x.revenue ?? 0), 0), gp = ds.reduce((a, x) => a + (x.gross_profit ?? 0), 0); return rev ? Math.round((gp / rev) * 1000) / 10 : null }
     return ds[ds.length - 1]?.[k] ?? null
   }) }))
-  return { labels: keys.map((k) => groups.get(k)!.label), series, currency: rows[rows.length - 1]?.currency ?? cur }
+  return { labels: keys.map((k) => groups.get(k)!.label), series, currency: rows[rows.length - 1]?.currency ?? cur, ends }
 }
 const SYM: Record<string, string> = { USD: '$', NGN: '₦', GBP: '£', EUR: '€' }
 function fmt(k: string, v: number | null, cur: string, short = false): string {

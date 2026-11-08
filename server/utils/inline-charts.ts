@@ -3,7 +3,7 @@
 // Kinds: customer concentration (the largest customers against everyone else, this 12 months against the 12 before),
 // any metric over time (Financials, customers and retention, the company's KPIs), and revenue by customer sector.
 // Customer names appear only when the chart is set to show them; otherwise "Customer A", "Customer B".
-import { addM, groupOf, span, win, type Cust } from '~/shared/customer-metrics'
+import { addM, arrOf, groupOf, span, win, type Cust } from '~/shared/customer-metrics'
 import { shortAmount } from '~/shared/compact'
 
 export type ChartSpec =
@@ -15,6 +15,8 @@ export type ChartSpec =
   | { kind: 'logos'; quarters: number; subject?: string; title?: string }
   | { kind: 'mix'; by: 'size' | 'segment'; quarters: number; subject?: string; title?: string }
   | { kind: 'top_trend'; quarters: number; subject?: string; title?: string }
+  | { kind: 'arr' | 'traction'; quarters: number; subject?: string; title?: string }
+  | { kind: 'distribution'; subject?: string; title?: string }
 
 export type Shape =
   | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string }
@@ -37,7 +39,8 @@ export function cleanSpec(x: unknown): ChartSpec | null {
   if (o.kind === 'sectors') return { kind: 'sectors', subject, title }
   const quarters = [4, 6, 8, 12].includes(Number(o.quarters)) ? Number(o.quarters) : 8
   if (o.kind === 'bridge') return { kind: 'bridge', subject, title }
-  if (o.kind === 'cohorts' || o.kind === 'logos' || o.kind === 'top_trend') return { kind: o.kind, quarters, subject, title }
+  if (o.kind === 'cohorts' || o.kind === 'logos' || o.kind === 'top_trend' || o.kind === 'arr' || o.kind === 'traction') return { kind: o.kind, quarters, subject, title }
+  if (o.kind === 'distribution') return { kind: 'distribution', subject, title }
   if (o.kind === 'mix') return { kind: 'mix', by: o.by === 'segment' ? 'segment' : 'size', quarters, subject, title }
   if (o.kind === 'metric') {
     const metrics = (Array.isArray(o.metrics) ? o.metrics : []).filter((k): k is string => typeof k === 'string' && isMetricKey(k)).slice(0, 4)
@@ -103,13 +106,24 @@ async function concentration(sp: Extract<ChartSpec, { kind: 'concentration' }>):
 
 async function metric(sp: Extract<ChartSpec, { kind: 'metric' }>): Promise<Drawing> {
   const d = await metricSeries(sp.metrics, sp.period, sp.count, sp.subject)
-  const title = sp.title ?? d.series.map((x) => x.label).join(' and ')
+  // A period still running (2026 to September, a quarter part-way through) is named as such: amounts that add up
+  // (revenue, transactions…) say "to Sep" and are not compared with full periods; levels (ARR, cash, customers) say
+  // where they stand.
+  const k0 = sp.metrics[0]!, adds = ['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf'].includes(k0) || (k0.startsWith('kpi:') && kpiAdds(k0.slice(4)))
+  const lastEnd = d.ends?.[d.ends.length - 1] ?? '', lm = Number(lastEnd.slice(5, 7)), mon = lastEnd ? ML(lastEnd).slice(0, 3) : ''
+  const partial = !!lastEnd && sp.period !== 'month' && (sp.period === 'year' ? lm !== 12 : lm % 3 !== 0)
+  if (partial) d.labels[d.labels.length - 1] = d.labels[d.labels.length - 1] + (adds ? ' (to ' + mon + ')' : ' (' + mon + ')')
+  const simple = d.series.length === 1, sv = d.series[0]!.values, li = sv.length - 1, lv = sv[li] ?? null, pv = li > 0 ? sv[li - 1] ?? null : null
+  const fmt0 = (v: number) => (metricUnit(k0) === 'pct' ? Math.round(v * 10) / 10 + '%' : metricUnit(k0) === 'months' ? Math.round(v) + ' months' : metricUnit(k0) === 'number' ? (Math.abs(v) >= 1e5 ? shortAmount(v, '') : Math.round(v).toLocaleString('en-US')) : money(v, d.currency))
+  const lastLab = d.labels[li] ?? ''
+  const autoTitle = simple && lv !== null ? d.series[0]!.label + ': ' + fmt0(lv) + ' in ' + lastLab.replace(/ \(.*\)$/, '') + (partial && adds ? ' so far' : pv && metricUnit(k0) !== 'pct' ? ', ' + (lv >= pv ? 'up ' : 'down ') + Math.round(Math.abs(((lv - pv) / Math.abs(pv)) * 100)) + '% on ' + d.labels[li - 1] : '') : d.series.map((x) => x.label).join(' and ')
+  const title = sp.title ?? autoTitle
   if (!d.labels.length || !d.series.some((x) => x.values.some((v) => v !== null))) return empty(title, 'No figures yet for this chart. Add them in Financials.')
   const unit = metricUnit(sp.metrics[0]!), cur = d.currency
-  const fmt = (v: number) => (unit === 'pct' ? Math.round(v * 10) / 10 + '%' : unit === 'months' ? Math.round(v) + ' mo' : unit === 'number' ? Math.round(v).toLocaleString('en-US') : money(v, cur))
+  const fmt = (v: number) => (unit === 'pct' ? Math.round(v * 10) / 10 + '%' : unit === 'months' ? Math.round(v) + ' mo' : unit === 'number' ? (Math.abs(v) >= 1e5 ? shortAmount(v, '') : Math.round(v).toLocaleString('en-US')) : money(v, cur))
   const per = sp.period === 'year' ? 'Yearly' : sp.period === 'quarter' ? 'Quarterly' : 'Monthly'
   const first = d.series[0]!.values.find((v) => v !== null) ?? null, lastV = [...d.series[0]!.values].reverse().find((v) => v !== null) ?? null
-  const growth = d.series.length === 1 && unit === 'money' && first && lastV && first > 0 ? ' · ' + pctS(((lastV - first) / first) * 100) + ' over the period' : ''
+  const growth = ''; void first; void lastV
   const sh: Shape[] = []
   const top0 = head(sh, title, per + ', ' + d.labels[0] + ' to ' + d.labels[d.labels.length - 1] + (unit === 'money' ? ' · ' + cur : '') + growth, d.series.length > 1 ? d.series.map((x, i) => ({ label: x.label, fill: SERIES[i % SERIES.length]! })) : [])
   const vals = d.series.flatMap((x) => x.values.filter((v): v is number => v !== null))
@@ -137,7 +151,10 @@ async function metric(sp: Extract<ChartSpec, { kind: 'metric' }>): Promise<Drawi
     }))
   }
   d.labels.forEach((l, i) => { if (showLab(i)) sh.push({ t: 'text', x: gw * i + gw / 2, y: plotTop + plotH + 28, s: l, size: n > 12 ? 11.5 : 13, fill: MUT, anchor: 'middle' }) })
-  return { w: W, h: plotTop + plotH + 40, shapes: sh, alt: title + ': ' + d.labels.map((l, i) => l + ' ' + d.series.map((s) => (s.values[i] === null ? '–' : fmt(s.values[i]!))).join(' / ')).join(', ') }
+  // Growth on the period before, under each label (not for a period still running when the amounts add up).
+  const rowG = simple && n <= 12 && unit !== 'pct'
+  if (rowG) sv.forEach((v, i) => { const p = i > 0 ? sv[i - 1] : null; if (v === null || !p || (i === li && partial && adds)) return; const g = ((v - p) / Math.abs(p)) * 100; sh.push({ t: 'text', x: gw * i + gw / 2, y: plotTop + plotH + 46, s: pctS(g), size: 11.5, fill: g >= 0 ? BLUE : RED, anchor: 'middle' }) })
+  return { w: W, h: plotTop + plotH + (rowG ? 58 : 40), shapes: sh, alt: title + ': ' + d.labels.map((l, i) => l + ' ' + d.series.map((s) => (s.values[i] === null ? '–' : fmt(s.values[i]!))).join(' / ')).join(', ') }
 }
 
 async function sectors(sp: Extract<ChartSpec, { kind: 'sectors' }>): Promise<Drawing> {
@@ -156,7 +173,7 @@ async function sectors(sp: Extract<ChartSpec, { kind: 'sectors' }>): Promise<Dra
 }
 
 // ---- Customer charts over time (quarters are three-month windows ending at the latest month with revenue) ----
-type CustSpec = Extract<ChartSpec, { kind: 'bridge' | 'cohorts' | 'logos' | 'mix' | 'top_trend' }>
+type CustSpec = Extract<ChartSpec, { kind: 'bridge' | 'cohorts' | 'logos' | 'mix' | 'top_trend' | 'arr' | 'traction' | 'distribution' }>
 const QL = (m: string) => { const mo = Number(m.slice(5, 7)); return mo % 3 === 0 ? 'Q' + mo / 3 + " '" + m.slice(2, 4) : ML(m).replace(/ (\d{2})(\d{2})$/, " '$2") }
 const firstOf = (c: Cust) => Object.keys(c.rev).filter((m) => (c.rev[m] ?? 0) > 0).sort()[0] ?? null
 // Stacked (or up-and-down) bars: one column per period, layers from the bottom; negatives go below the line.
@@ -175,7 +192,7 @@ function bars(sh: Shape[], top: number, labels: string[], layers: { label: strin
   return top + plotH + 42
 }
 async function customerChart(sp: CustSpec): Promise<Drawing> {
-  const NAME: Record<CustSpec['kind'], string> = { bridge: 'Revenue bridge', cohorts: 'Revenue by customer start year', logos: 'Customers won and lost', mix: 'Revenue by customer group', top_trend: 'Revenue from the largest customers' }
+  const NAME: Record<CustSpec['kind'], string> = { bridge: 'Revenue bridge', cohorts: 'Revenue by customer start year', logos: 'Customers won and lost', mix: 'Revenue by customer group', top_trend: 'Revenue from the largest customers', arr: 'Annual recurring revenue', traction: 'Paying customers', distribution: 'Customers by annual revenue' }
   const cs = await loadCustomers(), cfg = await customerConfig(), cur = cfg.currency, s = span(cs)
   if (!s) return empty(sp.title ?? NAME[sp.kind], 'No customer revenue yet. Add it on the Customers page.')
   const last = s.last, sh: Shape[] = [], m$ = (v: number) => money(v, cur)
@@ -251,6 +268,54 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
     return { w: W, h, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ': ' + layers.map((x) => x.label + ' ' + m$(x.values[i] ?? 0)).join(', ')).join('; ') }
   }
 
+  if (sp.kind === 'arr' || sp.kind === 'traction') {
+    // ARR: each quarter end's run-rate (the last three months' revenue × 4). Traction: customers paying in the quarter.
+    const vals = ends.map((m) => (sp.kind === 'arr' ? cs.reduce((a, c) => a + arrOf(c, m), 0) : cs.filter((c) => win(c, m, 3) > 0).length))
+    const fmt = (v: number) => (sp.kind === 'arr' ? m$(v) : Math.round(v).toLocaleString('en-US'))
+    const now = vals[vals.length - 1] ?? 0, yearAgo = vals.length > 4 ? vals[vals.length - 5]! : vals[0] ?? 0, ch = yearAgo ? ((now - yearAgo) / yearAgo) * 100 : null
+    const span4 = vals.length > 4 ? 'in a year' : 'since ' + labels[0]
+    const title = sp.title ?? (sp.kind === 'arr' ? 'ARR ' + fmt(now) + (ch === null ? '' : ', ' + (ch >= 0 ? 'up ' : 'down ') + Math.round(Math.abs(ch)) + '% ' + span4) : fmt(now) + ' paying customers' + (ch === null ? '' : ', ' + (ch >= 0 ? 'up ' : 'down ') + Math.round(Math.abs(ch)) + '% ' + span4))
+    const sub = sp.kind === 'arr' ? 'Annual recurring revenue at each quarter end: the last three months\' revenue × 4 · ' + cur : 'Customers who paid in each quarter'
+    const top0 = head(sh, title, sub, [])
+    const plotTop = top0 + 30, plotH = 220, hi = Math.max(1, ...vals), n = vals.length, gw = W / n, bw = Math.min(70, gw * 0.62), base = plotTop + plotH
+    vals.forEach((v, i) => {
+      const h = Math.max(1, (v / hi) * plotH), x = gw * i + (gw - bw) / 2
+      sh.push({ t: 'rect', x, y: base - h, w: bw, h, fill: i === n - 1 ? BLUE : NOW })
+      sh.push({ t: 'text', x: x + bw / 2, y: base - h - 9, s: fmt(v), size: n > 8 ? 11.5 : 13, bold: i === n - 1, fill: i === n - 1 ? INK : MUT, anchor: 'middle' })
+      sh.push({ t: 'text', x: gw * i + gw / 2, y: base + 28, s: labels[i]!, size: n > 8 ? 11.5 : 13, fill: MUT, anchor: 'middle' })
+      if (i > 0 && vals[i - 1]) { const g = ((v - vals[i - 1]!) / vals[i - 1]!) * 100; sh.push({ t: 'text', x: gw * i + gw / 2, y: base + 46, s: pctS(g), size: 11.5, fill: g >= 0 ? BLUE : RED, anchor: 'middle' }) }
+    })
+    sh.push({ t: 'line', x1: 0, y1: base, x2: W, y2: base, stroke: RULE, width: 1 })
+    return { w: W, h: base + 56, shapes: sh, alt: title + '. ' + labels.map((l, i) => l + ' ' + fmt(vals[i]!)).join(', ') }
+  }
+
+  if (sp.kind === 'distribution') {
+    // Customers by what they paid in the last 12 months: share of customers against share of revenue in each band.
+    const ttm = cs.map((c) => win(c, last, 12)).filter((v) => v > 0), tot = ttm.reduce((a, b) => a + b, 0)
+    if (!ttm.length) return empty(sp.title ?? NAME.distribution, 'No customer revenue in the last 12 months.')
+    const sym = SYM[cur] ?? cur + ' ', big = Math.max(...ttm), steps = [0, 1e3, 1e4, 5e4, 1e5, 5e5, 1e6, 5e6, 1e7, 1e8, 1e9, 1e10]
+    let edges = steps.filter((e) => e < big); if (edges.length > 7) edges = edges.slice(edges.length - 7); edges[0] = 0
+    const k = (v: number) => sym + (v >= 1e9 ? v / 1e9 + 'B' : v >= 1e6 ? v / 1e6 + 'M' : v >= 1e3 ? v / 1e3 + 'k' : String(v))
+    const lab = (a: number, b?: number) => (b === undefined ? k(a) + '+' : a === 0 ? 'Under ' + k(b) : k(a) + '–' + k(b))
+    const bands = edges.map((e, i) => { const nx = edges[i + 1]; const inB = ttm.filter((v) => v >= e && (nx === undefined || v < nx)); return { label: lab(e, nx), n: inB.length, rev: inB.reduce((a, b) => a + b, 0) } }).filter((b) => b.n > 0)
+    const topB = bands[bands.length - 1]!, cPct = (topB.n / ttm.length) * 100, rPct = tot ? (topB.rev / tot) * 100 : 0
+    const title = sp.title ?? (cPct < 1 ? Math.round(cPct * 10) / 10 : Math.round(cPct)) + '% of customers bring ' + Math.round(rPct) + '% of revenue'
+    const top0 = head(sh, title, ttm.length.toLocaleString('en-US') + ' customers by what they paid in the 12 months to ' + ML(last) + ' · ' + cur, [{ label: 'Share of customers', fill: NOW }, { label: 'Share of revenue', fill: BLUE }])
+    const plotTop = top0 + 30, plotH = 220, base = plotTop + plotH, n = bands.length, gw = W / n, bw = Math.min(56, gw * 0.3)
+    bands.forEach((b, i) => {
+      const cx = gw * i + gw / 2
+      for (const [k, v] of [[0, (b.n / ttm.length) * 100], [1, tot ? (b.rev / tot) * 100 : 0]] as [number, number][]) {
+        const h = Math.max(1, (v / 100) * plotH), x = k ? cx + 3 : cx - 3 - bw
+        sh.push({ t: 'rect', x, y: base - h, w: bw, h, fill: k ? BLUE : NOW })
+        sh.push({ t: 'text', x: x + bw / 2, y: base - h - 8, s: (v < 1 && v > 0 ? Math.round(v * 10) / 10 : Math.round(v)) + '%', size: 12.5, bold: k === 1, fill: k ? INK : MUT, anchor: 'middle' })
+      }
+      sh.push({ t: 'text', x: cx, y: base + 26, s: b.label, size: 13, fill: INK, anchor: 'middle' })
+      sh.push({ t: 'text', x: cx, y: base + 44, s: b.n.toLocaleString('en-US') + (b.n === 1 ? ' customer' : ' customers'), size: 12, fill: MUT, anchor: 'middle' })
+    })
+    sh.push({ t: 'line', x1: 0, y1: base, x2: W, y2: base, stroke: RULE, width: 1 })
+    return { w: W, h: base + 54, shapes: sh, alt: title + '. ' + bands.map((b) => b.label + ': ' + b.n + ' customers, ' + (tot ? Math.round((b.rev / tot) * 100) : 0) + '% of revenue').join('; ') }
+  }
+
   // top_trend: share of the last 12 months' revenue from the largest 1, 5 and 10 customers, at each quarter end.
   const share = (m: string, n: number) => { const v = cs.map((c) => win(c, m, 12)).filter((x) => x > 0).sort((a, b) => b - a), tot = v.reduce((a, b) => a + b, 0); return tot ? (v.slice(0, n).reduce((a, b) => a + b, 0) / tot) * 100 : null }
   const series = [1, 5, 10].map((n, i) => ({ label: n === 1 ? 'Largest customer' : 'Top ' + n, fill: SERIES[i]!, values: ends.map((m) => share(m, n)) }))
@@ -272,7 +337,7 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
 export async function chartDrawing(sp: ChartSpec): Promise<Drawing> {
   const subject: string = sp.subject ?? ((await currentOrg())?.kind === 'company' ? await companyEntityId().then((e) => (e ? 'entity:' + e : 'group')) : 'group')
   const run = async () => (sp.kind === 'concentration' ? concentration(sp) : sp.kind === 'sectors' ? sectors(sp) : sp.kind === 'metric' ? metric(sp) : customerChart(sp))
-  if (sp.kind === 'metric') return run()
+  if (sp.kind === 'metric' && !sp.metrics.some(isCustKey)) return run()
   return (await withCustFor(subject, run)) ?? empty(sp.title ?? 'Customers', 'No customer data for this company.')
 }
 
