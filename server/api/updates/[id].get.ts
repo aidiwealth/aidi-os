@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp', 'team')
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!id.success) throw apiError('not_found', 'Not found', 404)
-  const u = (await db().query<{ period_type: string; period_end: string }>("SELECT id, title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, highlights, challenges, asks, body, blocks, cover_id, from_name, recipients, subject, status, published_at, sent_at, sent_count, sent_to, is_template, pinned FROM financials.updates WHERE id = $1", [id.data])).rows[0]
+  const u = (await db().query<{ period_type: string; period_end: string }>("SELECT id, title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, highlights, challenges, asks, body, blocks, cover_id, from_name, greeting, recipients, subject, status, published_at, sent_at, sent_count, sent_to, is_template, pinned FROM financials.updates WHERE id = $1", [id.data])).rows[0]
   if (!u) throw apiError('not_found', 'Not found', 404)
   const org = (await currentOrg())!
   const me = (await asPlatform(() => db().query<{ n: string | null }>('SELECT p.full_name AS n FROM core.users x LEFT JOIN core.people p ON p.id = x.person_id WHERE x.id = $1', [user.userId]))).rows[0]?.n

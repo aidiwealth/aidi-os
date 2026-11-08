@@ -111,11 +111,18 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
 }
 // The full email (or web) document for one reader.
 export const REACTIONS: [string, string][] = [['up', '👍'], ['love', '❤️'], ['party', '🎉'], ['rocket', '🚀'], ['clap', '👏'], ['think', '🤔']]
-export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; subject?: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
+export function greetingLine(tpl: string | null | undefined, first: string | undefined): string {
+  if (tpl === '') return ''
+  const t = tpl?.trim() || 'Hi {first name},', name = first?.trim() || 'there'
+  return t.replace(/\{\s*(first[ _]?name|name)\s*\}/gi, name)
+}
+export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; subject?: string | null; greeting?: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
   const body = await renderBlocks(u.blocks, o.base, u.subject)
   const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
   const cover = u.cover_id ? '<img src="' + o.base + '/api/public/media/' + u.cover_id + '" alt="" style="width:100%;display:block;margin:0 0 20px">' : ''
-  const hi = o.greeting ? '<p style="margin:0 0 14px">Hi ' + esc(o.greeting) + ',</p>' : ''
+  // The greeting line: the update's own ("Dear {first name},"), none when left empty, else "Hi {first name},".
+  const gl = greetingLine(u.greeting, o.greeting)
+  const hi = o.greeting && gl ? '<p style="margin:0 0 14px">' + esc(gl) + '</p>' : ''
   const so = (((await currentOrg())?.settings as Record<string, unknown> | undefined)?.update_signoff ?? {}) as { enabled?: boolean; closing?: string; name?: string; title?: string; photo_id?: string | null; footer?: string }
   const sign = so.enabled !== false && so.name ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 0;border-top:1px solid #e8e6e0;width:100%"><tr>' +
     (so.photo_id ? '<td width="64" valign="middle" style="padding:18px 16px 0 0"><img src="' + o.base + '/api/public/media/' + so.photo_id + '" width="60" height="60" alt="" style="display:block;width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid #ffffff;box-shadow:0 0 0 1px #e1ded6"></td>' : '') +

@@ -41,6 +41,7 @@ async function adopt() {
   const srcs = new Set<string>(); e.state.doc.descendants((n) => { if (n.type.name === 'image') { const src = String(n.attrs.src ?? ''); if (src && !src.startsWith(own) && !/\/api\/public\/(media|charts)\//.test(src) && !tried.has(src)) srcs.add(src) } })
   if (!srcs.size) return
   adopting = true
+  const failed: string[] = []
   try {
     for (const src of srcs) {
       tried.add(src)
@@ -48,13 +49,15 @@ async function adopt() {
       try {
         if (/^(data|blob):/.test(src)) { const b = await (await fetch(src)).blob(); url = await defaultUpload(new File([b], 'pasted-image.' + (b.type.split('/')[1] || 'png'), { type: b.type })) }
         else url = (await $fetch<{ url: string }>('/api/media/import', { method: 'POST', body: { url: src } })).url
-      } catch { continue }
+      } catch { failed.push(src); continue }
       const ed = editor.value; if (!ed || !url) continue
       const tr = ed.state.tr; let changed = false
       ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image' && n.attrs.src === src) { tr.setNodeMarkup(pos, undefined, { ...n.attrs, src: url }); changed = true } })
       if (changed) ed.view.dispatch(tr)
     }
   } finally { adopting = false }
+  // Pictures that need a sign-in where they came from (an email's attachments, a private drive) cannot be copied.
+  if (failed.length) notify(failed.length + (failed.length === 1 ? ' picture' : ' pictures') + ' in this text could not be copied: ' + (failed.some((x) => /mail\.google|googleusercontent|outlook|office|cid:/i.test(x)) ? 'they came from an email and need a sign-in to open. ' : 'the site they came from does not allow it. ') + 'Delete the broken picture and add it again with the Image button.')
 }
 watch(() => props.modelValue, (v) => { const e = editor.value; if (e && (v ?? '') !== last) { last = v ?? ''; e.commands.setContent(last, false) } })
 onBeforeUnmount(() => editor.value?.destroy())
