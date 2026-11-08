@@ -3,6 +3,7 @@
 // tables, signature blocks, page numbers. Several documents go into one file, each starting on a new page.
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
+import type { Drawing } from './inline-charts'
 const clean = (s: string) => s.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u2022/g, '-').replace(/\u2026/g, '...').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
 export interface DocHeader { eyebrow?: string; badge?: string; fields: { label: string; value: string; wide?: boolean }[] }
 export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null } = {}): Promise<Uint8Array> {
@@ -35,6 +36,35 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
     if (line.length) draw(line, true)
   }
   const runs = (s: string, base: PDFFont = reg) => s.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((p) => (p.startsWith('**') ? { t: p.slice(2, -2), f: bold } : { t: p.replace(/\*/g, ''), f: base }))
+  // Pictures in the text (![alt](url)): charts placed from the figures are drawn as shapes (sharp at any size); uploaded
+  // PNG and JPG images are embedded. Anything else is left out.
+  const pics = new Map<string, { chart?: Drawing; img?: Awaited<ReturnType<typeof pdf.embedPng>> }>()
+  for (const doc of docs) for (const m of doc.md.matchAll(/!\[[^\]]*\]\((\S+?)\)/g)) {
+    const url = m[1]!; if (pics.has(url)) continue
+    try {
+      const ch = /\/api\/public\/charts\/([0-9a-f-]{36})\.svg/.exec(url), md = /\/api\/public\/media\/([0-9a-f-]{36})/.exec(url)
+      if (ch) { const c = await chartById(ch[1]!); if (c?.drawing) pics.set(url, { chart: c.drawing }) }
+      else if (md) {
+        const d = (await asPlatform(() => db().query<{ storage_key: string; mime_type: string }>('SELECT storage_key, mime_type FROM core.documents WHERE id = $1 AND public_media', [md[1]]))).rows[0]
+        if (d && /image\/(png|jpeg)/.test(d.mime_type)) { const b = await getObject(d.storage_key); pics.set(url, { img: d.mime_type === 'image/png' ? await pdf.embedPng(b) : await pdf.embedJpg(b) }) }
+      }
+    } catch { /* left out */ }
+  }
+  const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255)
+  const picture = (url: string) => {
+    const p = pics.get(url); if (!p) return
+    if (p.img) { const sc = Math.min(1, maxW / p.img.width, 360 / p.img.height), w = p.img.width * sc, h = p.img.height * sc; need(h + 12); page.drawImage(p.img, { x: M, y: y - h, width: w, height: h }); y -= h + 14; return }
+    const d = p.chart!, sc = maxW / d.w, h = d.h * sc; need(h + 16)
+    const top = y, X = (x: number) => M + x * sc, Y = (yy: number) => top - yy * sc
+    for (const s of d.shapes) {
+      if (s.t === 'rect') page.drawRectangle({ x: X(s.x), y: Y(s.y + s.h), width: s.w * sc, height: s.h * sc, color: hex(s.fill) })
+      else if (s.t === 'line') page.drawLine({ start: { x: X(s.x1), y: Y(s.y1) }, end: { x: X(s.x2), y: Y(s.y2) }, thickness: s.width * sc, color: hex(s.stroke) })
+      else if (s.t === 'poly') for (let i = 1; i < s.pts.length; i++) page.drawLine({ start: { x: X(s.pts[i - 1]![0]), y: Y(s.pts[i - 1]![1]) }, end: { x: X(s.pts[i]![0]), y: Y(s.pts[i]![1]) }, thickness: s.width * sc, color: hex(s.stroke) })
+      else if (s.t === 'dot') page.drawCircle({ x: X(s.x), y: Y(s.y), size: s.r * sc, color: hex(s.fill) })
+      else { const f = s.bold ? bold : reg, t = clean(s.s), size = s.size * sc, tw = f.widthOfTextAtSize(t, size); page.drawText(t, { x: X(s.x) - (s.anchor === 'middle' ? tw / 2 : s.anchor === 'end' ? tw : 0), y: Y(s.y), size, font: f, color: hex(s.fill) }) }
+    }
+    y -= h + 16
+  }
   for (const doc of docs) {
     newPage()
     if (logo && lg) {
@@ -101,6 +131,7 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
       if (/^\|.*\|$/.test(l)) { if (!/^\|[\s:|-]+\|$/.test(l)) tbl.push(l.slice(1, -1).split('|').map((c) => c.trim())); continue }
       flushTable()
       if (!l) { y -= 5; continue }
+      const im = /^!\[[^\]]*\]\((\S+?)\)$/.exec(l); if (im) { picture(im[1]!); continue }
       if (l.startsWith('# ')) { const t = clean(l.slice(2)); need(40); const s = 18, tw = bold.widthOfTextAtSize(t, s); page.drawText(t, { x: (W - tw) / 2, y, size: s, font: bold, color: navy }); y -= 28; continue }
       if (l.startsWith('## ')) { y -= 8; need(34); page.drawText(clean(l.slice(3)), { x: M, y, size: 13, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.5, color: rule }); y -= 22; continue }
       if (l.startsWith('### ') || l.startsWith('#### ')) { y -= 4; need(30); page.drawText(clean(l.replace(/^#+ /, '')), { x: M, y, size: 11, font: bold, color: blue }); y -= 16; continue }

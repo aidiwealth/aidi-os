@@ -10,6 +10,8 @@ export default defineEventHandler(async (event) => {
   const u = (await db().query<{ title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; recipients: Recipients; subject: string | null }>('SELECT title, blocks, cover_id, from_name, recipients, subject FROM financials.updates WHERE id = $1', [id.data])).rows[0]
   if (!u) throw apiError('not_found', 'Not found', 404)
   if (!u.blocks?.length) throw apiError('invalid', 'Add some content before sending.')
+  // Charts placed in the text keep the figures they showed when the update went out.
+  await freezeChartsIn(u.blocks.map((x) => x.md ?? '').join('\n'))
   const org = (await currentOrg())!, base = brands().finvry.url, text = blocksText(u.blocks)
   const br = await brandingOf(org.id), look = { logoUrl: br.logo_url, hideFinvry: br.hide_finvry }
   if (b.data.mode === 'test') {

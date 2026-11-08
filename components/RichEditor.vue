@@ -7,7 +7,17 @@ import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import { RICH_TABLE_EXTENSIONS, TABLE_COLORS, cleanPastedHtml, paintTable } from '~/utils/richTable'
-const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; minimal?: boolean; maxLength?: number }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000 })
+const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; minimal?: boolean; maxLength?: number; media?: boolean }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000, media: undefined })
+// Images and charts in the text: every editor except message boxes (minimal) and those that turn them off.
+const withMedia = computed(() => props.media ?? !props.minimal)
+async function defaultUpload(file: File): Promise<string> { const fd = new FormData(); fd.append('file', file); try { return (await $fetch<{ url: string }>('/api/media', { method: 'POST', body: fd })).url } catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload the image.'); throw e } }
+const upload = computed(() => props.imageUpload ?? (withMedia.value ? defaultUpload : undefined))
+// Charts: placed as a picture linked to /api/public/charts/<id>.svg; selecting one offers to change or freeze it.
+const CHART = /\/api\/public\/charts\/([0-9a-f-]{36})\.svg/
+const picker = reactive({ open: false, id: null as string | null })
+const selChart = computed(() => { const e = editor.value; if (!e || !e.isActive('image')) return null; return CHART.exec(String(e.getAttributes('image').src ?? ''))?.[1] ?? null })
+function chartDone(r: { url: string; alt: string }) { const e = editor.value; picker.open = false; if (!e) return; if (picker.id) e.chain().focus().updateAttributes('image', { src: r.url, alt: r.alt }).run(); else e.chain().focus().setImage({ src: r.url, alt: r.alt }).run() }
+async function freeze(on: boolean) { const e = editor.value, id = selChart.value; if (!e || !id) return; try { const r = await $fetch<{ url: string }>('/api/charts/' + id, { method: 'POST', body: { freeze: on } }); e.chain().focus().updateAttributes('image', { src: r.url }).run() } catch { notify('Could not change the chart.') } }
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 let last = props.modelValue ?? ''
 const md = (e: { storage: Record<string, unknown> }) => (e.storage.markdown as { getMarkdown: () => string }).getMarkdown()
@@ -25,7 +35,7 @@ const block = computed({ get: () => { const e = editor.value; if (!e) return 'p'
   set: (v: string) => { const c = editor.value?.chain().focus(); if (!c) return; if (v === 'p') c.setParagraph().run(); else c.toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run() } })
 async function link() { const e = editor.value; if (!e) return; const prev = e.getAttributes('link').href as string | undefined; const url = await askPrompt('Link address', prev ?? 'https://'); if (url === null) return; if (!url || url === 'https://') { e.chain().focus().unsetLink().run(); return } if (!/^(https?:\/\/|mailto:)/i.test(url)) return; e.chain().focus().extendMarkRange('link').setLink({ href: url }).run() }
 const on = (n: string, a?: Record<string, unknown>) => !!editor.value?.isActive(n, a)
-async function addImage(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file || !props.imageUpload || !editor.value) return; try { const src = await props.imageUpload(file); editor.value.chain().focus().setImage({ src, alt: file.name.replace(/\.[a-z]+$/i, '') }).run() } catch { /* the caller shows the error */ } finally { (ev.target as HTMLInputElement).value = '' } }
+async function addImage(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file || !upload.value || !editor.value) return; try { const src = await upload.value(file); editor.value.chain().focus().setImage({ src, alt: file.name.replace(/\.[a-z]+$/i, '') }).run() } catch { /* the caller shows the error */ } finally { (ev.target as HTMLInputElement).value = '' } }
 const inTable = computed(() => !!editor.value?.isActive('table'))
 const tcolor = ref<string | null>(null); const tscope = ref<'cell' | 'row' | 'col' | 'header'>('row')
 function insertTable() { editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() }
@@ -37,7 +47,8 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
     <div v-if="editor" class="tb" role="toolbar" aria-label="Formatting">
       <select v-if="!minimal" v-model="block" aria-label="Text style"><option value="p">Paragraph</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option></select>
       <span class="sep" />
-      <label v-if="imageUpload" class="imgbtn" title="Insert image"><input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" @change="addImage">Image</label>
+      <label v-if="upload" class="imgbtn" title="Insert an image"><input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" @change="addImage">Image</label>
+      <button v-if="withMedia" type="button" class="imgbtn" title="Insert a chart worked out from your figures" @click="picker.id = null; picker.open = true">Chart</button>
       <button type="button" :class="{ on: on('bold') }" title="Bold (Ctrl+B)" @click="editor.chain().focus().toggleBold().run()"><b>B</b></button>
       <button type="button" :class="{ on: on('italic') }" title="Italic (Ctrl+I)" @click="editor.chain().focus().toggleItalic().run()"><i>I</i></button>
       <button type="button" :class="{ on: on('strike') }" title="Strikethrough" @click="editor.chain().focus().toggleStrike().run()"><s>S</s></button>
@@ -55,6 +66,12 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
       <span class="sep" />
       <button v-if="!minimal" type="button" title="Insert a table" :class="{ on: inTable }" @click="insertTable"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1" /><path d="M2.5 8h15M2.5 12.3h15M7.5 3.5v13M12.5 3.5v13" /></svg></button>
     </div>
+    <div v-if="editor && selChart" class="ttb" role="toolbar" aria-label="Chart">
+      <span class="tl">Chart</span>
+      <button type="button" @click="picker.id = selChart; picker.open = true">Change chart</button>
+      <button type="button" title="Keep today's figures in this chart" @click="freeze(true)">Freeze</button><button type="button" title="Let this chart follow your figures" @click="freeze(false)">Follow figures</button>
+      <button type="button" class="del" @click="editor.chain().focus().deleteSelection().run()">Remove chart</button>
+    </div>
     <div v-if="editor && inTable" class="ttb" role="toolbar" aria-label="Table">
       <span class="tl">Table</span>
       <button type="button" title="Add row below" @click="tcmd('addRowAfter')">+ Row</button><button type="button" title="Add column to the right" @click="tcmd('addColumnAfter')">+ Column</button>
@@ -67,6 +84,7 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
       <button type="button" class="del" title="Delete table" @click="tcmd('deleteTable')">Delete table</button>
     </div>
     <EditorContent :editor="editor" class="ec" :style="{ minHeight: minHeight + 'px' }" />
+    <ChartPicker v-if="withMedia" :open="picker.open" :chart-id="picker.id" @close="picker.open = false" @done="chartDone" />
   </div>
 </template>
 <style scoped>
@@ -80,7 +98,7 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
 .ec :deep(.ProseMirror a) { color: var(--c-blue-deep); } .ec :deep(.ProseMirror code) { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--c-paper-2); padding: 1px 5px; }
 .ec :deep(.ProseMirror p.is-editor-empty:first-child::before) { content: attr(data-placeholder); color: var(--c-muted); float: left; height: 0; pointer-events: none; }
 .compact .ec :deep(.ProseMirror) { font-size: 14px; } .compact .tb { padding: 4px 6px; } .compact .tb button { min-width: 26px; height: 26px; }
-.imgbtn { font-size: 12.5px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--c-rule); background: #fff; } .imgbtn input { display: none; } :deep(.ProseMirror img) { max-width: 100%; height: auto; display: block; margin: 12px 0; }
+.imgbtn { font-size: 12.5px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--c-rule); background: #fff; } .imgbtn input { display: none; } :deep(.ProseMirror img) { max-width: 100%; height: auto; display: block; margin: 12px 0; } :deep(.ProseMirror img.ProseMirror-selectednode) { outline: 2px solid var(--c-blue-deep); } .tb button.imgbtn { font: inherit; font-size: 12.5px; color: var(--c-ink); border: 1px solid var(--c-rule); background: #fff; padding: 4px 8px; height: auto; min-width: 0; margin-right: 4px; }
 .ttb { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--c-rule); background: #f7f9fc; font-size: 12.5px; }
 .ttb button { background: #fff; border: 1px solid var(--c-rule); padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; } .ttb button:hover { border-color: var(--c-navy); } .ttb .tl { font-weight: 600; color: var(--c-blue-deep); margin-right: 4px; } .ttb select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--c-rule); }
 .ttb .sw { display: flex; gap: 3px; } .ttb .sw button { width: 20px; height: 20px; padding: 0; border: 1px solid var(--c-rule-strong); } .ttb .sw button.none { background: linear-gradient(135deg, #fff 45%, #d64545 46%, #d64545 54%, #fff 55%); } .ttb .del { color: var(--c-danger); margin-left: auto; }
