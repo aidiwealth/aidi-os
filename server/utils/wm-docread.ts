@@ -69,13 +69,17 @@ export const DocRead = z.object({
     espp: z.array(z.object({ date: z.string().max(20), shares: z.number(), purchase_price: z.number().nullable().catch(null), market_price: z.number().nullable().catch(null) })).max(20).catch([]),
     sold_shares: z.number().nullable().catch(null), from: From })).max(10).catch([]),
   flags: z.array(z.object({ title: z.string().max(140), detail: z.string().max(600) })).max(10).catch([]),
+  // Payslip facts as printed; yearly salary and RSU income are worked out from them in code (see payIncomes).
+  payslips: z.array(z.object({ employer: z.string().max(120).catch(''), period_end: z.string().max(20).catch(''), frequency: z.enum(['weekly', 'biweekly', 'semimonthly', 'monthly', 'unknown']).catch('unknown'),
+    period_salary: z.number().nullable().catch(null), hourly_rate: z.number().nullable().catch(null), ytd_salary: z.number().nullable().catch(null), ytd_rsu: z.number().nullable().catch(null), ytd_gross: z.number().nullable().catch(null), currency: Cur })).max(6).catch([]),
 })
 export type DocReadOut = z.infer<typeof DocRead>
 
 const SYSTEM = `You read a client's financial documents for a wealth adviser and pull out the figures needed for a financial plan. Use only what the documents show; never guess or invent. Amounts are numbers without symbols; currency is the 3-letter code. "from" names the document a figure came from.
 - accounts: every account with a value: brokerage, retirement (401(k), 403(b), IRA, pension), bank, savings, crypto; employer stock held at a stock-plan administrator is kind "company_stock" with its closing value.
 - equity: one entry per employer stock plan. Shares held and their value at the statement date; each vest or release (date, shares, shares withheld for tax, gross and net value, tax paid, federal withholding rate); grants (award id, grant date, kind, shares and unvested shares when shown); ESPP purchases (date, shares, purchase and market price); shares sold in the period.
-- incomes: salary from payslips (annual gross if shown, else the pay-period amount with its frequency); RSU vest value is income too (annual if a full year is shown, else leave it to the equity section).
+- payslips: one entry per payslip, figures exactly as printed: employer, period end date (YYYY-MM-DD), pay frequency (weekly, biweekly, semimonthly, monthly), the salary for this pay period (the Current salary or regular pay line, not gross with other items), the hourly pay rate if shown, and year-to-date salary, year-to-date restricted stock (RSU) income and year-to-date gross. Never annualise anything yourself.
+- incomes: only income other than salary and stock: rent, dividends, interest, business income, pensions being paid. Do not put salary, bonuses on a payslip, RSU vests or ESPP here (salary and RSU income are worked out from the payslips; vests belong to equity).
 - expenses: recurring spending from bank statements, grouped (housing, living costs, children, travel, subscriptions, other), monthly.
 - debts: mortgages, loans, cards: balance, monthly payment, rate.
 - flags: short planning points an adviser would raise, only when the documents support them. For tech employees especially: concentration in employer stock; federal tax on RSU income withheld at the 22% supplemental rate when Social Security tax stopped part-way through the year (the wage base was passed) or the additional Medicare rate (2.35%) applies, meaning income over $200k and a likely shortfall at tax time; upcoming vests and the cash they bring; ESPP shares and the holding periods that change their tax; cash beyond an emergency reserve; high-rate debt. Plain words, no product recommendations.
@@ -88,13 +92,14 @@ export async function readFinancialDocs(files: { name: string; mime: string; buf
     if (!t || t.replace(/\s/g, '').length < 40) { skipped.push(f.name); continue }
     parts.push('=== DOCUMENT: ' + f.name + ' ===\n' + t.slice(0, 40000)); read.push(f.name)
   }
-  if (!parts.length) return { out: { documents: [], incomes: [], expenses: [], debts: [], accounts: [], equity: [], flags: [] }, read, skipped }
+  if (!parts.length) return { out: { documents: [], payslips: [], incomes: [], expenses: [], debts: [], accounts: [], equity: [], flags: [] }, read, skipped }
   const cfg = useRuntimeConfig() as unknown as Record<string, string>
   const { output } = await runAiTool({ task: 'wm_docread', model: cfg.aiModelSheets || cfg.aiModelAnalyst || cfg.aiModelPitchScreen!, promptVersion: 'wm-docread-v1', inputRef, maxTokens: 6000,
     system: SYSTEM, user: parts.join('\n\n').slice(0, 150000), toolName: 'financial_figures', toolDescription: 'The figures read from the documents',
     schema: DocRead,
-    jsonSchema: { type: 'object', required: ['documents', 'incomes', 'expenses', 'debts', 'accounts', 'equity', 'flags'], properties: {
+    jsonSchema: { type: 'object', required: ['documents', 'payslips', 'incomes', 'expenses', 'debts', 'accounts', 'equity', 'flags'], properties: {
       documents: { type: 'array', items: { type: 'object', required: ['name', 'type'], properties: { name: { type: 'string' }, type: { type: 'string', description: 'e.g. Stock plan statement, RSU release confirmation, Bank statement, Payslip, 401(k) statement' }, period: { type: 'string' }, institution: { type: 'string' } } } },
+      payslips: { type: 'array', items: { type: 'object', required: ['employer', 'frequency', 'currency'], properties: { employer: { type: 'string' }, period_end: { type: 'string' }, frequency: { type: 'string', enum: ['weekly', 'biweekly', 'semimonthly', 'monthly', 'unknown'] }, period_salary: { type: ['number', 'null'] }, hourly_rate: { type: ['number', 'null'] }, ytd_salary: { type: ['number', 'null'] }, ytd_rsu: { type: ['number', 'null'] }, ytd_gross: { type: ['number', 'null'] }, currency: { type: 'string' } } } },
       incomes: { type: 'array', items: { type: 'object', required: ['source', 'amount', 'frequency', 'currency'], properties: { source: { type: 'string' }, amount: { type: 'number' }, frequency: { type: 'string', enum: ['monthly', 'annual'] }, currency: { type: 'string' }, from: { type: 'string' } } } },
       expenses: { type: 'array', items: { type: 'object', required: ['category', 'amount', 'frequency', 'currency'], properties: { category: { type: 'string' }, amount: { type: 'number' }, frequency: { type: 'string', enum: ['monthly', 'annual'] }, currency: { type: 'string' }, from: { type: 'string' } } } },
       debts: { type: 'array', items: { type: 'object', required: ['name', 'balance', 'currency'], properties: { name: { type: 'string' }, balance: { type: 'number' }, payment: { type: ['number', 'null'] }, rate: { type: ['number', 'null'] }, currency: { type: 'string' }, from: { type: 'string' } } } },
@@ -106,7 +111,25 @@ export async function readFinancialDocs(files: { name: string; mime: string; buf
         espp: { type: 'array', items: { type: 'object', required: ['date', 'shares'], properties: { date: { type: 'string' }, shares: { type: 'number' }, purchase_price: { type: ['number', 'null'] }, market_price: { type: ['number', 'null'] } } } },
         sold_shares: { type: ['number', 'null'] }, from: { type: 'string' } } } },
       flags: { type: 'array', items: { type: 'object', required: ['title', 'detail'], properties: { title: { type: 'string' }, detail: { type: 'string' } } } } } } })
-  return { out: output, read, skipped }
+  return { out: { ...output, incomes: [...payIncomes(output), ...output.incomes.filter((x) => !/salary|wage|rsu|restricted stock|espp|vest/i.test(x.source))] }, read, skipped }
+}
+
+// Yearly salary and RSU income from the latest payslip of each employer, worked out here rather than by the AI:
+// salary = this period's salary × pay periods in a year (or the hourly rate × 2,080 hours); RSU income = year-to-date
+// RSU income ÷ months so far × 12, marked as an estimate (vests are uneven). A single vest is never taken as a year.
+export function payIncomes(r: Pick<DocReadOut, 'payslips'>): DocReadOut['incomes'] {
+  const PER: Record<string, number> = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12 }
+  const latest = new Map<string, DocReadOut['payslips'][number]>()
+  for (const p of r.payslips) { const k = p.employer.toLowerCase() || '-', had = latest.get(k); if (!had || p.period_end > had.period_end) latest.set(k, p) }
+  const out: DocReadOut['incomes'] = []
+  for (const p of latest.values()) {
+    const who = p.employer || 'Employer', from = 'Payslip ' + (p.period_end || '')
+    const salary = p.period_salary && PER[p.frequency] ? p.period_salary * PER[p.frequency]! : p.hourly_rate ? p.hourly_rate * 2080 : null
+    if (salary) out.push({ source: who + ' salary', amount: Math.round(salary), frequency: 'annual', currency: p.currency, from })
+    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(p.period_end), months = m ? Number(m[1]) - 1 + Math.min(1, Number(m[2]) / 30) : null
+    if (p.ytd_rsu && p.ytd_rsu > 0 && months && months >= 1) out.push({ source: who + ' RSU vesting (estimate from year to date)', amount: Math.round((p.ytd_rsu / months) * 12), frequency: 'annual', currency: p.currency, from })
+  }
+  return out
 }
 
 // The documents of a client (all, or those named), read together.
