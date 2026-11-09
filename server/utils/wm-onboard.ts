@@ -13,7 +13,8 @@ import { DATA_NOTICE_VERSION, dataDocs, dataNoticeMd, dataNoticeTitle, dataRecor
 export interface Widget {
   kind: 'form' | 'rows' | 'choice' | 'scale' | 'agree' | 'none'
   fields?: { key: string; label: string; type: 'text' | 'number' | 'date' | 'secret' | 'select'; options?: [string, string][]; placeholder?: string; value?: string | number }[]
-  columns?: { key: string; label: string; type: 'text' | 'number' | 'date' | 'select'; options?: [string, string][]; placeholder?: string }[]
+  columns?: { key: string; label: string; type: 'text' | 'number' | 'date' | 'select'; options?: [string, string][]; placeholder?: string; suggest?: 'lender' }[]
+  hint?: string
   quick?: { label: string; row: Record<string, unknown> }[]
   rows?: Record<string, unknown>[]
   options?: { value: string; label: string; note?: string }[]
@@ -38,6 +39,32 @@ const monthly = (rows: any[] = [], c: string) => rows.filter((r) => (r.currency 
 function rowsOf(v: any, keys: string[], need: string, c: Ctx): Record<string, any>[] {
   const rows = Array.isArray(v?.rows) ? v.rows : []
   return rows.slice(0, 20).map((r: any) => Object.fromEntries(keys.map((k) => [k, ['amount', 'value', 'balance', 'payment', 'target'].includes(k) ? (r[k] === '' || r[k] == null ? null : num(r[k])) : k === 'currency' ? (['USD', 'NGN'].includes(r[k]) ? r[k] : cur(c)) : k === 'frequency' ? (r[k] === 'annual' ? 'annual' : 'monthly') : str(r[k])]))).filter((r: any) => num(r[need]) > 0)
+}
+// The risk questions in plain words: what each one means, actual years for the time questions, money for the fall,
+// and an example under each answer. The answers saved are the same five steps as before.
+const RISK_WHY: Record<string, string> = {
+  horizon: 'Think about what this money is for. Money you need soon should not swing much in value; money you won\'t touch for years can ride out the ups and downs.',
+  drop: 'Prices go up and down. This is about what you would actually do on a bad year.',
+  goal: '',
+  income: 'Steady income means you are less likely to need to sell investments at a bad time.',
+  experience: '',
+}
+function riskAsk(id: string, q: string, c: Ctx) {
+  const big = c.country === 'NG' ? '₦10,000,000' : '$10,000', low = c.country === 'NG' ? '₦7,500,000' : '$7,500'
+  const text = id === 'drop' ? 'Say you invest ' + big + ' and a year later it is worth ' + low + ' (down 25%). What would you do?' : q
+  return text + (RISK_WHY[id] ? '\n\n' + RISK_WHY[id] : '')
+}
+function riskLabel(id: string, k: number, a: string) {
+  if (id !== 'horizon') return a
+  const y = new Date().getFullYear()
+  return a + ' (' + ['before ' + (y + 2), (y + 2) + ' to ' + (y + 5), (y + 5) + ' to ' + (y + 10), (y + 10) + ' to ' + (y + 20), 'after ' + (y + 20)][k] + ')'
+}
+const RISK_NOTES: Record<string, string[]> = {
+  horizon: ['e.g. a house deposit or school fees soon', 'e.g. a car, wedding or business in a few years', 'e.g. children\'s university', 'e.g. a home later, or financial freedom', 'e.g. retirement'],
+  drop: ['Stop any more loss, even if it means locking in the fall', 'Take some off the table', 'Wait for it to recover', 'Buy a little more at the lower price', 'See it as a sale and buy a lot more'],
+  goal: ['Keep what I have, even if it grows slowly', 'Regular payouts, like interest or dividends', 'Some growth, with limited ups and downs', 'Grow over time, accepting bigger swings', 'The most growth, accepting large swings'],
+  income: ['Not earning at the moment', 'Changes month to month, e.g. freelance or business', 'Mostly steady', 'A steady salary or income', 'Steady income, and savings for 6+ months'],
+  experience: ['This would be the first time', '1 or 2 investments like these', 'Several', 'I invest like this often', 'It\'s my work or a big part of my wealth'],
 }
 // Figures read from the client's uploaded documents, offered as the answer rows to check (never applied unseen).
 const sug = (c: Ctx, k: 'incomes' | 'expenses' | 'assets' | 'debts'): Record<string, unknown>[] => (c.answers.suggest?.[k] ?? []) as Record<string, unknown>[]
@@ -78,11 +105,11 @@ const STEPS: Step[] = [
       return { me: rows.map((r) => r.name + ' ' + money(r.value, r.currency)).join(', '), ack: 'That\'s about **' + money(tot, cur(c)) + '** in all. Thanks.' } } },
   { id: 'debts', phase: 3, ai: true,
     ask: () => 'Any debts: a mortgage, loans or cards?',
-    widget: (c) => ({ kind: 'rows', columns: [{ key: 'name', label: 'Debt', type: 'text', placeholder: 'e.g. Mortgage' }, { key: 'balance', label: 'Still owed', type: 'number' }, { key: 'payment', label: 'Paid a month', type: 'number' }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
-      quick: ['Mortgage', 'Car loan', 'Student loan', 'Credit card'].map((s) => ({ label: s, row: { name: s, balance: '', payment: '', currency: cur(c) } })), rows: c.answers.debts ?? sug(c, 'debts'), submit: 'Done', skip: 'No debts', upload: 'other' }),
+    widget: (c) => ({ kind: 'rows', columns: [{ key: 'name', label: 'Debt', type: 'text', placeholder: 'e.g. Mortgage' }, { key: 'lender', label: 'Owed to', type: 'text', placeholder: c.country === 'NG' ? 'Bank, lender or school' : 'Bank, card company or servicer', suggest: 'lender' }, { key: 'balance', label: 'Still owed', type: 'number' }, { key: 'payment', label: 'Paid a month', type: 'number' }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
+      quick: ['Mortgage', 'Car loan', 'Student loan', 'Credit card'].map((s) => ({ label: s, row: { name: s, lender: '', balance: '', payment: '', currency: cur(c) } })), rows: c.answers.debts ?? sug(c, 'debts'), submit: 'Done', skip: 'No debts', upload: 'other', hint: 'Pick who it\'s owed to from the list, or type the name. It\'s only to tell your debts apart.' }),
     apply: (v, c) => { if (v.skip) { c.answers.debts = []; return { me: 'No debts', ack: 'No debts. Good.' } }
-      const rows = rowsOf(v, ['name', 'balance', 'payment', 'currency'], 'balance', c); if (!rows.length) bad('Add what is still owed, or choose "No debts".')
-      c.answers.debts = rows.map((r) => ({ ...r, name: r.name || 'Debt' })); const tot = rows.filter((r) => r.currency === cur(c)).reduce((a, r) => a + r.balance, 0)
+      const rows = rowsOf(v, ['name', 'lender', 'balance', 'payment', 'currency'], 'balance', c); if (!rows.length) bad('Add what is still owed, or choose "No debts".')
+      c.answers.debts = rows.map((r) => ({ ...r, name: r.name || 'Debt', lender: String(r.lender ?? '').trim().slice(0, 120) })); const tot = rows.filter((r) => r.currency === cur(c)).reduce((a, r) => a + r.balance, 0)
       return { me: c.answers.debts.map((r: any) => r.name + ' ' + money(r.balance, r.currency)).join(', '), ack: 'Noted: about ' + money(tot, cur(c)) + ' owed in all.' } } },
   { id: 'goals', phase: 3, ai: true,
     ask: () => 'What are you working towards? Pick any, and add a target or a date if you have one.',
@@ -93,8 +120,8 @@ const STEPS: Step[] = [
       if (!rows.length) bad('Pick a goal, or choose "Not sure yet".'); c.answers.goals = rows
       return { me: rows.map((r: any) => r.name).join(', '), ack: rows.length === 1 ? 'A clear goal. Good.' : rows.length + ' goals. We\'ll plan for each.' } } },
   ...RISK_QUESTIONS.map((q, i): Step => ({ id: 'risk_' + q.id, phase: 4, ai: true,
-    ask: () => (i === 0 ? 'Next, how you feel about risk. A few quick questions.\n\n' : '') + q.q,
-    widget: () => ({ kind: 'choice', options: q.a.map((a, k) => ({ value: String(k + 1), label: a })) }),
+    ask: (c) => (i === 0 ? 'Next, how you feel about risk: five quick questions. There are no right answers.\n\n' : '') + riskAsk(q.id, q.q, c),
+    widget: (c) => ({ kind: 'choice', options: q.a.map((a, k) => ({ value: String(k + 1), label: riskLabel(q.id, k, a), note: RISK_NOTES[q.id]?.[k] })), hint: 'Pick the closest, or tell me in your own words (for example "half of it in 3 years, the rest for retirement") and I\'ll work out the answer.' }),
     apply: (v, c) => { const n = Math.round(num(v.choice)); if (n < 1 || n > 5) bad('Choose one of the answers.'); c.answers.risk_answers = { ...(c.answers.risk_answers ?? {}), [q.id]: n }; return { me: q.a[n - 1]!, ack: ['Noted.', 'Thanks.', 'Got it.', 'Understood.', 'Thanks, that helps.'][i]! } } })),
   { id: 'risk_level', phase: 4, ai: true,
     ask: (c) => { const s = levelFromAnswers(c.answers.risk_answers ?? {}), L = RISK_LEVELS.find((l) => l.code === s)!, lim = RISK_LIMITS[s]; return 'From your answers' + ((c.answers.goals ?? []).length ? ' and your goals' : '') + ', I\'d suggest **' + L.label + '**: ' + L.text.charAt(0).toLowerCase() + L.text.slice(1) + (lim ? ' In practice: up to ' + lim.single + '% in any one company, ' + (lim.crypto ? 'up to ' + lim.crypto + '% in crypto' : 'no crypto') + ', and at least ' + lim.cash + '% kept in cash.' : '') + '\n\nYou can choose differently; your adviser sees both.' },
@@ -241,7 +268,7 @@ async function readAnswer(s: Step, ctx: Ctx, text: string) {
         : w.kind === 'scale' ? '{"level": ' + w.options!.map((o) => '"' + o.value + '"').join(' | ') + '}' : '{}'
   const { output } = await runAiTool({ task: 'wm_onboard', model: (useRuntimeConfig() as unknown as Record<string, string>).aiModelAnalyst || useRuntimeConfig().aiModelPitchScreen, promptVersion: 'wm-onboard-v1', inputRef: 'wm_onboarding:' + ctx.onbId, maxTokens: 700,
     system: 'You are the Aidi Wealth assistant, chatting with a new client to set up their financial plan. Warm, plain and brief, like a good adviser: short sentences, no jargon, no emojis, no investment advice, never name any brokerage or provider. The client is in ' + (ctx.country === 'NG' ? 'Nigeria (default currency NGN)' : 'the United States (default currency USD)') + '. Read their answer into the JSON shape asked for. Amounts: "18k" is 18000, "2m" 2000000; "after tax" amounts are fine as given; if they give a yearly figure use frequency annual. If the answer is clear, set understood true, fill value, and write reply: one short sentence confirming what you understood in plain words with the key figures in **bold** (do not ask the next question; it is added after). If it is unclear, or they asked a question, set understood false and reply with a short answer or one clarifying question.',
-    user: 'Question asked: ' + s.ask(ctx).replace(/^Hi [^\n]*\n\n/, '') + '\nShape for value: ' + shape + '\nWhat we know so far: ' + JSON.stringify(summary(ctx)) + '\nTheir answer: ' + text,
+    user: 'Question asked: ' + s.ask(ctx).replace(/^Hi [^\n]*\n\n/, '') + '\nShape for value: ' + shape + (s.id.startsWith('risk_') ? '\nHow to read risk answers: they may answer with a number of years, a date, percentages or a story. Pick the closest answer and say in the reply, in plain words, which one you chose and why (e.g. "Most of it is for 2031, so I\'ve put In 5 to 10 years."). If the money is split, go by where more than half of it is needed. If they ask what the question means or are unsure, set understood to false and explain it in one or two short sentences with an example from their situation, then ask again.' : '') + '\nWhat we know so far: ' + JSON.stringify(summary(ctx)) + '\nTheir answer: ' + text,
     toolName: 'record_answer', toolDescription: 'Record what the client said for the current question, and the reply to show them.',
     jsonSchema: { type: 'object', properties: { understood: { type: 'boolean' }, value: { type: 'object' }, reply: { type: 'string' } }, required: ['understood', 'reply'] },
     schema: z.object({ understood: z.boolean(), value: z.record(z.string(), z.any()).nullable().optional(), reply: z.string().max(1500) }) })
@@ -309,7 +336,7 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   const a = ctx.answers, id = ctx.clientId
   await planSave(id, { household: a.household ?? {}, incomes: (a.incomes ?? []).map((r: any) => ({ who: '', source: r.source || 'Income', amount: r.amount, frequency: r.frequency, currency: r.currency })), taxes: [],
     expenses: (a.expenses ?? []).map((r: any) => ({ category: r.category || 'Spending', amount: r.amount, frequency: r.frequency, currency: r.currency })),
-    debts: (a.debts ?? []).map((r: any) => ({ name: r.name, balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
+    debts: (a.debts ?? []).map((r: any) => ({ name: r.lender ? r.name + ' · ' + r.lender : r.name, balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
     goals: (a.goals ?? []).map((g: any) => ({ name: g.name, ...(g.target ? { target: g.target } : {}), ...(g.by ? { by: g.by } : {}) })), notes: '',
     ...(a.equity?.length ? { equity: a.equity } : {}), ...(a.doc_flags?.length ? { doc_flags: a.doc_flags } : {}) }).catch((e) => console.error('[onboard] plan save', e))
   await db().query("DELETE FROM wm.accounts WHERE client_id = $1 AND notes = 'From onboarding'", [id])
