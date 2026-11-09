@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ASSET_TYPES } from '~/shared/wm-assets'
 // One wealth client: summary, holdings, accounts, household (family view link), KYC, advisers and fees.
 const id = useRoute().params.id as string
 const { data, refresh } = await useFetch<Record<string, any>>('/api/wm/clients/' + id)
@@ -20,6 +21,10 @@ async function resetOnb() {
   msg.value = ''; ok.value = ''
   try { await $fetch('/api/wm/onboarding/' + o.id, { method: 'POST', body: { action: 'restart' } }); await refresh(); ok.value = 'Onboarding reset: the client starts again from the first question.' } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not reset.' }
 }
+async function toggleAsset(key: string, on: boolean) {
+  const cur = new Set<string>(data.value?.client.assets_off ?? []); if (on) cur.delete(key); else cur.add(key)
+  await act('assets_off', { off: [...cur] }); ok.value = on ? 'Switched on for this client.' : 'Switched off for this client.'
+}
 const hf = reactive({ open: false, edit: null as Record<string, any> | null })
 const ac = reactive({ open: false, account_id: '', institution: '', kind: 'brokerage', name: '', currency: 'USD', balance: '' as string | number, cash_part: '' as string | number, as_of: new Date().toISOString().slice(0, 10), managed_by: '' })
 function editAcc(a?: Record<string, any>) { Object.assign(ac, { open: true, account_id: '', institution: '', kind: 'brokerage', name: '', currency: 'USD', balance: '', cash_part: '', as_of: new Date().toISOString().slice(0, 10), managed_by: '' }, a ? { ...a, account_id: a.id, name: a.name ?? '', cash_part: a.cash_part ?? '', managed_by: a.managed_by ?? '' } : {}) }
@@ -39,7 +44,9 @@ const { data: firms } = await useFetch<{ firms: { id: string; name: string }[] }
       <div class="acts"><button v-if="canReset" class="btn secondary" @click="resetOnb">Reset onboarding</button><NuxtLink class="btn secondary" :to="'/w?client=' + id">Preview portal</NuxtLink><button class="btn secondary" @click="det = true">Edit details</button><button class="btn" @click="act('invite').then(() => ok = 'Portal invitation sent.')">{{ data.client.user_id ? 'Resend portal invite' : 'Invite to portal' }}</button></div></div>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="okm">{{ ok }}</p>
     <nav class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
-    <ClientSummaryStaff v-if="tab === 'summary'" :d="data" :id="id" @tab="(t) => tab = t" @edit="det = true" @refresh="refresh()" />
+    <template v-if="tab === 'summary'"><ClientSummaryStaff :d="data" :id="id" @tab="(t) => tab = t" @edit="det = true" @refresh="refresh()" />
+      <div class="card ast"><div><h3>Asset types</h3><p class="mut">Untick anything this client doesn't want. It is hidden from them, refused if they try to buy it, and left out of their suggested mix and review.</p></div>
+        <div class="astg"><label v-for="t in ASSET_TYPES" :key="t.key" class="astc"><input type="checkbox" :checked="!(data.client.assets_off ?? []).includes(t.key)" @change="toggleAsset(t.key, ($event.target as HTMLInputElement).checked)"><span><b>{{ t.label }}</b><em>{{ t.note }}</em></span></label></div></div></template>
     <FinancialPlan v-else-if="tab === 'plan'" :api="'/api/wm/clients/' + id + '/plan'" />
     <WealthCalculator v-else-if="tab === 'calculator'" :start="data.summary.totals.invested + data.summary.totals.cash" />
     <WmStatements v-else-if="tab === 'statements'" :client-id="id" />
@@ -72,6 +79,7 @@ const { data: firms } = await useFetch<{ firms: { id: string; name: string }[] }
   </section>
 </template>
 <style scoped>
+.ast { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; } .ast h3 { margin: 0 0 4px; } .astg { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; } .astc { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--c-rule); cursor: pointer; } .astc input { margin-top: 3px; } .astc span { display: flex; flex-direction: column; } .astc em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 .back { color: var(--c-muted); text-decoration: none; font-size: 13.5px; } .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; } .pill { font-size: 12px; padding: 3px 8px; background: var(--c-paper-2); color: var(--c-ink-soft); white-space: nowrap; } .pill.blue { background: #e6ecf2; color: var(--c-blue-deep); } .pill.warn { background: #fff6e6; color: #7a4a06; } .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; } .hd h1 { margin: 2px 0; } .acts { display: flex; gap: 8px; } .mut { color: var(--c-muted); font-size: 13px; } .okm { color: var(--c-ok); } .error { color: var(--c-danger); }
 .sub { display: flex; gap: 4px; background: var(--c-paper-2); padding: 4px; margin: 14px 0; width: fit-content; max-width: 100%; overflow-x: auto; } .sub button { background: none; border: 0; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .sub .on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(12,26,46,.08); }
 .card { margin-bottom: 12px; } .card h3 { margin: 0 0 8px; font-size: 15px; } .tc { padding: 0; overflow-x: auto; } .ch { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; } .table { width: 100%; border-collapse: collapse; font-size: 13.5px; } .table th { text-align: left; padding: 10px 14px; } .table td { padding: 11px 14px; border-bottom: 1px solid var(--c-rule); vertical-align: top; } .n { text-align: right; white-space: nowrap; } .s { display: block; font-size: 12.5px; color: var(--c-muted); } .pad { padding: 14px; margin: 0; }

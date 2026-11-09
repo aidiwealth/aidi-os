@@ -52,7 +52,7 @@ const pct = (v: number) => Math.max(2, Math.min(100, v * 100)) + '%'
 const p = computed(() => data.value?.plan ?? {})
 const canAgree = computed(() => (data.value?.widget?.items ?? []).every((i) => !i.required || agree[i.key]))
 async function signOut() { try { await $fetch('/api/auth/logout', { method: 'POST' }) } catch { /* ignore */ } await navigateTo('/login') }
-const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'Investing account being opened', failed: 'Investing account: your adviser is finishing it', held: 'Investing account: your adviser will be in touch', not_needed: data.value?.country === 'NG' ? 'Wallet and savings ready to set up' : '' } as Record<string, string>)[data.value?.account_status ?? ''] ?? '')
+const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'Investing account being opened', failed: 'Investing account: your adviser is finishing it', held: 'Investing account: your adviser will be in touch', not_needed: data.value?.country === 'NG' ? 'Wallet and savings ready to set up' : '', later: 'Investing account: open it from your dashboard when you are ready' } as Record<string, string>)[data.value?.account_status ?? ''] ?? '')
 </script>
 <template>
   <div class="ob">

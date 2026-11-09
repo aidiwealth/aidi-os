@@ -7,6 +7,9 @@ const q = computed(() => (route.query.client ? '?client=' + route.query.client :
 const { data, error, refresh } = await useFetch<Record<string, any>>(() => '/api/w/me' + q.value, { key: 'w-me' })
 const router = useRouter()
 const tab = computed({ get: () => String(route.query.t ?? 'home'), set: (v: string) => { void router.replace({ query: { ...route.query, t: v === 'home' ? undefined : v } }) } })
+// The investing account (or wallet) left for later during onboarding: carry on in the conversation.
+const opening = ref(false)
+async function openAccount() { opening.value = true; try { await $fetch('/api/w/onboard', { method: 'POST', body: { open_account: true } }); await navigateTo('/w/start') } catch { opening.value = false } }
 // Still in the onboarding conversation (or waiting for approval): that comes first.
 if (!route.query.client && data.value?.onboarding && data.value.onboarding !== 'done') await navigateTo('/w/start', { replace: true })
 // Private deals the Aidi team is offering clients: say you are interested, with an amount.
@@ -51,6 +54,7 @@ async function linkBank() { msg.value = ''; try { await loadScript(); const { li
       <p v-if="preview" class="pv">Preview of {{ data.client.name }}'s portal</p>
       <p class="label">Aidi Wealth</p><h1>{{ data.client.name }}</h1>
       <MarketTicker client /><h2 v-if="!preview && tab !== 'deals'" class="stl">{{ tab === 'accounts' ? 'Where your money is' : TABS.find((x) => x[0] === tab)?.[1] ?? (tab === 'deals' ? 'Deal flow' : 'Overview') }}</h2><nav v-if="preview" class="sub"><button v-for="[k, l] in TABS" :key="k" :class="{ on: tab === k }" @click="tab = k">{{ l }}</button></nav>
+      <div v-if="tab === 'home' && data.account_later && !preview" class="card acl"><div><b>{{ data.client.country === 'NG' ? 'Set up your wallet and savings' : 'Open your investing account' }}</b><span class="mut">Your plan is ready. When you'd like to invest through Aidi Wealth, open your account here; it takes about five minutes.</span></div><button class="btn" :disabled="opening" @click="openAccount">{{ opening ? 'Opening…' : 'Open it now' }}</button></div>
       <template v-if="tab === 'home'"><RiskCard v-if="!data.client.risk_profile" :fit="data.summary.risk" mode="client" :preview="preview" @saved="refresh(); refreshDeals()" /><WealthSummary :s="data.summary" /><RiskCard v-if="data.client.risk_profile" :fit="data.summary.risk" :set-by="data.client.risk_set_by" :set-at="data.client.risk_set_at" mode="client" :preview="preview" @saved="refresh(); refreshDeals()" />
         <div v-if="deals?.deals.length" class="card dfh"><div class="ch"><h3>Deal flow</h3><button class="lk" @click="tab = 'deals'">See all {{ deals.deals.length }} →</button></div>
           <div v-for="d in deals.deals.slice(0, 3)" :key="d.id" class="dr"><span><b>{{ d.company ? d.company + ' · ' : '' }}{{ d.title }}</b><em>{{ [d.sector, d.stage].filter(Boolean).join(' · ') }}{{ d.min_investment ? ' · from ' + usd0(d.min_investment) : '' }}{{ closesTxt(d) ? ' · ' + closesTxt(d) : '' }}</em></span><span class="mut">{{ d.my_status === 'invested' ? 'Invested' : d.my_status === 'interested' ? 'You are interested' : '' }}</span></div></div>
@@ -86,6 +90,7 @@ async function linkBank() { msg.value = ''; try { await loadScript(); const { li
   </section>
 </template>
 <style scoped>
+.acl { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; } .acl > div { display: flex; flex-direction: column; gap: 2px; }
 .room { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; } .room b { font-size: 14px; } .room .mut { font-size: 12.5px; } .rb { display: block; height: 8px; background: #e6ecf2; max-width: 420px; } .rb i { display: block; height: 100%; background: var(--c-blue-deep); }
 .dcs { display: flex; flex-direction: column; gap: 16px; margin-top: 14px; } .ab2 { font-size: 13px; color: var(--c-ink-soft); margin: 12px 0 0; } .dcs .dif { margin-top: 12px; }
 .dlg { display: block; width: 36px; height: 36px; margin-bottom: 6px; } .dlg:empty { display: none; } .dlg img { width: 100%; height: 100%; object-fit: contain; border: 1px solid var(--c-rule); background: #fff; } .dt .ab { display: block; font-size: 13px; color: var(--c-ink-soft); margin: 2px 0; } .dt .ws { font-size: 12.5px; color: var(--c-blue-deep); text-decoration: none; }

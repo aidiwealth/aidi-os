@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const q = String(getQuery(event).client ?? '')
   const client = user.roles.includes('admin') && /^[0-9a-f-]{36}$/.test(q) ? q : await wmClientOfUser(user.userId)
   if (!client) throw apiError('not_found', 'Your wealth account is not set up yet.', 404)
-  if (!(await enabledModules()).has('secondaries')) return { deals: [] }
+  if (!(await enabledModules()).has('secondaries') || (await assetsOff(client)).has('private')) return { deals: [] }
   await expireSecondaries()
   // Pre-IPO deals are for accredited investors only (confirmed by an adviser), up to the level's pre-IPO limit.
   const room = await clientPrivateRoom(client)

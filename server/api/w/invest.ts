@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
   if (a === 'alpaca_order') {
     const sym = s('symbol', 20).toUpperCase(), side = s('side') === 'sell' ? 'sell' : 'buy', crypto = sym.includes('/'), notional = Number(b.notional)
     if (!/^[A-Z.]{1,10}(\/[A-Z]{2,5})?$/.test(sym) || !(notional > 0)) throw apiError('invalid', 'Enter a symbol (e.g. VOO, AAPL or BTC/USD) and an amount.')
+    if (side === 'buy') await assertAssetOn(id, crypto ? 'crypto' : 'stocks')
     const o = await alpaca(`/v1/trading/accounts/${acc}/orders`, 'POST', { symbol: sym, notional: notional.toFixed(2), side, type: 'market', time_in_force: crypto ? 'gtc' : 'day' })
     await audit({ event, actorUserId: user.userId, action: 'wm.order', objectType: 'wm_client', objectId: id, detail: { symbol: sym, side, notional } })
     return { ok: true, order: { id: o.id, status: o.status } }
@@ -86,6 +87,7 @@ export default defineEventHandler(async (event) => {
   if (a === 'busha_quote' || a === 'busha_trade') {
     const asset = s('asset', 10).toUpperCase(), side = s('side') === 'sell' ? 'sell' : 'buy', amount = Number(b.amount)
     if (!/^[A-Z]{2,6}$/.test(asset) || !(amount > 0)) throw apiError('invalid', 'Choose the coin and amount.')
+    if (side === 'buy') await assertAssetOn(id, 'crypto')
     const q = await busha('/v1/quotes', 'POST', side === 'buy' ? { source_currency: 'NGN', target_currency: asset, source_amount: String(amount) } : { source_currency: asset, target_currency: 'NGN', source_amount: String(amount) })
     if (a === 'busha_quote') return { ok: true, quote: q.data ?? q }
     const t = await busha('/v1/transfers', 'POST', { quote_id: (q.data ?? q).id })
@@ -97,6 +99,7 @@ export default defineEventHandler(async (event) => {
   }
   if (a === 'savings_request') {
     if (!r.savings) throw apiError('off', 'Savings plans are not switched on for this account.', 400)
+    if (s('kind') !== 'withdrawal') await assertAssetOn(id, 'savings')
     const plan = s('plan_id'), amt = Number(b.amount), kind = s('kind') === 'withdrawal' ? 'withdrawal' : 'deposit'
     if (!(amt > 0) || !(await db().query('SELECT 1 FROM wm.savings_plans WHERE id = $1 AND client_id = $2', [plan, id])).rowCount) throw apiError('invalid', 'Choose the plan and amount.')
     await db().query("INSERT INTO wm.savings_txns (plan_id, kind, amount, status, note, created_by) VALUES ($1,$2,$3,'requested',$4,$5)", [plan, kind, amt, s('note', 300) || null, user.userId])

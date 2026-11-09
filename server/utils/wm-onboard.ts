@@ -128,6 +128,11 @@ const STEPS: Step[] = [
     widget: (c) => ({ kind: 'scale', options: RISK_LEVELS.map((l) => ({ value: l.code, label: l.label, note: l.text })), suggested: levelFromAnswers(c.answers.risk_answers ?? {}) }),
     apply: (v, c) => { const l = RISK_LEVELS.find((x) => x.code === v.level); if (!l) bad('Choose a risk level.'); c.answers.risk_level = l!.code; c.answers.risk_suggested = levelFromAnswers(c.answers.risk_answers ?? {}); return { me: 'Use ' + l!.label, ack: '**' + l!.label + '** it is.' } } },
   // US: the investing account.
+  // Investing account now, or the plan first: the plan doesn't need the account, and it can be opened any time later.
+  { id: 'account_when', phase: 5, ai: true,
+    ask: (c) => 'Your plan has what it needs. ' + (c.country === 'NG' ? 'Next is your wallet and savings, which needs your BVN.' : 'Next is your investing account, which needs your ID details and Social Security number.') + ' You can do that now, or look at your plan first and open it whenever you\'re ready.',
+    widget: (c) => ({ kind: 'choice', options: [{ value: 'now', label: c.country === 'NG' ? 'Set up my wallet now' : 'Open my investing account now' }, { value: 'later', label: 'Show me my plan first; I\'ll do this later' }] }),
+    apply: (v, c) => { const later = v.choice === 'later'; c.answers.account_later = later; return { me: later ? 'Plan first, account later' : 'Now', ack: later ? 'No problem. You can open it any time from your dashboard.' : 'Great.' } } },
   { id: 'identity', phase: 5, ai: false,
     ask: () => 'Last part: your investing account, so you can buy stocks, ETFs and crypto from your dashboard. It\'s held in your name with our US brokerage partner, a registered broker-dealer, and your money stays in your name.\n\nFirst, your legal name, date of birth and mobile number?',
     widget: (c) => { const [g, ...f] = (c.contact ?? '').split(/\s+/); return { kind: 'form', fields: [{ key: 'given_name', label: 'First name', type: 'text', value: c.answers.identity?.given_name ?? g ?? '' }, { key: 'family_name', label: 'Last name', type: 'text', value: c.answers.identity?.family_name ?? f.join(' ') }, { key: 'date_of_birth', label: 'Date of birth', type: 'date', value: c.answers.identity?.date_of_birth ?? '' }, { key: 'phone', label: 'Mobile number', type: 'text', placeholder: '+1 408 555 0100', value: c.answers.identity?.phone ?? c.phone ?? '' }], submit: 'Continue' } },
@@ -157,8 +162,8 @@ const STEPS: Step[] = [
     widget: () => ({ kind: 'choice', options: DISCLOSE.map(([value, label]) => ({ value, label })) }),
     apply: (v, c) => { const d = DISCLOSE.find(([k]) => k === v.choice); if (!d) bad('Choose one.'); c.answers.disclosures = d![0]; return { me: d![1], ack: d![0] === 'none' ? 'Thanks.' : 'Thanks for telling me. The brokerage needs a few more details for that, so your adviser will be in touch to finish the account.' } } },
   { id: 'agree', phase: 5, ai: false,
-    ask: () => 'Here\'s your account: an individual brokerage account for US stocks, ETFs and crypto, in your name. Please read and accept the agreements.',
-    widget: (c) => ({ kind: 'agree', items: [{ key: 'customer', label: 'I have read and accept the brokerage customer agreement', required: true }, { key: 'crypto', label: 'Also enable crypto (I accept the crypto agreement)', required: false }, { key: 'terms', label: 'I agree to Aidi Wealth\'s terms', required: true }, { key: 'data', label: 'I have read the data protection notice: what we keep, what the AI reads and what we never collect', required: true, href: '/w/data-notice' }], submit: c.source === 'invite' ? 'Open my account' : 'Submit' }),
+    ask: () => 'Here\'s your account: an individual brokerage account for US stocks, ETFs and crypto, in your name. Tap "Read it" beside each one to see what it says, then tick to accept.',
+    widget: (c) => ({ kind: 'agree', items: [{ key: 'customer', label: 'I have read and accept the brokerage customer agreement', required: true, href: '/w/agreement/customer' }, { key: 'crypto', label: 'Also enable crypto (I accept the crypto agreement)', required: false, href: '/w/agreement/crypto' }, { key: 'terms', label: 'I agree to Aidi Wealth\'s terms', required: true, href: '/legal/terms' }, { key: 'data', label: 'I have read the data protection notice: what we keep, what the AI reads and what we never collect', required: true, href: '/w/data-notice' }], submit: c.source === 'invite' ? 'Open my account' : 'Submit' }),
     apply: (v, c) => { if (!v.customer || !v.terms || !v.data) bad('Please accept the customer agreement, the terms and the data protection notice to continue.'); c.answers.agreed_at = new Date().toISOString(); c.answers.notice_version = DATA_NOTICE_VERSION; c.answers.crypto = !!v.crypto; return { me: 'I accept' + (v.crypto ? ', with crypto' : ''), ack: '' } } },
   // Nigeria: the BVN for the wallet and savings.
   { id: 'bvn', phase: 5, ai: false,
@@ -170,7 +175,10 @@ const STEPS: Step[] = [
 
 export const PHASES = (country: 'US' | 'NG', account: boolean) => ['About you', 'Money in and out', 'What you own', 'Debts and goals', 'Your risk level', ...(account ? [country === 'NG' ? 'Your wallet' : 'Your investing account'] : []), 'Ready']
 const ACCOUNT_US = ['identity', 'ssn', 'address', 'funding', 'disclosures', 'agree']
-function stepsFor(c: { country: 'US' | 'NG'; account: boolean }) { return STEPS.filter((s) => s.phase < 5 || (c.account && (c.country === 'US' ? ACCOUNT_US.includes(s.id) : s.id === 'bvn'))) }
+function stepsFor(c: { country: 'US' | 'NG'; account: boolean; answers?: Answers }) {
+  const a = c.answers ?? {}
+  return STEPS.filter((s) => s.phase < 5 || (c.account && (s.id === 'account_when' ? !a.account_resume : !a.account_later && (c.country === 'US' ? ACCOUNT_US.includes(s.id) : s.id === 'bvn'))))
+}
 const stepById = (id: string) => STEPS.find((s) => s.id === id)
 
 interface Onb { id: string; client_id: string; source: 'invite' | 'request'; status: string; step: string; answers: Answers; messages: { role: 'ai' | 'me'; text: string; at: string }[]; request: Record<string, any>; account_status: string | null; account_note: string | null; ssn_enc: string | null }
@@ -254,7 +262,8 @@ export async function onboardAnswer(clientId: string, input: { step: string; val
     }
   } else out = await s.apply(input.value ?? {}, ctx)
   o.messages.push(say('me', out!.me))
-  const next = steps[i + 1]
+  // Worked out again: an answer can change the steps (the investing account left for later).
+  const after = stepsFor(ctx), next = after[after.findIndex((x) => x.id === s.id) + 1]
   if (next) { o.step = next.id; o.messages.push(say('ai', [out!.ack, next.ask(ctx)].filter(Boolean).join('\n\n'))); await save(o, ctx); return }
   o.step = 'done'; await save(o, ctx)
   await finish(o, ctx, ip, out!.ack)
@@ -335,6 +344,7 @@ export async function onboardUpload(clientId: string, parts: { name?: string; fi
 // clients get their account opened and the dashboard; website requests wait for an adviser.
 async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   const a = ctx.answers, id = ctx.clientId
+  if (a.account_resume) return finishAccount(o, ctx, ip, ack)
   await planSave(id, { household: a.household ?? {}, incomes: (a.incomes ?? []).map((r: any) => ({ who: '', source: r.source || 'Income', amount: r.amount, frequency: r.frequency, currency: r.currency })), taxes: [],
     expenses: (a.expenses ?? []).map((r: any) => ({ category: r.category || 'Spending', amount: r.amount, frequency: r.frequency, currency: r.currency })),
     debts: (a.debts ?? []).map((r: any) => ({ name: r.lender ? r.name + ' · ' + r.lender : r.name, balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
@@ -345,7 +355,7 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   const name = a.identity ? a.identity.given_name + ' ' + a.identity.family_name : null
   await db().query("UPDATE wm.clients SET risk_profile = coalesce($2, risk_profile), risk_answers = coalesce($3::jsonb, risk_answers), risk_set_by = CASE WHEN $2 IS NULL THEN risk_set_by ELSE 'client' END, risk_set_at = CASE WHEN $2 IS NULL THEN risk_set_at ELSE now() END, phone = coalesce($4, phone), contact_name = coalesce(contact_name, $5), updated_at = now() WHERE id = $1",
     [id, a.risk_level ?? null, a.risk_answers ? JSON.stringify(a.risk_answers) : null, a.identity?.phone ?? null, name])
-  const acct = !ctx.account ? 'not_needed' : ctx.country === 'NG' ? 'not_needed' : a.disclosures && a.disclosures !== 'none' ? 'held' : 'waiting'
+  const acct = !ctx.account ? 'not_needed' : a.account_later ? 'later' : ctx.country === 'NG' ? 'not_needed' : a.disclosures && a.disclosures !== 'none' ? 'held' : 'waiting'
   await db().query('UPDATE wm.onboarding SET account_status = $2, account_note = $3, submitted_at = now(), updated_at = now() WHERE id = $1', [o.id, acct, acct === 'held' ? 'A disclosure applies (' + a.disclosures + '): the brokerage needs more details before opening.' : null])
   if (o.source === 'invite') {
     let opened = acct !== 'waiting'
@@ -364,6 +374,34 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   }
   await db().query('UPDATE wm.onboarding SET messages = $2, updated_at = now() WHERE id = $1', [o.id, JSON.stringify(o.messages.slice(-300))])
   await sendDataRecord(o, ctx).catch((e) => console.error('[onboard] data record', e))
+}
+
+// The investing account (or wallet), opened later from the dashboard: only the account steps run, the plan and answers
+// already saved are left as they are, and no new approval is needed.
+async function finishAccount(o: Onb, ctx: Ctx, ip: string, ack: string) {
+  const a = ctx.answers, id = ctx.clientId
+  const acct = ctx.country === 'NG' ? 'not_needed' : a.disclosures && a.disclosures !== 'none' ? 'held' : 'waiting'
+  await db().query('UPDATE wm.onboarding SET account_status = $2, account_note = $3, updated_at = now() WHERE id = $1', [o.id, acct, acct === 'held' ? 'A disclosure applies (' + a.disclosures + '): the brokerage needs more details before the account can open.' : null])
+  const opened = acct === 'waiting' ? await openAccount(o.id, id, ip) : acct !== 'held'
+  delete a.account_resume
+  await db().query("UPDATE wm.onboarding SET status = 'done', answers = $2, updated_at = now() WHERE id = $1", [o.id, JSON.stringify(a)])
+  o.messages.push(say('ai', [ack, ctx.country === 'NG' ? 'Your wallet and savings are set up.' : opened ? 'Your investing account is open.' : 'Your investing account is with our partner; your adviser will finish it if anything is needed.'].filter(Boolean).join('\n\n')))
+  await db().query('UPDATE wm.onboarding SET messages = $2, updated_at = now() WHERE id = $1', [o.id, JSON.stringify(o.messages.slice(-300))])
+  slack('aidi.wealth_client', 'A client opened their ' + (ctx.country === 'NG' ? 'wallet' : 'investing account') + ' from the dashboard', [['Account', acct]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + id })
+}
+
+// From the dashboard: carry on with the investing account (or wallet) that was left for later.
+export async function onboardOpenAccount(clientId: string) {
+  const l = await load(clientId)
+  if (!l) throw apiError('not_found', 'Not found', 404)
+  const { o, ctx } = l
+  if (o.status !== 'done' || o.account_status !== 'later') throw apiError('state', 'There is no account waiting to be opened.', 409)
+  ctx.answers.account_later = false; ctx.answers.account_resume = true
+  const first = stepsFor(ctx).find((s) => s.phase === 5)
+  if (!first) throw apiError('state', 'There is no account to open here.', 409)
+  await db().query("UPDATE wm.onboarding SET status = 'in_progress' WHERE id = $1", [o.id])
+  o.step = first.id; o.messages.push(say('ai', 'Welcome back. Let\'s open your ' + (ctx.country === 'NG' ? 'wallet and savings' : 'investing account') + '.\n\n' + first.ask(ctx)))
+  await save(o, ctx)
 }
 
 // After onboarding: the data record (what they told us, what they uploaded and whether the AI read it, what was kept

@@ -9,7 +9,7 @@ const conv = ref<Item | null>(null)
 const busy = ref(''), msg = ref(''), ok = ref(''), note = ref('')
 const money = (v: number | null | undefined, c = 'USD') => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(Math.round(v)))
 const AMT: Record<string, string> = { under_50k: 'Under $50k', '50k_250k': '$50k – $250k', '250k_1m': '$250k – $1M', over_1m: 'Over $1M' }
-const ACCT: Record<string, string> = { opened: 'Account open', waiting: 'Opens on approval', failed: 'Account not opened', held: 'Disclosure: needs details', not_needed: 'No account step' }
+const ACCT: Record<string, string> = { opened: 'Account open', waiting: 'Opens on approval', failed: 'Account not opened', held: 'Disclosure: needs details', not_needed: 'No account step', later: 'Account later (client chose)' }
 const STEP: Record<string, string> = { household: 'About you', income: 'Money in', spending: 'Money out', assets: 'What they own', debts: 'Debts', goals: 'Goals', risk_level: 'Risk level', identity: 'Account: identity', ssn: 'Account: SSN', address: 'Account: address', funding: 'Account: funding', disclosures: 'Account: checks', agree: 'Account: agreements', bvn: 'Wallet: BVN' }
 const statusOf = (x: Item) => (x.status === 'submitted' ? 'Waiting for approval' : x.status === 'in_progress' ? 'At ' + (STEP[x.step] ?? (x.step.startsWith('risk_') ? 'Risk questions' : x.step)) : x.status === 'done' ? 'Dashboard open' : 'Declined')
 async function act(x: Item, action: string) {

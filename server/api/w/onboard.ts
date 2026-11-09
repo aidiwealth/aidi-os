@@ -7,7 +7,8 @@ export default defineEventHandler(async (event) => {
   if (getMethod(event) === 'GET') return (await onboardView(id)) ?? { status: 'none' }
   await rateLimit('wm_onboard', user.userId, 120, 60 * 60 * 1000)
   if ((getRequestHeader(event, 'content-type') ?? '').includes('multipart')) { await onboardUpload(id, (await readMultipartFormData(event)) ?? []); return onboardView(id) }
-  const b = await readBody<{ step?: string; value?: unknown; text?: string; back?: boolean; restart?: boolean; keep_files?: boolean }>(event)
+  const b = await readBody<{ step?: string; value?: unknown; text?: string; back?: boolean; restart?: boolean; keep_files?: boolean; open_account?: boolean }>(event)
+  if (b?.open_account) { await onboardOpenAccount(id); return onboardView(id) }
   if (b?.restart) { await onboardRestart(id, { files: !b.keep_files }); return onboardView(id) }
   if (typeof b?.step !== 'string') throw apiError('invalid', 'Missing step.')
   await onboardAnswer(id, { step: b.step, value: b.value, text: typeof b.text === 'string' ? b.text : undefined, back: !!b.back }, ipOrNull(event) ?? '0.0.0.0')

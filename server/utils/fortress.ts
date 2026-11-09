@@ -31,7 +31,10 @@ const COMPANY_RX = /(rsu|espp|employee stock|company stock|employer stock|stock 
 export async function fortressView(clientId: string) {
   const c = (await db().query<{ country: 'US' | 'NG' }>('SELECT country FROM wm.clients WHERE id = $1', [clientId])).rows[0]
   if (!c) return null
-  const cfg = await fortressSettings(), model = cfg[c.country]
+  const cfg = await fortressSettings(), off = await assetsOff(clientId)
+  // Buckets the client does not want are left out; their share goes to the others in proportion (cash always stays).
+  const kept = cfg[c.country].filter((m) => m.key === 'cash' || !off.has(m.key)), sum = kept.reduce((a, m) => a + m.pct, 0) || 1
+  const model = kept.map((m) => ({ ...m, pct: Math.round((m.pct * 100 / sum) * 10) / 10 }))
   const s = await clientSummary(clientId)
   const usd = async (v: number, cur: string) => (cur === 'USD' ? v : v * ((await fxRate(cur, 'USD')) ?? 0))
   const have: Record<string, number> = { cash: 0, stocks: 0, real_estate: 0, metals: 0, tbills: 0, crypto: 0, other: 0 }

@@ -1,3 +1,4 @@
+import { ASSET_TYPES } from '~/shared/wm-assets'
 // Everything staff do on a wealth client: update details, household members, portal invite, family view link,
 // external accounts, adviser links, KYC (Prembly BVN for Nigeria; manual for the US), and fees.
 import { z } from 'zod'
@@ -13,9 +14,15 @@ export default defineEventHandler(async (event) => {
   // email of a client who already has portal access. Team does the rest.
   const senior = user.roles.includes('admin') || user.roles.includes('gp')
   const emailChange = a === 'update' && typeof body.email === 'string' && body.email.trim().toLowerCase() !== (c.email ?? '').toLowerCase() && !!c.user_id
-  if (!senior && (['invite', 'fee', 'advisory_invoice', 'kyc_status', 'kyc_bvn', 'view_link'].includes(a) || emailChange)) throw apiError('forbidden', 'Only GPs and admins can do that.', 403)
+  if (!senior && (['invite', 'fee', 'advisory_invoice', 'kyc_status', 'kyc_bvn', 'view_link', 'assets_off'].includes(a) || emailChange)) throw apiError('forbidden', 'Only GPs and admins can do that.', 403)
   const s = (k: string, max = 300) => (typeof body[k] === 'string' ? (body[k] as string).trim().slice(0, max) : '')
   const n = (k: string) => (body[k] === '' || body[k] == null ? null : Number(body[k]))
+  if (a === 'assets_off') {
+    const keys = new Set(ASSET_TYPES.map((x) => x.key)), off = (Array.isArray(body.off) ? body.off : []).map(String).filter((k) => keys.has(k))
+    await db().query('UPDATE wm.clients SET assets_off = $2, updated_at = now() WHERE id = $1', [id, off])
+    await audit({ event, actorUserId: user.userId, action: 'wm.assets_off', objectType: 'wm_client', objectId: id, detail: { off } })
+    return { ok: true }
+  }
   if (a === 'update') {
     const prevRisk = (await db().query<{ r: string | null }>('SELECT risk_profile AS r FROM wm.clients WHERE id = $1', [id])).rows[0]?.r ?? null
     const model = s('model') || c.model

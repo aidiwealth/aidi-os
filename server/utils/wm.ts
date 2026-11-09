@@ -4,6 +4,13 @@ import { riskConfigOf, riskFit, type RiskConfig } from '~/shared/risk'
 import { randomBytes } from 'node:crypto'
 export interface WmCountry { managed: boolean; advisor: boolean; self_directed: boolean; savings: boolean; alpaca: boolean; busha: boolean; fincra: boolean; plaid: boolean; savings_provider: string; savings_vendor: string; savings_rate: number; subscription: number; currency: string }
 export interface WmConfig { US: WmCountry; NG: WmCountry; advisory_tiers: { upto: number | null; pct: number }[]; gold_usd_oz: number | null; silver_usd_oz: number | null; spot_as_of: string | null }
+// Asset types this client does not want (see shared/wm-assets.ts).
+export async function assetsOff(clientId: string): Promise<Set<string>> {
+  return new Set((await db().query<{ a: string[] | null }>('SELECT assets_off AS a FROM wm.clients WHERE id = $1', [clientId])).rows[0]?.a ?? [])
+}
+export async function assertAssetOn(clientId: string, key: string) {
+  if ((await assetsOff(clientId)).has(key)) throw apiError('asset_off', 'This isn\'t part of your plan. Ask your adviser if you would like it switched on.', 403)
+}
 export async function wmSettings(): Promise<WmConfig> {
   const s = (((await currentOrg())?.settings ?? {}) as Record<string, unknown>).wm_config as Partial<WmConfig> | undefined
   const d = wmDefaults()
