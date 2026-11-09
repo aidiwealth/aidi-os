@@ -3,9 +3,9 @@
 // The disclaimer sits under the editor column, not under the steps on the left.
 definePageMeta({ fullBleed: true, discInset: '240px' })
 const id = useRoute().params.id as string
-interface Bl { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
+interface Bl { type: string; full?: boolean; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
 interface R { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
-interface D { kind?: string; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; greeting?: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
+interface D { kind?: string; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
   label: string; metrics: { key: string; label: string; group?: string }[]; lists: { id: string; name: string; n: number }[]; stages: { id: string; name: string; n: number }[]; contacts: { id: string; name: string; email: string }[]
   sends: { investor_id: string; name: string; email: string; sent_at: string; opened_at: string | null; opens: number }[]; page: { slug: string; published: boolean } | null; from: string[]; me: string; company: string }
 const { data, refresh } = await useFetch<D>('/api/updates/' + id)
@@ -13,9 +13,9 @@ useHead({ title: () => data.value?.update.title ?? 'Update' })
 const step = ref(1)
 const isVc = computed(() => !!data.value && data.value.kind !== 'company')
 const { data: subs } = await useFetch<{ entities: { id: string; name: string; kind: string }[]; companies: { id: string; name: string }[] }>('/api/financials/subjects', { key: 'fin-subjects', immediate: true })
-const f = reactive({ subject: null as string | null, title: '', blocks: [] as Bl[], cover_id: null as string | null, from_name: '', greeting: 'Hi {first name},', recipients: { lists: [], stages: [], contacts: [], emails: [] } as R, highlights: '', challenges: '', asks: '' })
+const f = reactive({ subject: null as string | null, title: '', blocks: [] as Bl[], cover_id: null as string | null, from_name: '', recipients: { lists: [], stages: [], contacts: [], emails: [] } as R, highlights: '', challenges: '', asks: '' })
 const loaded = ref(false)
-watch(data, (d) => { if (d && !loaded.value) { const u = d.update; Object.assign(f, { subject: u.subject ?? null, title: u.title, blocks: JSON.parse(JSON.stringify(u.blocks ?? [])), cover_id: u.cover_id, from_name: u.from_name || d.from[0] || '', greeting: u.greeting ?? 'Hi {first name},', recipients: Object.assign({ lists: [], stages: [], contacts: [], emails: [] }, u.recipients ?? {}) as R, highlights: u.highlights ?? '', challenges: u.challenges ?? '', asks: u.asks ?? '' }); loaded.value = true } }, { immediate: true })
+watch(data, (d) => { if (d && !loaded.value) { const u = d.update; Object.assign(f, { subject: u.subject ?? null, title: u.title, blocks: JSON.parse(JSON.stringify(u.blocks ?? [])), cover_id: u.cover_id, from_name: u.from_name || d.from[0] || '', recipients: Object.assign({ lists: [], stages: [], contacts: [], emails: [] }, u.recipients ?? {}) as R, highlights: u.highlights ?? '', challenges: u.challenges ?? '', asks: u.asks ?? '' }); loaded.value = true } }, { immediate: true })
 const saveState = ref<'saved' | 'saving' | 'dirty'>('saved'); let timer: ReturnType<typeof setTimeout> | undefined
 watch(() => JSON.stringify(f), () => { if (!loaded.value) return; saveState.value = 'dirty'; clearTimeout(timer); timer = setTimeout(save, 1200) })
 const msg = ref(''); const ok = ref('')
@@ -56,11 +56,8 @@ watch(() => JSON.stringify(f.recipients), async () => { try { count.value = awai
 const asName = ref(''); const emailHtml = ref(''); const pmode = ref(true)
 const frame = ref<HTMLIFrameElement | null>(null); const frameH = ref(600)
 function fit() { const d = frame.value?.contentDocument; if (d) { frameH.value = Math.max(400, d.documentElement.scrollHeight + 8); setTimeout(() => { const d2 = frame.value?.contentDocument; if (d2) frameH.value = Math.max(400, d2.documentElement.scrollHeight + 8) }, 400) } }
-async function preview() { try { emailHtml.value = (await $fetch<{ html: string }>('/api/updates/' + id + '/render', { method: 'POST', body: { blocks: f.blocks, title: f.title, cover_id: f.cover_id, from_name: f.from_name, greeting: f.greeting, full: true, as_name: asName.value } })).html } catch (e) { msg.value = err(e) } }
+async function preview() { try { emailHtml.value = (await $fetch<{ html: string }>('/api/updates/' + id + '/render', { method: 'POST', body: { blocks: f.blocks, title: f.title, cover_id: f.cover_id, from_name: f.from_name, full: true, as_name: asName.value } })).html } catch (e) { msg.value = err(e) } }
 watch([step, asName], () => { if (step.value === 3) preview() })
-// The greeting is part of the email: changing it refreshes the preview.
-let gt: ReturnType<typeof setTimeout> | undefined
-watch(() => f.greeting, () => { if (step.value !== 3) return; clearTimeout(gt); gt = setTimeout(preview, 400) })
 const sending = ref(''); const pubMenu = ref(false)
 async function send(mode: string) { pubMenu.value = false; if (mode !== 'test' && mode !== 'publish' && !await askConfirm('Send "' + f.title + '" to ' + (count.value?.count ?? 0) + ' people now?')) return; sending.value = mode; msg.value = ''; ok.value = ''
   try { await save(); const r = await $fetch<{ sent: number }>('/api/updates/' + id + '/send', { method: 'POST', body: { mode } }); ok.value = mode === 'test' ? 'Test sent to ' + data.value?.me + '.' : mode === 'publish' ? 'Published on your investor page.' : 'Sent to ' + r.sent + ' people.'; await refresh() } catch (e) { msg.value = err(e) } finally { sending.value = '' } }
@@ -81,13 +78,10 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
 
       <div v-if="step === 1" class="doc">
-        <div class="from"><span class="lg">{{ data.company.slice(0, 2).toUpperCase() }}</span><span>{{ f.from_name }}</span></div>
         <input v-model="f.title" class="title" maxlength="200" aria-label="Title">
         <label v-if="isVc" class="srcsel">Figures and charts from<select v-model="f.subject" @change="renderCharts"><option :value="null">Group (consolidated)</option><optgroup label="Funds and entities"><option v-for="e in subs?.entities ?? []" :key="e.id" :value="'entity:' + e.id">{{ e.name }}</option></optgroup><optgroup v-if="subs?.companies.length" label="Portfolio companies"><option v-for="c in subs.companies" :key="c.id" :value="'company:' + c.id">{{ c.name }}</option></optgroup></select></label>
         <div class="cover"><img v-if="coverUrl" :src="coverUrl" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.gif,.webp" :label="uploading ? 'Uploading…' : coverUrl ? 'Drop a new cover image' : 'Add a cover image: drop it here'" hint="or click to choose" @change="upload($event, (r) => (f.cover_id = r.id))" /><button v-if="coverUrl" class="lk" @click="f.cover_id = null">Remove</button></div>
         <!-- The email's opening line, before the content: edit it, or remove it ("Good day, Investor," in the text instead). -->
-        <div class="greet"><template v-if="f.greeting !== ''"><input v-model="f.greeting" maxlength="120" aria-label="Greeting" placeholder="Hi {first name},"><span class="mut">Opening line of the email · {first name} becomes each reader's first name</span><button class="lk" type="button" @click="f.greeting = ''">Remove greeting</button></template>
-          <template v-else><span class="mut">No greeting line</span><button class="lk" type="button" @click="f.greeting = 'Hi {first name},'">Add a greeting</button></template></div>
         <div class="aibar"><button class="lk" @click="ai = !ai"><AiSpark :size="14" /> Write with AI from your numbers</button></div>
         <div v-if="ai" class="card aib"><label class="label">Highlights<textarea v-model="f.highlights" rows="2" /></label><label class="label">Challenges<textarea v-model="f.challenges" rows="2" /></label><label class="label">How investors can help<textarea v-model="f.asks" rows="2" /></label><fieldset v-if="needSec" class="secf"><legend>Treasury bills and other securities in the figures</legend><label><input v-model="aiSec" type="radio" :value="true"> With cash, as "Cash and marketable securities"</label><label><input v-model="aiSec" type="radio" :value="false"> On their own line; cash is the bank balance</label></fieldset><button class="btn" :disabled="aiBusy || (needSec && aiSec === null)" @click="writeAi"><AiSpark v-if="aiBusy" /> {{ aiBusy ? 'Writing…' : 'Write it' }}</button></div>
         <template v-for="(b, i) in f.blocks" :key="i">
@@ -113,7 +107,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       </div>
 
       <div v-else class="pv">
-        <div class="card hdr"><div class="r"><span>Subject:</span><input v-model="f.title" maxlength="200"></div><div class="r"><span>From:</span><select v-model="f.from_name"><option v-for="o in data.from" :key="o">{{ o }}</option></select></div><div class="r"><span>Greeting:</span><input v-model="f.greeting" maxlength="120" placeholder="No greeting line" title="{first name} becomes each reader's first name. Leave empty for no greeting."></div></div>
+        <div class="card hdr"><div class="r"><span>Subject:</span><input v-model="f.title" maxlength="200"></div><div class="r"><span>From:</span><select v-model="f.from_name"><option v-for="o in data.from" :key="o">{{ o }}</option></select></div></div>
         <div class="pvbar"><label class="cb"><input v-model="pmode" type="checkbox"> Email preview</label><label class="va">View as<select v-model="asName"><option value="">A recipient</option><option v-for="c in data.contacts.slice(0, 200)" :key="c.id" :value="c.name">{{ c.name }}</option></select></label></div>
         <p class="note">Email apps vary slightly, so send yourself a test.</p>
         <iframe v-if="pmode" ref="frame" :srcdoc="emailHtml" title="Email preview" class="frame" scrolling="no" :style="{ height: frameH + 'px' }" @load="fit" />
@@ -127,6 +121,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       <label class="label">Title<input v-model="target.title" maxlength="200"></label>
       <div><span class="lb">Metrics (up to {{ f.blocks[editing!]?.type === 'metrics_table' ? 6 : 3 }})</span><div class="ml"><template v-for="(m, mi) in data.metrics" :key="m.key"><b v-if="m.group && m.group !== data.metrics[mi - 1]?.group" class="mg">{{ m.group }}</b><label class="cb"><input v-model="target.metrics" type="checkbox" :value="m.key" :disabled="!(target.metrics ?? []).includes(m.key) && (target.metrics ?? []).length >= (f.blocks[editing!]?.type === 'metrics_table' ? 6 : 3)"> {{ m.label }}</label></template></div></div>
       <label class="label">Show<select v-model="target.period"><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select></label>
+      <label class="label">Numbers on the chart<select :value="target.full ? 'full' : 'short'" @change="target.full = ($event.target as HTMLSelectElement).value === 'full'"><option value="short">Short (346M)</option><option value="full">Full (346,399,664)</option></select></label>
       <label class="label">How many periods<select v-model.number="target.count"><option v-for="n in [3, 4, 6, 8, 12, 24]" :key="n" :value="n">Last {{ n }}</option></select></label>
       <p class="mut">Figures come from Financials: {{ (target.metrics ?? []).map(mlabel).join(', ') || 'choose a metric' }}.</p></div>
   </section>
@@ -142,7 +137,6 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
 .doc { max-width: 760px; margin: 0 auto; } .from { display: flex; gap: 10px; align-items: center; color: var(--c-muted); font-size: 14px; margin-bottom: 10px; } .lg { width: 38px; height: 38px; background: var(--c-navy); color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
 .title { width: 100%; font-family: var(--font-heading); font-size: 40px; font-weight: 600; border: 0; background: transparent; color: var(--c-navy); padding: 4px 0; margin-bottom: 10px; } .title:focus { outline: none; border-bottom: 1px dashed var(--c-rule-strong); }
 .cover { margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; } .cover img { width: 100%; display: block; } .cv { position: relative; overflow: hidden; color: var(--c-blue-deep); cursor: pointer; font-size: 14px; } .cv input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.greet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 6px 0 4px; font-size: 13px; } .greet input { font: inherit; font-size: 16px; color: var(--c-ink); border: 0; border-bottom: 1px dashed var(--c-rule-strong); padding: 4px 0; min-width: 220px; background: transparent; } .greet input:focus { outline: none; border-bottom-color: var(--c-navy); }
 .aibar { margin: 4px 0 8px; } .aib { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; } .lk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; }
 .ins { position: relative; height: 22px; display: flex; align-items: center; } .ins > button { background: none; border: 1px dashed transparent; color: var(--c-muted); cursor: pointer; font-size: 16px; padding: 0 6px; opacity: .3; } .ins:hover > button { opacity: 1; border-color: var(--c-rule-strong); } .ins.end > button { opacity: 1; font-size: 14px; padding: 8px 12px; border-color: var(--c-rule-strong); margin-top: 10px; }
 .ins.end { height: auto; } .menu { position: absolute; left: 0; top: 26px; z-index: 40; background: #fff; border: 1px solid var(--c-rule); box-shadow: var(--shadow-pop); width: 300px; padding: 8px; display: flex; flex-direction: column; } .ins.end .menu { top: 52px; }

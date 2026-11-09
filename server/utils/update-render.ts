@@ -1,5 +1,5 @@
 import { keyFigures, type KeyFigures, type FinRow } from '~/shared/fin-view'
-import { shortAmount } from '~/shared/compact'
+import { compactNum, shortAmount } from '~/shared/compact'
 import { mdPlain, mdRender } from '../../shared/markdown'
 // Turning an update (cover + blocks) into HTML for email and the web. All user text is escaped first; charts are drawn
 // with plain HTML (bars and tables) so they show in every email client.
@@ -8,7 +8,7 @@ export function mdToHtml(src: string): string {
   return mdRender(src, { p: 'margin:0 0 14px', h1: 'font-family:Georgia,serif;font-weight:500;font-size:26px;color:#0c1a2e;margin:22px 0 8px', h2: 'font-family:Georgia,serif;font-weight:500;font-size:21px;color:#0c1a2e;margin:22px 0 8px', h3: 'font-weight:600;font-size:17px;color:#0c1a2e;margin:18px 0 6px',
     ul: 'margin:0 0 14px;padding-left:22px', ol: 'margin:0 0 14px;padding-left:22px', li: 'margin:0 0 6px', quote: 'margin:0 0 14px;padding:4px 0 4px 16px;border-left:3px solid #c9c5ba;color:#4a4a4a', hr: 'border:none;border-top:1px solid #e6e4dd;margin:20px 0', a: 'color:#1c4f9c', code: 'font-family:Menlo,monospace;font-size:13px;background:#f4f3ef;padding:1px 5px' })
 }
-export interface Block { type: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
+export interface Block { type: string; full?: boolean; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
 type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string; ends?: string[] }
 export const kpiAdds = (name: string) => /volume|transaction|txn|message|sms|call|minute|sent|order|gmv|tpv|processed|payment|signup|sign-up|download|unit|request|session|booking|trip|delivery|ticket/i.test(name) && !/rate|%|per |average|avg|ratio|margin|price|headcount|staff|employee/i.test(name)
 const FLOWS = new Set(['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf', 'burn'])
@@ -67,7 +67,7 @@ function fmt(k: string, v: number | null, cur: string, short = false): string {
   const u = metricUnit(k)
   if (u === 'pct') return v + '%'
   if (u === 'months') return v + ' mo'
-  if (u === 'number') return Math.round(v).toLocaleString('en-US')
+  if (u === 'number') return (short ? compactNum(v) : null) ?? Math.round(v).toLocaleString('en-US')
   const a = Math.abs(v), s = SYM[cur] ?? cur + ' '
   const n = short ? shortAmount(a, '') : Math.round(a).toLocaleString('en-US')
   return (v < 0 ? '-' : '') + s + n
@@ -76,16 +76,16 @@ function chartHtml(b: Block, d: Series): string {
   if (!d.labels.length || !d.series.length) return '<div style="padding:18px;background:#f4f3ef;color:#8a8a8a;font-size:13px">No figures yet for this chart. Add them in Financials.</div>'
   const max = Math.max(1, ...d.series.flatMap((s) => s.values.map((v) => Math.abs(v ?? 0))))
   const rows = d.labels.map((lab, i) => '<tr><td style="padding:6px 10px 6px 0;font-size:12px;color:#6b6b6b;white-space:nowrap;vertical-align:middle;width:1%">' + esc(lab) + '</td><td style="padding:4px 0;width:99%">' +
-    d.series.map((s, si) => { const v = s.values[i] ?? null; const w = v == null ? 0 : Math.max(1, Math.round((Math.abs(v) / max) * 82)); return '<div style="white-space:nowrap;margin:2px 0;line-height:16px"><span style="display:inline-block;height:14px;width:' + w + '%;background:' + (v != null && v < 0 ? '#d04444' : COLORS[si % COLORS.length]) + ';vertical-align:middle"></span><span style="font-size:11.5px;color:#3a3a3a;margin-left:6px;vertical-align:middle">' + esc(fmt(s.key, v, d.currency, true)) + '</span></div>' }).join('') + '</td></tr>').join('')
+    d.series.map((s, si) => { const v = s.values[i] ?? null; const w = v == null ? 0 : Math.max(1, Math.round((Math.abs(v) / max) * 82)); return '<div style="white-space:nowrap;margin:2px 0;line-height:16px"><span style="display:inline-block;height:14px;width:' + w + '%;background:' + (v != null && v < 0 ? '#d04444' : COLORS[si % COLORS.length]) + ';vertical-align:middle"></span><span style="font-size:11.5px;color:#3a3a3a;margin-left:6px;vertical-align:middle">' + esc(fmt(s.key, v, d.currency, !b.full)) + '</span></div>' }).join('') + '</td></tr>').join('')
   const legend = d.series.map((s, si) => '<span style="display:inline-block;margin-right:14px;font-size:12px;color:#3a3a3a"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + COLORS[si % COLORS.length] + ';margin-right:5px"></span>' + esc(s.label) + '</span>').join('')
   return '<div style="border:1px solid #e6e4dd;padding:16px 18px;margin:0 0 18px">' + (b.title ? '<div style="font-weight:600;font-size:15px;color:#0c1a2e;margin:0 0 10px">' + esc(b.title) + '</div>' : '') + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows + '</table><div style="margin-top:10px;text-align:right">' + legend + '</div></div>'
 }
 function tableHtml(b: Block, d: Series): string {
   if (!d.labels.length || !d.series.length) return chartHtml(b, d)
   const th = (s: string, left = false) => '<th style="text-align:' + (left ? 'left' : 'right') + ';font-weight:500;font-size:12px;color:#6b6b6b;padding:7px 8px;border-bottom:1px solid #e6e4dd">' + esc(s) + '</th>'
-  return '<div style="border:1px solid #e6e4dd;padding:14px 16px;margin:0 0 18px;overflow-x:auto">' + (b.title ? '<div style="font-weight:600;font-size:15px;color:#0c1a2e;margin:0 0 8px">' + esc(b.title) + '</div>' : '') +
+  return '<div class="tw" style="border:1px solid #e6e4dd;padding:14px 16px;margin:0 0 18px;overflow-x:auto">' + (b.title ? '<div style="font-weight:600;font-size:15px;color:#0c1a2e;margin:0 0 8px">' + esc(b.title) + '</div>' : '') +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>' + th('Metric', true) + d.labels.map((l) => th(l)).join('') + '</tr>' +
-    d.series.map((s) => '<tr><td style="font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(s.label) + '</td>' + s.values.map((v) => '<td style="text-align:right;font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(fmt(s.key, v, d.currency, true)) + '</td>').join('') + '</tr>').join('') + '</table></div>'
+    d.series.map((s) => '<tr><td style="font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(s.label) + '</td>' + s.values.map((v) => '<td style="text-align:right;font-size:13px;padding:7px 8px;border-bottom:1px solid #f0efea">' + esc(fmt(s.key, v, d.currency, !b.full)) + '</td>').join('') + '</tr>').join('') + '</table></div>'
 }
 // Revenue by customer sector: shares only, never customer names.
 export function sectorsHtml(title: string, d: Awaited<ReturnType<typeof sectorShares>>): string {
@@ -101,7 +101,7 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
     else if (b.type === 'chart') out.push(chartHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 12, subject)))
     else if (b.type === 'metrics_table') out.push(tableHtml(b, await metricSeries(b.metrics ?? [], b.period ?? 'month', b.count ?? 6, subject)))
     else if (b.type === 'two_charts') { const l = b.left ?? { type: 'chart' }, r = b.right ?? { type: 'chart' }
-      out.push('<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6, subject)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6, subject)) + '</td></tr></table>') }
+      out.push('<table class="two" role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6, subject)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6, subject)) + '</td></tr></table>') }
     else if (b.type === 'sectors') out.push(sectorsHtml(b.title || 'Revenue by customer sector', await sectorShares()))
     else if (b.type === 'image' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px"><img src="' + base + '/api/public/media/' + b.media_id + '" alt="' + esc(b.caption ?? '') + '" style="max-width:100%;display:block">' + (b.caption ? '<div style="font-size:12.5px;color:#6b6b6b;margin-top:6px">' + esc(b.caption) + '</div>' : '') + '</div>')
     else if (b.type === 'file' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:12px 14px"><a href="' + base + '/api/public/media/' + b.media_id + '" style="color:#1c4f9c;font-weight:600;text-decoration:none">📎 ' + esc(b.name || 'Attachment') + '</a></div>')
@@ -111,28 +111,24 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
 }
 // The full email (or web) document for one reader.
 export const REACTIONS: [string, string][] = [['up', '👍'], ['love', '❤️'], ['party', '🎉'], ['rocket', '🚀'], ['clap', '👏'], ['think', '🤔']]
-export function greetingLine(tpl: string | null | undefined, first: string | undefined): string {
-  if (tpl === '') return ''
-  const t = tpl?.trim() || 'Hi {first name},', name = first?.trim() || 'there'
-  return t.replace(/\{\s*(first[ _]?name|name)\s*\}/gi, name)
-}
 export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; subject?: string | null; greeting?: string | null }, o: { company: string; base: string; email: boolean; greeting?: string; viewUrl?: string; unsubUrl?: string; pixelUrl?: string; logoUrl?: string | null; hideFinvry?: boolean }): Promise<string> {
   const body = await renderBlocks(u.blocks, o.base, u.subject)
-  const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<div style="font-size:13px;color:#6b6b6b;margin:0 0 6px">' + esc(u.from_name || o.company) + '</div><h1 style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
+  // No sender line in the report itself (the email's From already says who it is from) and no greeting.
+  const head = (o.logoUrl ? '<img src="' + o.logoUrl + '" alt="" style="max-height:44px;max-width:180px;display:block;margin:0 0 14px">' : '') + '<h1 class="uh" style="font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.2;color:#0c1a2e;margin:0 0 18px">' + esc(u.title) + '</h1>'
   const cover = u.cover_id ? '<img src="' + o.base + '/api/public/media/' + u.cover_id + '" alt="" style="width:100%;display:block;margin:0 0 20px">' : ''
-  // The greeting line: the update's own ("Dear {first name},"), none when left empty, else "Hi {first name},".
-  const gl = greetingLine(u.greeting, o.greeting)
-  const hi = o.greeting && gl ? '<p style="margin:0 0 14px">' + esc(gl) + '</p>' : ''
   const so = (((await currentOrg())?.settings as Record<string, unknown> | undefined)?.update_signoff ?? {}) as { enabled?: boolean; closing?: string; name?: string; title?: string; photo_id?: string | null; footer?: string }
   const sign = so.enabled !== false && so.name ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 0;border-top:1px solid #e8e6e0;width:100%"><tr>' +
     (so.photo_id ? '<td width="64" valign="middle" style="padding:18px 16px 0 0"><img src="' + o.base + '/api/public/media/' + so.photo_id + '" width="60" height="60" alt="" style="display:block;width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid #ffffff;box-shadow:0 0 0 1px #e1ded6"></td>' : '') +
     '<td valign="middle" style="padding:18px 0 0">' + (so.closing ? '<div style="font-family:Georgia,serif;font-style:italic;font-size:15px;color:#4a4a4a;margin:0 0 4px">' + esc(so.closing) + '</div>' : '') +
     '<div style="font-weight:600;font-size:15.5px;color:#0c1a2e">' + esc(so.name) + '</div>' + (so.title ? '<div style="font-size:13px;color:#6b6b6b">' + esc(so.title) + '</div>' : '') + '</td></tr></table>' : ''
-  const inner = head + cover + hi + body + sign
+  const inner = head + cover + body + sign
   if (!o.email) return '<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</div>'
-  return '<!doctype html><html><body style="margin:0;background:#f4f3ef"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">' +
+  // Phones: the card fills the width with smaller padding, headings shrink, side-by-side charts stack, wide tables
+  // scroll, and pictures never overflow (clients that ignore <style> still get the inline layout).
+  const mobile = '<style>img{max-width:100%!important;height:auto}table{max-width:100%}@media only screen and (max-width:600px){.wrap{padding:12px 10px!important}.card{padding:22px 18px!important}.uh{font-size:24px!important}.two td{display:block!important;width:100%!important;padding:0!important}.tw{overflow-x:auto!important}.rx a{font-size:20px!important;padding:4px 6px!important}}</style>'
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">' + mobile + '</head><body style="margin:0;background:#f4f3ef;-webkit-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="wrap" align="center" style="padding:24px 12px">' +
     (o.viewUrl ? '<div style="max-width:640px;font-size:12px;color:#8a8a8a;text-align:right;margin:0 0 8px;font-family:Helvetica,Arial,sans-serif"><a href="' + o.viewUrl + '" style="color:#8a8a8a">View in browser</a></div>' : '') +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff"><tr><td style="padding:32px 36px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</td></tr></table>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff"><tr><td class="card" style="padding:32px 36px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</td></tr></table>' +
     (o.viewUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;margin:14px 0 0"><tr><td style="font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#555;padding:0 0 6px">React to this update</td></tr><tr><td>' + REACTIONS.map(([k, e]) => '<a href="' + o.viewUrl + '?react=' + k + '" style="display:inline-block;text-decoration:none;font-size:22px;line-height:1;padding:8px 10px;margin:0 6px 6px 0;background:#ffffff;border:1px solid #e6e4dd;border-radius:20px">' + e + '</a>').join('') + '<a href="' + o.viewUrl + '?reply=1" style="display:inline-block;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#1c4f9c;padding:10px 6px">Leave a note</a></td></tr></table>' : '') +
     '<div style="max-width:640px;font-size:11.5px;color:#8a8a8a;margin:14px 0 0;font-family:Helvetica,Arial,sans-serif">' + (so.footer ? esc(so.footer) + (o.hideFinvry ? '' : ' · Sent with Finvry.') : 'Sent by ' + esc(o.company) + (o.hideFinvry ? '.' : ' with Finvry.')) + (o.unsubUrl ? ' <a href="' + o.unsubUrl + '" style="color:#8a8a8a">Unsubscribe</a>' : '') + '</div>' +
     (o.pixelUrl ? '<img src="' + o.pixelUrl + '" width="1" height="1" alt="" style="display:block">' : '') + '</td></tr></table></body></html>'

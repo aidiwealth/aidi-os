@@ -8,5 +8,5 @@ export default defineEventHandler(async (event) => {
   const base = brands().finvry.url, org = (await currentOrg())!
   const subject = (await db().query<{ subject: string | null }>('SELECT subject FROM financials.updates WHERE id = $1', [id.data])).rows[0]?.subject ?? null
   if (!b.data.full) return { html: await renderBlocks(b.data.blocks as Block[], base, subject) }
-  return { html: await renderUpdateDoc({ title: b.data.title, blocks: b.data.blocks as Block[], cover_id: b.data.cover_id ?? null, from_name: b.data.from_name, subject, greeting: b.data.greeting }, { company: org.name, base, email: true, greeting: b.data.as_name.split(' ')[0] || 'there', viewUrl: '#', unsubUrl: '#' }) }
+  return { html: await renderUpdateDoc({ title: b.data.title, blocks: b.data.blocks as Block[], cover_id: b.data.cover_id ?? null, from_name: b.data.from_name, subject }, { company: org.name, base, email: true, viewUrl: '#', unsubUrl: '#' }) }
 })

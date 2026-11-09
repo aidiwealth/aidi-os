@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const org = (await currentOrg())!, base = brands().finvry.url, text = blocksText(u.blocks)
   const br = await brandingOf(org.id), look = { logoUrl: br.logo_url, hideFinvry: br.hide_finvry }
   if (b.data.mode === 'test') {
-    const html = await renderUpdateDoc(u, { company: org.name, base, email: true, greeting: 'there', viewUrl: base + '/updates/' + id.data, ...look })
+    const html = await renderUpdateDoc(u, { company: org.name, base, email: true, viewUrl: base + '/updates/' + id.data, ...look })
     await sendEmail({ to: user.email, subject: '[Test] ' + u.title, text, html, fromName: u.from_name || org.name })
     return { ok: true, sent: 1 }
   }
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
     if (!inv) continue
     const token = randomToken()
     await db().query('INSERT INTO financials.update_sends (update_id, investor_id, token_hash) VALUES ($1,$2,$3) ON CONFLICT (update_id, investor_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, sent_at = now()', [id.data, inv.id, sha256(token)])
-    const html = await renderUpdateDoc(u, { company: org.name, base, email: true, greeting: p.name.split(' ')[0], viewUrl: base + '/u/' + token, unsubUrl: base + '/unsub/' + token, pixelUrl: base + '/api/public/u/' + token + '/o', ...look })
+    const html = await renderUpdateDoc(u, { company: org.name, base, email: true, viewUrl: base + '/u/' + token, unsubUrl: base + '/unsub/' + token, pixelUrl: base + '/api/public/u/' + token + '/o', ...look })
     try { await sendEmail({ fromName: u.from_name || org.name, to: p.email, subject: u.title, text: text + '\n\nRead online: ' + base + '/u/' + token + '\nUnsubscribe: ' + base + '/unsub/' + token, html }); sent++; await logActivity(org.id, p.email, 'update_sent', 'Sent ' + u.title, id.data) }
     catch (err) { console.error('[updates] email failed', err) }
   }
