@@ -177,6 +177,27 @@ export async function onboardView(clientId: string) {
     account_status: o.account_status }
 }
 
+// Start over: clears every answer, the figures read from documents, the identity numbers held for the account and
+// (by default) the files uploaded during the conversation, so nothing old is read again. Staff can also reset one
+// that was sent for approval; a finished or declined one can't be reset.
+export async function onboardRestart(clientId: string, opts: { files: boolean; staff?: boolean }) {
+  const l = await load(clientId)
+  if (!l) throw apiError('not_found', 'Not found', 404)
+  const { o, ctx } = l
+  if (!(o.status === 'in_progress' || (opts.staff && o.status === 'submitted' && o.account_status !== 'opened'))) throw apiError('done', 'This is already finished, so it can\'t be started again.', 409)
+  ctx.answers = {}
+  const first = stepsFor(ctx)[0]!
+  o.step = first.id; o.messages = [say('ai', first.ask(ctx))]
+  await db().query("UPDATE wm.onboarding SET status = 'in_progress', ssn_enc = NULL, account_status = NULL, account_note = NULL, submitted_at = NULL, updated_at = now() WHERE id = $1", [o.id])
+  await db().query('UPDATE wm.clients SET bvn_enc = NULL, bvn_last4 = NULL, updated_at = now() WHERE id = $1', [clientId])
+  await db().query("DELETE FROM wm.accounts WHERE client_id = $1 AND notes = 'From onboarding'", [clientId])
+  await db().query("UPDATE wm.profiles SET data = data - 'equity' - 'doc_flags', updated_at = now() WHERE client_id = $1", [clientId])
+  let removed = 0
+  if (opts.files) removed = (await db().query('DELETE FROM wm.profile_docs WHERE client_id = $1 AND created_at >= (SELECT created_at FROM wm.onboarding WHERE id = $2)', [clientId, o.id])).rowCount ?? 0
+  await save(o, ctx)
+  return { removed }
+}
+
 // One answer: from the quick answers (value) or in the client's own words (text, read by the AI).
 export async function onboardAnswer(clientId: string, input: { step: string; value?: any; text?: string; back?: boolean }, ip: string) {
   const l = await load(clientId)

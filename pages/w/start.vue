@@ -28,6 +28,12 @@ async function send(body: Record<string, unknown>) {
   busy.value = true; err.value = ''
   try { data.value = await $fetch<View>('/api/w/onboard', { method: 'POST', body: { step: data.value.step, ...body } }); text.value = '' } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Please try again.' } finally { busy.value = false; nextTick(() => { if (box.value) box.value.scrollTop = box.value.scrollHeight }) }
 }
+const over = ref(false), dropFiles = ref(true)
+async function restart() {
+  if (busy.value) return
+  busy.value = true; err.value = ''
+  try { data.value = await $fetch<View>('/api/w/onboard', { method: 'POST', body: { restart: true, keep_files: !dropFiles.value } }); over.value = false; text.value = '' } catch (e) { err.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not start over. Try again.' } finally { busy.value = false }
+}
 const sendText = () => { const t = text.value.trim(); if (t) void send({ text: t }) }
 const submitRows = () => send({ value: { rows: rows.value.filter((r) => Object.values(r).some((v) => v !== '' && v != null)) } })
 function addRow(r: Record<string, unknown>) { rows.value.push({ ...r }) }
@@ -56,6 +62,8 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
         <div class="rh"><b>Setting up your account</b><span class="mut">About 8 minutes · pick up where you left off any time</span><span class="pb"><i :style="{ width: (data.phase / (data.phases.length - 1)) * 100 + '%' }" /></span></div>
         <ol><li v-for="(ph, i) in data.phases" :key="ph" :class="{ done: i < data.phase, now: i === data.phase }"><span class="nb">{{ i < data.phase ? '✓' : i + 1 }}</span>{{ ph }}</li></ol>
         <p class="fine">Your answers are private to you and your adviser. You can change any of them later.</p>
+        <div class="over"><button v-if="!over" class="lk" :disabled="busy" @click="over = true">Start over</button>
+          <template v-else><b>Start again from the first question?</b><span class="mut">Your answers and the figures read from your files are cleared.</span><label class="cb"><input v-model="dropFiles" type="checkbox"> Also remove the files I uploaded</label><div class="act"><button class="btn" :disabled="busy" @click="restart">Start over</button><button class="btn2" :disabled="busy" @click="over = false">Cancel</button></div></template></div>
       </aside>
       <section class="card chat">
         <div ref="box" class="msgs" aria-live="polite">
@@ -135,6 +143,7 @@ input, select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px s
 .scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; } .scale button { font: inherit; text-align: left; padding: 10px 8px; border: 0; border-top: 4px solid #e6ecf2; background: #fff; cursor: pointer; font-size: 12.5px; color: var(--c-muted); } .scale button b { display: block; font-weight: 500; } .scale button em { display: block; font-style: normal; font-size: 11.5px; color: var(--c-blue-deep); margin-top: 2px; } .scale button.on { border-top-color: var(--c-navy); color: var(--c-ink); }
 .cb { flex-direction: row; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--c-ink); } .cb input { width: auto; margin-top: 3px; }
 .back { align-self: flex-start; font-size: 12.5px; }
+.over { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; } .over .mut { font-size: 12.5px; } .over .cb { display: flex; }
 .comp { display: flex; gap: 8px; padding: 14px 22px 18px; border-top: 1px solid var(--c-rule); } .comp input { flex: 1; }
 .plan { position: sticky; top: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; } .plan > b { font-size: 15px; }
 .fl { display: grid; grid-template-columns: 62px minmax(0, 1fr) 70px; gap: 8px; align-items: center; font-size: 13px; } .fl > span:not(.br) { color: var(--c-muted); } .fl b { text-align: right; font-weight: 600; }
