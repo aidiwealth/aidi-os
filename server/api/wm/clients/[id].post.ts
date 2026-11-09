@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   // email of a client who already has portal access. Team does the rest.
   const senior = user.roles.includes('admin') || user.roles.includes('gp')
   const emailChange = a === 'update' && typeof body.email === 'string' && body.email.trim().toLowerCase() !== (c.email ?? '').toLowerCase() && !!c.user_id
-  if (!senior && (['invite', 'fee', 'advisory_invoice'].includes(a) || emailChange)) throw apiError('forbidden', 'Only GPs and admins can do that.', 403)
+  if (!senior && (['invite', 'fee', 'advisory_invoice', 'kyc_status', 'kyc_bvn', 'view_link'].includes(a) || emailChange)) throw apiError('forbidden', 'Only GPs and admins can do that.', 403)
   const s = (k: string, max = 300) => (typeof body[k] === 'string' ? (body[k] as string).trim().slice(0, max) : '')
   const n = (k: string) => (body[k] === '' || body[k] == null ? null : Number(body[k]))
   if (a === 'update') {

@@ -32,7 +32,7 @@ export async function issueFee(feeId: string, email = true) {
   await taxFee(feeId)
   let f = await feeRow(feeId); if (!f) throw apiError('not_found', 'Fee not found.', 404)
   if (!f.number) { const yr = 'AW-' + new Date().getFullYear() + '-'; const n = Number((await db().query<{ n: string }>("SELECT coalesce(max(substring(number from '-([0-9]+)$')::int), 0) AS n FROM wm.fees WHERE number LIKE $1 || '%'", [yr])).rows[0]?.n ?? 0) + 1; await db().query("UPDATE wm.fees SET number = $2, due_date = coalesce(due_date, coalesce(issue_date, current_date) + 14), method = coalesce(method, CASE WHEN kind = 'advisory' THEN 'transfer' ELSE 'online' END) WHERE id = $1", [feeId, yr + String(n).padStart(4, '0')]); f = (await feeRow(feeId))! }
-  const doc = await storePdf(await pdfFor(f, false), 'Invoice ' + f.number + ' - ' + (f.client ?? f.firm ?? '') + '.pdf', null)
+  const doc = await storePdf(await pdfFor(f, false), 'Invoice ' + f.number + ' - ' + (f.client ?? f.firm ?? '') + '.pdf', null, { wm: true })
   await db().query("UPDATE wm.fees SET invoice_doc_id = $2, sent_at = now(), status = CASE WHEN status = 'draft' THEN 'due' ELSE status END WHERE id = $1", [feeId, doc])
   if (email && f.email) {
     const amt = new Intl.NumberFormat('en-US', { style: 'currency', currency: f.currency }).format(Number(f.amount))
@@ -49,7 +49,7 @@ export async function markFeePaid(feeId: string, method: string, paidOn?: string
   const f = (await feeRow(feeId))!
   if (!f.number) await issueFee(feeId, false)
   const g = (await feeRow(feeId))!
-  const doc = await storePdf(await pdfFor(g, true), 'Receipt ' + g.number + ' - ' + (g.client ?? g.firm ?? '') + '.pdf', null)
+  const doc = await storePdf(await pdfFor(g, true), 'Receipt ' + g.number + ' - ' + (g.client ?? g.firm ?? '') + '.pdf', null, { wm: true })
   await db().query('UPDATE wm.fees SET receipt_doc_id = $2 WHERE id = $1', [feeId, doc])
   if (g.email) { try { await sendEmail({ to: g.email, subject: 'Receipt ' + g.number + ' — thank you', text: 'We received your payment of ' + new Intl.NumberFormat('en-US', { style: 'currency', currency: g.currency }).format(Number(g.amount)) + ' for ' + (KIND[g.kind] ?? g.kind) + (g.period ? ' (' + g.period + ')' : '') + '. Your receipt is in your Aidi Wealth portal.', html: '<p>We received your payment of <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: g.currency }).format(Number(g.amount)) + '</b> for ' + (KIND[g.kind] ?? g.kind) + (g.period ? ' (' + g.period + ')' : '') + '.</p><p>Your receipt is in your Aidi Wealth portal.</p>' }) } catch { /* ignore */ } }
   return { receipt_doc_id: doc }

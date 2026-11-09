@@ -73,7 +73,7 @@ export async function identityUpload(clientId: string, parts: { name?: string; f
   if (f.data.length > 20 * 1024 * 1024) throw apiError('too_big', 'The file is over 20 MB.')
   const doc = randomUUID(), key = 'documents/' + doc + '.' + (mime === 'application/pdf' ? 'pdf' : mime.split('/')[1])
   await putObject({ key, body: new Uint8Array(f.data), contentType: mime })
-  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6)", [doc, 'Identity — ' + t.label + ' — ' + (f.filename ?? 'document').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 120), key, mime, f.data.length, createHash('sha256').update(f.data).digest('hex')])
+  await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, area) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6,'wm')", [doc, 'Identity — ' + t.label + ' — ' + (f.filename ?? 'document').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 120), key, mime, f.data.length, createHash('sha256').update(f.data).digest('hex')])
   const item = (await db().query<{ id: string }>('INSERT INTO wm.kyc_items (client_id, kind, doc_type, document_id, added_by) VALUES ($1,$2,$3,$4,$5) RETURNING id', [clientId, t.kind, docType, doc, by])).rows[0]!
   await db().query("UPDATE wm.clients SET kyc_status = CASE WHEN kyc_status IN ('verified') THEN kyc_status ELSE 'pending' END, kyc_provider = coalesce(kyc_provider, 'document'), updated_at = now() WHERE id = $1", [clientId])
   await kycEvent(clientId, t.label + ' uploaded', by)
@@ -99,6 +99,21 @@ async function readDocument(itemId: string, clientId: string, data: Buffer, mime
 }
 
 // The team's decisions. Each one is logged for the client and the team, and the client is emailed when they need to act.
+// Remove a document from the identity check (the wrong file, or one that does not match): the item, what the AI read
+// from it, the stored file and its record all go. Clients can remove their own until it is accepted; staff any.
+export async function identityRemove(clientId: string, itemId: string, by: 'client' | 'staff') {
+  const it = (await db().query<{ id: string; kind: string; doc_type: string | null; status: string; document_id: string; storage_key: string | null }>(
+    'SELECT k.id, k.kind, k.doc_type, k.status, k.document_id, d.storage_key FROM wm.kyc_items k LEFT JOIN core.documents d ON d.id = k.document_id WHERE k.id = $1 AND k.client_id = $2', [itemId, clientId])).rows[0]
+  if (!it) throw apiError('not_found', 'Not found', 404)
+  if (by === 'client' && it.status === 'accepted') throw apiError('state', 'This document was already accepted. Ask your adviser if it needs changing.', 409)
+  await db().query('DELETE FROM wm.kyc_items WHERE id = $1', [it.id])
+  if (!(await db().query('SELECT 1 FROM wm.kyc_items WHERE document_id = $1', [it.document_id])).rowCount) {
+    await db().query('DELETE FROM core.documents WHERE id = $1', [it.document_id]).catch((e) => console.error('[identity] doc delete', e))
+    if (it.storage_key) await deleteObject(it.storage_key).catch((e) => console.error('[identity] object delete', e))
+  }
+  const label = KYC_DOC_TYPES[it.doc_type ?? '']?.label ?? (it.kind === 'id_document' ? 'ID document' : 'Proof of address')
+  await kycEvent(clientId, label + ' removed' + (by === 'staff' ? ' by your adviser' : ''), by)
+}
 export async function identityAct(clientId: string, userId: string, a: { action: string; item_id?: string; note?: string; kind?: string }) {
   const c = (await db().query<{ email: string | null; contact_name: string | null; name: string }>('SELECT email, contact_name, name FROM wm.clients WHERE id = $1', [clientId])).rows[0]
   if (!c) throw apiError('not_found', 'Not found', 404)

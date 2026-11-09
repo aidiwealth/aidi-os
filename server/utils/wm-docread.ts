@@ -34,12 +34,18 @@ async function pdfText(buf: Uint8Array): Promise<string> {
 }
 
 // Identity numbers out: SSN/ITIN, EIN, BVN/NIN, dates of birth; long account and card numbers keep their last four.
-export function redact(t: string): string {
+// redactIds: the identity numbers only (also used on what clients type in the onboarding chat, where long numbers can
+// be amounts); redact: also cuts long account and card numbers to their last four (documents).
+export function redactIds(t: string): string {
   return t
     .replace(/\b(\d{3})[- ](\d{2})[- ](\d{4})\b/g, '[ID removed]')
-    .replace(/\b(ssn|social security (number|no\.?)|tin|itin|taxpayer id(entification)?( number)?|bvn|nin)\b[\s:#.\-]{0,6}\d[\d\- ]{5,}\d/gi, '$1 [removed]')
+    .replace(/\b(ssn|social security (number|no\.?)|social|tin|itin|taxpayer id(entification)?( number)?|bvn|nin)\b[\s:#.\-]{0,6}\d[\d\- ]{5,}\d/gi, '$1 [removed]')
     .replace(/\b\d{2}-\d{7}\b/g, '[EIN removed]')
-    .replace(/\b(date of birth|dob|birth date)\b[\s:\-]{0,4}([\d]{1,4}[\/.\-][\d]{1,2}[\/.\-][\d]{2,4}|[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9},? \d{4})/gi, '$1 [removed]')
+    .replace(/\b(date of birth|dob|d\.o\.b\.?|birth date|born( on)?)\b[^\dA-Za-z]{0,24}([\d]{1,4}[\/.\-][\d]{1,2}[\/.\-][\d]{2,4}|[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9},? \d{4})/gi, '$1 [removed]')
+    .replace(/\b(passport|driver'?s? licen[cs]e|licen[cs]e|dl|id card|national id)\b\s*(no\.?|number|#)?[\s:#.\-]{0,6}(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/gi, '$1 [removed]')
+}
+export function redact(t: string): string {
+  return redactIds(t)
     .replace(/\b(?:\d[ -]?){8,19}\b/g, (m) => { if (/^\d{4}-\d{2}-\d{2}$|^\d{2}-\d{2}-\d{4}$/.test(m.trim())) return m; const d = m.replace(/\D/g, ''); return d.length >= 8 ? '••••' + d.slice(-4) + (m.match(/\s+$/)?.[0] ?? '') : m })
 }
 

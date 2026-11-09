@@ -11,6 +11,8 @@ const br = computed(() => data.value?.branding ?? null)
 const dark = (hex: string) => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 140 }
 const accent = computed(() => (br.value?.bg && dark(br.value.bg) ? { '--c-navy': br.value.bg } : undefined))
 const band = computed(() => (br.value?.bg || br.value?.fg ? { background: br.value.bg ?? undefined, color: br.value.fg ?? undefined, borderColor: 'transparent' } : undefined))
+// Aidi Wealth's shared review and family view carry the Wealth name.
+const wealth = /^\/(wr|wv)\//.test(route.path)
 const aidiLook = computed(() => (ws.value ? ws.value.brand === 'aidi' : brand.key === 'aidi'))
 const title = computed(() => (ws.value ? (['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? ws.value.firm : ws.value.name) : ''))
 const foot = computed(() => {
@@ -23,13 +25,13 @@ const foot = computed(() => {
 <template>
   <div class="pub" :style="accent">
     <header v-if="kind !== 'c' && kind !== 'd'" class="pub-top" :style="band">
-      <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ ['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? 'Ventures' : 'Group' }}</span></template>
+      <template v-if="aidiLook"><span class="pub-mark" aria-label="Aidi"><AidiWordmark /></span><span class="pub-div" /><span class="pub-arm">{{ wealth ? 'Wealth' : ['report', 'lp', 'bill', 'info', 'formation', 'share'].includes(kind) ? 'Ventures' : 'Group' }}</span></template>
       <img v-else-if="br?.logo_url" :src="br.logo_url" :alt="title" class="pub-logo">
       <span v-else-if="title" class="pub-name">{{ title }}</span>
       <a v-else :href="brand.key === 'finvry' ? 'https://finvry.com' : 'https://theaidigroup.com'" class="pub-home" aria-label="Home"><BrandMark /></a>
     </header>
     <main class="pub-main"><slot /></main>
-    <footer class="pub-foot" :style="band"><template v-if="foot">{{ foot }}</template><span v-else class="pub-legal">© {{ new Date().getFullYear() }} {{ brand.name }} · <NuxtLink to="/legal/privacy">Privacy</NuxtLink> · <NuxtLink to="/legal/terms">Terms</NuxtLink></span></footer>
+    <footer class="pub-foot" :style="band"><template v-if="foot">{{ foot }}</template><span v-else-if="wealth" class="pub-legal">© {{ new Date().getFullYear() }} Aidi Wealth, part of The Aidi Group · Shared privately by the household · <NuxtLink to="/legal/privacy">Privacy</NuxtLink></span><span v-else class="pub-legal">© {{ new Date().getFullYear() }} {{ brand.name }} · <NuxtLink to="/legal/privacy">Privacy</NuxtLink> · <NuxtLink to="/legal/terms">Terms</NuxtLink></span></footer>
   </div>
 </template>
 

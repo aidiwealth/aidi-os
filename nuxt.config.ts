@@ -66,7 +66,7 @@ export default defineNuxtConfig({
     routeRules: {
       '/**': {
         headers: {
-          'Content-Security-Policy': "default-src 'self'; script-src 'self' https://cdn.plaid.com https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-f138f42d66b748108ebf7432c7314665.r2.dev https://a0.muscache.com; font-src 'self' data:; connect-src 'self' https://*.plaid.com https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests",
+          'Content-Security-Policy': "default-src 'self'; script-src 'self' https://cdn.plaid.com https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com https://cdn.plaid.com https://*.plaid.com https://www.google.com https://maps.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-f138f42d66b748108ebf7432c7314665.r2.dev https://a0.muscache.com; font-src 'self' data:; connect-src 'self' https://*.plaid.com https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests",
           'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
           'X-Frame-Options': 'DENY',
           'X-Content-Type-Options': 'nosniff',
@@ -76,7 +76,12 @@ export default defineNuxtConfig({
           'Cross-Origin-Opener-Policy': 'same-origin',
           'X-Permitted-Cross-Domain-Policies': 'none'
         }
-      }
+      },
+      // Client wealth data is never kept by browsers or proxies.
+      '/api/w/**': { headers: { 'Cache-Control': 'private, no-store' } },
+      '/api/wm/**': { headers: { 'Cache-Control': 'private, no-store' } },
+      '/api/public/wr/**': { headers: { 'Cache-Control': 'private, no-store' } },
+      '/api/public/wv/**': { headers: { 'Cache-Control': 'private, no-store' } }
     }
   }
 })

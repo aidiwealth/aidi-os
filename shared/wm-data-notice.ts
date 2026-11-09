@@ -2,7 +2,7 @@
 // SEC Regulation S-P, California Consumer Privacy Act) and Nigeria (Nigeria Data Protection Act 2023 and the NDPC's
 // General Application and Implementation Directive). Shown to clients while onboarding and kept, with a record of what
 // they uploaded, as a document on their account. Partners are described by role, never by name.
-export const DATA_NOTICE_VERSION = '2026-11'
+export const DATA_NOTICE_VERSION = '2026-11b'
 export interface NoticeFor { country: 'US' | 'NG'; entity: string; address?: string | null }
 
 // The responsible company: the client's wealth entity. Aidi Finance Limited was never formed, so Nigerian clients
@@ -32,7 +32,8 @@ const common = {
     '- Social Security numbers, employer identification numbers, BVNs and dates of birth are removed.',
     '- Account and card numbers are cut to their last four digits.',
     '- Photos and scanned images are not sent to the model; your adviser looks at those.',
-    'Identity numbers you type into the identity questions are never sent to the AI. Our AI provider processes the text only to give us the answer, under a contract that does not let it keep your data or use it to train its models.',
+    'Identity documents you add for the identity check (a passport, driving licence or proof of address) are different: the AI looks at the whole document, only to compare the name, address and expiry date with what you gave us, and staff confirm each result.',
+    'Identity numbers and personal details you type into the identity questions are never sent to the AI. Our AI provider processes the text only to give us the answer, under a contract that does not let it keep your data or use it to train its models.',
     'The AI only suggests. Nothing is saved to your plan until you check and confirm it, and an adviser reviews your plan. No decision about you is made by the AI alone.',
   ],
   security: [

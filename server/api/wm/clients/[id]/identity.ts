@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
   if ((getRequestHeader(event, 'content-type') ?? '').includes('multipart')) { await identityUpload(id, (await readMultipartFormData(event)) ?? [], 'staff'); await audit({ event, actorUserId: user.userId, action: 'wm.kyc_doc', objectType: 'wm_client', objectId: id }); return identityView(id, true) }
   const b = await readBody<{ action?: string; item_id?: string; note?: string; kind?: string }>(event)
   if (!user.roles.some((r) => r === 'admin' || r === 'gp')) throw apiError('forbidden', 'Only admins and partners can decide identity checks.', 403)
-  await identityAct(id, user.userId, { action: String(b?.action ?? ''), item_id: b?.item_id, note: b?.note, kind: b?.kind })
+  if (b?.action === 'remove') { if (typeof b.item_id !== 'string' || !/^[0-9a-f-]{36}$/.test(b.item_id)) throw apiError('invalid', 'Choose the document.'); await identityRemove(id, b.item_id, 'staff') }
+  else await identityAct(id, user.userId, { action: String(b?.action ?? ''), item_id: b?.item_id, note: b?.note, kind: b?.kind })
   await audit({ event, actorUserId: user.userId, action: 'wm.kyc_' + String(b?.action ?? ''), objectType: 'wm_client', objectId: id, detail: { note: b?.note || undefined } })
   return identityView(id, true)
 })

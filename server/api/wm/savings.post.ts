@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     const p = await one<{ id: string }>('INSERT INTO wm.savings_plans (client_id, name, currency, rate, target, monthly, provider, vendor, matures_on) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
       [d.client_id, name, cur, rate, d.target ?? null, d.monthly ?? null, r.cfg.savings_provider, r.cfg.savings_vendor || null, d.matures_on || null])
     const md = ['# Savings plan certificate', '', '**' + r.c.name + '**', '', '| Detail | |', '|---|---|', '| Plan | ' + name + ' |', '| Currency | ' + cur + ' |', '| Interest rate | ' + rate + '% a year, credited monthly |', '| Started | ' + new Date().toISOString().slice(0, 10) + ' |', '| Matures | ' + (d.matures_on || 'Open-ended') + ' |', '| Held with | ' + (r.cfg.savings_provider === 'manual' ? (r.cfg.savings_vendor || 'Partner') : r.cfg.savings_provider) + ' |', '', 'Interest is calculated on the confirmed balance each month. Rates can change for new deposits with notice.']
-    const doc = await storePdf(await legalPdf(r.c.country === 'US' ? 'Aidi Wealth LLC' : 'Aidi Finance Limited', [{ title: 'Savings plan certificate', md: md.join('\n') }]), 'Savings certificate - ' + r.c.name + '.pdf', null).catch(() => null)
+    const doc = await storePdf(await legalPdf(r.c.country === 'US' ? 'Aidi Wealth LLC' : 'Aidi Finance Limited', [{ title: 'Savings plan certificate', md: md.join('\n') }]), 'Savings certificate - ' + r.c.name + '.pdf', null, { wm: true }).catch(() => null)
     if (doc) await db().query('UPDATE wm.savings_plans SET certificate_doc_id = $2 WHERE id = $1', [p.id, doc])
     await audit({ event, actorUserId: user.userId, action: 'wm.savings_open', objectType: 'wm_savings', objectId: p.id })
     return { ok: true, id: p.id }

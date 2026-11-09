@@ -14,10 +14,11 @@ export async function expenseCategories(includeArchived = false): Promise<Expens
   return out
 }
 export async function expenseCategoryNames(): Promise<string[]> { return (await expenseCategories()).map((c) => c.name) }
-export async function storePdf(bytes: Uint8Array, title: string, entityId: string | null): Promise<string> {
+// Wealth client PDFs pass { wm: true }: kept restricted and out of the document library (area 'wm').
+export async function storePdf(bytes: Uint8Array, title: string, entityId: string | null, opts: { wm?: boolean } = {}): Promise<string> {
   const id = randomUUID(), key = 'documents/' + id + '.pdf'
   await putObject({ key, body: bytes, contentType: 'application/pdf' })
-  await db().query("INSERT INTO core.documents (id, entity_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,$3,'other','normal',$4,'application/pdf',$5,$6)", [id, entityId, title.replace(/[^A-Za-z0-9 ._()&,-]/g, '').slice(0, 200), key, bytes.length, createHash('sha256').update(bytes).digest('hex')])
+  await db().query("INSERT INTO core.documents (id, entity_id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, area) VALUES ($1,$2,$3,'other',$7,$4,'application/pdf',$5,$6, $8)", [id, entityId, title.replace(/[^A-Za-z0-9 ._()&,-]/g, '').slice(0, 200), key, bytes.length, createHash('sha256').update(bytes).digest('hex'), opts.wm ? 'restricted' : 'normal', opts.wm ? 'wm' : 'org'])
   return id
 }
 export async function voucherPdf(e: { number: string; paid_on: string; entity: string | null; payee: string; category: string; description: string | null; amount: number; currency: string; method: string | null; account: string | null; reference: string | null; by: string }): Promise<Uint8Array> {

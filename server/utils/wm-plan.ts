@@ -32,6 +32,15 @@ export async function planSave(clientId: string, data: unknown) {
 }
 export async function planUpload(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]) { return (await planUploadIds(clientId, parts)).length }
 // The same, returning the new documents (to read them straight away).
+// Remove an uploaded document: the link to the client, the document record and the stored file.
+export async function profileDocRemove(clientId: string, profileDocId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(profileDocId)) throw apiError('invalid', 'Choose the document.')
+  const d = (await db().query<{ document_id: string; storage_key: string | null }>('DELETE FROM wm.profile_docs p USING core.documents d WHERE p.id = $1 AND p.client_id = $2 AND d.id = p.document_id RETURNING p.document_id, d.storage_key', [profileDocId, clientId])).rows[0]
+  if (!d) return
+  if ((await db().query('SELECT 1 FROM wm.profile_docs WHERE document_id = $1 UNION ALL SELECT 1 FROM wm.kyc_items WHERE document_id = $1', [d.document_id])).rowCount) return
+  await db().query('DELETE FROM core.documents WHERE id = $1', [d.document_id]).catch((e) => console.error('[plan] doc delete', e))
+  if (d.storage_key) await deleteObject(d.storage_key).catch((e) => console.error('[plan] object delete', e))
+}
 export async function planUploadIds(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]): Promise<string[]> {
   const kind = parts.find((p) => p.name === 'kind' && !p.filename)?.data.toString('utf8') ?? 'other'
   const ids: string[] = []
@@ -41,7 +50,7 @@ export async function planUploadIds(clientId: string, parts: { name?: string; fi
     if (f.data.length > 20 * 1024 * 1024) continue
     const id = randomUUID(), ext = mime === 'application/pdf' ? 'pdf' : mime === 'text/csv' ? 'csv' : mime.includes('sheet') ? 'xlsx' : mime.split('/')[1]
     await putObject({ key: 'documents/' + id + '.' + ext, body: new Uint8Array(f.data), contentType: mime })
-    await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6)", [id, 'Financial profile — ' + (f.filename ?? 'document').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150), 'documents/' + id + '.' + ext, mime, f.data.length, createHash('sha256').update(f.data).digest('hex')])
+    await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256, area) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6,'wm')", [id, 'Financial profile — ' + (f.filename ?? 'document').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150), 'documents/' + id + '.' + ext, mime, f.data.length, createHash('sha256').update(f.data).digest('hex')])
     const r = await db().query<{ id: string }>('INSERT INTO wm.profile_docs (client_id, document_id, kind, name) VALUES ($1,$2,$3,$4) RETURNING id', [clientId, id, DOC_KINDS.includes(kind) ? kind : 'other', (f.filename ?? '').slice(0, 200)])
     ids.push(r.rows[0]!.id)
   }

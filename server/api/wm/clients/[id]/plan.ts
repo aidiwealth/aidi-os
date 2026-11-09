@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
     try { const r = await readClientDocs(id, ids); return { ok: true, read: r.read, skipped: r.skipped, found: r.out, checks: docChecks(r.out) } } catch (err) { console.error('[wm-docread] read failed', err); throw apiError('ai_failed', 'Could not read the documents just now. Please try again in a minute.') }
   }
   if (a === 'apply_read') { try { return { ok: true, ...(await applyDocRead(id, body?.take)) } } catch { throw apiError('invalid', 'Could not add those figures. Check the amounts.') } }
-  if (a === 'remove_doc' && typeof body?.doc_id === 'string') { await db().query('DELETE FROM wm.profile_docs WHERE id = $1 AND client_id = $2', [body.doc_id, id]); return { ok: true } }
+  if (a === 'remove_doc' && typeof body?.doc_id === 'string') { await profileDocRemove(id, body.doc_id); return { ok: true } }
   throw apiError('invalid', 'Unknown action.')
 })

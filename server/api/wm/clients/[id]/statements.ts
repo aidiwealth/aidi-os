@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     const d = b.data as StatementData
     if (!d?.period?.start || !d?.summary) throw apiError('invalid', 'Preview the statement first.')
     const bytes = await statementPdf(d)
-    const doc = await storePdf(bytes, 'Aidi Wealth statement ' + d.period.label + ' - ' + d.client.name + '.pdf', null)
+    const doc = await storePdf(bytes, 'Aidi Wealth statement ' + d.period.label + ' - ' + d.client.name + '.pdf', null, { wm: true })
     const st = await one<{ id: string }>('INSERT INTO wm.statements (client_id, period_kind, period_start, period_end, data, doc_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [id, d.period.kind, d.period.start, d.period.end, JSON.stringify(d), doc, user.userId])
     const c = (await db().query<{ email: string | null }>('SELECT email FROM wm.clients WHERE id = $1', [id])).rows[0]
     if (c?.email && b.notify !== false) { try { await sendEmail({ to: c.email, subject: 'Your Aidi Wealth statement: ' + d.period.label, text: 'Your account statement for ' + d.period.label + ' is ready in your Aidi Wealth portal.\n\n' + brands().aidi.url + '/w', html: '<p>Your account statement for <b>' + d.period.label + '</b> is ready in your Aidi Wealth portal.</p><p><a href="' + brands().aidi.url + '/w" style="color:#1c4f9c">View your statement</a></p>' }) } catch { /* ignore */ } }

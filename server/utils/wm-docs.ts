@@ -60,7 +60,7 @@ export async function templateMd(kind: string, clientId: string, holdingId?: str
 export async function issueClientDoc(clientId: string, kind: string, title: string, md: string, requiresSignature: boolean, userId: string | null, holdingId: string | null = null, email = true, entityId: string | null = null) {
   const x = await docContext(clientId, entityId)
   const bytes = await legalPdf(x.entity, [{ title, md }])
-  const doc = await storePdf(bytes, title + ' - ' + x.c.name + '.pdf', null)
+  const doc = await storePdf(bytes, title + ' - ' + x.c.name + '.pdf', null, { wm: true })
   const row = await one<{ id: string }>('INSERT INTO wm.client_docs (client_id, kind, title, body_md, doc_id, requires_signature, status, holding_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [clientId, kind, title, md, doc, requiresSignature, requiresSignature ? 'sent' : 'info', holdingId, userId])
   if (email && x.c.email) { try { await sendEmail({ to: x.c.email, subject: (requiresSignature ? 'Please sign: ' : 'New document: ') + title, text: 'A new document, ' + title + ', is in your Aidi Wealth portal' + (requiresSignature ? ' and is ready for your electronic signature.' : '.') + '\n\n' + brands().aidi.url + '/w', html: '<p>A new document, <b>' + title + '</b>, is in your Aidi Wealth portal' + (requiresSignature ? ' and is ready for your electronic signature.' : '.') + '</p><p><a href="' + brands().aidi.url + '/w" style="color:#1c4f9c">Open your portal</a></p>' }) } catch { /* ignore */ } }
   return row.id
@@ -81,7 +81,7 @@ export async function signClientDoc(docRowId: string, clientId: string, name: st
   const sw = 220, sh = sw * (sig.height / sig.width); p.drawText('Signature', { x: 72, y: y - 20, size: 9, font: bold, color: ink }); p.drawImage(sig, { x: 250, y: y - 20 - Math.min(sh, 90), width: Math.min(sw, 90 * (sig.width / sig.height)), height: Math.min(sh, 90) })
   p.drawText('The signer agreed to sign this document electronically and that this signature is as binding as a handwritten one.', { x: 72, y: 120, size: 8, font: reg, color: rgb(0.4, 0.4, 0.4) })
   const bytes = await pdf.save()
-  const signed = await storePdf(bytes, 'Signed - ' + d.title + '.pdf', null)
+  const signed = await storePdf(bytes, 'Signed - ' + d.title + '.pdf', null, { wm: true })
   await db().query("UPDATE wm.client_docs SET status = 'signed', signed_at = now(), signer_name = $3, signer_ip = $4, signer_ua = $5, signed_doc_id = $6 WHERE id = $1 AND client_id = $2", [docRowId, clientId, name, ip, ua.slice(0, 300), signed])
   return signed
 }

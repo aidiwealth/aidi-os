@@ -37,7 +37,13 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
 const DOT: Record<string, string> = { done: '#1c547d', review: '#b54708', now: '#b54708', todo: '#9aa3ad', failed: '#b42318' }
 const STATE: Record<string, string> = { done: 'Done', review: 'Being checked', now: 'To do', todo: 'Later', failed: 'Not passed' }
 const RES: Record<string, string> = { match: 'Matches', check: 'Look yourself', mismatch: 'Does not match' }
-const docUrl = (i: Item) => '/api/wm/doc/' + i.document_id
+const docUrl = (i: Item) => '/api/wm/doc/' + i.document_id + '?view=1'
+// Remove a document (the wrong file, or one that does not match); the file and what the AI read from it are deleted.
+async function remove(i: Item) {
+  if (!await askConfirm('Remove ' + i.doc_label + '? The file and what was read from it are deleted' + (props.staff ? '; the client can add another.' : '.'))) return
+  busy.value = 'rm'; msg.value = ''; ok.value = ''
+  try { data.value = await $fetch<View>(props.api, { method: 'POST', body: { action: 'remove', item_id: i.id } }); sel.value = ''; ok.value = 'Removed.' } catch (e) { msg.value = err(e) } finally { busy.value = '' }
+}
 </script>
 <template>
   <div v-if="data" class="idc">
@@ -58,7 +64,7 @@ const docUrl = (i: Item) => '/api/wm/doc/' + i.document_id
           <template v-else><span>✓ Not expired</span><span>✓ Your full name and photo clear</span><span>✓ All four corners, no glare</span><span class="mut">Not accepted: photocopies of photocopies, expired documents.</span></template>
           <span class="mut sep">Your documents are encrypted and seen only by our compliance team.</span></div>
       </section>
-      <section v-if="data.items.length" class="card"><b class="h">Your documents</b><div v-for="i in data.items" :key="i.id" class="rw"><span>{{ i.doc_label }}<em>{{ when(i.created_at) }}</em></span><span class="tag" :class="{ blue: i.status === 'accepted', warn: i.status === 'rejected' }">{{ i.status === 'accepted' ? 'Accepted' : i.status === 'rejected' ? 'Please add another' : 'Being checked' }}</span></div></section>
+      <section v-if="data.items.length" class="card"><b class="h">Your documents</b><div v-for="i in data.items" :key="i.id" class="rw"><span>{{ i.doc_label }}<em>{{ when(i.created_at) }}</em></span><span class="tag" :class="{ blue: i.status === 'accepted', warn: i.status === 'rejected' }">{{ i.status === 'accepted' ? 'Accepted' : i.status === 'rejected' ? 'Please add another' : 'Being checked' }}</span><button v-if="i.status !== 'accepted' && !preview" class="lnk red" :disabled="!!busy" @click="remove(i)">Remove</button></div></section>
       <section v-if="data.events.length" class="card"><b class="h">History</b><div class="ev"><template v-for="(e, k) in data.events" :key="k"><span class="mut">{{ when(e.created_at) }}</span><span>{{ e.text }}</span></template></div></section>
     </template>
     <!-- Staff -->
@@ -69,7 +75,7 @@ const docUrl = (i: Item) => '/api/wm/doc/' + i.document_id
       <section class="card acr"><div><b class="h">Accredited investor</b><span class="mut sm">{{ data.accredited ? 'Confirmed' + (data.accredited_at ? ' on ' + new Date(data.accredited_at).toLocaleDateString('en-GB') : '') + '. The client sees pre-IPO deals up to their risk level.' : 'Not confirmed. Pre-IPO deals stay hidden from the client until you confirm it (income, net worth or a professional licence, checked by you).' }}</span></div><button v-if="!data.accredited" class="btn secondary sm" :disabled="!!busy" @click="act('accredited')">Confirm accredited</button><button v-else class="lk" @click="act('not_accredited')">Remove</button></section>
       <section v-if="data.country === 'NG'" class="card bvn"><b class="h">BVN</b><span class="mut sm">{{ data.bvn_name ? 'Verified: ' + data.bvn_name : data.bvn_last4 ? 'On file, ending ' + data.bvn_last4 + '. Check it with Prembly.' : 'Not given yet.' }}</span><span class="row"><input v-model="bvn" inputmode="numeric" maxlength="11" placeholder="BVN (11 digits)" aria-label="BVN"><button class="btn sm" :disabled="bvn.length !== 11 || !!busy" @click="checkBvn">Verify with Prembly</button></span></section>
       <section v-if="cur" class="card rv">
-        <div class="vw"><div class="h2"><b>{{ cur.doc_label }}</b><span class="sm"><a :href="docUrl(cur)" target="_blank">Open full size</a></span></div>
+        <div class="vw"><div class="h2"><b>{{ cur.doc_label }}</b><span class="sm"><a :href="docUrl(cur)" target="_blank">Open full size</a> · <button class="lnk red" :disabled="!!busy" @click="remove(cur)">Remove this document</button></span></div>
           <img v-if="cur.image" :src="docUrl(cur)" :alt="cur.doc_label" class="doc"><iframe v-else :src="docUrl(cur)" :title="cur.doc_label" class="doc" />
           <div v-if="data.items.length > 1" class="its"><button v-for="i in data.items" :key="i.id" :class="{ on: cur.id === i.id }" @click="sel = i.id">{{ i.doc_label }} · {{ i.status === 'to_review' ? 'to review' : i.status }}</button></div></div>
         <div class="ck"><b class="h">Check against what we hold</b><span class="mut sm">{{ cur.ai ? 'AI read the document; confirm each line.' : 'The AI could not read this one; check it yourself.' }}</span>
@@ -85,6 +91,7 @@ const docUrl = (i: Item) => '/api/wm/doc/' + i.document_id
   </div>
 </template>
 <style scoped>
+.lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .lnk.red { color: var(--c-danger); }
 .idc { display: flex; flex-direction: column; gap: 12px; } .card { margin: 0; } .h { display: block; font-size: 15px; margin-bottom: 6px; } .mut { color: var(--c-muted); } .sm { font-size: 12.5px; } .error { color: var(--c-danger); margin: 0; } .okm { color: var(--c-ok); margin: 0; }
 .tag { align-self: flex-start; font-size: 12px; padding: 2px 8px; background: var(--c-paper-2); } .tag.blue { background: #e6ecf2; color: var(--c-blue-deep); } .tag.warn { background: #fff6e6; color: #7a4a06; }
 .sum { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: center; } .sl { display: flex; flex-direction: column; gap: 8px; } .big { font-size: 26px; font-weight: 600; } .pb { display: block; height: 8px; background: #e6ecf2; } .pb i { display: block; height: 100%; background: var(--c-blue-deep); }

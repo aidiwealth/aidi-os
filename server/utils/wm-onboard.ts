@@ -128,7 +128,7 @@ const STEPS: Step[] = [
     widget: (c) => ({ kind: 'scale', options: RISK_LEVELS.map((l) => ({ value: l.code, label: l.label, note: l.text })), suggested: levelFromAnswers(c.answers.risk_answers ?? {}) }),
     apply: (v, c) => { const l = RISK_LEVELS.find((x) => x.code === v.level); if (!l) bad('Choose a risk level.'); c.answers.risk_level = l!.code; c.answers.risk_suggested = levelFromAnswers(c.answers.risk_answers ?? {}); return { me: 'Use ' + l!.label, ack: '**' + l!.label + '** it is.' } } },
   // US: the investing account.
-  { id: 'identity', phase: 5, ai: true,
+  { id: 'identity', phase: 5, ai: false,
     ask: () => 'Last part: your investing account, so you can buy stocks, ETFs and crypto from your dashboard. It\'s held in your name with our US brokerage partner, a registered broker-dealer, and your money stays in your name.\n\nFirst, your legal name, date of birth and mobile number?',
     widget: (c) => { const [g, ...f] = (c.contact ?? '').split(/\s+/); return { kind: 'form', fields: [{ key: 'given_name', label: 'First name', type: 'text', value: c.answers.identity?.given_name ?? g ?? '' }, { key: 'family_name', label: 'Last name', type: 'text', value: c.answers.identity?.family_name ?? f.join(' ') }, { key: 'date_of_birth', label: 'Date of birth', type: 'date', value: c.answers.identity?.date_of_birth ?? '' }, { key: 'phone', label: 'Mobile number', type: 'text', placeholder: '+1 408 555 0100', value: c.answers.identity?.phone ?? c.phone ?? '' }], submit: 'Continue' } },
     apply: (v, c) => { const g = str(v.given_name, 60), f = str(v.family_name, 60), d = str(v.date_of_birth, 10), p = str(v.phone, 30)
@@ -142,7 +142,7 @@ const STEPS: Step[] = [
     apply: async (v, c) => { const d = String(v.ssn ?? '').replace(/\D/g, ''); if (d.length !== 9) bad('A Social Security number has 9 digits.')
       await db().query('UPDATE wm.onboarding SET ssn_enc = $2 WHERE id = $1', [c.onbId, encryptText(d)]); c.answers.ssn_last4 = d.slice(-4)
       return { me: '•••-••-' + d.slice(-4), ack: 'Got it, ending ' + d.slice(-4) + '.' } } },
-  { id: 'address', phase: 5, ai: true,
+  { id: 'address', phase: 5, ai: false,
     ask: () => 'Your home address?',
     widget: (c) => ({ kind: 'form', fields: [{ key: 'street', label: 'Street address', type: 'text', value: c.answers.address?.street ?? '' }, { key: 'city', label: 'City', type: 'text', value: c.answers.address?.city ?? '' }, { key: 'state', label: 'State', type: 'text', placeholder: 'CA', value: c.answers.address?.state ?? '' }, { key: 'postal_code', label: 'ZIP code', type: 'text', value: c.answers.address?.postal_code ?? '' }], submit: 'Continue' }),
     apply: (v, c) => { const a = { street: str(v.street, 120), city: str(v.city, 60), state: str(v.state, 2).toUpperCase(), postal_code: str(v.postal_code, 10) }
@@ -221,7 +221,7 @@ export async function onboardRestart(clientId: string, opts: { files: boolean; s
   await db().query("DELETE FROM wm.accounts WHERE client_id = $1 AND notes = 'From onboarding'", [clientId])
   await db().query("UPDATE wm.profiles SET data = data - 'equity' - 'doc_flags', updated_at = now() WHERE client_id = $1", [clientId])
   let removed = 0
-  if (opts.files) removed = (await db().query('DELETE FROM wm.profile_docs WHERE client_id = $1 AND created_at >= (SELECT created_at FROM wm.onboarding WHERE id = $2)', [clientId, o.id])).rowCount ?? 0
+  if (opts.files) { const ids = (await db().query<{ id: string }>('SELECT id FROM wm.profile_docs WHERE client_id = $1 AND created_at >= (SELECT created_at FROM wm.onboarding WHERE id = $2)', [clientId, o.id])).rows; for (const x of ids) await profileDocRemove(clientId, x.id); removed = ids.length }
   await save(o, ctx)
   return { removed }
 }
@@ -237,14 +237,15 @@ export async function onboardAnswer(clientId: string, input: { step: string; val
   if (input.back) { if (i === 0) return; const p = steps[i - 1]!; o.step = p.id; o.messages.push(say('me', 'Go back')); o.messages.push(say('ai', 'Sure. ' + p.ask(ctx).replace(/^Hi [^\n]*\n\n/, ''))); await save(o, ctx); return }
   let out: { me: string; ack: string } | null = null
   if (input.text != null) {
-    const text = input.text.trim().slice(0, 2000)
+    // Identity numbers typed into the chat are removed before anything is saved or read by the AI.
+    const raw = input.text.trim().slice(0, 2000), text = s.ai ? redactIds(raw) : raw
     if (!text) throw apiError('invalid', 'Type an answer.')
     if (!s.ai) {
       // Never sent to the AI: the Social Security number, the BVN and the agreements.
       const d = text.replace(/\D/g, '')
       if (s.id === 'ssn' && d.length === 9) out = await s.apply({ ssn: d }, ctx)
       else if (s.id === 'bvn' && d.length === 11) out = await s.apply({ bvn: d }, ctx)
-      else { o.messages.push(say('me', s.id === 'ssn' || s.id === 'bvn' ? text.replace(/\d/g, '•') : text)); o.messages.push(say('ai', s.id === 'agree' ? 'Tick the boxes below when you\'re ready; I can\'t accept agreements for you.' : s.id === 'ssn' ? 'The law requires it to open a US brokerage account; it\'s how the identity check works. Type the 9 digits in the box below; only the last four show here.' : 'Your BVN is how banks in Nigeria confirm who you are. Type the 11 digits in the box below; only the last four show here.')); await save(o, ctx); return }
+      else { o.messages.push(say('me', s.id === 'ssn' || s.id === 'bvn' || s.id === 'identity' || s.id === 'address' ? text.replace(/\d/g, '•') : redactIds(text))); o.messages.push(say('ai', s.id === 'identity' || s.id === 'address' ? 'Please use the boxes below for this one: identity details go straight to your secure record and are never read by the AI.' : s.id === 'agree' ? 'Tick the boxes below when you\'re ready; I can\'t accept agreements for you.' : s.id === 'ssn' ? 'The law requires it to open a US brokerage account; it\'s how the identity check works. Type the 9 digits in the box below; only the last four show here.' : 'Your BVN is how banks in Nigeria confirm who you are. Type the 11 digits in the box below; only the last four show here.')); await save(o, ctx); return }
     } else {
       const ai = await readAnswer(s, ctx, text).catch((e) => { console.error('[onboard] ai', e); return null })
       if (!ai) { o.messages.push(say('me', text)); o.messages.push(say('ai', 'Sorry, I didn\'t quite catch that. Could you use the boxes below, or say it another way?')); await save(o, ctx); return }
@@ -381,7 +382,7 @@ async function sendDataRecord(o: Onb, ctx: Ctx) {
   const rec = dataRecordMd(n, { name: who, finishedAt: at, files, identity: a.ssn_last4 ? 'ssn' : a.bvn_last4 ? 'bvn' : null, topics })
   const nTitle = dataNoticeTitle(ctx.country), notice = dataNoticeMd(n), title = 'Your data record and data protection notice'
   const bytes = await legalPdf(n.entity, dataDocs(n, { name: who, finishedAt: at, md: rec }), { logo: 'aidi' })
-  const doc = await storePdf(bytes, title + ' - ' + x.c.name + '.pdf', null)
+  const doc = await storePdf(bytes, title + ' - ' + x.c.name + '.pdf', null, { wm: true })
   await db().query("INSERT INTO wm.client_docs (client_id, kind, title, body_md, doc_id, requires_signature, status) VALUES ($1,'data_notice',$2,$3,$4,false,'info')", [ctx.clientId, title, rec + '\n\n# ' + nTitle + '\n\n' + notice, doc])
   if (!x.c.email) return
   const hi = 'Hi ' + (ctx.first || 'there') + ','
