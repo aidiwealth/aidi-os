@@ -5,7 +5,7 @@
 definePageMeta({ layout: false })
 useHead({ title: 'Set up your account · Aidi Wealth' })
 interface Field { key: string; label: string; type: string; options?: [string, string][]; placeholder?: string; value?: string | number }
-interface Widget { kind: string; fields?: Field[]; columns?: Field[]; quick?: { label: string; row: Record<string, unknown> }[]; rows?: Record<string, unknown>[]; options?: { value: string; label: string; note?: string }[]; suggested?: string; items?: { key: string; label: string; required: boolean }[]; submit?: string; skip?: string; upload?: string }
+interface Widget { kind: string; fields?: Field[]; columns?: Field[]; quick?: { label: string; row: Record<string, unknown> }[]; rows?: Record<string, unknown>[]; options?: { value: string; label: string; note?: string }[]; suggested?: string; items?: { key: string; label: string; required: boolean; href?: string }[]; submit?: string; skip?: string; upload?: string }
 interface View { status: string; source: string; country: string; first: string; phases: string[]; phase: number; step: string | null; can_back: boolean; widget: Widget | null; messages: { role: 'ai' | 'me'; text: string }[]; plan: Record<string, any>; account_status: string | null }
 const { data, error } = await useFetch<View>('/api/w/onboard', { key: 'onboard' })
 if (data.value?.status === 'none') await navigateTo('/w', { replace: true })
@@ -61,7 +61,7 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
       <aside class="card rail">
         <div class="rh"><b>Setting up your account</b><span class="mut">About 8 minutes · pick up where you left off any time</span><span class="pb"><i :style="{ width: (data.phase / (data.phases.length - 1)) * 100 + '%' }" /></span></div>
         <ol><li v-for="(ph, i) in data.phases" :key="ph" :class="{ done: i < data.phase, now: i === data.phase }"><span class="nb">{{ i < data.phase ? '✓' : i + 1 }}</span>{{ ph }}</li></ol>
-        <p class="fine">Your answers are private to you and your adviser. You can change any of them later.</p>
+        <p class="fine">Your answers are private to you and your adviser. You can change any of them later. <a href="/w/data-notice" target="_blank" rel="noopener">How we protect your data</a></p>
         <div class="over"><button v-if="!over" class="lk" :disabled="busy" @click="over = true">Start over</button>
           <template v-else><b>Start again from the first question?</b><span class="mut">Your answers and the figures read from your files are cleared.</span><label class="cb"><input v-model="dropFiles" type="checkbox"> Also remove the files I uploaded</label><div class="act"><button class="btn" :disabled="busy" @click="restart">Start over</button><button class="btn2" :disabled="busy" @click="over = false">Cancel</button></div></template></div>
       </aside>
@@ -80,7 +80,7 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
               </div>
               <div class="act"><button class="btn" :disabled="!rows.length" @click="submitRows">{{ data.widget.submit ?? 'Done' }}</button><button v-if="data.widget.skip" class="btn2" @click="send({ value: { skip: true } })">{{ data.widget.skip }}</button><template v-if="data.widget.upload"><button class="btn2" @click="file?.click()">Upload a statement</button><input ref="file" type="file" hidden multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx" @change="upload"></template></div></div></template>
             <template v-else-if="data.widget.kind === 'scale'"><div class="inl"><div class="scale"><button v-for="o in data.widget.options" :key="o.value" :class="{ on: pick === o.value }" @click="pick = o.value"><b>{{ o.label }}</b><em v-if="o.value === data.widget.suggested">Suggested</em></button></div><span class="mut sm">{{ data.widget.options?.find((o) => o.value === pick)?.note }}</span><div class="act"><button class="btn" :disabled="!pick" @click="send({ value: { level: pick } })">Use {{ data.widget.options?.find((o) => o.value === pick)?.label ?? '' }}</button></div></div></template>
-            <template v-else-if="data.widget.kind === 'agree'"><div class="inl"><label v-for="it in data.widget.items" :key="it.key" class="cb"><input v-model="agree[it.key]" type="checkbox"> {{ it.label }}</label><div class="act"><button class="btn" :disabled="!canAgree" @click="send({ value: { ...agree } })">{{ data.widget.submit }}</button></div></div></template>
+            <template v-else-if="data.widget.kind === 'agree'"><div class="inl"><label v-for="it in data.widget.items" :key="it.key" class="cb"><input v-model="agree[it.key]" type="checkbox"> <span>{{ it.label }}<template v-if="it.href"> · <a :href="it.href" target="_blank" rel="noopener" @click.stop>Read it</a></template></span></label><div class="act"><button class="btn" :disabled="!canAgree" @click="send({ value: { ...agree } })">{{ data.widget.submit }}</button></div></div></template>
             <button v-if="data.can_back" class="lk back" @click="send({ back: true })">← Change my last answer</button>
           </div>
         </div>
@@ -127,7 +127,7 @@ const acctLine = computed(() => ({ opened: 'Investing account open', waiting: 'I
 .rail { position: sticky; top: 16px; } .rh { padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 3px; } .rh .mut { font-size: 12.5px; } .pb { display: block; height: 6px; background: #e6ecf2; margin-top: 10px; } .pb i { display: block; height: 100%; background: var(--c-blue-deep); }
 .rail ol { list-style: none; margin: 0; padding: 4px 8px 10px; } .rail li { display: flex; gap: 10px; align-items: center; padding: 8px; color: var(--c-ink-soft); } .rail li.now { background: var(--c-paper-2); color: var(--c-ink); font-weight: 500; }
 .nb { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--c-rule-strong); font-size: 12px; color: var(--c-blue-deep); } li.done .nb, li.ok .nb { border-color: var(--c-blue-deep); } li.now .nb { background: var(--c-navy); border-color: var(--c-navy); color: #fff; }
-.fine { margin: 0; padding: 12px 16px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
+.fine { margin: 0; padding: 12px 16px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); } .fine a { color: var(--c-blue-deep); }
 .chat { display: flex; flex-direction: column; height: calc(var(--vh100, 100vh) - 100px); min-height: 520px; }
 .msgs { flex: 1; overflow-y: auto; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .ai { display: flex; gap: 10px; align-items: flex-start; max-width: 640px; } .av { width: 28px; height: 28px; flex: none; background: var(--c-navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }

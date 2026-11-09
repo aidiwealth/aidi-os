@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { RISK_LEVELS, RISK_QUESTIONS, levelFromAnswers, levelLabel } from '~/shared/risk'
 import { RISK_LIMITS } from '~/shared/trading'
 import type { DocReadOut } from './wm-docread'
+import { DATA_NOTICE_VERSION, dataDocs, dataNoticeMd, dataNoticeTitle, dataRecordMd, noticeEntity } from '~/shared/wm-data-notice'
 
 export interface Widget {
   kind: 'form' | 'rows' | 'choice' | 'scale' | 'agree' | 'none'
@@ -17,7 +18,7 @@ export interface Widget {
   rows?: Record<string, unknown>[]
   options?: { value: string; label: string; note?: string }[]
   suggested?: string
-  items?: { key: string; label: string; required: boolean }[]
+  items?: { key: string; label: string; required: boolean; href?: string }[]
   submit?: string
   skip?: string
   upload?: string
@@ -130,11 +131,11 @@ const STEPS: Step[] = [
     apply: (v, c) => { const d = DISCLOSE.find(([k]) => k === v.choice); if (!d) bad('Choose one.'); c.answers.disclosures = d![0]; return { me: d![1], ack: d![0] === 'none' ? 'Thanks.' : 'Thanks for telling me. The brokerage needs a few more details for that, so your adviser will be in touch to finish the account.' } } },
   { id: 'agree', phase: 5, ai: false,
     ask: () => 'Here\'s your account: an individual brokerage account for US stocks, ETFs and crypto, in your name. Please read and accept the agreements.',
-    widget: (c) => ({ kind: 'agree', items: [{ key: 'customer', label: 'I have read and accept the brokerage customer agreement', required: true }, { key: 'crypto', label: 'Also enable crypto (I accept the crypto agreement)', required: false }, { key: 'terms', label: 'I agree to Aidi Wealth\'s terms and privacy notice', required: true }], submit: c.source === 'invite' ? 'Open my account' : 'Submit' }),
-    apply: (v, c) => { if (!v.customer || !v.terms) bad('Please accept the customer agreement and the terms to continue.'); c.answers.agreed_at = new Date().toISOString(); c.answers.crypto = !!v.crypto; return { me: 'I accept' + (v.crypto ? ', with crypto' : ''), ack: '' } } },
+    widget: (c) => ({ kind: 'agree', items: [{ key: 'customer', label: 'I have read and accept the brokerage customer agreement', required: true }, { key: 'crypto', label: 'Also enable crypto (I accept the crypto agreement)', required: false }, { key: 'terms', label: 'I agree to Aidi Wealth\'s terms', required: true }, { key: 'data', label: 'I have read the data protection notice: what we keep, what the AI reads and what we never collect', required: true, href: '/w/data-notice' }], submit: c.source === 'invite' ? 'Open my account' : 'Submit' }),
+    apply: (v, c) => { if (!v.customer || !v.terms || !v.data) bad('Please accept the customer agreement, the terms and the data protection notice to continue.'); c.answers.agreed_at = new Date().toISOString(); c.answers.notice_version = DATA_NOTICE_VERSION; c.answers.crypto = !!v.crypto; return { me: 'I accept' + (v.crypto ? ', with crypto' : ''), ack: '' } } },
   // Nigeria: the BVN for the wallet and savings.
   { id: 'bvn', phase: 5, ai: false,
-    ask: () => 'Last part: your wallet and savings. To verify you, I need your BVN (Bank Verification Number). It\'s kept encrypted and used only for the identity check.',
+    ask: () => 'Last part: your wallet and savings. To verify you, I need your BVN (Bank Verification Number). It\'s kept encrypted, never shown to the AI and used only for the identity check. How we protect it is in the data protection notice, linked under the steps.',
     widget: () => ({ kind: 'form', fields: [{ key: 'bvn', label: 'BVN', type: 'secret', placeholder: '11 digits' }], submit: 'Continue' }),
     apply: async (v, c) => { const d = String(v.bvn ?? '').replace(/\D/g, ''); if (d.length !== 11) bad('A BVN has 11 digits.')
       await db().query('UPDATE wm.clients SET bvn_enc = $2, bvn_last4 = $3, updated_at = now() WHERE id = $1', [c.clientId, encryptText(d), d.slice(-4)]); c.answers.bvn_last4 = d.slice(-4)
@@ -293,6 +294,8 @@ export async function onboardUpload(clientId: string, parts: { name?: string; fi
   let reply = 'Thanks, I\'ve added ' + (n === 1 ? 'it' : 'them') + ' to your plan; your adviser and the review will use ' + (n === 1 ? 'it' : 'them') + '. A rough figure below is still helpful for now, or skip it.'
   try {
     const r = await readClientDocs(clientId, ids)
+    const names = (await db().query<{ name: string | null }>('SELECT name FROM wm.profile_docs WHERE id = ANY($1::uuid[])', [ids])).rows.map((x) => x.name || 'document')
+    l.ctx.answers.doc_log = [...(l.ctx.answers.doc_log ?? []), ...names.map((n) => ({ name: n, read: r.read.includes(n) }))].slice(-40)
     if (r.read.length) reply = docReply(r.out, r.read.length, r.skipped.length, l.ctx)
     else if (r.skipped.length) reply = 'Thanks, I\'ve kept ' + (n === 1 ? 'it' : 'them') + ' with your plan for your adviser. I can only read figures from PDF, Excel or CSV files with text in them (not photos or scans), so add rough figures below, or upload the PDF statement.'
   } catch (e) { console.error('[onboard] read docs', e) }
@@ -332,6 +335,32 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
     slack('aidi.wealth_client', (c?.name ?? 'A client') + ' finished onboarding and is waiting for approval', [['Country', ctx.country]], { label: 'Review', path: '/wealth-mgmt?t=onboarding' })
   }
   await db().query('UPDATE wm.onboarding SET messages = $2, updated_at = now() WHERE id = $1', [o.id, JSON.stringify(o.messages.slice(-300))])
+  await sendDataRecord(o, ctx).catch((e) => console.error('[onboard] data record', e))
+}
+
+// After onboarding: the data record (what they told us, what they uploaded and whether the AI read it, what was kept
+// out of the AI and what is never collected) with the data protection notice for their country, as a PDF saved to
+// their documents and emailed to them.
+async function sendDataRecord(o: Onb, ctx: Ctx) {
+  const x = await docContext(ctx.clientId), a = ctx.answers
+  const n = { country: ctx.country, entity: noticeEntity(x.entity, ctx.country), address: x.c.entity_address }
+  const topics = [a.household && 'Your household', a.incomes?.length && 'Your income', a.expenses?.length && 'Your spending', a.assets?.length && 'What you own', a.debts?.length && 'Your debts', a.goals?.length && 'Your goals',
+    a.risk_level && 'Your answers to the risk questions and your risk level', a.equity?.length && 'Employer stock and stock plan details from your documents',
+    a.identity && 'Identity details for your investing account: name, date of birth and phone', a.address && 'Your home address', a.funding && 'How you plan to fund the account', a.disclosures && 'Your answers to the regulatory questions'].filter(Boolean) as string[]
+  const log: { name: string; read: boolean }[] = a.doc_log ?? []
+  const files = (await db().query<{ name: string | null; created_at: string }>('SELECT name, created_at FROM wm.profile_docs WHERE client_id = $1 AND created_at >= (SELECT created_at FROM wm.onboarding WHERE id = $2) ORDER BY created_at', [ctx.clientId, o.id])).rows
+    .map((f) => ({ name: f.name || 'document', at: f.created_at, read: log.some((l) => l.name === (f.name || 'document') && l.read) }))
+  const who = x.c.contact_name || x.c.name, at = new Date().toISOString()
+  const rec = dataRecordMd(n, { name: who, finishedAt: at, files, identity: a.ssn_last4 ? 'ssn' : a.bvn_last4 ? 'bvn' : null, topics })
+  const nTitle = dataNoticeTitle(ctx.country), notice = dataNoticeMd(n), title = 'Your data record and data protection notice'
+  const bytes = await legalPdf(n.entity, dataDocs(n, { name: who, finishedAt: at, md: rec }), { logo: 'aidi' })
+  const doc = await storePdf(bytes, title + ' - ' + x.c.name + '.pdf', null)
+  await db().query("INSERT INTO wm.client_docs (client_id, kind, title, body_md, doc_id, requires_signature, status) VALUES ($1,'data_notice',$2,$3,$4,false,'info')", [ctx.clientId, title, rec + '\n\n# ' + nTitle + '\n\n' + notice, doc])
+  if (!x.c.email) return
+  const hi = 'Hi ' + (ctx.first || 'there') + ','
+  const body = 'Attached is the record of what you shared while setting up your Aidi Wealth account: what you told us, the documents you uploaded and whether our AI read them, what we kept out of the AI and what we never collect. It also has our data protection notice. A copy is saved in Documents in your portal.'
+  await sendEmail({ to: x.c.email, subject: 'Your Aidi Wealth data record', brand: 'aidi', text: hi + '\n\n' + body + '\n\n' + brands().aidi.url + '/w',
+    html: '<p>' + hi + '</p><p>' + body + '</p><p><a href="' + brands().aidi.url + '/w" style="color:#1c4f9c">Open your portal</a></p>', attachments: [{ filename: 'Aidi Wealth data record.pdf', content: bytes }] })
 }
 function kickPlan(id: string) { void planGenerate(id, null).catch((e) => console.error('[onboard] plan review', e)) }
 
