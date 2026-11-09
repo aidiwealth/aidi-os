@@ -254,7 +254,13 @@ function docReply(r: DocReadOut, nRead: number, nSkipped: number, c: Ctx): strin
   const add = (k: string, rows: Record<string, unknown>[]) => { const have = s[k] ?? []; for (const x of rows) if (!have.some((h) => JSON.stringify(h) === JSON.stringify(x))) have.push(x); s[k] = have.slice(0, 20) }
   const kindOf = (k: string) => (k === 'company_stock' ? 'brokerage' : ['brokerage', 'retirement', 'bank', 'savings', 'crypto'].includes(k) ? k : 'other')
   add('assets', r.accounts.filter((a) => a.value > 0).map((a) => ({ name: a.kind === 'company_stock' ? a.institution + ' (employer stock)' : a.institution, kind: kindOf(a.kind), value: Math.round(a.value), currency: a.currency })))
-  add('incomes', r.incomes.filter((x) => x.amount > 0).map((x) => ({ source: x.source, amount: Math.round(x.amount), frequency: x.frequency, currency: x.currency })))
+  // Stock pay (RSU vests, ESPP) is not money coming in each month: it stays with the stock and is noted for the adviser,
+  // so the income answer is cash pay only. A newer read replaces an older suggestion with the same name.
+  const isStock = (x: { source: string }) => /rsu|restricted stock|espp|vest/i.test(x.source)
+  const cash = r.incomes.filter((x) => x.amount > 0 && !isStock(x)), stock = r.incomes.filter((x) => x.amount > 0 && isStock(x))
+  s.incomes = (s.incomes ?? []).filter((h) => !isStock({ source: String(h.source ?? '') }) && !cash.some((x) => x.source.toLowerCase() === String(h.source ?? '').toLowerCase()))
+  add('incomes', cash.map((x) => ({ source: x.source, amount: Math.round(x.amount), frequency: x.frequency, currency: x.currency })))
+  for (const x of stock) r.flags.push({ title: 'Stock pay: about ' + money(x.amount, x.currency) + ' a year', detail: x.source + '. Kept with the stock holdings, not counted as monthly income, because vests are uneven and paid in shares.' })
   add('expenses', r.expenses.filter((x) => x.amount > 0).map((x) => ({ category: x.category, amount: Math.round(x.amount), frequency: x.frequency, currency: x.currency })))
   add('debts', r.debts.filter((x) => x.balance > 0).map((x) => ({ name: x.name, balance: Math.round(x.balance), payment: x.payment ? Math.round(x.payment) : '', currency: x.currency })))
   if (r.equity.length) c.answers.equity = [...(c.answers.equity ?? []).filter((e: { company: string }) => !r.equity.some((n) => n.company.toLowerCase() === e.company.toLowerCase())), ...r.equity].slice(0, 10)
@@ -268,7 +274,8 @@ function docReply(r: DocReadOut, nRead: number, nSkipped: number, c: Ctx): strin
     if (e.espp.length) lines.push('ESPP: ' + e.espp.map((x) => x.shares + ' shares on ' + x.date + (x.purchase_price ? ' at ' + usd(x.purchase_price) : '')).join('; '))
   }
   for (const a of r.accounts.filter((a) => a.kind !== 'company_stock').slice(0, 5)) lines.push(a.institution + ': ' + usd(a.value, a.currency))
-  for (const x of r.incomes.slice(0, 3)) lines.push(x.source + ': ' + usd(x.amount, x.currency) + (x.frequency === 'annual' ? ' a year' : ' a month'))
+  for (const x of cash.slice(0, 3)) lines.push(x.source + ': ' + usd(x.amount, x.currency) + (x.frequency === 'annual' ? ' a year' : ' a month'))
+  for (const x of stock.slice(0, 2)) lines.push(x.source + ': about ' + usd(x.amount, x.currency) + ' a year in shares (kept with your stock, not counted as monthly income)')
   for (const x of r.debts.slice(0, 3)) lines.push(x.name + ': ' + usd(x.balance, x.currency) + ' owed')
   const head = 'I read ' + (nRead === 1 ? 'your document' : nRead + ' documents') + (nSkipped ? ' (' + nSkipped + ' I couldn\'t read: photos or scans; your adviser will look at ' + (nSkipped === 1 ? 'it' : 'them') + ')' : '') + '.'
   if (!lines.length) return head + ' I didn\'t find figures I could use in ' + (nRead === 1 ? 'it' : 'them') + ', so add rough figures below, or skip.'
