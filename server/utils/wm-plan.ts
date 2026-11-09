@@ -3,7 +3,7 @@
 // a health check, practical actions and a growth projection. Not investment advice: no products or securities.
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-export const DOC_KINDS = ['bank_statement', 'tax_return', 'payslip', 'credit_report', 'passport', 'proof_of_address', 'other']
+export const DOC_KINDS = ['bank_statement', 'tax_return', 'payslip', 'credit_report', 'stock_plan', 'investment_statement', 'agreement', 'passport', 'proof_of_address', 'other']
 export async function planGet(clientId: string) {
   const profile = (await db().query<{ data: Record<string, unknown>; updated_at: string }>('SELECT data, updated_at FROM wm.profiles WHERE client_id = $1', [clientId])).rows[0] ?? { data: {}, updated_at: null }
   const docs = (await db().query("SELECT p.id, p.kind, p.name, p.created_at, d.size_bytes, d.mime_type FROM wm.profile_docs p JOIN core.documents d ON d.id = p.document_id WHERE p.client_id = $1 ORDER BY p.created_at DESC", [clientId])).rows
@@ -22,25 +22,30 @@ export const ProfileSchema = z.object({
   debts: z.array(z.object({ name: z.string().max(120), balance: Money, rate: z.number().min(0).max(100).optional(), payment: Money.optional(), currency: z.string().regex(/^[A-Z]{3}$/) })).max(20).optional(),
   credit_scores: z.array(z.object({ person: z.string().max(120), score: z.number().int().min(300).max(900), source: z.string().max(60), date: z.string().max(20).optional() })).max(10).optional(),
   goals: z.array(z.object({ name: z.string().max(160), target: Money.optional(), by: z.string().max(20).optional() })).max(20).optional(),
-  notes: z.string().max(4000).optional() })
+  notes: z.string().max(4000).optional(),
+  // Read from documents and confirmed: employer stock plans (RSU, ESPP, vesting) and the planning points they raised.
+  equity: z.array(z.record(z.string(), z.any())).max(10).optional(),
+  doc_flags: z.array(z.object({ title: z.string().max(140), detail: z.string().max(600) })).max(12).optional() })
 export async function planSave(clientId: string, data: unknown) {
   const d = ProfileSchema.parse(data)
   await db().query('INSERT INTO wm.profiles (client_id, data) VALUES ($1,$2) ON CONFLICT (client_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()', [clientId, JSON.stringify(d)])
 }
-export async function planUpload(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]) {
+export async function planUpload(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]) { return (await planUploadIds(clientId, parts)).length }
+// The same, returning the new documents (to read them straight away).
+export async function planUploadIds(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]): Promise<string[]> {
   const kind = parts.find((p) => p.name === 'kind' && !p.filename)?.data.toString('utf8') ?? 'other'
-  let n = 0
+  const ids: string[] = []
   for (const f of parts.filter((p) => p.name === 'file' && p.filename && p.data.length).slice(0, 10)) {
-    const mime = f.type || 'application/octet-stream'
+    const mime = /\.xlsx$/i.test(f.filename ?? '') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : /\.csv$/i.test(f.filename ?? '') ? 'text/csv' : f.type || 'application/octet-stream'
     if (!/^(application\/pdf|image\/(png|jpeg|webp)|text\/csv|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/.test(mime)) continue
     if (f.data.length > 20 * 1024 * 1024) continue
     const id = randomUUID(), ext = mime === 'application/pdf' ? 'pdf' : mime === 'text/csv' ? 'csv' : mime.includes('sheet') ? 'xlsx' : mime.split('/')[1]
     await putObject({ key: 'documents/' + id + '.' + ext, body: new Uint8Array(f.data), contentType: mime })
     await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','restricted',$3,$4,$5,$6)", [id, 'Financial profile — ' + (f.filename ?? 'document').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150), 'documents/' + id + '.' + ext, mime, f.data.length, createHash('sha256').update(f.data).digest('hex')])
-    await db().query('INSERT INTO wm.profile_docs (client_id, document_id, kind, name) VALUES ($1,$2,$3,$4)', [clientId, id, DOC_KINDS.includes(kind) ? kind : 'other', (f.filename ?? '').slice(0, 200)])
-    n++
+    const r = await db().query<{ id: string }>('INSERT INTO wm.profile_docs (client_id, document_id, kind, name) VALUES ($1,$2,$3,$4) RETURNING id', [clientId, id, DOC_KINDS.includes(kind) ? kind : 'other', (f.filename ?? '').slice(0, 200)])
+    ids.push(r.rows[0]!.id)
   }
-  return n
+  return ids
 }
 const Out = z.object({ summary: z.string(), health_score: z.number().min(0).max(100), currency: z.string(),
   income_statement: z.object({ lines: z.array(z.object({ label: z.string(), annual: z.number() })), total_income: z.number(), total_spending: z.number(), net: z.number() }),
@@ -54,9 +59,10 @@ export async function planGenerate(clientId: string, userId: string | null) {
   if (!c) throw apiError('not_found', 'Not found', 404)
   const p = await planGet(clientId)
   const s = await clientSummary(clientId)
-  const docs = (await db().query<{ storage_key: string; mime_type: string; kind: string; name: string | null; size_bytes: string }>("SELECT d.storage_key, d.mime_type, p.kind, p.name, d.size_bytes::text FROM wm.profile_docs p JOIN core.documents d ON d.id = p.document_id WHERE p.client_id = $1 AND d.mime_type = 'application/pdf' ORDER BY p.created_at DESC LIMIT 3", [clientId])).rows
+  const docs = (await db().query<{ storage_key: string; mime_type: string; kind: string; name: string | null; size_bytes: string }>("SELECT d.storage_key, d.mime_type, p.kind, p.name, d.size_bytes::text FROM wm.profile_docs p JOIN core.documents d ON d.id = p.document_id WHERE p.client_id = $1 ORDER BY p.created_at DESC LIMIT 8", [clientId])).rows
   const blocks: unknown[] = []
-  for (const d of docs) if (Number(d.size_bytes) < 4.5 * 1024 * 1024) { try { blocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: Buffer.from(await getObject(d.storage_key)).toString('base64') }, title: d.kind + ': ' + (d.name ?? '') }) } catch { /* skip */ } }
+  // Documents go to the AI as text with identity numbers removed (never the files themselves; see wm-docread).
+  for (const d of docs) if (Number(d.size_bytes) < 20 * 1024 * 1024) { try { const t = await docText(Buffer.from(await getObject(d.storage_key)), d.mime_type, d.name ?? ''); if (t) blocks.push({ type: 'text', text: '=== DOCUMENT (' + d.kind + '): ' + (d.name ?? '') + ' ===\n' + t.slice(0, 30000) }) } catch { /* skip */ } }
   const fortress = await fortressView(clientId)
   const ctx = { fortress_guide: fortress ? { rows: fortress.rows.map((x) => ({ bucket: x.label, target_pct: x.target_pct, current_pct: x.current_pct, gap_usd: x.gap })), notes: fortress.notes } : null, household: c.name, kind: c.kind, country: c.country === 'NG' ? 'Nigeria' : 'United States', profile: p.profile, holdings_summary_usd: s.totals, by_asset_class_usd: s.by_class, accounts: s.accounts.map((a) => ({ institution: a.institution, kind: a.kind, currency: a.currency, balance: Number(a.balance) })), bank_cash_usd: s.totals.cash }
   blocks.push({ type: 'text', text: 'HOUSEHOLD DATA (JSON):\n' + JSON.stringify(ctx).slice(0, 60000) + '\n\nRead any attached statements, tax returns, payslips or credit reports for figures the household did not type in. Build the financial picture and return it with the tool.' })

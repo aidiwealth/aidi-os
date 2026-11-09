@@ -39,7 +39,26 @@ const doneN = computed(() => STEPS.value.filter((x) => x[2]).length)
 const nextStep = computed(() => STEPS.value.findIndex((x) => !x[2]))
 function goTo(id: string) { if (import.meta.client) document.getElementById('fp-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 function addTo(k: string, row: Record<string, unknown>, sec: string) { add(k, row); nextTick(() => goTo(sec)) }
-const KIND: Record<string, string> = { bank_statement: 'Bank statement', tax_return: 'Tax return', payslip: 'Payslip / salary', credit_report: 'Credit report (FICO, Credit Karma…)', passport: 'Passport', proof_of_address: 'Proof of address (last 3 months)', other: 'Other' }
+const KIND: Record<string, string> = { stock_plan: 'Stock plan / RSU / ESPP statement', investment_statement: 'Brokerage, 401(k), pension or IRA statement', agreement: 'Agreement', bank_statement: 'Bank statement', tax_return: 'Tax return', payslip: 'Payslip / salary', credit_report: 'Credit report (FICO, Credit Karma…)', passport: 'Passport', proof_of_address: 'Proof of address (last 3 months)', other: 'Other' }
+// Reading the documents with AI: what was found is listed with a tick on each line; ticked lines are added to the plan
+// (money in and out, debts, accounts, employer stock, planning points). Nothing is added unseen.
+interface Found { incomes: any[]; expenses: any[]; debts: any[]; accounts: any[]; equity: any[]; flags: { title: string; detail: string }[]; documents: { name: string; type: string; period?: string; institution?: string }[] }
+const rd = ref<{ found: Found; checks: { title: string; detail: string }[]; read: string[]; skipped: string[] } | null>(null)
+const pick = reactive<Record<string, boolean>>({})
+const money2 = (v: number | null | undefined, c = 'USD') => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c || 'USD', maximumFractionDigits: 0 }).format(Math.round(v)))
+async function readDocs() {
+  const r = await act('read_docs'); if (!r) return
+  rd.value = { found: r.found, checks: r.checks ?? [], read: r.read ?? [], skipped: r.skipped ?? [] }
+  for (const k of Object.keys(pick)) delete pick[k]
+  for (const g of ['incomes', 'expenses', 'debts', 'accounts', 'equity'] as const) (r.found[g] ?? []).forEach((_: unknown, i: number) => { pick[g + i] = true })
+  if (!r.read?.length) msg.value = r.skipped?.length ? 'These files could not be read (photos or scans). Upload the PDF or Excel statement instead.' : 'No documents to read yet.'
+}
+async function applyRead() {
+  if (!rd.value) return
+  const f = rd.value.found, take = (g: keyof Found) => (f[g] as any[]).filter((_, i) => pick[g + i])
+  const r = await act('apply_read', { take: { incomes: take('incomes'), expenses: take('expenses'), debts: take('debts'), accounts: take('accounts'), equity: take('equity'), flags: [...f.flags, ...rd.value.checks] } })
+  if (r) { rd.value = null; await refresh(); ok.value = 'Added ' + r.added + ' item' + (r.added === 1 ? '' : 's') + ' from the documents. Check them below, then update the financial review.' }
+}
 </script>
 <template>
   <div v-if="data" class="fp">
@@ -89,7 +108,26 @@ const KIND: Record<string, string> = { bank_statement: 'Bank statement', tax_ret
           <label class="full">Anything else<textarea v-model="p.notes" rows="2" maxlength="4000" /></label></section>
         <section id="fp-docs" class="card"><div class="h"><h4>Documents</h4><span class="mut">Kept private; the AI reads them for the review</span></div>
           <div class="dz2"><div class="dzc"><select v-model="kind" aria-label="Document type"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select><DropZone multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx" :disabled="busy === 'up' || preview" :label="busy === 'up' ? 'Uploading…' : 'Drop files or choose'" hint="PDF, images, CSV or Excel · up to 20 MB each" @change="upload" /></div>
-            <div><div v-for="d in data.docs" :key="d.id" class="rw"><span>{{ d.name }}<em>{{ KIND[d.kind] ?? d.kind }}</em></span><button class="lk red" @click="act('remove_doc', { doc_id: d.id })">Remove</button></div><p v-if="!data.docs.length" class="mut">No documents yet. Bank statements, tax returns, payslips and credit reports.</p></div></div></section>
+            <div><div v-for="d in data.docs" :key="d.id" class="rw"><span>{{ d.name }}<em>{{ KIND[d.kind] ?? d.kind }}</em></span><button class="lk red" @click="act('remove_doc', { doc_id: d.id })">Remove</button></div><p v-if="!data.docs.length" class="mut">No documents yet. Stock plan and RSU statements, brokerage, 401(k) and pension statements, bank statements, payslips, tax returns and credit reports.</p>
+              <button v-if="data.docs.length" class="btn secondary sm rdb" :disabled="!!busy || preview" @click="readDocs">{{ busy === 'read_docs' ? 'Reading… (up to a minute)' : 'Read figures with AI' }}</button></div></div>
+          <div v-if="rd && rd.read.length" class="rd">
+            <p class="mut">Read: {{ rd.read.join(', ') }}<template v-if="rd.skipped.length"> · not read (photos or scans): {{ rd.skipped.join(', ') }}</template>. Identity numbers were removed before reading. Untick anything that is wrong, then add the rest to the plan.</p>
+            <template v-for="(e, i) in rd.found.equity" :key="'e' + i"><label class="ck"><input v-model="pick['equity' + i]" type="checkbox"><b>{{ e.company }} stock</b><span>{{ e.shares_held ? e.shares_held.toLocaleString('en-US') + ' shares' : '' }}{{ e.value ? ' · ' + money2(e.value) : '' }}{{ e.as_of ? ' · ' + e.as_of : '' }}</span></label>
+              <ul class="sub"><li v-for="(v, j) in e.vested" :key="'v' + j">Release {{ v.date }}: {{ v.shares }} shares{{ v.gross ? ', ' + money2(v.gross) + ' before tax' : '' }}{{ v.withheld_shares ? ', ' + v.withheld_shares + ' withheld' : '' }}{{ v.tax_paid ? ' (' + money2(v.tax_paid) + ' tax' + (v.federal_rate_pct ? ', federal ' + v.federal_rate_pct + '%' : '') + ')' : '' }}</li>
+                <li v-for="(g, j) in e.grants" :key="'g' + j">{{ (g.kind || 'rsu').toUpperCase() }} grant {{ g.id }} {{ g.granted ? 'of ' + g.granted : '' }}{{ g.unvested_shares ? ' · ' + g.unvested_shares + ' still to vest' : '' }}{{ g.next_vest ? ' · next ' + g.next_vest : '' }}</li>
+                <li v-for="(x, j) in e.espp" :key="'p' + j">ESPP {{ x.date }}: {{ x.shares }} shares{{ x.purchase_price ? ' at ' + money2(x.purchase_price) : '' }}{{ x.market_price ? ' (market ' + money2(x.market_price) + ')' : '' }}</li></ul></template>
+            <label v-for="(a, i) in rd.found.accounts" :key="'a' + i" class="ck"><input v-model="pick['accounts' + i]" type="checkbox"><b>{{ a.institution }}</b><span>{{ a.kind === 'company_stock' ? 'Employer stock' : a.kind }} · {{ money2(a.value, a.currency) }}{{ a.as_of ? ' · ' + a.as_of : '' }}</span></label>
+            <label v-for="(x, i) in rd.found.incomes" :key="'i' + i" class="ck"><input v-model="pick['incomes' + i]" type="checkbox"><b>Income: {{ x.source }}</b><span>{{ money2(x.amount, x.currency) }} {{ x.frequency === 'annual' ? 'a year' : 'a month' }}</span></label>
+            <label v-for="(x, i) in rd.found.expenses" :key="'x' + i" class="ck"><input v-model="pick['expenses' + i]" type="checkbox"><b>Spending: {{ x.category }}</b><span>{{ money2(x.amount, x.currency) }} {{ x.frequency === 'annual' ? 'a year' : 'a month' }}</span></label>
+            <label v-for="(x, i) in rd.found.debts" :key="'d' + i" class="ck"><input v-model="pick['debts' + i]" type="checkbox"><b>Debt: {{ x.name }}</b><span>{{ money2(x.balance, x.currency) }} owed{{ x.payment ? ' · ' + money2(x.payment, x.currency) + ' a month' : '' }}</span></label>
+            <div v-if="rd.found.flags.length || rd.checks.length" class="fl"><b>Planning points</b><p v-for="(f, i) in [...rd.checks, ...rd.found.flags]" :key="'f' + i"><strong>{{ f.title }}.</strong> {{ f.detail }}</p></div>
+            <div class="act"><button class="btn" :disabled="!!busy" @click="applyRead">{{ busy === 'apply_read' ? 'Adding…' : 'Add ticked items to the plan' }}</button><button class="btn secondary" @click="rd = null">Cancel</button></div>
+          </div>
+          <div v-if="(p.equity ?? []).length || (p.doc_flags ?? []).length" class="rd kept">
+            <b>From documents</b>
+            <p v-for="(e, i) in p.equity ?? []" :key="'ke' + i"><strong>{{ e.company }}</strong>: {{ e.shares_held ? e.shares_held.toLocaleString('en-US') + ' shares' : '' }}{{ e.value ? ' worth ' + money2(e.value) : '' }}{{ e.as_of ? ' (' + e.as_of + ')' : '' }}{{ (e.vested ?? []).length ? ' · ' + e.vested.length + ' release' + (e.vested.length === 1 ? '' : 's') + ' read' : '' }}</p>
+            <p v-for="(f, i) in p.doc_flags ?? []" :key="'kf' + i"><strong>{{ f.title }}.</strong> {{ f.detail }}</p>
+          </div></section>
       </div>
     </div>
     <template v-else-if="data.report">
@@ -122,6 +160,8 @@ input, select, textarea { font: inherit; font-size: 13.5px; padding: 7px 9px; bo
 .x { background: none; border: 0; color: var(--c-muted); font-size: 18px; cursor: pointer; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .chips button { background: #fff; border: 1px solid var(--c-rule-strong); padding: 5px 10px; font: inherit; font-size: 12.5px; cursor: pointer; } .chips button:hover { border-color: var(--c-navy); }
 .full { margin-top: 12px; }
+.rdb { margin-top: 10px; } .rd { margin-top: 14px; border-top: 1px solid var(--c-rule); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; } .rd .ck { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; } .rd .ck span { color: var(--c-muted); } .rd .sub { margin: 0 0 4px 30px; padding: 0; list-style: none; color: var(--c-ink-soft); font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.rd .fl { background: var(--c-paper-2); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; } .rd .fl p, .rd.kept p { margin: 0; font-size: 13.5px; } .rd .act { display: flex; gap: 8px; margin-top: 4px; } .rd.kept { gap: 6px; }
 .dz2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; } .dzc { display: flex; flex-direction: column; gap: 8px; } .rw { display: flex; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid var(--c-rule); font-size: 13px; } .rw em { display: block; font-style: normal; font-size: 12px; color: var(--c-muted); }
 .lk { background: none; border: 0; color: var(--c-blue-deep); cursor: pointer; font: inherit; font-size: 12.5px; } .lk.red { color: var(--c-danger); }
 .shr { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; } .sa { display: flex; gap: 10px; align-items: center; }

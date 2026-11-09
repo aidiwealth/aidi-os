@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { RISK_LEVELS, RISK_QUESTIONS, levelFromAnswers, levelLabel } from '~/shared/risk'
 import { RISK_LIMITS } from '~/shared/trading'
+import type { DocReadOut } from './wm-docread'
 
 export interface Widget {
   kind: 'form' | 'rows' | 'choice' | 'scale' | 'agree' | 'none'
@@ -37,6 +38,8 @@ function rowsOf(v: any, keys: string[], need: string, c: Ctx): Record<string, an
   const rows = Array.isArray(v?.rows) ? v.rows : []
   return rows.slice(0, 20).map((r: any) => Object.fromEntries(keys.map((k) => [k, ['amount', 'value', 'balance', 'payment', 'target'].includes(k) ? (r[k] === '' || r[k] == null ? null : num(r[k])) : k === 'currency' ? (['USD', 'NGN'].includes(r[k]) ? r[k] : cur(c)) : k === 'frequency' ? (r[k] === 'annual' ? 'annual' : 'monthly') : str(r[k])]))).filter((r: any) => num(r[need]) > 0)
 }
+// Figures read from the client's uploaded documents, offered as the answer rows to check (never applied unseen).
+const sug = (c: Ctx, k: 'incomes' | 'expenses' | 'assets' | 'debts'): Record<string, unknown>[] => (c.answers.suggest?.[k] ?? []) as Record<string, unknown>[]
 const KINDS: [string, string][] = [['brokerage', 'Investment account'], ['retirement', 'Retirement plan'], ['bank', 'Bank account'], ['savings', 'Savings'], ['crypto', 'Crypto'], ['other', 'Gold, property or other']]
 const FUNDING: [string, string][] = [['employment_income', 'Salary'], ['business_income', 'Business income'], ['savings', 'Savings'], ['investments', 'Investments'], ['inheritance', 'Inheritance'], ['family', 'Family']]
 const DISCLOSE: [string, string][] = [['none', 'None of these'], ['finra', 'I work at a brokerage or an exchange'], ['control', 'I\'m a director or 10% owner of a public company'], ['pep', 'Someone holds a senior political role']]
@@ -51,7 +54,7 @@ const STEPS: Step[] = [
   { id: 'income', phase: 1, ai: true,
     ask: () => 'What comes in, roughly? Salary, business income, rent, dividends: whatever applies. Monthly or yearly is fine.',
     widget: (c) => ({ kind: 'rows', columns: [{ key: 'source', label: 'Source', type: 'text', placeholder: 'e.g. Salary' }, { key: 'amount', label: 'Amount', type: 'number' }, { key: 'frequency', label: 'How often', type: 'select', options: FREQ }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
-      quick: ['Salary', 'Business', 'Rent', 'Dividends'].map((s) => ({ label: s, row: { source: s, amount: '', frequency: s === 'Dividends' ? 'annual' : 'monthly', currency: cur(c) } })), rows: c.answers.incomes ?? [], submit: 'Done', skip: 'No regular income' }),
+      quick: ['Salary', 'Business', 'Rent', 'Dividends'].map((s) => ({ label: s, row: { source: s, amount: '', frequency: s === 'Dividends' ? 'annual' : 'monthly', currency: cur(c) } })), rows: c.answers.incomes ?? sug(c, 'incomes'), submit: 'Done', skip: 'No regular income', upload: 'payslip' }),
     apply: (v, c) => { if (v.skip) { c.answers.incomes = []; return { me: 'No regular income', ack: 'No regular income for now; that\'s fine.' } }
       const rows = rowsOf(v, ['source', 'amount', 'frequency', 'currency'], 'amount', c); if (!rows.length) bad('Add at least one amount, or choose "No regular income".')
       c.answers.incomes = rows.map((r) => ({ who: '', ...r })); const m = monthly(rows, cur(c))
@@ -59,15 +62,15 @@ const STEPS: Step[] = [
   { id: 'spending', phase: 1, ai: true,
     ask: () => 'And what goes out each month? A rough total is fine, or the big ones: housing, living costs, children, travel.',
     widget: (c) => ({ kind: 'rows', columns: [{ key: 'category', label: 'What for', type: 'text', placeholder: 'e.g. Housing' }, { key: 'amount', label: 'Amount', type: 'number' }, { key: 'frequency', label: 'How often', type: 'select', options: FREQ }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
-      quick: ['Housing', 'Living costs', 'Children and school', 'Travel'].map((s) => ({ label: s, row: { category: s, amount: '', frequency: s === 'Travel' ? 'annual' : 'monthly', currency: cur(c) } })), rows: c.answers.expenses ?? [], submit: 'Done', skip: 'Skip for now', upload: 'bank_statement' }),
+      quick: ['Housing', 'Living costs', 'Children and school', 'Travel'].map((s) => ({ label: s, row: { category: s, amount: '', frequency: s === 'Travel' ? 'annual' : 'monthly', currency: cur(c) } })), rows: c.answers.expenses ?? sug(c, 'expenses'), submit: 'Done', skip: 'Skip for now', upload: 'bank_statement' }),
     apply: (v, c) => { if (v.skip) { c.answers.expenses = []; return { me: 'Skip for now', ack: 'No problem, we can add spending later.' } }
       const rows = rowsOf(v, ['category', 'amount', 'frequency', 'currency'], 'amount', c); if (!rows.length) bad('Add at least one amount, or skip for now.')
       c.answers.expenses = rows; const out = monthly(rows, cur(c)), inc = monthly(c.answers.incomes, cur(c)), kept = inc - out
       return { me: rows.map((r) => (r.category || 'Spending') + ' ' + money(r.amount, r.currency) + (r.frequency === 'annual' ? ' a year' : ' a month')).join(', '), ack: 'That\'s about **' + money(out, cur(c)) + ' a month** going out' + (inc > 0 ? (kept > 0 ? ', so you keep about ' + money(kept, cur(c)) + ' (' + Math.round((kept / inc) * 100) + '% of what comes in).' : ', a little more than comes in. We\'ll look at that in your plan.') : '.') } } },
   { id: 'assets', phase: 2, ai: true,
-    ask: () => 'Now what you already own: investment accounts, retirement plans, cash in the bank, gold, property, crypto. Tell me roughly, or upload statements and I\'ll keep them with your plan.',
+    ask: (c) => (sug(c, 'assets').length ? 'Here is what I read from your documents; check the figures and change anything that is off. Add anything else you own: retirement plans, cash in the bank, gold, property, crypto.' : 'Now what you already own: investment accounts, stock from your employer (RSUs, ESPP), retirement plans and pensions, cash in the bank, gold, property, crypto. Tell me roughly, or upload statements (PDF or Excel) and I\'ll read the figures for you.'),
     widget: (c) => ({ kind: 'rows', columns: [{ key: 'name', label: 'Where or what', type: 'text', placeholder: 'e.g. Robinhood' }, { key: 'kind', label: 'Type', type: 'select', options: KINDS }, { key: 'value', label: 'Value', type: 'number' }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
-      quick: KINDS.map(([k, l]) => ({ label: l, row: { name: '', kind: k, value: '', currency: cur(c) } })), rows: c.answers.assets ?? [], submit: 'Done', skip: 'Nothing yet', upload: 'other' }),
+      quick: KINDS.map(([k, l]) => ({ label: l, row: { name: '', kind: k, value: '', currency: cur(c) } })), rows: c.answers.assets ?? sug(c, 'assets'), submit: 'Done', skip: 'Nothing yet', upload: 'other' }),
     apply: (v, c) => { if (v.skip) { c.answers.assets = []; return { me: 'Nothing yet', ack: 'Starting from scratch is a fine place to be.' } }
       const rows = rowsOf(v, ['name', 'kind', 'value', 'currency'], 'value', c).map((r): Record<string, any> => ({ ...r, kind: KINDS.some(([k]) => k === r.kind) ? r.kind : 'other', name: r.name || (KINDS.find(([k]) => k === r.kind)?.[1] ?? 'Other') })); if (!rows.length) bad('Add at least one value, or choose "Nothing yet".')
       c.answers.assets = rows; const tot = rows.filter((r) => r.currency === cur(c)).reduce((a, r) => a + r.value, 0)
@@ -75,7 +78,7 @@ const STEPS: Step[] = [
   { id: 'debts', phase: 3, ai: true,
     ask: () => 'Any debts: a mortgage, loans or cards?',
     widget: (c) => ({ kind: 'rows', columns: [{ key: 'name', label: 'Debt', type: 'text', placeholder: 'e.g. Mortgage' }, { key: 'balance', label: 'Still owed', type: 'number' }, { key: 'payment', label: 'Paid a month', type: 'number' }, { key: 'currency', label: 'Currency', type: 'select', options: CURS }],
-      quick: ['Mortgage', 'Car loan', 'Student loan', 'Credit card'].map((s) => ({ label: s, row: { name: s, balance: '', payment: '', currency: cur(c) } })), rows: c.answers.debts ?? [], submit: 'Done', skip: 'No debts' }),
+      quick: ['Mortgage', 'Car loan', 'Student loan', 'Credit card'].map((s) => ({ label: s, row: { name: s, balance: '', payment: '', currency: cur(c) } })), rows: c.answers.debts ?? sug(c, 'debts'), submit: 'Done', skip: 'No debts', upload: 'other' }),
     apply: (v, c) => { if (v.skip) { c.answers.debts = []; return { me: 'No debts', ack: 'No debts. Good.' } }
       const rows = rowsOf(v, ['name', 'balance', 'payment', 'currency'], 'balance', c); if (!rows.length) bad('Add what is still owed, or choose "No debts".')
       c.answers.debts = rows.map((r) => ({ ...r, name: r.name || 'Debt' })); const tot = rows.filter((r) => r.currency === cur(c)).reduce((a, r) => a + r.balance, 0)
@@ -223,14 +226,49 @@ async function readAnswer(s: Step, ctx: Ctx, text: string) {
   return output
 }
 
+// What was read from the documents, as answers to check: accounts (employer stock included), money in and out, debts;
+// employer stock plans and planning points are kept for the plan. Returns the message for the client.
+function docReply(r: DocReadOut, nRead: number, nSkipped: number, c: Ctx): string {
+  const s = (c.answers.suggest ??= {}) as Record<string, Record<string, unknown>[]>
+  const add = (k: string, rows: Record<string, unknown>[]) => { const have = s[k] ?? []; for (const x of rows) if (!have.some((h) => JSON.stringify(h) === JSON.stringify(x))) have.push(x); s[k] = have.slice(0, 20) }
+  const kindOf = (k: string) => (k === 'company_stock' ? 'brokerage' : ['brokerage', 'retirement', 'bank', 'savings', 'crypto'].includes(k) ? k : 'other')
+  add('assets', r.accounts.filter((a) => a.value > 0).map((a) => ({ name: a.kind === 'company_stock' ? a.institution + ' (employer stock)' : a.institution, kind: kindOf(a.kind), value: Math.round(a.value), currency: a.currency })))
+  add('incomes', r.incomes.filter((x) => x.amount > 0).map((x) => ({ source: x.source, amount: Math.round(x.amount), frequency: x.frequency, currency: x.currency })))
+  add('expenses', r.expenses.filter((x) => x.amount > 0).map((x) => ({ category: x.category, amount: Math.round(x.amount), frequency: x.frequency, currency: x.currency })))
+  add('debts', r.debts.filter((x) => x.balance > 0).map((x) => ({ name: x.name, balance: Math.round(x.balance), payment: x.payment ? Math.round(x.payment) : '', currency: x.currency })))
+  if (r.equity.length) c.answers.equity = [...(c.answers.equity ?? []).filter((e: { company: string }) => !r.equity.some((n) => n.company.toLowerCase() === e.company.toLowerCase())), ...r.equity].slice(0, 10)
+  const flags = [...r.flags, ...docChecks(r)]; if (flags.length) c.answers.doc_flags = [...(c.answers.doc_flags ?? []), ...flags].filter((f, i, a) => a.findIndex((g: { title: string }) => g.title === f.title) === i).slice(0, 12)
+  const usd = (v: number, cu = 'USD') => money(v, cu)
+  const lines: string[] = []
+  for (const e of r.equity) {
+    const v = e.value ?? (e.shares_held && e.price ? e.shares_held * e.price : null)
+    if (e.shares_held) lines.push('**' + e.company + ' stock**: ' + e.shares_held.toLocaleString('en-US') + ' shares' + (v ? ' worth ' + usd(v) : '') + (e.as_of ? ' (' + e.as_of + ')' : ''))
+    for (const x of e.vested.slice(0, 3)) lines.push('RSU release ' + x.date + ': ' + x.shares + ' shares' + (x.gross ? ', ' + usd(x.gross) + ' before tax' : '') + (x.withheld_shares ? ', ' + x.withheld_shares + ' withheld for tax' : ''))
+    if (e.espp.length) lines.push('ESPP: ' + e.espp.map((x) => x.shares + ' shares on ' + x.date + (x.purchase_price ? ' at ' + usd(x.purchase_price) : '')).join('; '))
+  }
+  for (const a of r.accounts.filter((a) => a.kind !== 'company_stock').slice(0, 5)) lines.push(a.institution + ': ' + usd(a.value, a.currency))
+  for (const x of r.incomes.slice(0, 3)) lines.push(x.source + ': ' + usd(x.amount, x.currency) + (x.frequency === 'annual' ? ' a year' : ' a month'))
+  for (const x of r.debts.slice(0, 3)) lines.push(x.name + ': ' + usd(x.balance, x.currency) + ' owed')
+  const head = 'I read ' + (nRead === 1 ? 'your document' : nRead + ' documents') + (nSkipped ? ' (' + nSkipped + ' I couldn\'t read: photos or scans; your adviser will look at ' + (nSkipped === 1 ? 'it' : 'them') + ')' : '') + '.'
+  if (!lines.length) return head + ' I didn\'t find figures I could use in ' + (nRead === 1 ? 'it' : 'them') + ', so add rough figures below, or skip.'
+  return head + ' Here\'s what I found:\n\n- ' + lines.slice(0, 10).join('\n- ') + '\n\nI\'ve put the figures in the answers for you to check when we get to them; nothing is saved until you confirm.' + (flags.length ? ' Your adviser will also look at: ' + flags.slice(0, 3).map((f) => f.title.toLowerCase()).join('; ') + '.' : '')
+}
+
 // Statements and other documents dropped into the conversation go with the plan.
 export async function onboardUpload(clientId: string, parts: { name?: string; filename?: string; type?: string; data: Buffer }[]) {
   const l = await load(clientId)
   if (!l || l.o.status !== 'in_progress') throw apiError('done', 'This is already finished.', 409)
-  const n = await planUpload(clientId, parts)
+  const ids = await planUploadIds(clientId, parts), n = ids.length
   if (!n) throw apiError('invalid', 'Upload a PDF, image, CSV or Excel file up to 20 MB.')
   l.o.messages.push(say('me', 'Uploaded ' + n + ' file' + (n === 1 ? '' : 's')))
-  l.o.messages.push(say('ai', 'Thanks, I\'ve added ' + (n === 1 ? 'it' : 'them') + ' to your plan; your adviser and the review will use ' + (n === 1 ? 'it' : 'them') + '. A rough figure below is still helpful for now, or skip it.'))
+  // Read them straight away (identity numbers are removed first) and offer what was found as answers to check.
+  let reply = 'Thanks, I\'ve added ' + (n === 1 ? 'it' : 'them') + ' to your plan; your adviser and the review will use ' + (n === 1 ? 'it' : 'them') + '. A rough figure below is still helpful for now, or skip it.'
+  try {
+    const r = await readClientDocs(clientId, ids)
+    if (r.read.length) reply = docReply(r.out, r.read.length, r.skipped.length, l.ctx)
+    else if (r.skipped.length) reply = 'Thanks, I\'ve kept ' + (n === 1 ? 'it' : 'them') + ' with your plan for your adviser. I can only read figures from PDF, Excel or CSV files with text in them (not photos or scans), so add rough figures below, or upload the PDF statement.'
+  } catch (e) { console.error('[onboard] read docs', e) }
+  l.o.messages.push(say('ai', reply))
   await save(l.o, l.ctx)
 }
 
@@ -241,7 +279,8 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   await planSave(id, { household: a.household ?? {}, incomes: (a.incomes ?? []).map((r: any) => ({ who: '', source: r.source || 'Income', amount: r.amount, frequency: r.frequency, currency: r.currency })), taxes: [],
     expenses: (a.expenses ?? []).map((r: any) => ({ category: r.category || 'Spending', amount: r.amount, frequency: r.frequency, currency: r.currency })),
     debts: (a.debts ?? []).map((r: any) => ({ name: r.name, balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
-    goals: (a.goals ?? []).map((g: any) => ({ name: g.name, ...(g.target ? { target: g.target } : {}), ...(g.by ? { by: g.by } : {}) })), notes: '' }).catch((e) => console.error('[onboard] plan save', e))
+    goals: (a.goals ?? []).map((g: any) => ({ name: g.name, ...(g.target ? { target: g.target } : {}), ...(g.by ? { by: g.by } : {}) })), notes: '',
+    ...(a.equity?.length ? { equity: a.equity } : {}), ...(a.doc_flags?.length ? { doc_flags: a.doc_flags } : {}) }).catch((e) => console.error('[onboard] plan save', e))
   await db().query("DELETE FROM wm.accounts WHERE client_id = $1 AND notes = 'From onboarding'", [id])
   for (const x of a.assets ?? []) await db().query("INSERT INTO wm.accounts (client_id, provider, institution, kind, name, currency, balance, as_of, notes) VALUES ($1,'manual',$2,$3,NULL,$4,$5,current_date,'From onboarding')", [id, String(x.name).slice(0, 120), x.kind, x.currency, x.value])
   const name = a.identity ? a.identity.given_name + ' ' + a.identity.family_name : null
