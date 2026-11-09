@@ -1,6 +1,6 @@
 // The financial review around the AI draft: checks for the adviser before the client relies on it, the adviser's edits
 // (headline, summary, steps hidden or reworded), the client's ticks on steps, and the PDF report.
-import { PLAIN_BUCKET, reportHeadline, reportRest, reportSteps, scoreWord } from '~/shared/wm-report'
+import { reportSteps } from '~/shared/wm-report'
 import { assetLabel } from '~/shared/wm-assets'
 import { noticeEntity } from '~/shared/wm-data-notice'
 
@@ -27,11 +27,25 @@ export async function reportChecks(clientId: string) {
   if (prof?.updated_at && Date.parse(prof.updated_at) > Date.parse(r.created_at) + 60000) out.push({ level: 'info', title: 'Details changed since this review', detail: 'Update the review so it uses the latest figures.', fix: 'regenerate' })
   if (!(p.goals ?? []).length) out.push({ level: 'info', title: 'No goals yet', detail: 'Steps are more useful with at least one goal and a date.' })
   const off = [...(await assetsOff(clientId))]
-  const words: Record<string, RegExp> = { crypto: /crypto|bitcoin|ethereum/i, metals: /gold|silver|precious metal/i, real_estate: /property|real estate|reit/i, private: /pre-ipo|private (company|deal)|secondar/i, tbills: /treasury|t-bill|fixed deposit/i, stocks: /\b(etf|index fund|stocks?)\b/i, savings: /savings plan/i }
-  for (const k of off) { const hit = reportSteps(c).filter((s) => words[k]?.test(s.title + ' ' + s.detail)); if (hit.length) out.push({ level: 'warn', title: assetLabel(k) + ' is switched off for this client', detail: 'Mentioned in: ' + hit.map((s) => s.title).join('; ') + '. Hide or reword the step.' }) }
+  for (const k of off) { const hit = reportSteps(c, true).filter((s) => OFF_WORDS[k]?.test(s.title + ' ' + s.detail)); if (hit.length) out.push({ level: 'info', title: assetLabel(k) + ' is switched off for this client', detail: 'Hidden from the client automatically: ' + hit.map((s) => s.title).join('; ') + '. Update the review to redo the plan without it.', fix: 'regenerate' }) }
   return out
 }
 
+// The review as shown: the suggested mix worked out again from today's holdings and the asset types the client wants
+// (so a type switched off later disappears and the rest is spread again), and steps, strengths and risks about
+// switched-off types left out for the client (staff still see those steps, marked hidden).
+const OFF_WORDS: Record<string, RegExp> = { crypto: /crypto|bitcoin|ethereum/i, metals: /gold|silver|precious metal/i, real_estate: /property|real estate|reit/i, private: /pre-ipo|private (company|deal)|secondar/i, tbills: /treasury|t-bill|fixed deposit/i, stocks: /\b(etf|index fund)s?\b/i, savings: /savings plan/i }
+export async function liveContent(clientId: string, content: Record<string, any>): Promise<Record<string, any>> {
+  const c = { ...content }, off = [...(await assetsOff(clientId))]
+  const f = await fortressView(clientId).catch(() => null)
+  if (f) c.fortress = f
+  if (off.length) {
+    const hit = (t: string) => off.some((k) => OFF_WORDS[k]?.test(t))
+    c.hidden_steps = [...new Set([...(c.hidden_steps ?? []), ...(c.actions ?? []).filter((a: { title: string; detail: string }) => hit(a.title + ' ' + a.detail)).map((a: { title: string }) => a.title)])]
+    c.strengths = (c.strengths ?? []).filter((x: string) => !hit(x)); c.risks = (c.risks ?? []).filter((x: string) => !hit(x))
+  }
+  return c
+}
 export async function reportEdit(clientId: string, e: { headline?: string; summary?: string; hide?: string; show?: string; step?: { title: string; new_title?: string; detail?: string; timeframe?: string } }) {
   const r = await latest(clientId); if (!r) throw apiError('not_found', 'There is no review yet.', 404)
   const c = r.content
@@ -55,49 +69,11 @@ export async function reportStepDone(clientId: string, title: string, done: bool
   await db().query('UPDATE wm.reports SET content = $2 WHERE id = $1', [r.id, JSON.stringify(r.content)])
 }
 
-// The PDF: a wealth-manager style report in Garamond (cover with details, summary and next steps, where you stand,
-// money in and out, every step, the suggested mix, growth by year, strengths and risks, assumptions).
+// The PDF, in the Aidi Wealth statement design (see wm-report-pdf.ts).
 export async function wmReportPdf(clientId: string): Promise<{ bytes: Uint8Array; filename: string }> {
   const r = await latest(clientId); if (!r) throw apiError('not_found', 'There is no review yet.', 404)
-  const x = await docContext(clientId), c = r.content, cur = /^[A-Z]{3}$/.test(c.currency) ? c.currency : 'USD', m = (v: number) => money(v, cur)
-  const usd = (v: number) => money(v, 'USD')
-  const when = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  const who = x.c.contact_name || x.c.name, steps = reportSteps(c), cf = c.cash_flow ?? {}, bs = c.balance_sheet ?? {}
-  const esc = (s: unknown) => String(s ?? '').replace(/\|/g, '/').replace(/\n/g, ' ')
-  const series = (c.series ?? []) as { year: number; plan: number; as_is: number }[]
-  const md: string[] = [
-    '## 1. Summary', reportHeadline(c), '', reportRest(c), '',
-    '| Key figure | Amount |', '|---|---|',
-    '| Net worth (what you own minus what you owe) | ' + m(Number(bs.net_worth ?? 0)) + ' |',
-    '| Left over each month | ' + m(Number(cf.monthly_surplus ?? 0)) + ' |',
-    '| Share of income you keep | ' + Math.round(Number(cf.savings_rate_pct ?? 0)) + '% |',
-    '| Financial health score | ' + Math.round(Number(c.health_score ?? 0)) + ' of 100 (' + scoreWord(Number(c.health_score ?? 0)) + ') |', '',
-    '### Your next steps', '| Step | Why it matters | When |', '|---|---|---|',
-    ...steps.slice(0, 3).map((s) => '| ' + esc(s.title) + ' | ' + esc(s.detail) + ' | ' + esc(s.timeframe) + ' |'), '',
-    '## 2. Where you stand today', '| What you own | Value |', '|---|---|',
-    ...(bs.assets ?? []).map((a: any) => '| ' + esc(a.label) + ' | ' + m(Number(a.value)) + ' |'), '',
-    '| What you owe | Amount |', '|---|---|',
-    ...((bs.liabilities ?? []).length ? bs.liabilities.map((a: any) => '| ' + esc(a.label) + ' | ' + m(Number(a.value)) + ' |') : ['| Nothing | - |']), '',
-    '**Net worth: ' + m(Number(bs.net_worth ?? 0)) + '**', '',
-    '## 3. Money in and out', '| Each month | Amount |', '|---|---|',
-    '| Money coming in | ' + m(Number(cf.monthly_income ?? 0)) + ' |', '| Spending and tax | ' + m(Number(cf.monthly_spending ?? 0)) + ' |', '| Left over | ' + m(Number(cf.monthly_surplus ?? 0)) + ' |', '',
-    '| Over a year | Amount |', '|---|---|',
-    ...(c.income_statement?.lines ?? []).map((l: any) => '| ' + esc(l.label) + ' | ' + m(Number(l.annual)) + ' |'), '| **What is left** | **' + m(Number(c.income_statement?.net ?? 0)) + '** |', '',
-    '## 4. Your plan, step by step', '| # | Step | When | Priority |', '|---|---|---|---|',
-    ...steps.map((s, i) => '| ' + (i + 1) + ' | ' + esc(s.title) + ': ' + esc(s.detail) + ' | ' + esc(s.timeframe) + ' | ' + (s.priority === 'high' ? 'Now' : s.priority === 'medium' ? 'Soon' : 'Later') + ' |'), '',
-  ]
-  if (c.fortress?.rows?.length) md.push('## 5. How we suggest spreading your money', 'Today and what we suggest, on about ' + usd(Number(c.fortress.base ?? 0)) + ' you could invest. Spreading money across different kinds of investment means one bad year for one of them can\'t undo your progress.', '',
-    '| Kind of investment | Today | Suggested | To move |', '|---|---|---|---|',
-    ...c.fortress.rows.map((f: any) => '| ' + (PLAIN_BUCKET[f.key] ?? esc(f.label)) + ' | ' + f.current_pct + '% | ' + f.target_pct + '% | ' + (f.gap === 0 ? '-' : (f.gap > 0 ? 'add ' : 'reduce by ') + usd(Math.abs(f.gap))) + ' |'), '')
-  if (series.length) md.push('## 6. What your savings could be worth', 'If you invest ' + m(Number(c.projection?.monthly_contribution ?? 0)) + ' a month and it grows ' + (c.projection?.annual_return_pct ?? '') + '% a year after costs, compared with leaving things as they are. Real returns go up and down; this is a guide, not a promise.', '',
-    '| Year | Following the plan | If nothing changes |', '|---|---|---|', ...series.map((s) => '| ' + s.year + ' | ' + m(s.plan) + ' | ' + m(s.as_is) + ' |'), '')
-  md.push('## 7. Going well', ...(c.strengths ?? []).map((s: string) => '- ' + s), '', '## 8. Watch out for', ...(c.risks ?? []).map((s: string) => '- ' + s), '',
-    '## 9. Assumptions and important information',
-    '- Prepared on ' + when + ' from the information you gave us and the documents you shared. The figures have not been audited.',
-    '- Growth figures assume a steady return after costs. Investments can fall as well as rise, and you may get back less than you put in.',
-    '- This report is general financial guidance. It is not a recommendation to buy or sell any security, and it is not tax or legal advice. Talk to your adviser before acting.',
-    '- ' + noticeEntity(x.entity, x.c.country === 'NG' ? 'NG' : 'US') + ', part of The Aidi Group.')
-  const cover = ['Prepared by Aidi Wealth for ' + who + '. Private and confidential.', '', '### Contents', '1. Summary', '2. Where you stand today', '3. Money in and out', '4. Your plan, step by step', ...(c.fortress?.rows?.length ? ['5. How we suggest spreading your money'] : []), ...(series.length ? ['6. What your savings could be worth'] : []), '7. Going well', '8. Watch out for', '9. Assumptions and important information']
-  const bytes = await legalPdf(noticeEntity(x.entity, x.c.country === 'NG' ? 'NG' : 'US'), [{ title: 'Financial plan', md: cover.join('\n'), header: { eyebrow: 'Aidi Wealth · Private and confidential', fields: [{ label: 'Prepared for', value: who }, { label: 'Date', value: when }, { label: 'Risk level', value: x.c.risk_profile ? x.c.risk_profile.replace(/_/g, ' ').replace(/^./, (s) => s.toUpperCase()) : 'Not set yet' }, { label: 'Main currency', value: cur }] } }, { title: 'Financial plan', md: md.join('\n') }], { logo: 'aidi', font: 'garamond' })
+  const x = await docContext(clientId), country = x.c.country === 'NG' ? 'NG' : 'US'
+  const who = x.c.contact_name || x.c.name
+  const bytes = await planPdf({ content: await liveContent(clientId, r.content), prepared: r.created_at, client: who, entity: noticeEntity(x.entity, country), address: x.c.entity_address, country, risk: x.c.risk_profile })
   return { bytes, filename: 'Aidi Wealth financial plan - ' + who.replace(/[^A-Za-z0-9 .-]/g, '') + '.pdf' }
 }

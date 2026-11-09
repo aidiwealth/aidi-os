@@ -3,7 +3,10 @@
 // buy and sell with us; in Nigeria the Aidi wallet), their banks (where money comes from and goes back to) and accounts
 // they hold elsewhere (tracked for the plan, not traded). Opening the investing account is a four-step window, not a
 // long form on the page. The broker is never named.
-const props = defineProps<{ s: Record<string, any>; investApi?: string | null; country: string; contactName?: string | null; canLinkBank?: boolean; preview?: boolean }>()
+const props = defineProps<{ s: Record<string, any>; investApi?: string | null; country: string; contactName?: string | null; canLinkBank?: boolean; preview?: boolean; off?: string[] }>()
+// Asset types switched off for this client are not offered here.
+const noCrypto = computed(() => (props.off ?? []).includes('crypto')), noStocks = computed(() => (props.off ?? []).includes('stocks')), noSavings = computed(() => (props.off ?? []).includes('savings'))
+const offers = computed(() => (ng.value ? [noSavings.value ? '' : 'Savings', noCrypto.value ? '' : 'crypto'] : [noStocks.value ? '' : 'Stocks, ETFs', noCrypto.value ? '' : 'crypto']).filter(Boolean).join(' and ').replace(/^crypto$/, 'Crypto') || 'Your accounts')
 const emit = defineEmits<{ linkBank: []; refresh: [] }>()
 const { data: inv, refresh: refreshInv } = await useFetch<Record<string, any>>(() => props.investApi ?? '', { key: 'inv-' + (props.investApi ?? 'none'), immediate: !!props.investApi })
 const money = (v: number | string | null | undefined, c = 'USD') => (v == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(Number(v)))
@@ -43,14 +46,14 @@ async function saveAcc(del = false) { ac.busy = true; ac.msg = ''; try { await $
     <section class="card fl">
       <div class="flow"><div class="nd"><b>{{ bankName }}</b><span>{{ banks.length ? money(banks[0].current, banks[0].currency) : 'link one below' }}</span></div><div class="ar"><span>Add money</span><i>→</i></div>
         <div class="nd dk"><b>{{ ng ? 'Aidi wallet' : 'Aidi investing account' }}</b><span>{{ ng ? 'Naira and dollar accounts, in your name' : opened ? (ready ? 'Open' : 'Being checked') + ' · in your name' : 'Not opened yet' }}</span></div><div class="ar"><span>{{ ng ? 'Save or invest' : 'Buy' }}</span><i>→</i></div>
-        <div class="nd"><b>Your investments</b><span>{{ ng ? 'Savings and crypto' : 'Stocks, ETFs and crypto' }}</span></div></div>
+        <div class="nd"><b>Your investments</b><span>{{ offers }}</span></div></div>
       <p class="mut sm">Accounts you hold elsewhere (Robinhood, Schwab…) are tracked for your plan, separately.</p>
     </section>
     <!-- 1 · The Aidi investing account (US) or wallet (Nigeria) -->
     <section class="card">
       <div class="hd"><div><b class="t">1 · {{ ng ? 'Aidi wallet' : 'Aidi investing account' }}</b><span class="mut sm">{{ ng ? 'Where you keep naira and dollars with us, and save.' : 'Where you buy and sell with us.' }}</span></div></div>
       <template v-if="!ng && al">
-        <div v-if="!opened" class="intro"><div class="ben"><span>✓ Buy US stocks, ETFs and crypto from your dashboard</span><span>✓ Held in your name; your money stays yours</span><span>✓ Add money from your bank, withdraw any time</span></div>
+        <div v-if="!opened" class="intro"><div class="ben"><span>✓ Buy US {{ noStocks ? '' : 'stocks and ETFs' }}{{ noStocks || noCrypto ? '' : ' and ' }}{{ noCrypto ? '' : 'crypto' }} from your dashboard</span><span>✓ Held in your name; your money stays yours</span><span>✓ Add money from your bank, withdraw any time</span></div>
           <div class="cta"><span class="tag warn">Not opened yet</span><b>About 5 minutes</b><span class="mut sm">Your details, address, where the money comes from, then sign.</span><button class="btn" @click="openForm">Open my investing account</button></div></div>
         <template v-else>
           <div class="k3"><div><span>Invested</span><b>{{ al.trading ? money(Number(al.trading.equity) - Number(al.trading.cash)) : '—' }}</b></div><div><span>Cash ready to invest</span><b>{{ al.trading ? money(al.trading.cash) : '—' }}</b><em>arrives 1–3 days after you add money</em></div><div><span>Account</span><b><span class="tag" :class="ready ? 'blue' : 'warn'">{{ ready ? 'Open' : status === 'ACTION_REQUIRED' ? 'Needs information' : status === 'REJECTED' ? 'Not approved' : 'Being checked' }}</span></b><em>{{ al.account?.detail?.account_number ? '••' + String(al.account.detail.account_number).slice(-4) : '' }}</em></div></div>
@@ -82,7 +85,7 @@ async function saveAcc(del = false) { ac.busy = true; ac.msg = ''; try { await $
         <div class="stp"><div v-for="(l, i) in STEPS" :key="l" :class="{ on: i <= op.step }"><i /><span>{{ l }}</span></div></div>
         <template v-if="op.step === 0"><b class="q">About you</b><div class="g2f"><label>First name<input v-model="op.given_name" autocomplete="given-name"></label><label>Last name<input v-model="op.family_name" autocomplete="family-name"></label><label>Date of birth<input v-model="op.date_of_birth" type="date"></label><label>Mobile number<input v-model="op.phone" autocomplete="tel" placeholder="+1 408 555 0100"></label><label class="w2">Social Security number<input v-model="op.tax_id" type="password" inputmode="numeric" autocomplete="off" placeholder="9 digits"></label></div><span class="mut sm">Your Social Security number goes to our brokerage partner for the identity check the law requires. Aidi does not keep it.</span></template>
         <template v-else-if="op.step === 1"><b class="q">Where do you live?</b><div class="g2f"><label class="w2">Street address<input v-model="op.street" autocomplete="street-address"></label><label>City<input v-model="op.city" autocomplete="address-level2"></label><label>State<input v-model="op.state" maxlength="2" placeholder="CA"></label><label>ZIP code<input v-model="op.postal_code" inputmode="numeric" maxlength="10"></label></div></template>
-        <template v-else-if="op.step === 2"><b class="q">Where does the money you'll invest come from?</b><div class="opts"><button v-for="[k, l] in FUND" :key="k" type="button" :class="{ on: op.funding_source === k }" @click="op.funding_source = k">{{ l }}</button></div><label class="cb"><input v-model="op.crypto" type="checkbox"> Also let me buy crypto</label></template>
+        <template v-else-if="op.step === 2"><b class="q">Where does the money you'll invest come from?</b><div class="opts"><button v-for="[k, l] in FUND" :key="k" type="button" :class="{ on: op.funding_source === k }" @click="op.funding_source = k">{{ l }}</button></div><label v-if="!noCrypto" class="cb"><input v-model="op.crypto" type="checkbox"> Also let me buy crypto</label></template>
         <template v-else><b class="q">Sign</b><p class="sm">An individual brokerage account for US stocks, ETFs{{ op.crypto ? ' and crypto' : '' }}, in your name.</p><label class="cb"><input v-model="op.agree" type="checkbox"> I have read and accept the brokerage customer agreement{{ op.crypto ? ' and the crypto agreement' : '' }}</label><label class="cb"><input v-model="op.terms" type="checkbox"> I agree to Aidi Wealth's terms and privacy notice</label></template>
         <p v-if="op.msg" class="error">{{ op.msg }}</p>
       </form>

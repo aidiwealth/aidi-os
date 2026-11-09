@@ -150,7 +150,7 @@ async function applyRead() {
             <p v-if="!data.checks.length" class="mut">Figures match the details and every document was read.</p></section>
           <section class="card"><div class="h"><h4>What the client sees</h4><span class="mut">{{ data.report.content.edited_at ? 'Edited ' + new Date(data.report.content.edited_at).toLocaleDateString('en-GB') : 'As drafted' }}</span></div>
             <label class="fl2">Headline<input v-model="ed.headline" maxlength="200"></label>
-            <label class="fl2">Summary<textarea v-model="ed.summary" rows="4" maxlength="2000" /></label>
+            <div class="fl2">Summary<ClientOnly><RichEditor v-model="ed.summary" compact minimal :min-height="160" :max-length="2000" placeholder="What the client reads under the headline" /></ClientOnly></div>
             <button class="btn secondary sm" :disabled="!!busy || preview" @click="saveWords">{{ busy === 'report_edit' ? 'Saving…' : 'Save wording' }}</button>
             <span class="lbl">Steps · the first three show as cards</span>
             <div v-for="st in staffSteps" :key="st.title" class="es" :class="{ off: st.hidden }">
@@ -159,16 +159,17 @@ async function applyRead() {
             </div></section>
           <section class="card"><div class="h"><h4>Shared link</h4><span class="mut">{{ data.has_link ? 'On' : 'Off' }}</span></div>
             <span class="mut">Family enter their name and email to view; the client is told who looked. Links last 90 days.</span>
-            <span class="row2"><button class="btn secondary sm" :disabled="!!busy || preview" @click="share">{{ data.has_link ? 'Make a new link' : 'Create link' }}</button><button v-if="data.has_link" class="lk red" @click="act('unshare').then(() => refresh())">Turn off</button></span><span v-if="link" class="mut">Copied: {{ link }}</span>
+            <span class="row2"><button class="btn secondary sm" @click="shareOpen = true">{{ data.has_link ? 'Manage the link' : 'Create a link' }}</button></span>
             <span v-if="data.views.length" class="lbl">Who viewed</span><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span></div></section>
         </aside>
       </div>
-      <div v-if="!data.staff && (shareOpen || data.has_link || data.views.length)" class="card shr2">
-        <div class="h"><h4>Share with family</h4><span class="mut">{{ data.has_link ? 'Link on · lasts 90 days' : 'Off' }}</span></div>
-        <span class="mut">They enter their name and email to open a read-only copy, and you're told who looked. No account numbers or identity details are shown.</span>
-        <span class="row2"><button class="btn sm" :disabled="!!busy" @click="share">{{ data.has_link ? 'Make a new link' : 'Create a link' }}</button><button v-if="data.has_link" class="lk red" @click="act('unshare').then(() => refresh())">Turn off</button></span><span v-if="link" class="mut">Copied: {{ link }}</span>
-        <div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB') }}</span></div>
-      </div>
+      <AppModal :open="shareOpen" title="Share with family" @close="shareOpen = false"><div class="shr2">
+        <p class="mut">{{ data.staff ? 'Family' : 'Your family' }} enter their name and email to open a read-only copy, and {{ data.staff ? 'the client is' : 'you\'re' }} told who looked. No account numbers or identity details are shown. Links last 90 days.</p>
+        <p v-if="link" class="cp"><input :value="link" readonly aria-label="Link" @focus="($event.target as HTMLInputElement).select()"><span class="mut">Copied. Send it to them.</span></p>
+        <p v-else-if="data.has_link" class="mut">A link is on. For safety it isn't shown again: make a new link to copy it (the old one stops working).</p>
+        <span class="row2"><button class="btn" :disabled="!!busy || preview" @click="share">{{ busy === 'share' ? 'Making the link…' : data.has_link ? 'Make a new link' : 'Create a link' }}</button><button v-if="data.has_link" class="lk red" :disabled="!!busy" @click="act('unshare').then(() => { link = ''; refresh() })">Turn the link off</button></span>
+        <template v-if="data.views.length"><span class="lbl">Who viewed</span><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span></div></template>
+      </div></AppModal>
     </template>
   </div>
 </template>
@@ -187,7 +188,7 @@ async function applyRead() {
 .chk { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fbfaf8; font-size: 13px; } .chk.warn { background: #fdf6f0; border-color: #f2d9c4; } .chk b { font-size: 13.5px; } .chk .lk { align-self: flex-start; }
 .fl2 { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--c-muted); } .fl2 input, .fl2 textarea, .es input, .es textarea { font: inherit; font-size: 13.5px; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
 .es { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .es.off { opacity: .6; } .es > span:first-child { display: flex; flex-direction: column; } .es em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
-.row2 { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; } .shr2 { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; } .shr2 h4 { margin: 0; }
+.row2 { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; } .shr2 { display: flex; flex-direction: column; gap: 12px; } .shr2 p { margin: 0; } .cp { display: flex; flex-direction: column; gap: 4px; } .cp input { font: inherit; font-size: 13.5px; padding: 9px 10px; border: 1px solid var(--c-rule-strong); width: 100%; box-sizing: border-box; }
 .fp { display: flex; flex-direction: column; gap: 12px; } .fp *, .fp { box-sizing: border-box; } .s2 { display: flex; gap: 4px; } .s2 button { background: #fff; border: 1px solid var(--c-rule); padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer; } .s2 .on { border-color: var(--c-blue-deep); color: var(--c-blue-deep); font-weight: 600; } .s2 button:disabled { opacity: .45; cursor: default; }
 .okm { color: var(--c-ok); margin: 0; } .error { color: var(--c-danger); margin: 0; } .mut { color: var(--c-muted); font-size: 12.5px; }
 .lay { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }

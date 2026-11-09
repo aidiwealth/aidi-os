@@ -12,6 +12,8 @@ export async function planGet(clientId: string) {
   const history = (await db().query<{ as_of: string; net_worth: string }>("SELECT to_char(as_of, 'YYYY-MM-DD') AS as_of, net_worth::text FROM wm.snapshots WHERE client_id = $1 ORDER BY as_of", [clientId])).rows.map((r) => ({ as_of: r.as_of, net_worth: Number(r.net_worth) }))
   const link = !!(await db().query('SELECT 1 FROM wm.report_links WHERE client_id = $1 AND NOT revoked AND (expires_at IS NULL OR expires_at > now())', [clientId])).rowCount
   const views = (await db().query("SELECT name, email, viewed_at FROM wm.views WHERE client_id = $1 AND kind = 'report' ORDER BY viewed_at DESC LIMIT 30", [clientId])).rows
+  // The review as shown: today's suggested mix and asset types (see liveContent).
+  if (report) report.content = await liveContent(clientId, report.content)
   return { profile: profile.data, updated_at: profile.updated_at, docs, report, history, has_link: link, views }
 }
 const Money = z.number().min(0).max(1e12)

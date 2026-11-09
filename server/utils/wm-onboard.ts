@@ -364,13 +364,13 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
     await db().query("UPDATE wm.clients SET status = 'active', updated_at = now() WHERE id = $1 AND status IN ('prospect', 'onboarding')", [id])
     o.messages.push(say('ai', [ack, 'That\'s everything. Your financial plan is being prepared' + (acct === 'waiting' ? (opened ? ', and your investing account is open' : '; your investing account is with our partner and your adviser will finish it if anything is needed') : '') + '. Your dashboard is ready.'].filter(Boolean).join('\n\n')))
     kickPlan(id)
-    slack('aidi.wealth_client', (name ?? 'A client') + ' finished onboarding and is on their dashboard', [['Account', acct]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + id })
+    void onboardSlack(o, ctx, acct, false).catch((e) => console.error('[onboard] slack', e))
   } else {
     await db().query("UPDATE wm.onboarding SET status = 'submitted' WHERE id = $1", [o.id])
     o.messages.push(say('ai', [ack, 'That\'s everything, thank you. An adviser will look over your answers, usually within one working day, and we\'ll email you as soon as your dashboard opens.'].filter(Boolean).join('\n\n')))
     const c = (await db().query<{ email: string | null; name: string }>('SELECT email, name FROM wm.clients WHERE id = $1', [id])).rows[0]
     if (c?.email) { try { await sendWealthReviewing(c.email, ctx.first) } catch (e) { console.error('[onboard] reviewing email', e) } }
-    slack('aidi.wealth_client', (c?.name ?? 'A client') + ' finished onboarding and is waiting for approval', [['Country', ctx.country]], { label: 'Review', path: '/wealth-mgmt?t=onboarding' })
+    void onboardSlack(o, ctx, acct, true).catch((e) => console.error('[onboard] slack', e))
   }
   await db().query('UPDATE wm.onboarding SET messages = $2, updated_at = now() WHERE id = $1', [o.id, JSON.stringify(o.messages.slice(-300))])
   await sendDataRecord(o, ctx).catch((e) => console.error('[onboard] data record', e))
@@ -388,6 +388,30 @@ async function finishAccount(o: Onb, ctx: Ctx, ip: string, ack: string) {
   o.messages.push(say('ai', [ack, ctx.country === 'NG' ? 'Your wallet and savings are set up.' : opened ? 'Your investing account is open.' : 'Your investing account is with our partner; your adviser will finish it if anything is needed.'].filter(Boolean).join('\n\n')))
   await db().query('UPDATE wm.onboarding SET messages = $2, updated_at = now() WHERE id = $1', [o.id, JSON.stringify(o.messages.slice(-300))])
   slack('aidi.wealth_client', 'A client opened their ' + (ctx.country === 'NG' ? 'wallet' : 'investing account') + ' from the dashboard', [['Account', acct]], { label: 'Open the client', path: '/wealth-mgmt/clients/' + id })
+}
+
+// The one Slack alert for an Aidi Wealth onboarding, when the conversation is finished: who they are, where they came
+// from, their figures, documents, risk level and account, and whether an adviser needs to approve them.
+async function onboardSlack(o: Onb, ctx: Ctx, acct: string, waiting: boolean) {
+  const c = (await db().query<{ name: string; email: string | null; phone: string | null; inviter: string | null; started: string }>(
+    "SELECT c.name, c.email, c.phone, (SELECT p.full_name FROM core.users u JOIN core.people p ON p.id = u.person_id WHERE u.id = ob.invited_by) AS inviter, ob.created_at AS started FROM wm.clients c JOIN wm.onboarding ob ON ob.client_id = c.id WHERE c.id = $1", [ctx.clientId]).catch(() => ({ rows: [] as any[] }))).rows[0]
+  const s = summary(ctx), cu = s.currency, mo = (v: number | null) => (v == null ? '—' : money(v, cu)), req = o.request ?? {}
+  const AMT: Record<string, string> = { under_50k: 'Under $50k', '50k_250k': '$50k to $250k', '250k_1m': '$250k to $1M', over_1m: 'Over $1M' }
+  const HELP: Record<string, string> = { plan: 'Financial plan', investing: 'Investing', retirement: 'Retirement', children: 'Children', metals: 'Gold and silver', everything: 'Everything' }
+  const ACCT: Record<string, string> = { waiting: 'Opens on approval', opened: 'Open', held: 'Held: a disclosure needs details', failed: 'Not opened yet', not_needed: ctx.country === 'NG' ? 'Wallet (BVN given)' : 'Not needed', later: 'Client chose later' }
+  const docs = (ctx.answers.doc_log ?? []) as { read: boolean }[], mins = c?.started ? Math.round((Date.now() - Date.parse(c.started)) / 60000) : null
+  const fields: [string, string][] = [
+    ['Email', c?.email ?? '—'], ['Phone', c?.phone ?? req.phone ?? '—'],
+    ['Country', ctx.country === 'NG' ? 'Nigeria' : 'United States'], ['Came from', o.source === 'request' ? 'Website request' + (req.source ? ' (' + req.source + ')' : '') : 'Invited' + (c?.inviter ? ' by ' + c.inviter : '')],
+    ['To invest', AMT[req.amount] ?? 'Not said'], ['Help with', (req.help ?? []).map((h: string) => HELP[h] ?? h).join(', ') || 'Not said'],
+    ['Income a month', mo(s.income)], ['Spending a month', mo(s.spending)],
+    ['Keeps', s.rate == null ? '—' : Math.round(s.rate * 100) + '% of income'], ['Owns', mo(s.owns)],
+    ['Debts', mo(s.debts)], ['Goals', s.goals.join(', ') || 'None yet'],
+    ['Risk level', s.risk ?? 'Not set'], ['Household', s.household ? s.household.adults + ' adult' + (s.household.adults === 1 ? '' : 's') + (s.household.children ? ', ' + s.household.children + ' children' : '') + (s.household.location ? ' · ' + s.household.location : '') : '—'],
+    ['Documents', docs.length ? docs.length + ' uploaded, ' + docs.filter((d) => d.read).length + ' read by AI' : 'None'], ['Investing account', ACCT[acct] ?? acct],
+    ['Took', mins == null ? '—' : mins < 60 ? mins + ' min' : Math.round(mins / 60) + ' h'],
+  ]
+  slack('aidi.wealth_client', '*' + (c?.name ?? 'A client') + '* finished Aidi Wealth onboarding · ' + (waiting ? 'waiting for your approval' : 'now on their dashboard'), fields, waiting ? { label: 'Review and approve', path: '/wealth-mgmt?t=onboarding' } : { label: 'Open the client', path: '/wealth-mgmt/clients/' + ctx.clientId })
 }
 
 // From the dashboard: carry on with the investing account (or wallet) that was left for later.

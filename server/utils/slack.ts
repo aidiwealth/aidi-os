@@ -18,7 +18,8 @@ const clip = (s: string, n = 280) => { const t = s.replace(/\s+/g, ' ').trim(); 
 const safe = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 export async function postSlack(url: string, text: string, fields: [string, string][] = [], link?: { label: string; url: string }): Promise<boolean> {
   const blocks: unknown[] = [{ type: 'section', text: { type: 'mrkdwn', text: text } }]
-  if (fields.length) blocks.push({ type: 'section', fields: fields.slice(0, 10).map(([k, v]) => ({ type: 'mrkdwn', text: '*' + safe(k) + '*\n' + safe(clip(v, 200)) })) })
+  // Slack takes up to 10 fields a section: longer lists go in more sections (20 fields at most).
+  for (let i = 0; i < Math.min(fields.length, 20); i += 10) blocks.push({ type: 'section', fields: fields.slice(i, i + 10).map(([k, v]) => ({ type: 'mrkdwn', text: '*' + safe(k) + '*\n' + safe(clip(v, 200)) })) })
   if (link) blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: link.label.slice(0, 70) }, url: link.url }] })
   const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: text.replace(/\*/g, ''), blocks }), signal: AbortSignal.timeout(6000) })
   return r.ok

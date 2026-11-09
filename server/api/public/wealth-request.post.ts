@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     const c = await one<{ id: string }>("INSERT INTO wm.clients (name, kind, country, model, entity_id, contact_name, email, phone, notes, status) VALUES ($1,'individual',$2,$3,$4,$1,$5,$6,'Requested from the website','prospect') RETURNING id", [d.name, d.country, model, entity, email, d.phone || null])
     await grantPortal(c.id, email, d.name, entity, null, 'request', { help: d.help, amount: d.amount, source: d.source, phone: d.phone })
     try { await sendWealthStart(email, d.name, null) } catch (e) { console.error('[wm-request] email', e) }
-    slack('aidi.wealth_client', 'Aidi Wealth request: ' + d.name, [['Country', d.country], ['To invest', d.amount || 'not said'], ['Help with', d.help.join(', ') || 'not said']], { label: 'Onboarding', path: '/wealth-mgmt?t=onboarding' })
+    // No alert yet: one detailed alert goes when they finish the onboarding conversation.
     return { ok: true }
   })
 })
