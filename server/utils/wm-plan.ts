@@ -10,7 +10,7 @@ export async function planGet(clientId: string) {
   const docs = (await db().query("SELECT p.id, p.kind, p.name, p.created_at, d.size_bytes, d.mime_type FROM wm.profile_docs p JOIN core.documents d ON d.id = p.document_id WHERE p.client_id = $1 ORDER BY p.created_at DESC", [clientId])).rows
   const report = (await db().query<{ id: string; content: Record<string, unknown>; created_at: string }>('SELECT id, content, created_at FROM wm.reports WHERE client_id = $1 ORDER BY created_at DESC LIMIT 1', [clientId])).rows[0] ?? null
   const history = (await db().query<{ as_of: string; net_worth: string }>("SELECT to_char(as_of, 'YYYY-MM-DD') AS as_of, net_worth::text FROM wm.snapshots WHERE client_id = $1 ORDER BY as_of", [clientId])).rows.map((r) => ({ as_of: r.as_of, net_worth: Number(r.net_worth) }))
-  const link = !!(await db().query('SELECT 1 FROM wm.report_links WHERE client_id = $1 AND NOT revoked', [clientId])).rowCount
+  const link = !!(await db().query('SELECT 1 FROM wm.report_links WHERE client_id = $1 AND NOT revoked AND (expires_at IS NULL OR expires_at > now())', [clientId])).rowCount
   const views = (await db().query("SELECT name, email, viewed_at FROM wm.views WHERE client_id = $1 AND kind = 'report' ORDER BY viewed_at DESC LIMIT 30", [clientId])).rows
   return { profile: profile.data, updated_at: profile.updated_at, docs, report, history, has_link: link, views }
 }
@@ -20,7 +20,7 @@ export const ProfileSchema = z.object({
   incomes: z.array(z.object({ who: z.string().max(120), source: z.string().max(120), amount: Money, frequency: z.enum(['monthly', 'annual']), currency: z.string().regex(/^[A-Z]{3}$/) })).max(20).optional(),
   taxes: z.array(z.object({ kind: z.string().max(120), amount: Money, frequency: z.enum(['monthly', 'annual']), currency: z.string().regex(/^[A-Z]{3}$/) })).max(20).optional(),
   expenses: z.array(z.object({ category: z.string().max(120), amount: Money, frequency: z.enum(['monthly', 'annual']), currency: z.string().regex(/^[A-Z]{3}$/) })).max(40).optional(),
-  debts: z.array(z.object({ name: z.string().max(120), balance: Money, rate: z.number().min(0).max(100).optional(), payment: Money.optional(), currency: z.string().regex(/^[A-Z]{3}$/) })).max(20).optional(),
+  debts: z.array(z.object({ name: z.string().max(120), lender: z.string().max(120).optional(), balance: Money, rate: z.number().min(0).max(100).optional(), payment: Money.optional(), currency: z.string().regex(/^[A-Z]{3}$/) })).max(20).optional(),
   credit_scores: z.array(z.object({ person: z.string().max(120), score: z.number().int().min(300).max(900), source: z.string().max(60), date: z.string().max(20).optional() })).max(10).optional(),
   goals: z.array(z.object({ name: z.string().max(160), target: Money.optional(), by: z.string().max(20).optional() })).max(20).optional(),
   notes: z.string().max(4000).optional(),

@@ -6,11 +6,13 @@ import fontkit from '@pdf-lib/fontkit'
 import type { Drawing } from './inline-charts'
 const clean = (s: string) => s.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u2022/g, '-').replace(/\u2026/g, '...').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
 export interface DocHeader { eyebrow?: string; badge?: string; fields: { label: string; value: string; wide?: boolean }[] }
-export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null } = {}): Promise<Uint8Array> {
+export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null; font?: 'garamond' } = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit)
   pdf.setTitle(docs.map((d) => d.title).join(' + ')); pdf.setProducer(opts.logo === 'aidi' ? 'Aidi OS' : 'Finvry'); pdf.setCreator(clean(company))
-  const reg = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.semibold, 'base64'), { subset: true })
-  const ital = await pdf.embedFont(Buffer.from(INSTRUMENT_TTF.italic, 'base64'), { subset: true }), sans = reg
+  // Aidi client documents (wealth reports) can be set in Garamond; everything else keeps the site's typeface.
+  const F = opts.font === 'garamond' ? { regular: GARAMOND_TTF.regular, semibold: GARAMOND_TTF.semibold, italic: GARAMOND_TTF.regular } : INSTRUMENT_TTF
+  const reg = await pdf.embedFont(Buffer.from(F.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(F.semibold, 'base64'), { subset: true })
+  const ital = await pdf.embedFont(Buffer.from(F.italic, 'base64'), { subset: true }), sans = reg
   const lg = opts.logo ? LOGO_PNG[opts.logo] : null, logo = lg ? await pdf.embedPng(Buffer.from(lg.b64, 'base64')) : null
   const W = 612, H = 792, M = 64, maxW = W - M * 2, ink = rgb(0.08, 0.09, 0.12), navy = rgb(12 / 255, 26 / 255, 46 / 255), blue = rgb(28 / 255, 84 / 255, 125 / 255), rule = rgb(0.86, 0.88, 0.91)
   let page!: PDFPage, y = 0

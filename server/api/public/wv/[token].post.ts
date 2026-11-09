@@ -6,8 +6,8 @@ export default defineEventHandler(async (event) => {
   await rateLimit('wm_view', token.slice(0, 12), 60, 60 * 60 * 1000)
   // Per visitor too, so one person can't flood the gate (each opening emails the client).
   await rateLimit('wm_gate_ip', ipOrNull(event) ?? 'none', 20, 60 * 60 * 1000)
-  const l = (await asPlatform(() => db().query<{ client_id: string; organization_id: string }>('SELECT client_id, organization_id FROM wm.view_links WHERE token_hash = $1 AND NOT revoked', [sha256(token)]))).rows[0]
-  if (!l) throw apiError('invalid_link', 'This link is not valid or has been turned off.', 404)
+  const l = (await asPlatform(() => db().query<{ client_id: string; organization_id: string }>('SELECT client_id, organization_id FROM wm.view_links WHERE token_hash = $1 AND NOT revoked AND (expires_at IS NULL OR expires_at > now())', [sha256(token)]))).rows[0]
+  if (!l) throw apiError('invalid_link', 'This link is not valid, has expired or has been turned off.', 404)
   setOrgContext(l.organization_id)
   const b = z.object({ name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254) }).safeParse(await readBody(event))
   const c = (await asPlatform(() => db().query<{ name: string; email: string | null; contact_name: string | null }>('SELECT name, email, contact_name FROM wm.clients WHERE id = $1', [l.client_id]))).rows[0]

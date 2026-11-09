@@ -347,7 +347,7 @@ async function finish(o: Onb, ctx: Ctx, ip: string, ack: string) {
   if (a.account_resume) return finishAccount(o, ctx, ip, ack)
   await planSave(id, { household: a.household ?? {}, incomes: (a.incomes ?? []).map((r: any) => ({ who: '', source: r.source || 'Income', amount: r.amount, frequency: r.frequency, currency: r.currency })), taxes: [],
     expenses: (a.expenses ?? []).map((r: any) => ({ category: r.category || 'Spending', amount: r.amount, frequency: r.frequency, currency: r.currency })),
-    debts: (a.debts ?? []).map((r: any) => ({ name: r.lender ? r.name + ' · ' + r.lender : r.name, balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
+    debts: (a.debts ?? []).map((r: any) => ({ name: r.name, ...(r.lender ? { lender: String(r.lender) } : {}), balance: r.balance, ...(r.payment ? { payment: r.payment } : {}), currency: r.currency })), credit_scores: [],
     goals: (a.goals ?? []).map((g: any) => ({ name: g.name, ...(g.target ? { target: g.target } : {}), ...(g.by ? { by: g.by } : {}) })), notes: '',
     ...(a.equity?.length ? { equity: a.equity } : {}), ...(a.doc_flags?.length ? { doc_flags: a.doc_flags } : {}) }).catch((e) => console.error('[onboard] plan save', e))
   await db().query("DELETE FROM wm.accounts WHERE client_id = $1 AND notes = 'From onboarding'", [id])

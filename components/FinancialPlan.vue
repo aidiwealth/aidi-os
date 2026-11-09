@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { reportHeadline, reportRest, reportSteps } from '~/shared/wm-report'
+import { lendersFor } from '~/shared/wm-lenders'
 // Financial profile (income, tax, spending, debts, credit scores, goals), documents (drag and drop), the AI review and
 // its share link. Used by staff (client page) and by the client (portal).
 const props = defineProps<{ api: string; preview?: boolean }>()
@@ -26,11 +28,23 @@ async function save(quiet = false) { if (props.preview) { msg.value = 'Preview o
 async function upload(ev: Event) { if (props.preview) return; const files = Array.from(((ev.target as HTMLInputElement).files ?? []) as File[]); if (!files.length) return; busy.value = 'up'; msg.value = ''; const fd = new FormData(); fd.append('kind', kind.value); for (const f of files) fd.append('file', f); try { const r = await $fetch<{ uploaded: number }>(props.api, { method: 'POST', body: fd }); ok.value = r.uploaded + ' file' + (r.uploaded === 1 ? '' : 's') + ' added.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function act(action: string, extra: Record<string, unknown> = {}) { if (props.preview) { msg.value = 'Preview only.'; return null } busy.value = action; msg.value = ''; ok.value = ''; try { const r = await $fetch<Record<string, any>>(props.api, { method: 'POST', body: { action, ...extra } }); await refresh(); return r } catch (e) { msg.value = err(e); return null } finally { busy.value = '' } }
 async function generate() { await save(); if (msg.value) return; const r = await act('generate'); if (r) { sec.value = 'report'; ok.value = 'Your financial review is ready.' } }
-async function share() { const r = await act('share'); if (r?.url) { link.value = r.url; try { await navigator.clipboard.writeText(r.url) } catch { /* ignore */ } } }
+// The review: the PDF, sharing, and (staff) the wording and steps the client sees.
+const pdfUrl = computed(() => props.api.replace(/\/plan$/, '/plan-pdf'))
+const shareOpen = ref(false)
+const ed = reactive({ headline: '', summary: '' })
+watchEffect(() => { const c = data.value?.report?.content; if (c) { ed.headline = reportHeadline(c); ed.summary = reportRest(c) } })
+const staffSteps = computed(() => (data.value?.report ? reportSteps(data.value.report.content, true) : []))
+const editing = ref(''), es = reactive({ title: '', detail: '', timeframe: '' })
+function startEdit(st: { title: string; detail: string; timeframe: string }) { editing.value = st.title; Object.assign(es, { title: st.title, detail: st.detail, timeframe: st.timeframe }) }
+async function saveStep(title: string) { const r = await act('report_edit', { step: { title, new_title: es.title, detail: es.detail, timeframe: es.timeframe } }); if (r) { editing.value = ''; await refresh(); ok.value = 'Step saved.' } }
+async function saveWords() { const r = await act('report_edit', { headline: ed.headline, summary: ed.summary }); if (r) { await refresh(); ok.value = 'Wording saved. The client sees it now.' } }
+async function share() { const r = await act('share'); if (r?.url) { link.value = r.url; try { await navigator.clipboard.writeText(r.url) } catch { /* ignore */ } await refresh() } }
 // Monthly figures in the main currency (other currencies are left out of the charts), the eight steps and their state.
 const monthly = (rows: any[]) => rows.filter((r) => (r.currency ?? cur.value) === cur.value).reduce((a, r) => a + (Number(r.amount) || 0) / (r.frequency === 'annual' ? 12 : 1), 0)
 const flow = computed(() => { const inc = monthly(p.incomes), tax = monthly(p.taxes), spend = monthly(p.expenses); return { inc, tax, spend, saved: Math.max(0, inc - tax - spend), rate: inc > 0 ? Math.max(0, (inc - tax - spend) / inc) : null } })
 const debt = computed(() => { const d = p.debts.filter((r: any) => (r.currency ?? cur.value) === cur.value); return { total: d.reduce((a: number, r: any) => a + (Number(r.balance) || 0), 0), pay: d.reduce((a: number, r: any) => a + (Number(r.payment) || 0), 0), rows: d.filter((r: any) => Number(r.balance) > 0).sort((a: any, b: any) => Number(b.balance) - Number(a.balance)).slice(0, 4) } })
+// Tax that looks like one paycheque: under 6% of income on a salary over 60,000 a year.
+const taxLow = computed(() => flow.value.inc * 12 > 60000 && flow.value.tax > 0 && flow.value.tax < flow.value.inc * 0.06)
 const fmt = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur.value, maximumFractionDigits: 0 }).format(Math.round(v))
 const bar = (v: number) => (flow.value.inc > 0 ? Math.min(100, (v / flow.value.inc) * 100) : 0) + '%'
 const STEPS = computed(() => [['household', 'Household', !!p.household.location], ['income', 'Income', p.incomes.length > 0], ['tax', 'Tax', p.taxes.length > 0], ['spending', 'Spending', p.expenses.length > 0],
@@ -64,41 +78,34 @@ async function applyRead() {
   <div v-if="data" class="fp">
     <nav class="s2"><button :class="{ on: sec === 'profile' }" @click="sec = 'profile'; touched = true">Financial details</button><button :class="{ on: sec === 'report' }" :disabled="!data.report" @click="sec = 'report'">Financial review</button></nav>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="okm">{{ ok }}</p>
-    <div v-if="sec === 'profile'" class="lay">
-      <aside class="card side">
-        <b>Plan details</b><span class="mut">{{ doneN }} of 8 done · the review gets better with each</span><span class="pb"><i :style="{ width: (doneN / 8) * 100 + '%' }" /></span>
-        <nav class="stp"><a v-for="(x, i) in STEPS" :key="x[1]" href="#" :class="{ done: x[2], now: i === nextStep }" @click.prevent="goTo(x[0])"><span class="nb">{{ x[2] ? '✓' : i + 1 }}</span>{{ x[1] }}</a></nav>
-        <div class="gen"><button class="btn" :disabled="!!busy || preview" @click="generate">{{ busy === 'generate' ? 'Preparing… (about a minute)' : data.report ? 'Update financial review' : 'Prepare financial review' }}</button><span class="mut">The AI reads the details and documents and drafts the review.</span>
-          <span class="sv">{{ preview ? 'Preview only' : saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Not saved: check the figures' : 'Saved as you go' }}</span></div>
-      </aside>
+    <div v-if="sec === 'profile'" class="dt">
+      <section class="card dh">
+        <div class="dhl"><h3>{{ data.staff ? 'Financial details' : 'Your details' }}</h3><span class="mut">What the review is built from. Change anything; it saves as you go.</span></div>
+        <div class="dha"><span class="sv">{{ preview ? 'Preview only' : saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Not saved: check the figures' : 'Saved as you go' }}</span>
+          <button class="btn" :disabled="!!busy || preview" @click="generate">{{ busy === 'generate' ? 'Preparing… (about a minute)' : data.report ? (data.staff ? 'Update the review' : 'Update my review') : 'Prepare the financial review' }}</button></div>
+        <div class="dtl"><div><span>Comes in a month</span><b>{{ fmt(flow.inc) }}</b></div><div><span>Goes out a month</span><b>{{ fmt(flow.tax + flow.spend + debt.pay) }}</b><em>incl. tax and debt payments</em></div><div><span>You keep</span><b>{{ flow.rate == null ? '—' : Math.round(flow.rate * 100) + '%' }}</b></div><div><span>Owe</span><b>{{ debt.total ? fmt(debt.total) : '—' }}</b></div></div>
+      </section>
+      <nav class="cnav"><a v-for="x in STEPS" :key="x[1]" href="#" :class="{ ok: x[2], warn: x[1] === 'Tax' && taxLow }" @click.prevent="goTo(x[0])">{{ x[1] === 'Tax' && taxLow ? '! ' : x[2] ? '✓ ' : '' }}{{ x[1] }}</a></nav>
+      <div class="lay2">
       <div class="main">
-        <div class="g3c">
-          <section class="card"><span class="lbl">Money in and out, a month</span>
-            <div class="fl"><span>Income</span><span class="br"><i :style="{ width: flow.inc > 0 ? '100%' : '0' }" /></span><b>{{ fmt(flow.inc) }}</b></div>
-            <div class="fl"><span>Tax</span><span class="br"><i class="t" :style="{ width: bar(flow.tax) }" /></span><b>{{ fmt(flow.tax) }}</b></div>
-            <div class="fl"><span>Spending</span><span class="br"><i class="s" :style="{ width: bar(flow.spend) }" /></span><b>{{ fmt(flow.spend) }}</b></div>
-            <div class="fl"><span>Saved</span><span class="br"><i class="v" :style="{ width: bar(flow.saved) }" /></span><b>{{ fmt(flow.saved) }}</b></div></section>
-          <section class="card"><span class="lbl">Savings rate</span>
-            <div class="dn"><svg viewBox="0 0 42 42" width="104" height="104" role="img" :aria-label="'Savings rate ' + Math.round((flow.rate ?? 0) * 100) + ' percent'"><circle cx="21" cy="21" r="15.9" fill="none" stroke="#e6ecf2" stroke-width="5" /><circle cx="21" cy="21" r="15.9" fill="none" stroke="#0c1a2e" stroke-width="5" :stroke-dasharray="(flow.rate ?? 0) * 100 + ' ' + (100 - (flow.rate ?? 0) * 100)" stroke-dashoffset="25" /></svg>
-              <div><b class="big">{{ flow.rate == null ? '—' : Math.round(flow.rate * 100) + '%' }}</b><span class="mut">{{ flow.rate == null ? 'Add income to see it' : 'of income kept after tax and spending' }}</span></div></div></section>
-          <section class="card"><span class="lbl">Debts</span><b class="big">{{ debt.total ? fmt(debt.total) : '—' }}</b><span class="mut">{{ debt.total ? fmt(debt.pay) + ' a month in payments' : 'Nothing added yet' }}</span>
-            <div v-for="(d, i) in debt.rows" :key="i" class="fl sm"><span>{{ d.name || 'Debt' }}</span><span class="br"><i class="s" :style="{ width: (Number(d.balance) / debt.total) * 100 + '%' }" /></span><b>{{ fmt(Number(d.balance)) }}</b></div></section>
-        </div>
         <section id="fp-household" class="card"><div class="h"><h4>Household</h4><span class="mut">{{ p.household.adults }} adult{{ Number(p.household.adults) === 1 ? '' : 's' }}, {{ Number(p.household.children) ? p.household.children + ' child' + (Number(p.household.children) === 1 ? '' : 'ren') : 'no children' }} · {{ cur }}</span></div>
           <div class="hh"><label>Adults<input v-model="p.household.adults" type="number" min="0"></label><label>Children<input v-model="p.household.children" type="number" min="0"></label><label>City and country<input v-model="p.household.location" placeholder="e.g. Houston, US"></label><label>Main currency<select v-model="cur"><option>USD</option><option>NGN</option></select></label></div></section>
         <section id="fp-income" class="card"><div class="h"><h4>Income</h4><span class="mut">{{ flow.inc ? fmt(flow.inc) + ' a month' : 'Salary, business, rent, dividends…' }}</span></div>
           <div v-for="(r, i) in p.incomes" :key="i" class="rr r5"><input v-model="r.source" placeholder="Source" aria-label="Source"><input v-model="r.who" placeholder="Who" aria-label="Who"><select v-model="r.frequency" aria-label="How often"><option value="monthly">Monthly</option><option value="annual">Yearly</option></select><input v-model="r.amount" type="number" min="0" placeholder="Amount" aria-label="Amount"><select v-model="r.currency" aria-label="Currency"><option>USD</option><option>NGN</option></select><button class="x" aria-label="Remove" @click="p.incomes.splice(i, 1)">×</button></div>
+          <p v-if="(p.equity ?? []).some((e: any) => (e.vested ?? []).length)" class="nt">Share pay (RSUs, ESPP) is kept with your shares, not counted here, because it comes as shares at uneven times.</p>
           <div class="chips"><button v-for="c in ['Salary', 'Business', 'Rent', 'Dividends', 'Other income']" :key="c" @click="addTo('incomes', { who: '', source: c === 'Other income' ? '' : c, amount: '', frequency: c === 'Dividends' ? 'annual' : 'monthly', currency: cur }, 'income')">+ {{ c }}</button></div></section>
         <section id="fp-tax" class="card"><div class="h"><h4>Tax</h4><span class="mut">{{ flow.tax ? fmt(flow.tax) + ' a month' : 'Not started' }}</span></div>
           <div v-for="(r, i) in p.taxes" :key="i" class="rr r4"><input v-model="r.kind" placeholder="e.g. Federal income tax, PAYE" aria-label="Tax"><select v-model="r.frequency" aria-label="How often"><option value="monthly">Monthly</option><option value="annual">Yearly</option></select><input v-model="r.amount" type="number" min="0" placeholder="Amount" aria-label="Amount"><select v-model="r.currency" aria-label="Currency"><option>USD</option><option>NGN</option></select><button class="x" aria-label="Remove" @click="p.taxes.splice(i, 1)">×</button></div>
+          <p v-if="taxLow" class="nt warn">These look like one paycheque rather than a year. Set "How often" to match, or use the year-to-date figures on your payslip.</p>
           <div class="chips"><button v-for="c in ['Federal', 'State']" :key="c" @click="addTo('taxes', { kind: c + ' income tax', amount: '', frequency: 'annual', currency: cur }, 'tax')">+ {{ c }}</button><button @click="kind = 'tax_return'; goTo('docs')">+ Upload a tax return</button></div></section>
         <section id="fp-spending" class="card"><div class="h"><h4>Spending</h4><span class="mut">{{ flow.spend ? fmt(flow.spend) + ' a month' : 'Not started' }}</span></div>
           <div v-for="(r, i) in p.expenses" :key="i" class="rr r4"><input v-model="r.category" placeholder="Housing, school fees, staff, travel…" aria-label="Category"><select v-model="r.frequency" aria-label="How often"><option value="monthly">Monthly</option><option value="annual">Yearly</option></select><input v-model="r.amount" type="number" min="0" placeholder="Amount" aria-label="Amount"><select v-model="r.currency" aria-label="Currency"><option>USD</option><option>NGN</option></select><button class="x" aria-label="Remove" @click="p.expenses.splice(i, 1)">×</button></div>
           <div class="chips"><button v-for="c in ['Housing', 'Living', 'Children', 'Travel', 'Other']" :key="c" @click="addTo('expenses', { category: c === 'Other' ? '' : c, amount: '', frequency: c === 'Travel' ? 'annual' : 'monthly', currency: cur }, 'spending')">+ {{ c }}</button></div></section>
         <section id="fp-debts" class="card"><div class="h"><h4>Debts, credit and goals</h4><span class="mut">{{ p.debts.length + p.credit_scores.length + p.goals.length ? [p.debts.length && p.debts.length + ' debt' + (p.debts.length === 1 ? '' : 's'), p.credit_scores.length && p.credit_scores.length + ' score' + (p.credit_scores.length === 1 ? '' : 's'), p.goals.length && p.goals.length + ' goal' + (p.goals.length === 1 ? '' : 's')].filter(Boolean).join(' · ') : 'Nothing added yet' }}</span></div>
           <span class="lbl">Debts</span>
-          <div v-for="(r, i) in p.debts" :key="'d' + i" class="rr r5"><input v-model="r.name" placeholder="Name" aria-label="Debt"><input v-model="r.balance" type="number" min="0" placeholder="Balance" aria-label="Balance"><input v-model="r.rate" type="number" min="0" step="0.01" placeholder="Rate %" aria-label="Rate"><input v-model="r.payment" type="number" min="0" placeholder="A month" aria-label="Monthly payment"><select v-model="r.currency" aria-label="Currency"><option>USD</option><option>NGN</option></select><button class="x" aria-label="Remove" @click="p.debts.splice(i, 1)">×</button></div>
-          <div class="chips"><button v-for="c in ['Mortgage', 'Loan', 'Card']" :key="c" @click="add('debts', { name: c, balance: '', rate: '', payment: '', currency: cur })">+ {{ c }}</button></div>
+          <div v-if="p.debts.length" class="rh r6"><span>Debt</span><span>Owed to</span><span>Still owed</span><span>Rate %</span><span>A month</span><span /><span /></div>
+          <div v-for="(r, i) in p.debts" :key="'d' + i" class="rr r6"><input v-model="r.name" placeholder="Name" aria-label="Debt"><input v-model="r.lender" :list="'lenders-' + i" placeholder="Bank, card company…" aria-label="Owed to" autocomplete="off"><datalist :id="'lenders-' + i"><option v-for="n in lendersFor(cur === 'NGN' ? 'NG' : 'US', String(r.name ?? ''))" :key="n" :value="n" /></datalist><input v-model="r.balance" type="number" min="0" placeholder="Balance" aria-label="Balance"><input v-model="r.rate" type="number" min="0" step="0.01" placeholder="Rate %" aria-label="Rate"><input v-model="r.payment" type="number" min="0" placeholder="A month" aria-label="Monthly payment"><select v-model="r.currency" aria-label="Currency"><option>USD</option><option>NGN</option></select><button class="x" aria-label="Remove" @click="p.debts.splice(i, 1)">×</button></div>
+          <div class="chips"><button v-for="c in ['Mortgage', 'Car loan', 'Student loan', 'Card', 'Other loan']" :key="c" @click="add('debts', { name: c === 'Other loan' ? 'Loan' : c, lender: '', balance: '', rate: '', payment: '', currency: cur })">+ {{ c }}</button></div>
           <span class="lbl">Credit scores</span>
           <div v-for="(r, i) in p.credit_scores" :key="'c' + i" class="rr r4"><input v-model="r.person" placeholder="Person" aria-label="Person"><input v-model="r.score" type="number" min="300" max="900" placeholder="Score" aria-label="Score"><select v-model="r.source" aria-label="Source"><option>FICO</option><option>Credit Karma</option><option>Equifax</option><option>Experian</option><option>TransUnion</option><option>CreditChek</option><option>Other</option></select><input v-model="r.date" type="date" aria-label="Date"><button class="x" aria-label="Remove" @click="p.credit_scores.splice(i, 1)">×</button></div>
           <div class="chips"><button @click="add('credit_scores', { person: '', score: '', source: 'FICO', date: '' })">+ Add a score</button></div>
@@ -106,6 +113,8 @@ async function applyRead() {
           <div v-for="(r, i) in p.goals" :key="'g' + i" class="rr r3"><input v-model="r.name" placeholder="e.g. Children's university, retire at 55" aria-label="Goal"><input v-model="r.target" type="number" min="0" placeholder="Target amount" aria-label="Target"><input v-model="r.by" type="date" aria-label="By"><button class="x" aria-label="Remove" @click="p.goals.splice(i, 1)">×</button></div>
           <div class="chips"><button v-for="c in ['Retirement', 'Home', 'Education', 'Other']" :key="c" @click="add('goals', { name: c === 'Other' ? '' : c, target: '', by: '' })">+ {{ c }}</button></div>
           <label class="full">Anything else<textarea v-model="p.notes" rows="2" maxlength="4000" /></label></section>
+      </div>
+      <aside class="dside">
         <section id="fp-docs" class="card"><div class="h"><h4>Documents</h4><span class="mut">Kept private; the AI reads them for the review</span></div>
           <div class="dz2"><div class="dzc"><select v-model="kind" aria-label="Document type"><option v-for="(l, k) in KIND" :key="k" :value="k">{{ l }}</option></select><DropZone multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx" :disabled="busy === 'up' || preview" :label="busy === 'up' ? 'Uploading…' : 'Drop files or choose'" hint="PDF, images, CSV or Excel · up to 20 MB each" @change="upload" /></div>
             <div><div v-for="d in data.docs" :key="d.id" class="rw"><span>{{ d.name }}<em>{{ KIND[d.kind] ?? d.kind }}</em></span><button class="lk red" @click="act('remove_doc', { doc_id: d.id })">Remove</button></div><p v-if="!data.docs.length" class="mut">No documents yet. Stock plan and RSU statements, brokerage, 401(k) and pension statements, bank statements, payslips, tax returns and credit reports.</p>
@@ -128,16 +137,57 @@ async function applyRead() {
             <p v-for="(e, i) in p.equity ?? []" :key="'ke' + i"><strong>{{ e.company }}</strong>: {{ e.shares_held ? e.shares_held.toLocaleString('en-US') + ' shares' : '' }}{{ e.value ? ' worth ' + money2(e.value) : '' }}{{ e.as_of ? ' (' + e.as_of + ')' : '' }}{{ (e.vested ?? []).length ? ' · ' + e.vested.length + ' release' + (e.vested.length === 1 ? '' : 's') + ' read' : '' }}</p>
             <p v-for="(f, i) in p.doc_flags ?? []" :key="'kf' + i"><strong>{{ f.title }}.</strong> {{ f.detail }}</p>
           </div></section>
+      </aside>
       </div>
     </div>
     <template v-else-if="data.report">
-      <div class="shr card"><span><b>Share this review</b> with family: they enter their name and email to view, and you are told who looked.</span><span class="sa"><button class="btn sm" :disabled="!!busy" @click="share">{{ data.has_link ? 'Make a new link' : 'Create link' }}</button><button v-if="data.has_link" class="lk red" @click="act('unshare')">Turn off</button></span><span v-if="link" class="mut">Copied: {{ link }}</span></div>
-      <FinancialReport :report="data.report.content" :history="data.history" />
-      <div v-if="data.views.length" class="card"><h4>Who viewed the shared review</h4><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB') }}</span></div></div>
+      <div class="rvl" :class="{ staff: data.staff }">
+        <div class="rvm"><FinancialReport :report="data.report.content" :history="data.history" :api="preview ? undefined : api" :pdf="preview ? undefined : pdfUrl" :prepared="data.report.created_at" @share="shareOpen = true" @changed="refresh()" /></div>
+        <aside v-if="data.staff" class="rva">
+          <section class="card"><div class="h"><h4>Checks before the client relies on it</h4><span class="mut">{{ data.checks.filter((c: any) => c.level === 'warn').length ? data.checks.filter((c: any) => c.level === 'warn').length + ' to look at' : 'All clear' }}</span></div>
+            <div v-for="(c, i) in data.checks" :key="i" class="chk" :class="c.level"><b>{{ c.title }}</b><span>{{ c.detail }}</span>
+              <button v-if="c.fix === 'regenerate'" class="lk" :disabled="!!busy || preview" @click="generate">{{ busy === 'generate' ? 'Updating… (about a minute)' : 'Update the review from the details' }}</button><button v-else-if="c.fix === 'details'" class="lk" @click="sec = 'profile'; touched = true; nextTick(() => goTo('tax'))">Open Tax in the details</button></div>
+            <p v-if="!data.checks.length" class="mut">Figures match the details and every document was read.</p></section>
+          <section class="card"><div class="h"><h4>What the client sees</h4><span class="mut">{{ data.report.content.edited_at ? 'Edited ' + new Date(data.report.content.edited_at).toLocaleDateString('en-GB') : 'As drafted' }}</span></div>
+            <label class="fl2">Headline<input v-model="ed.headline" maxlength="200"></label>
+            <label class="fl2">Summary<textarea v-model="ed.summary" rows="4" maxlength="2000" /></label>
+            <button class="btn secondary sm" :disabled="!!busy || preview" @click="saveWords">{{ busy === 'report_edit' ? 'Saving…' : 'Save wording' }}</button>
+            <span class="lbl">Steps · the first three show as cards</span>
+            <div v-for="st in staffSteps" :key="st.title" class="es" :class="{ off: st.hidden }">
+              <template v-if="editing === st.title"><input v-model="es.title" aria-label="Step"><textarea v-model="es.detail" rows="3" aria-label="Detail" /><input v-model="es.timeframe" aria-label="When"><span class="row2"><button class="btn sm" :disabled="!!busy" @click="saveStep(st.title)">Save</button><button class="lk" @click="editing = ''">Cancel</button></span></template>
+              <template v-else><span><b>{{ st.title }}</b><em>{{ st.hidden ? 'Hidden from the client' : st.timeframe }}</em></span><span class="row2"><button class="lk" @click="startEdit(st)">Edit</button><button class="lk" :disabled="!!busy || preview" @click="act('report_edit', st.hidden ? { show: st.title } : { hide: st.title }).then(() => refresh())">{{ st.hidden ? 'Show' : 'Hide' }}</button></span></template>
+            </div></section>
+          <section class="card"><div class="h"><h4>Shared link</h4><span class="mut">{{ data.has_link ? 'On' : 'Off' }}</span></div>
+            <span class="mut">Family enter their name and email to view; the client is told who looked. Links last 90 days.</span>
+            <span class="row2"><button class="btn secondary sm" :disabled="!!busy || preview" @click="share">{{ data.has_link ? 'Make a new link' : 'Create link' }}</button><button v-if="data.has_link" class="lk red" @click="act('unshare').then(() => refresh())">Turn off</button></span><span v-if="link" class="mut">Copied: {{ link }}</span>
+            <span v-if="data.views.length" class="lbl">Who viewed</span><div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}</span></div></section>
+        </aside>
+      </div>
+      <div v-if="!data.staff && (shareOpen || data.has_link || data.views.length)" class="card shr2">
+        <div class="h"><h4>Share with family</h4><span class="mut">{{ data.has_link ? 'Link on · lasts 90 days' : 'Off' }}</span></div>
+        <span class="mut">They enter their name and email to open a read-only copy, and you're told who looked. No account numbers or identity details are shown.</span>
+        <span class="row2"><button class="btn sm" :disabled="!!busy" @click="share">{{ data.has_link ? 'Make a new link' : 'Create a link' }}</button><button v-if="data.has_link" class="lk red" @click="act('unshare').then(() => refresh())">Turn off</button></span><span v-if="link" class="mut">Copied: {{ link }}</span>
+        <div v-for="(v, i) in data.views" :key="i" class="rw"><span>{{ v.name }} · {{ v.email }}</span><span class="mut">{{ new Date(v.viewed_at).toLocaleString('en-GB') }}</span></div>
+      </div>
     </template>
   </div>
 </template>
 <style scoped>
+.dt { display: flex; flex-direction: column; gap: 12px; } .dh { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; }
+.dhl { display: flex; flex-direction: column; gap: 2px; } .dhl h3 { margin: 0; font-size: 22px; color: var(--c-navy); } .dha { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.dtl { flex-basis: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--c-rule); border: 1px solid var(--c-rule); }
+.dtl > div { background: #fbfaf8; padding: 12px 14px; display: flex; flex-direction: column; } .dtl span { font-size: 12.5px; color: var(--c-muted); } .dtl b { font-size: 20px; color: var(--c-navy); } .dtl em { font-style: normal; font-size: 12px; color: var(--c-muted); }
+.cnav { display: flex; flex-wrap: wrap; gap: 6px; } .cnav a { padding: 7px 12px; background: #fff; border: 1px solid var(--c-rule); text-decoration: none; color: var(--c-navy); font-size: 13.5px; } .cnav a.warn { background: #fdf6f0; border-color: #f2d9c4; color: #8a3a06; }
+.lay2 { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; } .lay2 > .main { flex: 999 1 600px; } .dside { flex: 1 1 320px; display: flex; flex-direction: column; gap: 12px; min-width: 0; } .dside .dz2 { grid-template-columns: 1fr !important; }
+.nt { margin: 4px 0; font-size: 13px; color: var(--c-ink-soft); background: var(--c-paper-2); padding: 9px 12px; } .nt.warn { background: #fdf6f0; }
+.r6 { grid-template-columns: 1.1fr 1.3fr .9fr .6fr .8fr .7fr 28px; } .rh { display: grid; gap: 6px; font-size: 12px; color: var(--c-muted); padding: 4px 4px 2px; }
+@media (max-width: 760px) { .dtl { grid-template-columns: repeat(2, minmax(0, 1fr)); } .r6, .rh { grid-template-columns: 1fr; } .rh { display: none; } }
+.rvl { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; } .rvm { flex: 999 1 640px; min-width: 0; } .rvl:not(.staff) .rvm { flex-basis: 100%; }
+.rva { flex: 1 1 320px; display: flex; flex-direction: column; gap: 12px; } .rva .card { display: flex; flex-direction: column; gap: 8px; } .rva h4 { margin: 0; font-size: 15px; color: var(--c-navy); }
+.chk { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fbfaf8; font-size: 13px; } .chk.warn { background: #fdf6f0; border-color: #f2d9c4; } .chk b { font-size: 13.5px; } .chk .lk { align-self: flex-start; }
+.fl2 { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--c-muted); } .fl2 input, .fl2 textarea, .es input, .es textarea { font: inherit; font-size: 13.5px; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); }
+.es { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--c-rule); font-size: 13.5px; } .es.off { opacity: .6; } .es > span:first-child { display: flex; flex-direction: column; } .es em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
+.row2 { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; } .shr2 { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; } .shr2 h4 { margin: 0; }
 .fp { display: flex; flex-direction: column; gap: 12px; } .fp *, .fp { box-sizing: border-box; } .s2 { display: flex; gap: 4px; } .s2 button { background: #fff; border: 1px solid var(--c-rule); padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer; } .s2 .on { border-color: var(--c-blue-deep); color: var(--c-blue-deep); font-weight: 600; } .s2 button:disabled { opacity: .45; cursor: default; }
 .okm { color: var(--c-ok); margin: 0; } .error { color: var(--c-danger); margin: 0; } .mut { color: var(--c-muted); font-size: 12.5px; }
 .lay { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }

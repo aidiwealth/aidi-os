@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   if (a === 'save') { try { await planSave(id, body?.profile ?? {}) } catch { throw apiError('invalid', 'Check the figures (amounts must be numbers).') } return { ok: true } }
   if (a === 'generate') { await rateLimit('wm_plan_generate', user.userId, 6, 60 * 60 * 1000) }
   if (a === 'generate') { try { return { ok: true, report: await planGenerate(id, user.userId) } } catch (err) { console.error('[wm-plan] generate failed', err); throw apiError('ai_failed', 'Could not prepare the review just now. Please try again in a minute.', 502) } }
+  if (a === 'step_done' && typeof body?.title === 'string') { await reportStepDone(id, body.title, !!body.done); return { ok: true } }
   if (a === 'share') return { ok: true, url: await planShare(id, true) }
   if (a === 'unshare') { await planShare(id, false); return { ok: true } }
   // Read the documents with AI (identity numbers removed first) and show what was found; nothing is added until confirmed.

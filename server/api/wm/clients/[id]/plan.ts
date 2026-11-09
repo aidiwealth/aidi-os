@@ -5,11 +5,19 @@ export default defineEventHandler(async (event) => {
   if (!/^[0-9a-f-]{36}$/.test(id) || !(await db().query('SELECT 1 FROM wm.clients WHERE id = $1', [id])).rowCount) throw apiError('not_found', 'Not found', 404)
 
   const body = getMethod(event) === 'GET' ? null : (getRequestHeader(event, 'content-type') ?? '').includes('multipart') ? null : await readBody<Record<string, unknown>>(event)
-  if (getMethod(event) === 'GET') return planGet(id)
+  if (getMethod(event) === 'GET') return { ...(await planGet(id)), staff: true, checks: await reportChecks(id) }
   if ((getRequestHeader(event, 'content-type') ?? '').includes('multipart')) return { ok: true, uploaded: await planUpload(id, (await readMultipartFormData(event)) ?? []) }
   const a = String(body?.action ?? '')
   if (a === 'save') { try { await planSave(id, body?.profile ?? {}) } catch { throw apiError('invalid', 'Check the figures (amounts must be numbers).') } return { ok: true } }
   if (a === 'generate') { try { return { ok: true, report: await planGenerate(id, user.userId) } } catch (err) { console.error('[wm-plan] generate failed', err); throw apiError('ai_failed', 'Could not prepare the review just now. Please try again in a minute.', 502) } }
+  if (a === 'step_done' && typeof body?.title === 'string') { await reportStepDone(id, body.title, !!body.done); return { ok: true } }
+  if (a === 'report_edit') {
+    const b = body ?? {}, str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+    const st = b.step && typeof b.step === 'object' ? b.step as Record<string, unknown> : null
+    await reportEdit(id, { headline: str(b.headline), summary: str(b.summary), hide: str(b.hide), show: str(b.show), step: st && typeof st.title === 'string' ? { title: st.title, new_title: str(st.new_title), detail: str(st.detail), timeframe: str(st.timeframe) } : undefined })
+    await audit({ event, actorUserId: user.userId, action: 'wm.report_edit', objectType: 'wm_client', objectId: id })
+    return { ok: true }
+  }
   if (a === 'share') return { ok: true, url: await planShare(id, true) }
   if (a === 'unshare') { await planShare(id, false); return { ok: true } }
   // Read the documents with AI (identity numbers removed first) and show what was found; nothing is added until confirmed.
