@@ -3,7 +3,7 @@
 // The disclaimer sits under the editor column, not under the steps on the left.
 definePageMeta({ fullBleed: true, discInset: '240px' })
 const id = useRoute().params.id as string
-interface Bl { type: string; full?: boolean; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
+interface Bl { type: string; full?: boolean; link?: string; thumb?: string; thumb_url?: string; thumb_id?: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
 interface R { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
 interface D { kind?: string; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
   label: string; metrics: { key: string; label: string; group?: string }[]; lists: { id: string; name: string; n: number }[]; stages: { id: string; name: string; n: number }[]; contacts: { id: string; name: string; email: string }[]
@@ -34,6 +34,15 @@ const previews = ref<Record<number, string>>({}); let ptimer: ReturnType<typeof 
 watch(() => JSON.stringify(f.blocks.map((b) => (['chart', 'two_charts', 'metrics_table', 'sectors'].includes(b.type) ? b : null))), () => { clearTimeout(ptimer); ptimer = setTimeout(renderCharts, 500) })
 async function renderCharts() { for (const [i, b] of f.blocks.entries()) if (['chart', 'two_charts', 'metrics_table', 'sectors'].includes(b.type)) { try { const r = await $fetch<{ html: string }>('/api/updates/' + id + '/render', { method: 'POST', body: { blocks: [b] } }); previews.value[i] = r.html } catch { /* keep last */ } } }
 onMounted(() => setTimeout(renderCharts, 300))
+// A video's picture: its own snapshot from the video site, a picture the user uploads, or none (a link only).
+const thumbMsg = reactive<Record<number, string>>({})
+async function setThumb(b: Bl, v: string) {
+  b.thumb = v; const i = f.blocks.indexOf(b); thumbMsg[i] = ''
+  if (v !== 'auto') return
+  if (!b.url) { thumbMsg[i] = 'Paste the video link first.'; return }
+  thumbMsg[i] = 'Getting the snapshot…'
+  try { b.thumb_url = (await $fetch<{ thumb: string }>('/api/updates/video-thumb', { query: { url: b.url } })).thumb; thumbMsg[i] = '' } catch (e) { thumbMsg[i] = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'No snapshot found. Upload a picture instead.' }
+}
 const uploading = ref(''); async function upload(ev: Event, apply: (r: { id: string; name: string }) => void) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return; uploading.value = file.name; const fd = new FormData(); fd.append('file', file); try { apply(await $fetch<{ id: string; name: string }>('/api/updates/media', { method: 'POST', body: fd })) } catch (e) { msg.value = err(e) } finally { uploading.value = '' } }
 const aiBusy = ref(false)
 // Treasury bills in the draft's figures: with cash or on their own line. Investor-facing, so asked for every update.
@@ -90,9 +99,14 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
             <ClientOnly v-if="b.type === 'text'"><RichEditor v-model="b.md" :min-height="120" placeholder="Write here, or type ## for a heading and - for a list…" /></ClientOnly>
             <div v-else-if="b.type === 'sectors'" class="chartp"><input v-model="b.title" class="sti" placeholder="Revenue by customer sector" maxlength="200"><div v-if="previews[i]" v-html="previews[i]" /><p v-else class="mut">Loading…</p></div>
             <div v-else-if="['chart', 'two_charts', 'metrics_table'].includes(b.type)" class="chartp" @click="editing = i; side = b.type === 'two_charts' ? 'left' : 'main'"><div v-if="previews[i]" v-html="previews[i]" /><p v-else class="mut">Loading chart…</p></div>
-            <div v-else-if="b.type === 'image'" class="media"><img v-if="b.media_id" :src="'/api/public/media/' + b.media_id" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.gif,.webp" :label="b.media_id ? 'Drop a new image' : 'Drop an image here'" hint="or click to choose" @change="upload($event, (r) => (b.media_id = r.id))" /><input v-model="b.caption" placeholder="Caption (optional)" maxlength="300"></div>
+            <div v-else-if="b.type === 'image'" class="media"><img v-if="b.media_id" :src="'/api/public/media/' + b.media_id" alt=""><DropZone compact accept=".png,.jpg,.jpeg,.gif,.webp" :label="b.media_id ? 'Drop a new image' : 'Drop an image here'" hint="or click to choose" @change="upload($event, (r) => (b.media_id = r.id))" /><input v-model="b.caption" placeholder="Caption (optional)" maxlength="300"><input v-model="b.link" placeholder="Link when the picture is clicked (optional), e.g. https://…" maxlength="500" inputmode="url"></div>
             <div v-else-if="b.type === 'file'" class="media"><span v-if="b.media_id" class="fa"><FileBadge :name="b.name" size="sm" />{{ b.name }}</span><DropZone compact accept=".pdf,.xlsx,.docx,.pptx,.csv" :label="b.media_id ? 'Drop a new file' : 'Drop a file to attach'" hint="PDF, Excel, Word, PowerPoint or CSV" @change="upload($event, (r) => { b.media_id = r.id; b.name = r.name })" /></div>
-            <div v-else class="media"><label class="label">{{ b.type === 'video' ? 'Video link (Loom, YouTube, Vimeo)' : 'Deck link (e.g. your Finvry data room link)' }}<input v-model="b.url" placeholder="https://" maxlength="500"></label><input v-model="b.title" :placeholder="b.type === 'video' ? 'Watch the video' : 'View our deck'" maxlength="200"></div></div>
+            <div v-else class="media"><label class="label">{{ b.type === 'video' ? 'Video link (Loom, YouTube, Vimeo)' : 'Deck link (e.g. your Finvry data room link)' }}<input v-model="b.url" placeholder="https://" maxlength="500"></label><input v-model="b.title" :placeholder="b.type === 'video' ? 'Watch the video' : 'View our deck'" maxlength="200">
+              <template v-if="b.type === 'video'"><label class="label">Show<select :value="b.thumb ?? 'none'" @change="setThumb(b, ($event.target as HTMLSelectElement).value)"><option value="none">A link only</option><option value="auto">The video's snapshot (YouTube, Vimeo, Loom)</option><option value="upload">A picture I upload</option></select></label>
+                <p v-if="thumbMsg[i]" class="mut">{{ thumbMsg[i] }}</p>
+                <DropZone v-if="b.thumb === 'upload'" compact accept=".png,.jpg,.jpeg,.webp" :label="b.thumb_id ? 'Drop a new picture' : 'Drop a picture for the video'" hint="A still from the video works best" @change="upload($event, (r) => (b.thumb_id = r.id))" />
+                <div v-if="(b.thumb === 'auto' && b.thumb_url) || (b.thumb === 'upload' && b.thumb_id)" class="vth"><img :src="b.thumb === 'auto' ? b.thumb_url : '/api/public/media/' + b.thumb_id" alt=""><div class="vbar"><span>▶</span><b>{{ b.title || 'Watch the video' }}</b></div></div>
+                <button v-if="b.thumb === 'auto'" class="lk" type="button" @click="setThumb(b, 'auto')">Get the snapshot again</button></template></div></div>
         </template>
         <div class="ins end"><button @click="adding = adding === -1 ? null : -1">+ Add a block</button><span v-if="adding === -1" class="menu"><b>Add a block</b><button v-for="[t, l, d] in ADD" :key="t" @click="addBlock(t, f.blocks.length)"><span>{{ l }}</span><em>{{ d }}</em></button></span></div>
       </div>
@@ -127,6 +141,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
   </section>
 </template>
 <style scoped>
+.vth { max-width: 520px; } .vth img { display: block; width: 100%; } .vbar { display: flex; align-items: center; gap: 10px; background: #0c1a2e; color: #fff; padding: 8px 12px; font-size: 13px; } .vbar b { font-weight: 500; }
 .ed { display: grid; grid-template-columns: 240px 1fr; gap: 0; min-height: calc(var(--vh100) - var(--topbar-h, 60px)); align-items: stretch; } .steps { position: sticky; top: var(--topbar-h, 60px); height: calc(var(--vh100) - var(--topbar-h, 60px)); overflow-y: auto; padding-top: 22px !important; align-self: start; } .steps { padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--c-paper-2); border-right: 1px solid var(--c-rule); box-sizing: border-box; } .main { padding: 8px 32px 72px !important; max-width: 1180px; }
 .back { font-size: 13px; color: var(--c-muted); padding: 0 8px 8px; } .h { font-size: 17px; padding: 0 8px 10px; } .steps button { display: flex; gap: 10px; align-items: center; background: none; border: 0; padding: 10px 8px; font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; color: var(--c-ink-soft); }
 .steps button span { width: 22px; height: 22px; border: 1px solid var(--c-rule-strong); display: grid; place-items: center; font-size: 12px; } .steps button.on { background: #e6e4dd; color: var(--c-ink); font-weight: 500; } .steps button.on span { background: var(--c-navy); color: #fff; border-color: var(--c-navy); }

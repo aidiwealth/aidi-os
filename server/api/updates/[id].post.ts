@@ -2,7 +2,10 @@
 import { z } from 'zod'
 const Block: z.ZodType<unknown> = z.lazy(() => z.object({ type: z.enum(['text', 'chart', 'two_charts', 'metrics_table', 'image', 'video', 'file', 'deck', 'sectors']), md: z.string().max(20000).optional(), title: z.string().max(200).optional(),
   metrics: z.array(z.string().max(40)).max(6).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(1).max(36).optional(), left: Block.optional(), right: Block.optional(),
-  media_id: z.string().uuid().optional(), caption: z.string().max(300).optional(), url: z.string().max(500).optional(), name: z.string().max(200).optional() }))
+  media_id: z.string().uuid().optional(), caption: z.string().max(300).optional(), url: z.string().max(500).optional(), name: z.string().max(200).optional(),
+  // Chart numbers in full; a picture's link; a video's picture (its own snapshot or an uploaded one).
+  full: z.boolean().optional(), link: z.string().max(500).regex(/^(https?:\/\/\S+)?$/i).optional(), thumb: z.enum(['none', 'auto', 'upload']).optional(),
+  thumb_url: z.string().max(500).regex(/^https:\/\/(i\.ytimg\.com|img\.youtube\.com|i\.vimeocdn\.com|cdn\.loom\.com)\//).optional(), thumb_id: z.string().uuid().optional() }))
 const Body = z.object({ subject: z.string().regex(/^(group|entity:[0-9a-f-]{36}|company:[0-9a-f-]{36})$/).nullable().optional(), title: z.string().trim().min(1).max(200), blocks: z.array(Block).max(80).optional(), cover_id: z.string().uuid().nullable().optional(), from_name: z.string().trim().max(120).optional(), greeting: z.string().trim().max(120).nullable().optional(),
   recipients: z.object({ lists: z.array(z.string().uuid()).max(50), stages: z.array(z.string().uuid()).max(100), contacts: z.array(z.string().uuid()).max(2000), emails: z.array(z.string().max(254)).max(500) }).optional(),
   highlights: z.string().max(4000).optional(), challenges: z.string().max(4000).optional(), asks: z.string().max(2000).optional(), status: z.enum(['draft', 'published']).optional() })

@@ -8,7 +8,7 @@ export function mdToHtml(src: string): string {
   return mdRender(src, { p: 'margin:0 0 14px', h1: 'font-family:Georgia,serif;font-weight:500;font-size:26px;color:#0c1a2e;margin:22px 0 8px', h2: 'font-family:Georgia,serif;font-weight:500;font-size:21px;color:#0c1a2e;margin:22px 0 8px', h3: 'font-weight:600;font-size:17px;color:#0c1a2e;margin:18px 0 6px',
     ul: 'margin:0 0 14px;padding-left:22px', ol: 'margin:0 0 14px;padding-left:22px', li: 'margin:0 0 6px', quote: 'margin:0 0 14px;padding:4px 0 4px 16px;border-left:3px solid #c9c5ba;color:#4a4a4a', hr: 'border:none;border-top:1px solid #e6e4dd;margin:20px 0', a: 'color:#1c4f9c', code: 'font-family:Menlo,monospace;font-size:13px;background:#f4f3ef;padding:1px 5px' })
 }
-export interface Block { type: string; full?: boolean; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
+export interface Block { type: string; full?: boolean; link?: string; thumb?: 'auto' | 'upload' | 'none'; thumb_url?: string; thumb_id?: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Block; right?: Block; media_id?: string; caption?: string; url?: string; name?: string; file_id?: string }
 type Series = { labels: string[]; series: { key: string; label: string; values: (number | null)[] }[]; currency: string; ends?: string[] }
 export const kpiAdds = (name: string) => /volume|transaction|txn|message|sms|call|minute|sent|order|gmv|tpv|processed|payment|signup|sign-up|download|unit|request|session|booking|trip|delivery|ticket/i.test(name) && !/rate|%|per |average|avg|ratio|margin|price|headcount|staff|employee/i.test(name)
 const FLOWS = new Set(['revenue', 'cogs', 'gross_profit', 'opex_total', 'ebitda', 'net_income', 'operating_cf', 'burn'])
@@ -94,6 +94,12 @@ export function sectorsHtml(title: string, d: Awaited<ReturnType<typeof sectorSh
   return '<div style="border:1px solid #e6e4dd;padding:16px 18px;margin:0 0 18px"><div style="font-weight:600;font-size:15px;color:#0c1a2e;margin:0 0 4px">' + esc(title) + '</div><div style="font-size:12px;color:#6b6b6b;margin:0 0 10px">Share of revenue over the last 12 months</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' +
     d.sectors.map((x) => '<tr><td style="padding:5px 10px 5px 0;font-size:13px;white-space:nowrap;width:1%">' + esc(x.sector) + '</td><td style="padding:5px 0;width:99%"><span style="display:inline-block;height:12px;width:' + Math.max(1, Math.round((x.share / max) * 80)) + '%;background:#1c3d63;vertical-align:middle"></span><span style="font-size:12px;color:#3a3a3a;margin-left:6px">' + x.share + '%</span></td></tr>').join('') + '</table></div>'
 }
+// The picture shown for a video: an uploaded one, or the video site's own snapshot (from known image hosts only).
+function videoThumb(b: Block, base: string): string | null {
+  if (b.thumb === 'upload' && b.thumb_id && /^[0-9a-f-]{36}$/.test(b.thumb_id)) return base + '/api/public/media/' + b.thumb_id
+  if (b.thumb === 'auto' && b.thumb_url && /^https:\/\/(i\.ytimg\.com|img\.youtube\.com|i\.vimeocdn\.com|cdn\.loom\.com)\/[^"'<>\s]+$/.test(b.thumb_url)) return b.thumb_url
+  return null
+}
 export async function renderBlocks(blocks: Block[], base: string, subject?: string | null): Promise<string> {
   const out: string[] = []
   for (const b of blocks.slice(0, 80)) {
@@ -103,8 +109,20 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
     else if (b.type === 'two_charts') { const l = b.left ?? { type: 'chart' }, r = b.right ?? { type: 'chart' }
       out.push('<table class="two" role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="50%" style="vertical-align:top;padding-right:6px">' + chartHtml(l, await metricSeries(l.metrics ?? [], l.period ?? 'month', l.count ?? 6, subject)) + '</td><td width="50%" style="vertical-align:top;padding-left:6px">' + chartHtml(r, await metricSeries(r.metrics ?? [], r.period ?? 'month', r.count ?? 6, subject)) + '</td></tr></table>') }
     else if (b.type === 'sectors') out.push(sectorsHtml(b.title || 'Revenue by customer sector', await sectorShares()))
-    else if (b.type === 'image' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px"><img src="' + base + '/api/public/media/' + b.media_id + '" alt="' + esc(b.caption ?? '') + '" style="max-width:100%;display:block">' + (b.caption ? '<div style="font-size:12.5px;color:#6b6b6b;margin-top:6px">' + esc(b.caption) + '</div>' : '') + '</div>')
+    else if (b.type === 'image' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) {
+      // A picture can open a link when clicked.
+      const img = '<img src="' + base + '/api/public/media/' + b.media_id + '" alt="' + esc(b.caption ?? '') + '" style="max-width:100%;display:block;border:0">'
+      out.push('<div style="margin:0 0 18px">' + (b.link && /^https?:\/\//i.test(b.link) ? '<a href="' + esc(b.link) + '" style="display:block">' + img + '</a>' : img) + (b.caption ? '<div style="font-size:12.5px;color:#6b6b6b;margin-top:6px">' + esc(b.caption) + '</div>' : '') + '</div>')
+    }
     else if (b.type === 'file' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:12px 14px"><a href="' + base + '/api/public/media/' + b.media_id + '" style="color:#1c4f9c;font-weight:600;text-decoration:none">📎 ' + esc(b.name || 'Attachment') + '</a></div>')
+    else if (b.type === 'video' && b.url && /^https?:\/\//i.test(b.url) && videoThumb(b, base)) {
+      // The video's snapshot with a player bar under it; both open the video. (A bar, not an overlay, so it shows the
+      // same in every email app.)
+      const href = esc(b.url)
+      out.push('<div style="margin:0 0 18px"><a href="' + href + '" style="display:block;text-decoration:none"><img src="' + videoThumb(b, base) + '" alt="' + esc(b.title || 'Watch the video') + '" style="width:100%;max-width:100%;display:block;border:0"></a>' +
+        '<a href="' + href + '" style="display:block;text-decoration:none;background:#0c1a2e;padding:10px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="22" style="color:#ffffff;font-size:16px;line-height:16px;font-family:Arial,sans-serif">&#9654;</td>' +
+        '<td style="padding:0 0 0 8px;color:#ffffff;font-family:Helvetica,Arial,sans-serif;font-size:13.5px">' + esc(b.title || 'Watch the video') + '</td></tr></table></a></div>')
+    }
     else if ((b.type === 'video' || b.type === 'deck') && b.url && /^https?:\/\//i.test(b.url)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:14px 16px;background:#f7f9fc"><div style="font-size:12px;color:#6b6b6b;text-transform:uppercase;letter-spacing:.08em">' + (b.type === 'video' ? 'Video' : 'Deck') + '</div><a href="' + esc(b.url) + '" style="color:#1c4f9c;font-weight:600;text-decoration:none;font-size:15px">' + esc(b.title || (b.type === 'video' ? 'Watch the video' : 'View our deck')) + ' →</a></div>')
   }
   return out.join('')
