@@ -13,15 +13,17 @@ export default defineEventHandler(async (event) => {
   if (ndaOn(branding, 'page') && !(await ndaSigned(p.organization_id, getQuery(event).nda))) return { gated: true, nda: { required: true, text: branding.nda_text, key: branding.org_key }, branding, company: org.name, headline: null, about: null, website: null, deck_url: null, contact_email: null, period_type: 'month', currency: 'USD', metrics: [], updates: [], workspace: await publicWorkspace() }
   // The group's figures when the company has subsidiaries (customers combined across them too), else the company's.
   const is = await investorSubject(), inGroup = <T>(fn: () => Promise<T>) => (is.subject === 'group' ? withAllCompanies(fn) : fn())
-  const rows = is.subject ? (await loadStatements(is.subject, p.period_type, is.currency)).slice(-12) : []
+  // Figures are cached for 5 minutes per workspace so the page opens quickly; the page's own text never is.
+  const T0 = Date.now(), ok = p.organization_id, M = 5 * 60 * 1000
+  const rows = is.subject ? (await memo('stmt:' + ok + ':' + is.subject + ':' + p.period_type + ':' + is.currency, M, () => loadStatements(is.subject!, p.period_type, is.currency))).slice(-12) : []
   // Financial figures from the statements; customer metrics (retention, recurring revenue…) and the company's own KPIs
   // at the end of each period.
   // Only what the company's plan includes: on Free, the basic figures; boards, updates and customer sectors need their features.
   const on = await enabledModules(), free = await onFreePlan()
   p.metrics = p.metrics.filter((m) => metricOnPlan(m, free) && (!isCustKey(m) || on.has('fin_customers')))
-  const cust = await inGroup(() => customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7))))
+  const cust = await memo('cust:' + ok + ':' + p.metrics.join(',') + ':' + rows.length, M, () => inGroup(() => customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7)))))
   const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : derive(x.lines, x.period_type)[m] ?? null })) }))
-  const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors && on.has('fin_customers') ? await inGroup(() => sectorShares()).catch(() => null) : null
+  const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors && on.has('fin_customers') ? await memo('sect:' + ok, M, () => inGroup(() => sectorShares())).catch(() => null) : null
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
   const updates = on.has('updates') ? (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows : []
@@ -36,7 +38,7 @@ export default defineEventHandler(async (event) => {
   const mainDeck = p.deck_url && !chosenDeck ? null : (await db().query<{ token: string }>('SELECT token FROM fundraise.decks WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY primary_deck DESC, updated_at DESC LIMIT 1', [chosenDeck]).catch(() => ({ rows: [] as { token: string }[] }))).rows[0]
   const bid = (p as unknown as { board_id: string | null }).board_id
   const bRow = bid && on.has('boards') ? (await db().query<{ name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number }>('SELECT name, kpis, charts, period, count FROM financials.boards WHERE id = $1', [bid])).rows[0] : undefined
-  const board = bRow ? { name: bRow.name, data: await boardData(bRow.kpis, bRow.charts, bRow.period, bRow.count), metrics: BOARD_METRICS } : null
+  const board = bRow ? { name: bRow.name, data: await memo('board:' + ok + ':' + bid, M, () => boardData(bRow.kpis, bRow.charts, bRow.period, bRow.count)), metrics: BOARD_METRICS } : null
   // A forecast and the cap table, when chosen (and the company's plan still includes them).
   const pp = p as unknown as { forecast_id: string | null; captable_id: string | null; captable_detail: 'summary' | 'holders' }
   const fRow = pp.forecast_id && on.has('forecast') ? (await db().query<{ name: string; assumptions: unknown; updated_at: string }>('SELECT name, assumptions, updated_at FROM financials.forecasts WHERE id = $1', [pp.forecast_id])).rows[0] : undefined
@@ -52,6 +54,8 @@ export default defineEventHandler(async (event) => {
   const lid = await companyLogoId()
   const lmime = lid ? (await asPlatform(() => db().query<{ mime_type: string }>('SELECT mime_type FROM core.documents WHERE id = $1', [lid]))).rows[0]?.mime_type ?? '' : ''
   const og_image = lid && /^image\/(png|jpe?g|webp|gif)$/.test(lmime) ? mediaUrl(lid) : null
-  return { sectors, financials: await investorFinancials().catch(() => null), forecast, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
+  const financials = await memo('ifin:' + ok, M, () => investorFinancials()).catch(() => null)
+  setHeader(event, 'Server-Timing', 'page;dur=' + (Date.now() - T0))
+  return { sectors, financials, forecast, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? is.currency, metrics, workspace: await publicWorkspace() }
 })

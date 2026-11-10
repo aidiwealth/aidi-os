@@ -19,8 +19,10 @@ export default defineEventHandler(async (event) => {
   const reactions: Record<string, number> = {}
   for (const p of people) for (const r of p.reactions) reactions[r] = (reactions[r] ?? 0) + 1
   // Unique opens by day since sending (from each reader's first open).
-  const firsts = people.map((p) => p.first_opened_at).filter(Boolean).map((d) => d!.slice(0, 10)).sort()
-  const start = (u.sent_at ?? people[0]?.sent_at ?? new Date().toISOString()).slice(0, 10), days: { day: string; opens: number }[] = []
+  // The database hands back dates as Date objects, not text.
+  const day = (v: string | Date | null | undefined) => (v ? new Date(v).toISOString().slice(0, 10) : null)
+  const firsts = people.map((p) => day(p.first_opened_at)).filter((d): d is string => !!d).sort()
+  const start = day(u.sent_at) ?? day(people[0]?.sent_at) ?? new Date().toISOString().slice(0, 10), days: { day: string; opens: number }[] = []
   for (let d = new Date(start + 'T00:00:00Z'), n = 0, i = 0; d <= new Date() && days.length < 60; d.setUTCDate(d.getUTCDate() + 1)) {
     const k = d.toISOString().slice(0, 10); while (i < firsts.length && firsts[i]! <= k) { n++; i++ } days.push({ day: k, opens: n })
   }

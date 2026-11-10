@@ -23,7 +23,7 @@ export async function investorFinancials(): Promise<InvestorFin | null> {
   if (on) {
     const is = await investorSubject()
     const sec = await investorCashPolicy()
-    const rows = is.subject ? await loadStatements(is.subject, 'month', is.currency) : []
+    const rows = is.subject ? await memo('stmt:' + org.id + ':' + is.subject + ':month:' + is.currency, 5 * 60 * 1000, () => loadStatements(is.subject!, 'month', is.currency)) : []
     const fr: FinRow[] = rows.map((r) => ({ period_end: r.period_end, period_type: r.period_type, currency: r.currency, lines: r.lines, kpis: r.kpis ?? {}, derived: withSecurities(deriveLines(r.lines, 1), sec) }))
     if (fr.length) {
       const { facts, period } = factsOf(fr)
