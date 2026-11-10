@@ -9,9 +9,12 @@ export default defineEventHandler(async (event) => {
       WHERE v.id = $1 AND v.link_id = $2 AND v.started_at > now() - interval '20 minutes' AND d.mime_type = 'application/pdf'`, [view, l.id]))).rows[0]
   if (!v) throw apiError('expired', 'This view has expired. Open the file again.', 410)
   const day = new Date().toISOString().slice(0, 10)
-  const out = await stampPdf(await getObject(v.storage_key), (v.viewer_email || 'Confidential') + ' · ' + day, 'Confidential. Shared by ' + v.company + ' with ' + (v.viewer_email || 'a viewer') + ' on ' + day + ' via Finvry. Do not forward.')
+  const src = await getObject(v.storage_key)
+  const out = await tryStampPdf(src, (v.viewer_email || 'Confidential') + ' · ' + day, 'Confidential. Shared by ' + v.company + ' with ' + (v.viewer_email || 'a viewer') + ' on ' + day + ' via Finvry. Do not forward.')
   const dl = getQuery(event).dl === '1' && l.allow_download
+  // A protected PDF can't be stamped: it is sent as it is and the viewer shows the mark over each page.
+  if (!out) setHeader(event, 'x-unstamped', '1')
   setHeader(event, 'content-type', 'application/pdf'); setHeader(event, 'cache-control', 'no-store')
   setHeader(event, 'content-disposition', (dl ? 'attachment' : 'inline') + '; filename="' + v.title.replace(/["\\\r\n]/g, '_') + '"')
-  return Buffer.from(out)
+  return Buffer.from(out ?? src)
 })

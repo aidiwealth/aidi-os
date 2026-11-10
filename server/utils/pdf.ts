@@ -45,3 +45,13 @@ export async function markdownPdf(title: string, md: string, company: string): P
   pages.forEach((p, i) => p.drawText(clean(company) + ' · ' + clean(title) + ' · page ' + (i + 1) + ' of ' + pages.length, { x: M, y: 30, size: 7.5, font: small, color: rgb(0.45, 0.45, 0.45) }))
   return pdf.save()
 }
+
+// Stamping needs a PDF it can rewrite: a protected (encrypted) PDF, often a signed agreement, would come out unreadable,
+// so it is left alone (null) and the viewer lays the mark over the pages instead.
+export async function tryStampPdf(bytes: Uint8Array, mark: string, footer: string): Promise<Uint8Array | null> {
+  try {
+    const probe = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false })
+    if (probe.isEncrypted) return null
+    return await stampPdf(bytes, mark, footer)
+  } catch (e) { console.error('[stamp]', (e as Error).message); return null }
+}
