@@ -24,14 +24,19 @@ export default defineEventHandler(async (event) => {
   if (b.data.mode === 'publish') { if (org.kind === 'company') await notifyPortfolioOfUpdate(org.id, id.data, u.title, org.name).catch((e) => console.error('[updates] portfolio notice', e)); return { ok: true, sent: 0 } }
   const people = await resolveRecipients(u.recipients ?? { lists: [], stages: [], contacts: [], emails: [] })
   if (!people.length) throw apiError('invalid', 'Choose who to send it to in step 2.')
-  let sent = 0
+  let sent = 0, skipped = 0
   const as = await updateSendAs(org.id, user.email)
+  // Never the same update twice to one person (a second send, or the same investor reached by two addresses): only a
+  // send that failed is tried again.
+  const had = new Set((await db().query<{ investor_id: string }>("SELECT investor_id FROM financials.update_sends WHERE update_id = $1 AND coalesce(delivery, 'sent') <> 'failed'", [id.data])).rows.map((x) => x.investor_id))
   // Links in the update, numbered the same for every reader (kept from earlier sends so old emails still work).
   const links: string[] = (await db().query<{ l: string[] }>('SELECT link_urls AS l FROM financials.updates WHERE id = $1', [id.data])).rows[0]?.l ?? []
   for (const p of people) {
-    await db().query('INSERT INTO crm.contacts (name, email) VALUES ($1,$2) ON CONFLICT (organization_id, email) DO NOTHING', [p.name, p.email])
-    const inv = (await db().query<{ id: string }>('SELECT id FROM financials.investors WHERE email = $1', [p.email])).rows[0]
+    await db().query('INSERT INTO crm.contacts (name, email) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM crm.contacts WHERE lower(email) = $2) ON CONFLICT (organization_id, email) DO NOTHING', [p.name, p.email])
+    const inv = (await db().query<{ id: string }>('SELECT id FROM financials.investors WHERE lower(email) = $1 ORDER BY created_at LIMIT 1', [p.email])).rows[0]
     if (!inv) continue
+    if (had.has(inv.id)) { skipped++; continue }
+    had.add(inv.id)
     const token = randomToken()
     const sid = (await db().query<{ id: string }>("INSERT INTO financials.update_sends (update_id, investor_id, token_hash, delivery) VALUES ($1,$2,$3,'sent') ON CONFLICT (update_id, investor_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, sent_at = now(), delivery = 'sent', email_id = NULL, delivery_at = NULL RETURNING id", [id.data, inv.id, sha256(token)])).rows[0]!.id
     const doc = await renderUpdateDoc(u, { company: org.name, base, email: true, viewUrl: base + '/u/' + token, unsubUrl: base + '/unsub/' + token, pixelUrl: base + '/api/public/u/' + token + '/o', ...look })
@@ -43,7 +48,7 @@ export default defineEventHandler(async (event) => {
   const r = u.recipients
   const labels = [...(await db().query<{ name: string }>('SELECT name FROM crm.lists WHERE id = ANY($1::uuid[])', [r.lists])).rows.map((x) => x.name), ...(await db().query<{ name: string }>('SELECT name FROM crm.stages WHERE id = ANY($1::uuid[])', [r.stages])).rows.map((x) => x.name)]
   await db().query('UPDATE financials.updates SET sent_at = coalesce(sent_at, now()), sent_count = (SELECT count(*) FROM financials.update_sends WHERE update_id = $1), sent_to = $2 WHERE id = $1', [id.data, labels])
-  await audit({ event, actorUserId: user.userId, action: 'updates.send', objectType: 'update', objectId: id.data, detail: { sent } })
+  await audit({ event, actorUserId: user.userId, action: 'updates.send', objectType: 'update', objectId: id.data, detail: { sent, skipped } })
   if (org.kind === 'company') await notifyPortfolioOfUpdate(org.id, id.data, u.title, org.name).catch((e) => console.error('[updates] portfolio notice', e))
-  return { ok: true, sent }
+  return { ok: true, sent, skipped }
 })

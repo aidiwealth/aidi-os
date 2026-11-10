@@ -169,13 +169,15 @@ export function trackLinks(html: string, base: string, token: string, list: stri
   return { html: out, added }
 }
 
+// Everyone once: a person on several lists, stages or typed in again counts once (emails compared in lower case).
 export async function resolveRecipients(r: Recipients): Promise<{ email: string; name: string }[]> {
-  const out = new Map<string, string>()
+  const out = new Map<string, string>(), off = new Set<string>()
   const q = await db().query<{ email: string; name: string; subscribed: boolean }>(`SELECT DISTINCT c.email, c.name, c.subscribed FROM crm.contacts c WHERE c.id = ANY($1::uuid[])
       OR EXISTS (SELECT 1 FROM crm.list_members m WHERE m.contact_id = c.id AND m.list_id = ANY($2::uuid[]))
       OR EXISTS (SELECT 1 FROM crm.deals d WHERE d.contact_id = c.id AND d.stage_id = ANY($3::uuid[]))`, [r.contacts, r.lists, r.stages])
-  for (const c of q.rows) if (c.subscribed) out.set(c.email, c.name)
-  const blocked = new Set((await db().query<{ email: string }>('SELECT email FROM crm.contacts WHERE NOT subscribed AND email = ANY($1::text[])', [r.emails.map((e) => e.toLowerCase())])).rows.map((x) => x.email))
+  for (const c of q.rows) { const e = c.email.trim().toLowerCase(); if (!c.subscribed) off.add(e); else if (!out.has(e)) out.set(e, c.name) }
+  for (const e of off) out.delete(e)
+  const blocked = new Set((await db().query<{ email: string }>('SELECT lower(email) AS email FROM crm.contacts WHERE NOT subscribed AND lower(email) = ANY($1::text[])', [r.emails.map((e) => e.trim().toLowerCase())])).rows.map((x) => x.email))
   for (const e of r.emails) { const x = e.trim().toLowerCase(); if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && !blocked.has(x) && !out.has(x)) out.set(x, x.split('@')[0]!) }
   return [...out.entries()].map(([email, name]) => ({ email, name }))
 }

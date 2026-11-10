@@ -69,7 +69,7 @@ async function preview() { try { emailHtml.value = (await $fetch<{ html: string 
 watch([step, asName], () => { if (step.value === 3) preview() })
 const sending = ref(''); const pubMenu = ref(false)
 async function send(mode: string) { pubMenu.value = false; if (mode !== 'test' && mode !== 'publish' && !await askConfirm('Send "' + f.title + '" to ' + (count.value?.count ?? 0) + ' people now?')) return; sending.value = mode; msg.value = ''; ok.value = ''
-  try { await save(); const r = await $fetch<{ sent: number }>('/api/updates/' + id + '/send', { method: 'POST', body: { mode } }); ok.value = mode === 'test' ? 'Test sent to ' + data.value?.me + '.' : mode === 'publish' ? 'Published on your investor page.' : 'Sent to ' + r.sent + ' people.'; await refresh() } catch (e) { msg.value = err(e) } finally { sending.value = '' } }
+  try { await save(); const r = await $fetch<{ sent: number; skipped?: number }>('/api/updates/' + id + '/send', { method: 'POST', body: { mode } }); ok.value = mode === 'test' ? 'Test sent to ' + data.value?.me + '.' : mode === 'publish' ? 'Published on your investor page.' : 'Sent to ' + r.sent + (r.sent === 1 ? ' person' : ' people') + (r.skipped ? '. ' + r.skipped + (r.skipped === 1 ? ' person already had' : ' people already had') + ' this update, so they were not emailed again.' : '.'); await refresh() } catch (e) { msg.value = err(e) } finally { sending.value = '' } }
 const coverUrl = computed(() => (f.cover_id ? '/api/public/media/' + f.cover_id : ''))
 const mlabel = (k: string) => data.value?.metrics.find((m) => m.key === k)?.label ?? k
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
