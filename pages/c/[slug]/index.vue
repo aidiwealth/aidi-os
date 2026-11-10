@@ -27,47 +27,216 @@ const last = (m: D['metrics'][number]) => { if (m.key === 'runway') return { cur
 const chg = (m: D['metrics'][number]) => { const { cur, prev } = last(m); return cur && prev && prev.value ? Math.round(((cur.value! - prev.value) / Math.abs(prev.value)) * 1000) / 10 : null }
 const lbl = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '?nda=' + nda.value : '')
+// ── The simple layout ──
+type Fin = { summary: { period: string; latest: string | null; currency: string; items: { label: string; value: number | null; unit: 'money' | 'pct' | 'months'; note?: string }[] } | null; sources: { name: string; url: string; synced: string | null }[] } | null
+const fin = computed(() => (data.value as { financials?: Fin } | null)?.financials ?? null)
+// The headline numbers: the company's financial summary, at most four.
+const big = computed(() => (fin.value?.summary?.items ?? []).filter((i) => i.value != null).slice(0, 4))
+const bigVal = (i: { value: number | null; unit: string }) => (i.unit === 'pct' ? i.value!.toFixed(1) + '%' : i.unit === 'months' ? (i.value! >= 36 ? '36+' : Math.round(i.value!)) + ' months' : briefMoney(i.value, fin.value?.summary?.currency ?? data.value?.currency ?? 'USD'))
+// Short figures for the boxes ($469k rather than $468,766).
+const short = (k: string, v: number | null | undefined) => (v == null ? fmt(k, v) : unit(k) === 'money' ? briefMoney(v, data.value?.currency ?? 'USD') : fmt(k, v))
+const periodWord = computed(() => (data.value?.period_type === 'quarter' ? 'quarter' : data.value?.period_type === 'year' ? 'year' : 'month'))
+const lastPeriod = computed(() => { const ps = (data.value?.metrics ?? []).flatMap((m) => m.points.filter((p) => p.value != null).map((p) => p.period)).sort(); const d = ps[ps.length - 1]; return d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'long', year: 'numeric', timeZone: 'UTC' }) : (fin.value?.summary?.period ?? '') })
+// One clear chart: revenue (or the first money figure), the last eight periods.
+const rev = computed(() => {
+  const m = data.value?.metrics.find((x) => x.key === 'revenue') ?? data.value?.metrics.find((x) => unit(x.key) === 'money' && x.key !== 'runway')
+  if (!m) return null
+  const pts = m.points.filter((p) => p.value != null).slice(-8)
+  if (pts.length < 2) return null
+  const max = Math.max(...pts.map((p) => p.value as number), 1)
+  const a = pts[pts.length - 1]!.value as number, b = pts[pts.length - 2]!.value as number
+  return { key: m.key, label: m.label, bars: pts.map((p) => ({ label: lbl(p.period), value: p.value as number, h: Math.max(2, ((p.value as number) / max) * 100) })), last: a, change: b ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null }
+})
+// The change on the period before: percentage points for margins and other percentages, else a percentage.
+function tileChg(m: D['metrics'][number]) {
+  const { cur, prev } = last(m), c = chg(m)
+  if (c == null || !cur) return cur ? lbl(cur.period) : 'Not reported yet'
+  const arrow = c > 0 ? '↑ ' : c < 0 ? '↓ ' : ''
+  if (pct(m.key) && prev?.value != null) { const d = Math.round(Math.abs(cur.value! - prev.value) * 10) / 10; return arrow + d + (d === 1 ? ' point' : ' points') + ' on last ' + periodWord.value }
+  return arrow + Math.abs(c) + '% on last ' + periodWord.value
+}
+// A small line of each figure's history inside its box.
+function spark(m: D['metrics'][number]) {
+  const v = m.points.map((p) => p.value).filter((x): x is number => x != null).slice(-12)
+  if (v.length < 2) return null
+  const lo = Math.min(...v), hi = Math.max(...v), r = hi - lo || 1
+  const pts = v.map((x, i) => [(i / (v.length - 1)) * 200, 34 - ((x - lo) / r) * 30] as const)
+  const line = pts.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ')
+  return { line, area: line + ' L200 38 L0 38 Z', from: lbl(m.points.find((p) => p.value != null)!.period) }
+}
+// The company's own text: headings get anchors for the contents list, and amounts and percentages are picked out.
+const story = computed(() => {
+  if (!data.value?.about) return { html: '', toc: [] as { id: string; text: string }[] }
+  let html = renderMarkdown(data.value.about), n = 0
+  const heads: { tag: string; id: string; text: string }[] = []
+  html = html.replace(/<(h[234])([^>]*)>([\s\S]*?)<\/\1>/g, (_m, tag: string, attrs: string, inner: string) => { const id = 's-' + ++n; heads.push({ tag, id, text: inner.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim() }); return '<' + tag + attrs + ' id="' + id + '">' + inner + '</' + tag + '>' })
+  const NUM = /([+−-]?[$₦£€]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:bn|[kKmMbB]\b|million|billion|thousand))?|[+−-]?\d[\d,]*(?:\.\d+)?\s?%)/g
+  let skip = 0
+  html = html.split(/(<[^>]+>)/).map((part) => {
+    if (part.startsWith('<')) { const t = /^<(\/?)(table|h[1-6]|a|code|pre)\b/i.exec(part); if (t) skip = Math.max(0, skip + (t[1] ? -1 : 1)); return part }
+    return skip > 0 ? part : part.replace(NUM, '<span class="num">$1</span>')
+  }).join('')
+  const top = heads.filter((h) => h.tag === 'h2'), lvl = top.length >= 2 ? top : heads.filter((h) => h.tag === 'h3')
+  return { html, toc: lvl.length >= 3 ? lvl.map(({ id, text }) => ({ id, text })) : [] }
+})
+// Tables in the text: the latest column of plain amounts gets a small bar in each cell, so sizes read at a glance.
+const storyEl = ref<HTMLElement | null>(null), active = ref('')
+function parseAmt(t: string): number | null {
+  let s = t.replace(/[\s,$₦£€]/g, '').replace(/−/g, '-'); if (!s) return null
+  const neg = /^\(.*\)$/.test(s); s = s.replace(/[()]/g, '')
+  const m = /^(-?\d+(?:\.\d+)?)(%|k|m|b|bn)?$/i.exec(s); if (!m) return null
+  const mul: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9, bn: 1e9 }
+  const v = Number(m[1]) * (mul[(m[2] ?? '').toLowerCase()] ?? 1)
+  return neg ? -v : v
+}
+function decorate() {
+  const root = storyEl.value; if (!root) return
+  root.querySelectorAll('table').forEach((tb) => {
+    if (tb.dataset.bars) return; tb.dataset.bars = '1'
+    const rows = [...tb.querySelectorAll('tr')].filter((r) => r.querySelector('td'))
+    if (rows.length < 3 || rows.length > 20) return
+    const body = rows.filter((r) => !/^total/i.test((r.cells[0]?.textContent ?? '').trim()))
+    const cols = Math.max(...rows.map((r) => r.cells.length))
+    for (let c = cols - 1; c >= 1; c--) {
+      const vals = body.map((r) => parseAmt(r.cells[c]?.textContent ?? ''))
+      if (vals.some((v) => v == null || v < 0)) continue
+      if (vals.every((v) => Number.isInteger(v) && v! >= 1900 && v! <= 2100)) continue
+      const max = Math.max(...(vals as number[])); if (!max) continue
+      body.forEach((r, i) => { const cell = r.cells[c]; if (!cell) return; const bar = document.createElement('i'); bar.className = 'tbar'; const fill = document.createElement('em'); fill.style.width = Math.max(2, (vals[i]! / max) * 100) + '%'; bar.appendChild(fill); cell.appendChild(bar) })
+      break
+    }
+  })
+}
+let io: IntersectionObserver | null = null
+function spy() {
+  io?.disconnect(); const root = storyEl.value; if (!root || !story.value.toc.length) return
+  io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) active.value = e.target.id }, { rootMargin: '0px 0px -70% 0px' })
+  for (const t of story.value.toc) { const el = root.querySelector('#' + t.id); if (el) io.observe(el) }
+}
+onMounted(() => { decorate(); spy() })
+watch(() => story.value.html, async () => { await nextTick(); decorate(); spy() })
+onBeforeUnmount(() => io?.disconnect())
+const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 </script>
 <template>
   <section class="wrap">
     <div v-if="error" class="card nf"><h1>This page does not exist</h1><p>The link may be mistyped, or the page was taken down.</p><NuxtLink to="/" class="btn">Go to your dashboard</NuxtLink></div>
     <NdaGate v-else-if="data && data.gated && data.nda" :company="data.company" :text="data.nda.text" kind="page" :ref-key="slug" :org-key="data.nda.key" @signed="signed" />
-    <template v-else-if="data">
+    <div v-else-if="data" class="ir">
+      <nav class="top">
+        <img v-if="data.logo" :src="data.logo" :alt="data.company" class="tlogo"><b v-else class="tname">{{ data.company }}</b>
+        <div class="tl"><a v-if="big.length || data.metrics.length || data.board" href="#numbers">Numbers</a><a v-if="data.about" href="#story">{{ story.toc.length ? 'Our story' : 'About' }}</a><a v-if="data.updates.length" href="#updates">Updates</a></div>
+        <a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="tbtn">Contact us</a>
+      </nav>
+
       <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
-      <header class="hero"><img v-if="data.logo" :src="data.logo" :alt="data.company" class="clogo"><p class="label">Investor relations</p><h1>{{ data.company }}</h1><p v-if="data.headline" class="hl">{{ data.headline }}</p>
-        <div class="links"><a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="btn">View our deck</a><a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="btn secondary">Open data room</a><a v-if="data.website" :href="webUrl(data.website)" target="_blank" rel="noopener" class="btn secondary">Website</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="btn secondary">Contact us</a></div></header>
-      <FinSummary :fin="(data as any).financials" class="pfs" />
-      <BoardView v-if="data.board" :data="data.board.data" :metrics="data.board.metrics" class="pboard" />
+
+      <header class="hero">
+        <span class="eyebrow">{{ data.logo ? data.company + ' · ' : '' }}Investor relations{{ lastPeriod ? ' · updated ' + lastPeriod : '' }}</span>
+        <h1>{{ data.headline || data.company }}</h1>
+        <div class="links">
+          <a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a>
+          <a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">Open data room</a>
+          <a v-if="data.website" :href="webUrl(data.website)" target="_blank" rel="noopener" class="b3">{{ data.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') }} ↗</a>
+        </div>
+      </header>
+
+      <section v-if="big.length" id="numbers" class="big" :style="{ gridTemplateColumns: 'repeat(' + big.length + ', minmax(0, 1fr))' }">
+        <div v-for="i in big" :key="i.label"><b :class="{ neg: (i.value ?? 0) < 0 }">{{ bigVal(i) }}</b><span>{{ i.label }}</span><em v-if="i.note">{{ i.note }}</em></div>
+      </section>
+      <p v-if="fin?.sources.length" class="src">Figures come from <template v-for="(x, n) in fin.sources" :key="x.url"><a :href="x.url" target="_blank" rel="noopener nofollow">{{ x.name }}</a>{{ n < fin.sources.length - 1 ? ', ' : '' }}</template>, shared by the company.</p>
+
+      <BoardView v-if="data.board" :id="big.length ? undefined : 'numbers'" :data="data.board.data" :metrics="data.board.metrics" class="sec pboard" />
       <template v-else>
-      <div class="cards"><div v-for="m in data.metrics" :key="m.key" class="card k"><span class="l">{{ m.label }}</span><b>{{ fmt(m.key, last(m).cur?.value) }}</b><span class="s" :class="{ up: (chg(m) ?? 0) > 0, dn: (chg(m) ?? 0) < 0 }">{{ chg(m) == null ? (last(m).cur ? lbl(last(m).cur!.period) : 'Not reported yet') : (chg(m)! > 0 ? '+' : '') + chg(m) + '% vs previous' }}</span></div></div>
-      <div class="charts"><TrendChart v-for="m in data.metrics.filter((x) => x.points.filter((p) => p.value !== null).length > 1)" :key="m.key" :title="m.label" :unit="unit(m.key) === 'money' ? 'usd' : 'count'" :symbol="SYM[data.currency] ?? data.currency + ' '"
-        :points="m.points.filter((p) => p.value !== null).map((p) => ({ label: lbl(p.period), value: p.value as number }))" :foot="data.period_type === 'month' ? 'Monthly' : data.period_type === 'quarter' ? 'Quarterly' : 'Yearly'" /></div>
+        <section v-if="rev" :id="big.length ? undefined : 'numbers'" class="sec">
+          <div class="sh"><h2>{{ rev.label }} each {{ periodWord }}</h2><span>Latest: <b>{{ short(rev.key, rev.last) }}</b><template v-if="rev.change != null">, {{ rev.change >= 0 ? 'up' : 'down' }} {{ Math.abs(rev.change) }}% on the {{ periodWord }} before</template></span></div>
+          <div class="bars" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }">
+            <span v-for="(x, n) in rev.bars" :key="n" :class="{ on: n === rev.bars.length - 1 }" :style="{ height: x.h + '%' }" :title="x.label + ': ' + short(rev.key, x.value)"><em>{{ short(rev.key, x.value) }}</em></span>
+          </div>
+          <div class="bl" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }"><span v-for="(x, n) in rev.bars" :key="n">{{ x.label }}</span></div>
+        </section>
+
+        <section v-if="data.metrics.length" class="sec">
+          <h2>{{ lastPeriod || 'Latest figures' }}</h2>
+          <div class="tiles">
+            <div v-for="m in data.metrics" :key="m.key" class="tile"><span>{{ m.label }}</span><b>{{ short(m.key, last(m).cur?.value) }}</b>
+              <em :class="{ pos: (chg(m) ?? 0) > 0, neg: (chg(m) ?? 0) < 0 }">{{ tileChg(m) }}</em>
+              <svg v-if="spark(m)" viewBox="0 0 200 38" preserveAspectRatio="none" class="spk" role="img" :aria-label="m.label + ' over the last ' + Math.min(12, m.points.length) + ' ' + periodWord + 's'"><path :d="spark(m)!.area" fill="#e6eef6" /><path :d="spark(m)!.line" fill="none" stroke="#1c547d" stroke-width="2" vector-effect="non-scaling-stroke" /></svg></div>
+          </div>
+        </section>
+
       </template>
-      <div v-if="data.sectors?.sectors.length" class="psec"><h2>Revenue by customer sector</h2><p class="pm">Share of revenue over the last 12 months.</p><div class="secs"><div v-for="x in data.sectors.sectors" :key="x.sector" class="sr"><span>{{ x.sector }}</span><i><em :style="{ width: Math.max(2, (x.share / Math.max(...data.sectors.sectors.map((y) => y.share))) * 100) + '%' }" /></i><b>{{ x.share }}%</b></div></div></div>
-      <div v-if="data.forecast" class="psec"><h2>Forecast</h2><p class="pm">{{ data.forecast.name }} · updated {{ new Date(data.forecast.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}. An estimate from the company's assumptions, not a promise of results.</p><ForecastSummary :assumptions="data.forecast.assumptions" compact /></div>
-      <div v-if="data.captable" class="psec"><h2>Ownership</h2>
+
+      <section v-if="data.about" id="story" class="sec story" :class="{ withtoc: story.toc.length }">
+        <nav v-if="story.toc.length" class="toc"><b>{{ data.company }}</b><a v-for="t in story.toc" :key="t.id" :href="'#' + t.id" :class="{ on: active === t.id }" @click.prevent="go(t.id)">{{ t.text }}</a></nav>
+        <article ref="storyEl" class="md" v-html="story.html" />
+      </section>
+
+      <section v-if="data.sectors?.sectors.length" class="sec">
+        <h2>Revenue by customer sector</h2><p class="pm">Share of revenue over the last 12 months.</p>
+        <div class="secs"><div v-for="x in data.sectors.sectors" :key="x.sector" class="sr"><span>{{ x.sector }}</span><i><em :style="{ width: Math.max(2, (x.share / Math.max(...data.sectors.sectors.map((y) => y.share))) * 100) + '%' }" /></i><b>{{ x.share }}%</b></div></div>
+      </section>
+      <section v-if="data.forecast" class="sec"><h2>Forecast</h2><p class="pm">{{ data.forecast.name }} · updated {{ new Date(data.forecast.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}. An estimate from the company's assumptions, not a promise of results.</p><ForecastSummary :assumptions="data.forecast.assumptions" compact /></section>
+      <section v-if="data.captable" class="sec"><h2>Ownership</h2>
         <CapTableSummary v-if="data.captable.detail === 'holders' && data.captable.data" :data="data.captable.data" />
         <div v-else-if="data.captable.groups" class="og"><div class="card pad0"><table class="ot" data-nosearch><thead><tr><th>Group</th><th class="r">Shares (fully diluted)</th><th class="r">%</th></tr></thead><tbody><tr v-for="g in data.captable.groups.groups" :key="g.label"><td>{{ g.label }}</td><td class="r">{{ Math.round(g.shares).toLocaleString('en-US') }}</td><td class="r">{{ g.pct.toFixed(2) }}%</td></tr><tr class="tot"><td>Total</td><td class="r">{{ Math.round(data.captable.groups.fd).toLocaleString('en-US') }}</td><td class="r">100%</td></tr></tbody></table>
           <p v-if="data.captable.groups.convertibles.count" class="pm pad">Plus {{ data.captable.groups.convertibles.count }} SAFE{{ data.captable.groups.convertibles.count === 1 ? '' : 's' }} or note{{ data.captable.groups.convertibles.count === 1 ? '' : 's' }} totalling {{ briefMoney(data.captable.groups.convertibles.total, data.captable.groups.convertibles.currency) }}, which convert at the next priced round.</p></div>
-          <div class="card"><DonutChart title="Fully diluted ownership" total-label="Shares" :segments="data.captable.groups.groups.map((g) => ({ label: g.label, value: g.shares }))" /></div></div></div>
-      <div v-if="data.updates.length" class="card ups"><h2>Updates</h2><NuxtLink v-for="u in data.updates" :key="u.id" :to="updLink(u.id)" class="up"><span>{{ u.title }}</span><em>{{ new Date(u.published_at + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) }}</em></NuxtLink></div>
-      <div v-if="data.about" class="card about"><h2>About {{ data.company }}</h2><div class="md" v-html="renderMarkdown(data.about)" /></div>
+          <div class="card"><DonutChart title="Fully diluted ownership" total-label="Shares" :segments="data.captable.groups.groups.map((g) => ({ label: g.label, value: g.shares }))" /></div></div></section>
+
+      <section v-if="data.deck_url || data.contact_email || data.room_url" class="sec cta">
+        <div><span>Investors</span><b>Talk to {{ data.company }}</b></div>
+        <div class="ctab"><a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="b2">Contact us</a><a v-else-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">Open data room</a></div>
+      </section>
+
+      <section v-if="data.updates.length" id="updates" class="sec">
+        <h2>Updates</h2>
+        <div class="ups"><NuxtLink v-for="u in data.updates" :key="u.id" :to="updLink(u.id)" class="up"><span>{{ u.title }}</span><em>{{ new Date(u.published_at + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) }} →</em></NuxtLink></div>
+      </section>
+
       <p class="fine">Figures are reported by {{ data.company }} and are unaudited unless stated.</p>
-    </template>
+    </div>
   </section>
 </template>
 <style scoped>
-.wrap { max-width: 1080px; margin: 0 auto; } .hero { padding: 10px 0 22px; border-bottom: 1px solid var(--c-rule); margin-bottom: 20px; } .hero h1 { font-size: 46px; margin: 4px 0; color: inherit; } .hl { font-size: 18px; opacity: .8; margin: 0 0 16px; max-width: 760px; }
-.psec { margin: 8px 0 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; } .psec h2 { margin: 6px 0 0; } .pm { margin: 0; color: var(--c-muted); font-size: 13px; } .pm.pad { padding: 10px 14px; }
+.wrap { max-width: 920px; margin: -24px auto 0; } .ir { font-size: 16.5px; line-height: 1.65; color: #14161a; }
+.top { display: flex; align-items: center; gap: 22px; padding: 0 0 18px; border-bottom: 1px solid #ecebe7; position: sticky; top: 0; z-index: 5; background: #fff; padding-top: 12px; }
+.tlogo { max-height: 34px; max-width: 160px; object-fit: contain; } .tname { font-size: 20px; color: var(--c-navy); }
+.tl { display: flex; gap: 20px; margin-left: auto; font-size: 15px; } .tl a { color: var(--c-muted); text-decoration: none; } .tl a:hover { color: var(--c-navy); }
+.tbtn { background: var(--c-navy); color: #fff; padding: 9px 16px; text-decoration: none; font-size: 14.5px; font-weight: 600; }
+.covr { margin: 24px 0 0; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+.hero { padding: 72px 0 48px; display: flex; flex-direction: column; gap: 20px; } .eyebrow { font-size: 14px; color: var(--c-muted); }
+.hero h1 { margin: 0; font-size: 38px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; color: var(--c-navy); max-width: 720px; }
+.links, .ctab { display: flex; flex-wrap: wrap; gap: 10px; } .links a, .ctab a { text-decoration: none; font-size: 15px; padding: 12px 20px; }
+.b1 { background: var(--c-navy); color: #fff; font-weight: 600; } .b2 { border: 1px solid #d5d2cb; color: var(--c-navy); background: #fff; } .b3 { color: var(--c-blue-deep); padding-left: 8px !important; }
+.big { display: grid; border-top: 2px solid var(--c-navy); } .big > div { padding: 22px 20px; border-left: 1px solid #ecebe7; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .big > div:first-child { padding-left: 0; border-left: 0; }
+.big b { font-size: 34px; color: var(--c-navy); letter-spacing: -0.02em; font-weight: 600; font-variant-numeric: tabular-nums; } .big b.neg { color: #b54708; } .big span { font-size: 14px; color: var(--c-muted); } .big em { font-style: normal; font-size: 14px; color: var(--c-blue-deep); font-weight: 600; }
+.src { margin: 4px 0 0; font-size: 12.5px; color: var(--c-muted); } .src a { color: var(--c-blue-deep); }
+.sec { margin-top: 64px; min-width: 0; } .sec h2 { margin: 0 0 16px; font-size: 22px; color: var(--c-navy); } .pm { margin: -8px 0 12px; color: var(--c-muted); font-size: 13.5px; } .pm.pad { margin: 0; padding: 10px 14px; }
+.sh { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; } .sh h2 { margin: 0; } .sh > span { font-size: 14px; color: var(--c-muted); } .sh b { color: var(--c-navy); }
+.bars { display: grid; gap: 14px; align-items: end; height: 200px; border-bottom: 1px solid #d9d6cf; } .bars span { background: #c9d6e5; position: relative; min-height: 2px; } .bars span.on { background: var(--c-blue-deep); }
+.bars em { position: absolute; bottom: 100%; left: -12px; right: -12px; margin-bottom: 4px; text-align: center; font-style: normal; font-size: 12px; color: var(--c-muted); white-space: nowrap; opacity: 0; transition: opacity .15s; } .bars span:hover em, .bars span.on em { opacity: 1; } .bars span.on em { font-weight: 600; color: var(--c-navy); font-size: 13px; }
+.bl { display: grid; gap: 14px; text-align: center; font-size: 12.5px; color: var(--c-muted); padding-top: 8px; } .bl span { overflow: hidden; white-space: nowrap; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; } .tile { background: #f6f5f1; padding: 18px; display: flex; flex-direction: column; gap: 2px; } .tile span { font-size: 13.5px; color: var(--c-muted); } .tile b { font-size: 24px; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; } .tile em { font-style: normal; font-size: 13px; color: var(--c-muted); } .tile em.pos { color: var(--c-blue-deep); } .tile em.neg { color: #b54708; } .spk { width: 100%; height: 38px; margin-top: 10px; display: block; }
+.story.withtoc { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; align-items: start; }
+.toc { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 9px; font-size: 14.5px; max-height: calc(100vh - 110px); overflow-y: auto; } .toc b { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-navy); margin-bottom: 2px; }
+.toc a { color: var(--c-muted); text-decoration: none; line-height: 1.35; } .toc a:hover, .toc a.on { color: var(--c-navy); } .toc a.on { font-weight: 600; }
+.md { color: #2b3038; max-width: 660px; min-width: 0; } .md :deep(h2), .md :deep(h3), .md :deep(h4) { color: var(--c-navy); scroll-margin-top: 84px; line-height: 1.25; letter-spacing: -0.01em; } .md :deep(h2) { font-size: 28px; margin: 48px 0 14px; } .md :deep(h3) { font-size: 22px; margin: 36px 0 10px; } .md :deep(h4) { font-size: 17px; margin: 24px 0 8px; }
+.md :deep(> :first-child) { margin-top: 0; } .md :deep(p) { margin: 0 0 14px; } .md :deep(ul), .md :deep(ol) { padding-left: 22px; margin: 0 0 14px; } .md :deep(li) { margin-bottom: 6px; } .md :deep(a) { color: var(--c-blue-deep); }
+.md :deep(.num) { color: var(--c-navy); font-weight: 600; background: #e6eef6; padding: 0 3px; white-space: nowrap; }
+.md :deep(table) { display: table; width: 100% !important; border-collapse: collapse; margin: 8px 0 24px !important; font-size: 14px !important; } .md :deep(th) { text-align: left !important; font-weight: 600 !important; font-size: 12.5px !important; color: #fff !important; background: var(--c-navy) !important; padding: 9px 12px !important; border: 0 !important; } .md :deep(td) { padding: 9px 12px !important; border: 0 !important; border-bottom: 1px solid #ecebe7 !important; font-variant-numeric: tabular-nums; vertical-align: top; }
+.md :deep(.tbar) { display: block; height: 6px; background: #eef1f5; margin-top: 5px; min-width: 60px; } .md :deep(.tbar em) { display: block; height: 100%; background: var(--c-blue-deep); }
 .og { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; } .pad0 { padding: 0; overflow-x: auto; } .ot { width: 100%; border-collapse: collapse; font-size: 14px; } .ot th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .ot td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-variant-numeric: tabular-nums; } .ot .r { text-align: right; } .ot .tot td { font-weight: 600; }
-@media (max-width: 760px) { .og { grid-template-columns: 1fr; } }
-.links { display: flex; gap: 8px; flex-wrap: wrap; } .links a { text-decoration: none; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; } .k { display: flex; flex-direction: column; gap: 6px; } .l { font-size: 13px; color: var(--c-muted); } .k b { font-size: 30px; font-weight: 600; } .s { font-size: 12.5px; color: var(--c-muted); } .s.up { color: var(--c-ok); } .s.dn { color: var(--c-danger); }
-.charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; } .ups { margin-bottom: 14px; } .ups h2, .about h2 { margin: 0 0 8px; } .up { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); text-decoration: none; color: var(--c-ink); } .up em { font-style: normal; color: var(--c-muted); font-size: 13px; }
-.about .md { color: var(--c-ink-soft); line-height: 1.6; } .about .md :deep(h2), .about .md :deep(h3), .about .md :deep(h4) { color: var(--c-ink); margin: 22px 0 8px; } .about .md :deep(h2) { font-size: 20px; } .about .md :deep(h3) { font-size: 17px; } .about .md :deep(h4) { font-size: 15px; } .about .md :deep(table) { margin: 6px 0 18px; } .about .md :deep(p) { margin: 0 0 10px; } .about .md :deep(ul), .about .md :deep(ol) { padding-left: 20px; } .fine { font-size: 12px; opacity: .65; margin-top: 18px; }
-@media (max-width: 760px) { .charts { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
-.covr { margin: -8px 0 18px; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; } .clogo { width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--c-rule); padding: 6px; margin-bottom: 12px; display: block; }
-.secs { display: flex; flex-direction: column; gap: 8px; max-width: 640px; } .sr { display: grid; grid-template-columns: 180px 1fr 56px; gap: 10px; align-items: center; font-size: 14px; } .sr i { display: block; height: 10px; background: #eef1f6; } .sr em { display: block; height: 100%; background: var(--c-blue-deep, #1d64a8); } .sr b { text-align: right; font-weight: 500; }
-@media (max-width: 600px) { .sr { grid-template-columns: 110px 1fr 48px; } }
-.nf p { color: var(--c-muted); margin: 8px 0 16px; } .nf .btn { text-decoration: none; }
+.secs { display: flex; flex-direction: column; gap: 8px; max-width: 640px; } .sr { display: grid; grid-template-columns: 180px 1fr 56px; gap: 10px; align-items: center; font-size: 14px; } .sr i { display: block; height: 10px; background: #eef1f6; } .sr em { display: block; height: 100%; background: var(--c-blue-deep); } .sr b { text-align: right; font-weight: 500; }
+.cta { background: #f6f5f1; padding: 32px 36px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px; } .cta > div:first-child { display: flex; flex-direction: column; } .cta span { font-size: 14px; color: var(--c-muted); } .cta b { font-size: 28px; color: var(--c-navy); letter-spacing: -0.02em; }
+.ups { border-top: 1px solid #ecebe7; } .up { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid #ecebe7; text-decoration: none; color: #14161a; } .up:hover span { color: var(--c-blue-deep); } .up em { font-style: normal; color: var(--c-muted); font-size: 14px; white-space: nowrap; }
+.fine { font-size: 12.5px; color: var(--c-muted); margin: 56px 0 0; }
+.nf { margin-top: 24px; } .nf p { color: var(--c-muted); margin: 8px 0 16px; } .nf .btn { text-decoration: none; }
+@media (max-width: 760px) {
+  .wrap { margin-top: -36px; } .tl { display: none; } .tbtn { margin-left: auto; padding: 8px 12px; font-size: 13.5px; }
+  .hero { padding: 40px 0 32px; } .hero h1 { font-size: 26px; } .links a { flex: 1 1 auto; text-align: center; }
+  .big { grid-template-columns: 1fr 1fr !important; } .big > div { padding: 16px 14px 16px 0 !important; border-left: 0 !important; border-bottom: 1px solid #ecebe7; } .big > div:nth-child(2n) { padding-left: 14px !important; border-left: 1px solid #ecebe7 !important; } .big b { font-size: 26px; }
+  .sec { margin-top: 44px; } .bars { gap: 5px; height: 150px; } .bl { gap: 5px; font-size: 10.5px; } .bars em { display: none; } .tiles { grid-template-columns: 1fr 1fr; } .tile { padding: 14px; } .tile b { font-size: 20px; }
+  .og { grid-template-columns: 1fr; } .story.withtoc { display: block; } .toc { display: none; } .md :deep(table) { display: block; overflow-x: auto; } .md :deep(h2) { font-size: 23px; } .md :deep(h3) { font-size: 19px; }
+  .sr { grid-template-columns: 110px 1fr 48px; } .cta { padding: 24px 20px; } .cta b { font-size: 22px; } .ctab { width: 100%; } .ctab a { flex: 1; text-align: center; }
+}
 </style>

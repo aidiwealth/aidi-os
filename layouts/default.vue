@@ -311,7 +311,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
 .inner { max-width: 1200px; margin: 0 auto; padding: 28px 36px 72px; }
 /* The disclaimer: small and light, the full width of the page's content, one paragraph, with room below. */
 .disc { margin: 56px 0 40px; font-size: 11.5px; line-height: 1.65; color: var(--c-muted); opacity: .9; }
-.disc p { margin: 0; } .disc b { font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 10.5px; } .disc.pad { padding: 0 16px; } .inner.bleed { max-width: none; padding: 0; }
+.disc p { margin: 0; } .disc b { font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 10.5px; } .disc.pad { padding: 0 16px; } .inner.bleed { max-width: none; padding: 0; } .inner.bleed > .ctabs { margin: 0; padding: 6px 28px 0; }
 .overlay { display: none; }
 @media (max-width: 880px) {
   .sidebar { position: fixed; left: 0; top: 0; z-index: 60; background: var(--c-paper-2); width: var(--sidebar-w) !important; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-pop); }
@@ -320,7 +320,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false; wsOpen.value = fal
   .overlay { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(15,17,21,.4); opacity: 0; pointer-events: none; transition: opacity .2s; }
   .mobile-open .overlay { opacity: 1; pointer-events: auto; }
   .panel { border-radius: 0; margin-top: 0; border-left: 0; } .topbar { border-radius: 0; padding: 0 16px; }
-  .tb-menu { display: grid; } .ws-t { display: none; } .inner { padding: 20px 16px 56px; }
+  .tb-menu { display: grid; } .ws-t { display: none; } .inner { padding: 20px 16px 56px; } .inner.bleed > .ctabs { padding: 6px 16px 0; }
   .sb-collapse { display: none; }
 }
 .supbar .sm { opacity: .85; } .supbar b { font-weight: 600; }
