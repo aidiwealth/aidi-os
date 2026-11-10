@@ -4,13 +4,18 @@ export default defineEventHandler(async (event) => {
   const slug = String(getRouterParam(event, 'slug') ?? '').toLowerCase()
   if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) throw apiError('not_found', 'This page does not exist.', 404)
   const r = await asPlatform(() => db().query<{ organization_id: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; notify: boolean }>(
-    `SELECT p.room_link_id, p.slug AS page_slug, p.deck_id, p.board_id, p.forecast_id, p.forecast_group, p.captable_id, p.captable_detail, p.logo_id, p.cover_id, p.show_sectors, p.organization_id, p.published, p.headline, p.about, p.website, p.deck_url, p.contact_email, p.metrics, p.period_type, (p.last_viewed_at IS NULL OR p.last_viewed_at < now() - interval '6 hours') AS notify
+    `SELECT p.room_link_id, p.slug AS page_slug, p.deck_id, p.board_id, p.forecast_id, p.forecast_group, p.email_gate, p.captable_id, p.captable_detail, p.logo_id, p.cover_id, p.show_sectors, p.organization_id, p.published, p.headline, p.about, p.website, p.deck_url, p.contact_email, p.metrics, p.period_type, (p.last_viewed_at IS NULL OR p.last_viewed_at < now() - interval '6 hours') AS notify
        FROM financials.public_pages p JOIN core.organizations o ON o.id = p.organization_id AND o.status = ANY($2::text[]) WHERE p.slug = $1`, [slug, LIVE_ORG_STATUSES]))
   const p = r.rows[0]
   if (!p || !p.published) throw apiError('not_found', 'This page does not exist.', 404)
   setOrgContext(p.organization_id)
   const org = (await currentOrg())!
   const branding = await brandingOf(p.organization_id)
+  // Email first (when the page asks for it): the visitor sees the page's name and line, and a light veil over the rest.
+  if ((p as unknown as { email_gate: boolean }).email_gate && !(await pageAccessOk(event, p.organization_id))) {
+    const lid0 = await companyLogoId()
+    return { gated: true, email_gate: true, nda: null, branding, company: org.name, headline: p.headline, about: null, website: null, deck_url: null, contact_email: null, period_type: p.period_type, currency: 'USD', metrics: [], updates: [], logo: lid0 ? brands().finvry.url + '/api/public/media/' + lid0 : null, workspace: await publicWorkspace() }
+  }
   if (ndaOn(branding, 'page') && !(await ndaSigned(p.organization_id, getQuery(event).nda))) return { gated: true, nda: { required: true, text: branding.nda_text, key: branding.org_key }, branding, company: org.name, headline: null, about: null, website: null, deck_url: null, contact_email: null, period_type: 'month', currency: 'USD', metrics: [], updates: [], workspace: await publicWorkspace() }
   // The group's figures when the company has subsidiaries (customers combined across them too), else the company's.
   const is = await investorSubject(), inGroup = <T>(fn: () => Promise<T>) => (is.subject === 'group' ? withAllCompanies(fn) : fn())
