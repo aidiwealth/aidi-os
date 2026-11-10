@@ -154,6 +154,20 @@ export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover
 export function blocksText(blocks: Block[]): string { return blocks.filter((b) => b.type === 'text').map((b) => mdPlain(b.md ?? '').replace(/^#+\s|^>\s?/gm, '')).join('\n\n').slice(0, 4000) }
 export interface Recipients { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
 // Everyone an update goes to (unique emails), leaving out unsubscribed contacts.
+// Links in a reader's email go through the click counter (by their number in the update's list of links); the
+// update's own links (web version, reactions, unsubscribe, the open pixel) are left as they are.
+export function trackLinks(html: string, base: string, token: string, list: string[]): { html: string; added: boolean } {
+  let added = false
+  const out = html.replace(/href="(https?:\/\/[^"]+)"/g, (m, url: string) => {
+    const raw = url.replace(/&amp;/g, '&')
+    if (raw.startsWith(base + '/u/') || raw.startsWith(base + '/unsub/') || raw.startsWith(base + '/api/public/')) return m
+    let i = list.indexOf(raw)
+    if (i < 0) { if (list.length >= 500) return m; list.push(raw); i = list.length - 1; added = true }
+    return 'href="' + base + '/api/public/u/' + token + '/c/' + i + '"'
+  })
+  return { html: out, added }
+}
+
 export async function resolveRecipients(r: Recipients): Promise<{ email: string; name: string }[]> {
   const out = new Map<string, string>()
   const q = await db().query<{ email: string; name: string; subscribed: boolean }>(`SELECT DISTINCT c.email, c.name, c.subscribed FROM crm.contacts c WHERE c.id = ANY($1::uuid[])

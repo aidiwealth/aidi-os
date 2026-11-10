@@ -43,6 +43,7 @@ export default defineNuxtConfig({
     pitchNotifyTo: '',
     pitchAllowedOrigins: 'https://aidiventures.com,https://www.aidiventures.com',
     resendApiKey: '',
+    resendWebhookSecret: '', // signing secret of the email service's delivery webhook (whsec_…)
     emailFrom: 'Aidi OS <notifications@notifications.theaidigroup.com>',
     emailFromFinvry: '', // Finvry sender once notifications.finvry.com is verified
     stripeSecretKey: '', stripeWebhookSecret: '', paystackSecretKey: '',

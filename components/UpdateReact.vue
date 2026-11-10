@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Investor: react to the update with an emoji or leave a note for the company.
-const props = defineProps<{ token: string; company: string }>()
+const props = defineProps<{ token: string; company: string; noteOpen?: boolean }>()
 const R: [string, string, string][] = [['up', '👍', 'Like'], ['love', '❤️', 'Love'], ['party', '🎉', 'Celebrate'], ['rocket', '🚀', 'Great progress'], ['clap', '👏', 'Well done'], ['think', '🤔', 'Questions']]
 const mine = ref<string[]>([]); const note = ref(''); const sent = ref(false); const showNote = ref(false); const msg = ref('')
 const route = useRoute()
@@ -9,7 +9,7 @@ async function sendNote() { if (!note.value.trim()) return; try { await $fetch('
 onMounted(async () => {
   try { mine.value = (await $fetch<{ mine: string[] }>('/api/public/u/' + props.token + '/react')).mine } catch { /* ignore */ }
   const r = String(route.query.react ?? ''); if (R.some(([k]) => k === r) && !mine.value.includes(r)) await toggle(r, true)
-  if (route.query.reply) showNote.value = true
+  if (route.query.reply || props.noteOpen) showNote.value = true
 })
 </script>
 <template>

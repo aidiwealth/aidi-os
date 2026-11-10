@@ -5,7 +5,7 @@ definePageMeta({ fullBleed: true, discInset: '240px' })
 const id = useRoute().params.id as string
 interface Bl { type: string; full?: boolean; link?: string; thumb?: string; thumb_url?: string; thumb_id?: string; md?: string; title?: string; metrics?: string[]; period?: string; count?: number; left?: Bl; right?: Bl; media_id?: string; caption?: string; url?: string; name?: string }
 interface R { lists: string[]; stages: string[]; contacts: string[]; emails: string[] }
-interface D { kind?: string; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
+interface D { kind?: string; sender?: string | null; update: { subject?: string | null; title: string; period_type: string; period_end: string; highlights: string | null; challenges: string | null; asks: string | null; blocks: Bl[]; cover_id: string | null; from_name: string | null; recipients: R; status: string; sent_at: string | null; sent_count: number; is_template: boolean }
   label: string; metrics: { key: string; label: string; group?: string }[]; lists: { id: string; name: string; n: number }[]; stages: { id: string; name: string; n: number }[]; contacts: { id: string; name: string; email: string }[]
   sends: { investor_id: string; name: string; email: string; sent_at: string; opened_at: string | null; opens: number }[]; page: { slug: string; published: boolean } | null; from: string[]; me: string; company: string }
 const { data, refresh } = await useFetch<D>('/api/updates/' + id)
@@ -78,7 +78,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
   <section v-if="data" class="ed">
     <aside class="steps"><NuxtLink to="/updates" class="back">← {{ isVc ? 'LP reports' : 'Updates' }}</NuxtLink><b class="h">{{ isVc ? 'LP report' : 'Investor update' }}</b>
       <button v-for="(s, i) in ['Update content', 'Recipients', 'Preview & send']" :key="s" :class="{ on: step === i + 1 }" @click="step = i + 1"><span>{{ i + 1 }}</span>{{ s }}</button>
-      <div v-if="data.update.sent_at" class="sent"><b>Sent to {{ data.update.sent_count }}</b><span>{{ data.sends.filter((s) => s.opened_at).length }} opened</span></div></aside>
+      <div v-if="data.update.sent_at" class="sent"><b>Sent to {{ data.update.sent_count }}</b><span>{{ data.sends.filter((s) => s.opened_at).length }} opened</span><NuxtLink :to="'/updates/analytics/' + id" class="anl">See analytics →</NuxtLink></div></aside>
     <div class="main">
       <div class="top"><span class="crumb">{{ data.update.is_template ? 'Template' : data.label }} · {{ data.update.sent_at ? 'Sent' : data.update.status === 'published' ? 'Published' : 'Draft' }}</span><span class="sv">{{ saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes' }}</span>
         <button v-if="step < 3" class="btn secondary" @click="step++">Next →</button><template v-else><button class="btn secondary" :disabled="!!sending" @click="send('test')">{{ sending === 'test' ? 'Sending…' : 'Send a test' }}</button>
@@ -121,7 +121,7 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
       </div>
 
       <div v-else class="pv">
-        <div class="card hdr"><div class="r"><span>Subject:</span><input v-model="f.title" maxlength="200"></div><div class="r"><span>From:</span><select v-model="f.from_name"><option v-for="o in data.from" :key="o">{{ o }}</option></select></div></div>
+        <div class="card hdr"><div class="r"><span>Subject:</span><input v-model="f.title" maxlength="200"></div><div class="r"><span>From:</span><div class="fr2"><select v-model="f.from_name"><option v-for="o in data.from" :key="o">{{ o }}</option></select><span class="mut">{{ data.sender ? 'Sent from ' + data.sender : 'Sent from Finvry\'s address under this name.' }} <NuxtLink to="/updates?sender=1">{{ data.sender ? 'Change' : 'Use your own address' }}</NuxtLink></span></div></div></div>
         <div class="pvbar"><label class="cb"><input v-model="pmode" type="checkbox"> Email preview</label><label class="va">View as<select v-model="asName"><option value="">A recipient</option><option v-for="c in data.contacts.slice(0, 200)" :key="c.id" :value="c.name">{{ c.name }}</option></select></label></div>
         <p class="note">Email apps vary slightly, so send yourself a test.</p>
         <iframe v-if="pmode" ref="frame" :srcdoc="emailHtml" title="Email preview" class="frame" scrolling="no" :style="{ height: frameH + 'px' }" @load="fit" />
@@ -141,6 +141,8 @@ const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric'
   </section>
 </template>
 <style scoped>
+.anl { color: var(--c-blue-deep); text-decoration: none; font-size: 13px; }
+.fr2 { flex: 1; display: flex; flex-direction: column; gap: 4px; } .fr2 .mut { font-size: 12.5px; } .fr2 a { color: var(--c-blue-deep); }
 .vth { max-width: 520px; } .vth img { display: block; width: 100%; } .vbar { display: flex; align-items: center; gap: 10px; background: #0c1a2e; color: #fff; padding: 8px 12px; font-size: 13px; } .vbar b { font-weight: 500; }
 .ed { display: grid; grid-template-columns: 240px 1fr; gap: 0; min-height: calc(var(--vh100) - var(--topbar-h, 60px)); align-items: stretch; } .steps { position: sticky; top: var(--topbar-h, 60px); height: calc(var(--vh100) - var(--topbar-h, 60px)); overflow-y: auto; padding-top: 22px !important; align-self: start; } .steps { padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--c-paper-2); border-right: 1px solid var(--c-rule); box-sizing: border-box; } .main { padding: 8px 32px 72px !important; max-width: 1180px; }
 .back { font-size: 13px; color: var(--c-muted); padding: 0 8px 8px; } .h { font-size: 17px; padding: 0 8px 10px; } .steps button { display: flex; gap: 10px; align-items: center; background: none; border: 0; padding: 10px 8px; font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; color: var(--c-ink-soft); }

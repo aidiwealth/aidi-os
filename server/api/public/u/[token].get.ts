@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   setOrgContext(s.organization_id)
   const branding = await brandingOf(s.organization_id)
   if (ndaOn(branding, 'updates') && !(await ndaSigned(s.organization_id, getQuery(event).nda))) return { gated: true, nda: { required: true, text: branding.nda_text, key: branding.org_key }, branding, company: (await currentOrg())!.name, html: '', title: '', body: '', label: '', page: null, figures: { currency: 'USD', current: null, previous: null }, workspace: await publicWorkspace() }
-  await db().query('UPDATE financials.update_sends SET opens = opens + 1, opened_at = coalesce(opened_at, now()) WHERE id = $1', [s.id])
+  await db().query('UPDATE financials.update_sends SET opens = opens + 1, opened_at = now(), first_opened_at = coalesce(first_opened_at, now()) WHERE id = $1', [s.id])
   await logActivity(s.organization_id, s.email, 'update_opened', 'Opened ' + s.title, s.update_id)
   return { gated: false, branding, ...(await publicUpdate(s.update_id, false)), financials: await investorFinancials().catch(() => null) }
 })

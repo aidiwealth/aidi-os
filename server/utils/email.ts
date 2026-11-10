@@ -1,6 +1,6 @@
 import { mdPlain, mdRender } from '../../shared/markdown'
 // Transactional email through Resend. Fails loudly; never reports success it did not get.
-export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry'; attachments?: { filename: string; content: Uint8Array }[] }): Promise<void> {
+export async function sendEmail(input: { to: string; subject: string; text: string; html: string; fromName?: string; fromEmail?: string; replyTo?: string; headers?: Record<string, string>; brand?: 'aidi' | 'finvry'; attachments?: { filename: string; content: Uint8Array }[] }): Promise<string | undefined> {
   const extra = { replyTo: input.replyTo, headers: input.headers, attachments: input.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString('base64') })) }
   const { resendApiKey } = useRuntimeConfig()
   // Brand: the workspace's (or, before sign-in, the address's) name, logo, links and sender
@@ -9,7 +9,8 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const firm = org?.settings.public_name || org?.name || b.name, orgName = org?.name || b.name
   const fill = (s: string): string => s.replaceAll('{{FIRM}}', firm).replaceAll('{{ORG}}', orgName).replaceAll('{{APP_URL}}', b.url).replaceAll('{{PRODUCT}}', b.name).replaceAll('{{BRAND_LOGO}}', b.logoHtml)
     .replaceAll('{{BRAND_FOOTER}}', b.footerHtml).replaceAll('{{BRAND_SMALLPRINT}}', b.smallprint)
-  input = { to: input.to, subject: fill(input.subject), text: fill(input.text), html: fill(input.html) }
+  // The sender's name (and, for a workspace's own verified domain, its address) is kept through the fill.
+  input = { to: input.to, subject: fill(input.subject), text: fill(input.text), html: fill(input.html), fromName: input.fromName, fromEmail: input.fromEmail }
   if (!resendApiKey) {
     if (!import.meta.dev) throw new Error('NUXT_RESEND_API_KEY is not set')
     console.warn('[email] dev mode, not sent:\n' + input.subject + '\n' + input.text)
@@ -18,9 +19,18 @@ export async function sendEmail(input: { to: string; subject: string; text: stri
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: input.fromName ? '"' + input.fromName.replace(/["<>\\\r\n]/g, '').slice(0, 80) + '" <' + (b.from.match(/<([^>]+)>/)?.[1] ?? b.from) + '>' : b.from, to: [input.to], subject: input.subject, text: input.text, html: input.html, ...(extra.replyTo ? { reply_to: extra.replyTo } : {}), ...(extra.headers ? { headers: extra.headers } : {}), ...(extra.attachments?.length ? { attachments: extra.attachments } : {}) })
+    body: JSON.stringify({ from: senderLine(input.fromName, input.fromEmail ?? (b.from.match(/<([^>]+)>/)?.[1] ?? b.from), b.from), to: [input.to], subject: input.subject, text: input.text, html: input.html, ...(extra.replyTo ? { reply_to: extra.replyTo } : {}), ...(extra.headers ? { headers: extra.headers } : {}), ...(extra.attachments?.length ? { attachments: extra.attachments } : {}) })
   })
   if (!res.ok) throw new Error('Resend ' + res.status + ': ' + (await res.text()).slice(0, 300))
+  // The service's id for this email, for matching its delivery events.
+  return ((await res.json().catch(() => null)) as { id?: string } | null)?.id
+}
+
+// The From line: a display name (quotes and line breaks removed) on the given address, or the brand's own line.
+function senderLine(name: string | undefined, address: string, fallback: string) {
+  const n = name?.replace(/["<>\\\r\n]/g, '').trim().slice(0, 80)
+  const a = /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(address) ? address : (fallback.match(/<([^>]+)>/)?.[1] ?? fallback)
+  return n ? '"' + n + '" <' + a + '>' : a === (fallback.match(/<([^>]+)>/)?.[1] ?? fallback) ? fallback : a
 }
 
 const BRAND = {

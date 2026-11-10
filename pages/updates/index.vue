@@ -9,7 +9,7 @@ const templates = computed(() => (data.value ?? []).filter((u) => u.is_template)
 const ago = (d: string) => { const s = (Date.now() - new Date(d).getTime()) / 1000; const m = s / 2629800; return m >= 12 ? Math.floor(m / 12) + (Math.floor(m / 12) === 1 ? ' year ago' : ' years ago') : m >= 1 ? Math.floor(m) + (Math.floor(m) === 1 ? ' month ago' : ' months ago') : s > 86400 ? Math.floor(s / 86400) + ' days ago' : s > 3600 ? Math.floor(s / 3600) + ' hours ago' : 'just now' }
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const msg = ref(''); const menu = ref('')
-const sig = ref(false)
+const sig = ref(false), snd = ref(useRoute().query.sender === '1')
 const lastMonthEnd = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0)).toISOString().slice(0, 10) }
 const nu = reactive({ open: false, period_type: 'month', period_end: lastMonthEnd(), template: '' })
 async function create() { msg.value = ''; try { const r = nu.template ? await $fetch<{ id: string }>('/api/updates/' + nu.template + '/duplicate', { method: 'POST', body: { as: 'from_template' } }) : await $fetch<{ id: string }>('/api/updates', { method: 'POST', body: { period_type: nu.period_type, period_end: nu.period_end } }); await navigateTo('/updates/' + r.id) } catch (e) { msg.value = err(e) } }
@@ -22,11 +22,11 @@ const tpl = ref(false)
     <p class="label">Investor relations</p>
     <InvestorTabs />
     <div class="hd"><div class="tt"><h1>Updates</h1><select v-model="view" aria-label="Filter"><option value="all">All updates</option><option value="sent">Sent</option><option value="drafts">Drafts</option></select></div>
-      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="sig = true">Footer &amp; sign-off</button><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><button class="btn" @click="nu.open = true">New update</button></div></div>
+      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="snd = true">Sending address</button><button class="btn secondary" @click="sig = true">Footer &amp; sign-off</button><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><button class="btn" @click="nu.open = true">New update</button></div></div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div class="box"><table v-if="list.length"><thead><tr><th>Title</th><th>Sent by</th><th>Sent</th><th>Created</th><th /></tr></thead>
       <tbody><tr v-for="u in list" :key="u.id"><td><NuxtLink :to="'/updates/' + u.id" class="t">{{ u.title }}</NuxtLink> <span class="st" :class="u.sent_at ? 'sent' : u.status">{{ u.sent_at ? '✓ Sent' : u.status === 'published' ? 'Published' : 'Draft' }}</span>
-          <span class="sub">{{ u.sent_at ? 'Sent to ' + u.sent_count + ' people' + (u.sent_to.length ? ' · ' + u.sent_to.join(', ') : '') + ' · ' + u.opened + ' opened' : (u.period_type === 'quarter' ? 'Quarterly' : 'Monthly') + ' · not sent yet' }}</span></td>
+          <span class="sub">{{ u.sent_at ? 'Sent to ' + u.sent_count + ' people' + (u.sent_to.length ? ' · ' + u.sent_to.join(', ') : '') : (u.period_type === 'quarter' ? 'Quarterly' : 'Monthly') + ' · not sent yet' }}<template v-if="u.sent_at"> · <NuxtLink :to="'/updates/analytics/' + u.id" class="an">{{ u.opened }} opened · see who</NuxtLink></template></span></td>
         <td class="mut">{{ u.from_name ?? '—' }}</td><td class="mut">{{ u.sent_at ? ago(u.sent_at) : '—' }}</td><td class="mut">{{ ago(u.created_at) }}</td>
         <td class="act"><button class="ic" :class="{ on: u.pinned }" :title="u.pinned ? 'Unpin' : 'Pin to top'" @click="pin(u)">{{ u.pinned ? '★' : '☆' }}</button><span class="mw"><button class="ic" title="More" @click="menu = menu === u.id ? '' : u.id">⋯</button>
           <span v-if="menu === u.id" class="mn"><button @click="dup(u, 'copy')">Duplicate</button><button @click="dup(u, 'template')">Save as template</button><DeleteButton type="update" :id="u.id" :name="u.title" link @deleted="menu = ''; refresh()" /></span></span></td></tr></tbody></table>
@@ -40,10 +40,12 @@ const tpl = ref(false)
       <p v-if="!templates.length" class="mut">No templates yet. Use "Save as template" in any update's ⋯ menu.</p>
       <div v-for="t in templates" :key="t.id" class="tp"><span>{{ t.title }}</span><span class="row"><button class="btn sm" @click="nu.template = t.id; tpl = false; create()">Use</button><NuxtLink :to="'/updates/' + t.id" class="btn secondary sm">Edit</NuxtLink></span></div>
     </AppModal>
+    <AppModal :open="snd" title="Sending address" wide @close="snd = false"><ReportSender v-if="snd" /></AppModal>
     <AppModal :open="sig" title="Report footer & sign-off" wide @close="sig = false"><ReportSignoff v-if="sig" @close="sig = false" /></AppModal>
   </section>
 </template>
 <style scoped>
+.an { color: var(--c-blue-deep); text-decoration: none; } .an:hover { text-decoration: underline; }
 .hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; } .tt { display: flex; gap: 12px; align-items: center; } .tt h1 { margin: 0; } .tt select { background: var(--c-paper-2); border: 0; padding: 6px 10px; font: inherit; font-size: 13.5px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .row a { text-decoration: none; } input, select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .box { background: #fff; border: 1px solid var(--c-rule); } table { width: 100%; border-collapse: collapse; } th { text-align: left; font-weight: 400; font-size: 12.5px; color: var(--c-muted); padding: 10px 16px; border-bottom: 1px solid var(--c-rule); } td { padding: 14px 16px; border-bottom: 1px solid var(--c-rule); font-size: 14px; vertical-align: top; }
