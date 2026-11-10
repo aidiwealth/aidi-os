@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   const b = z.object({ investor_cash_with_securities: z.boolean().optional(), safe_treatment: z.enum(['equity', 'liability']).optional(), safe_rest: z.string().uuid().nullable().optional(), summary: z.boolean().optional(), link_id: z.string().uuid().optional(), show_source: z.boolean().optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const org = (await currentOrg())!
+  memoClear(org.id)
   if (b.data.summary !== undefined) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('investor_fin_summary', $2::boolean) WHERE id = $1", [org.id, b.data.summary]))
   // Treasury bills with cash on the investor page, updates and data room (Financials always shows the bank balance).
   if (b.data.investor_cash_with_securities !== undefined) await asPlatform(() => db().query("UPDATE core.organizations SET settings = settings || jsonb_build_object('investor_cash_with_securities', $2::boolean) WHERE id = $1", [org.id, b.data.investor_cash_with_securities]))

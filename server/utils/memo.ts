@@ -5,7 +5,7 @@ export function memo<T>(key: string, ms: number, fn: () => Promise<T>): Promise<
   const hit = store.get(key)
   if (hit && Date.now() - hit.at < ms) return hit.p as Promise<T>
   const p = fn(); store.set(key, { at: Date.now(), p })
-  p.catch(() => store.delete(key))
+  p.then((v) => { if (Array.isArray(v) && !v.length) store.delete(key) }, () => store.delete(key))
   if (store.size > 400) { const old = [...store.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 100); for (const [k] of old) store.delete(k) }
   return p
 }

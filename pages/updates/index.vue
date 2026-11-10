@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { STARTERS } from '~/shared/update-starters'
 // Investor updates: everything sent and drafted, who it went to, pin, duplicate and templates.
 useHead({ title: 'Investor updates' })
 interface U { id: string; title: string; period_type: string; period_end: string; status: string; published_at: string | null; created_at: string; sent_at: string | null; sent_count: number; sent_to: string[]; from_name: string | null; pinned: boolean; is_template: boolean; opened: number }
@@ -11,8 +12,13 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 const msg = ref(''); const menu = ref('')
 const sig = ref(false), snd = ref(useRoute().query.sender === '1')
 const lastMonthEnd = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0)).toISOString().slice(0, 10) }
+const lastQuarterEnd = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 0)).toISOString().slice(0, 10) }
 const nu = reactive({ open: false, period_type: 'month', period_end: lastMonthEnd(), template: '' })
-async function create() { msg.value = ''; try { const r = nu.template ? await $fetch<{ id: string }>('/api/updates/' + nu.template + '/duplicate', { method: 'POST', body: { as: 'from_template' } }) : await $fetch<{ id: string }>('/api/updates', { method: 'POST', body: { period_type: nu.period_type, period_end: nu.period_end } }); await navigateTo('/updates/' + r.id) } catch (e) { msg.value = err(e) } }
+// Finvry's ready-made formats ("starter:quarterly"), or the company's own saved templates (by id).
+const starter = computed(() => STARTERS.find((x) => 'starter:' + x.key === nu.template) ?? null)
+watch(() => nu.template, () => { if (starter.value) { nu.period_type = starter.value.period_type; nu.period_end = starter.value.period_type === 'quarter' ? lastQuarterEnd() : lastMonthEnd() } })
+function useStarter(k: string) { nu.template = 'starter:' + k; tpl.value = false; nu.open = true }
+async function create() { msg.value = ''; try { const r = nu.template && !starter.value ? await $fetch<{ id: string }>('/api/updates/' + nu.template + '/duplicate', { method: 'POST', body: { as: 'from_template' } }) : await $fetch<{ id: string }>('/api/updates', { method: 'POST', body: { period_type: nu.period_type, period_end: nu.period_end, starter: starter.value?.key } }); await navigateTo('/updates/' + r.id) } catch (e) { msg.value = err(e) } }
 async function dup(u: U, as: string) { menu.value = ''; try { const r = await $fetch<{ id: string }>('/api/updates/' + u.id + '/duplicate', { method: 'POST', body: { as } }); if (as === 'template') { await refresh(); tpl.value = true } else await navigateTo('/updates/' + r.id) } catch (e) { msg.value = err(e) } }
 async function pin(u: U) { await $fetch('/api/updates/' + u.id + '/pin', { method: 'POST' }); await refresh() }
 const tpl = ref(false)
@@ -22,7 +28,7 @@ const tpl = ref(false)
     <p class="label">Investor relations</p>
     <InvestorTabs />
     <div class="hd"><div class="tt"><h1>Updates</h1><select v-model="view" aria-label="Filter"><option value="all">All updates</option><option value="sent">Sent</option><option value="drafts">Drafts</option></select></div>
-      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="snd = true">Sending address</button><button class="btn secondary" @click="sig = true">Footer &amp; sign-off</button><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length }})</button><button class="btn" @click="nu.open = true">New update</button></div></div>
+      <div class="row"><input v-model="q" placeholder="Search updates" aria-label="Search"><button class="btn secondary" @click="snd = true">Sending address</button><button class="btn secondary" @click="sig = true">Footer &amp; sign-off</button><button class="btn secondary" @click="tpl = true">Templates ({{ templates.length + STARTERS.length }})</button><button class="btn" @click="nu.open = true">New update</button></div></div>
     <p v-if="msg" class="error">{{ msg }}</p>
     <div class="box"><table v-if="list.length"><thead><tr><th>Title</th><th>Sent by</th><th>Sent</th><th>Created</th><th /></tr></thead>
       <tbody><tr v-for="u in list" :key="u.id"><td><NuxtLink :to="'/updates/' + u.id" class="t">{{ u.title }}</NuxtLink> <span class="st" :class="u.sent_at ? 'sent' : u.status">{{ u.sent_at ? '✓ Sent' : u.status === 'published' ? 'Published' : 'Draft' }}</span>
@@ -32,12 +38,15 @@ const tpl = ref(false)
           <span v-if="menu === u.id" class="mn"><button @click="dup(u, 'copy')">Duplicate</button><button @click="dup(u, 'template')">Save as template</button><DeleteButton type="update" :id="u.id" :name="u.title" link @deleted="menu = ''; refresh()" /></span></span></td></tr></tbody></table>
       <EmptyState v-else icon="updates" :title="q ? 'No updates match' : 'No updates yet'" :text="q ? 'Try another search.' : 'Send your investors a short monthly or quarterly update: your numbers as charts, highlights, and how they can help.'"><button v-if="!q" class="btn" @click="nu.open = true">Write your first update</button></EmptyState></div>
     <AppModal :open="nu.open" title="New update" @close="nu.open = false">
-      <div class="frm"><label class="label">Start from<select v-model="nu.template"><option value="">A blank update</option><option v-for="t in templates" :key="t.id" :value="t.id">Template: {{ t.title }}</option></select></label>
-        <template v-if="!nu.template"><label class="label">Type<select v-model="nu.period_type"><option value="month">Monthly update</option><option value="quarter">Quarterly update</option></select></label><label class="label">Period ending<input v-model="nu.period_end" type="date"></label></template></div>
+      <div class="frm"><label class="label">Start from<select v-model="nu.template"><option value="">A blank update</option><option v-for="x in STARTERS" :key="x.key" :value="'starter:' + x.key">{{ x.name }}</option><option v-for="t in templates" :key="t.id" :value="t.id">Template: {{ t.title }}</option></select></label>
+        <p v-if="starter" class="mut sd">{{ starter.about }}</p><template v-if="!nu.template || starter"><label class="label">Type<select v-model="nu.period_type"><option value="month">Monthly update</option><option value="quarter">Quarterly update</option></select></label><label class="label">Period ending<input v-model="nu.period_end" type="date"></label></template></div>
       <template #foot><button class="btn secondary" @click="nu.open = false">Cancel</button><button class="btn" @click="create">Create</button></template>
     </AppModal>
     <AppModal :open="tpl" title="Templates" @close="tpl = false">
-      <p v-if="!templates.length" class="mut">No templates yet. Use "Save as template" in any update's ⋯ menu.</p>
+      <p class="tg">Ready-made</p>
+      <div v-for="x in STARTERS" :key="x.key" class="tp"><span class="tpi"><b>{{ x.name }}</b><em>{{ x.about }}</em></span><span class="row"><button class="btn sm" @click="useStarter(x.key)">Use</button></span></div>
+      <p class="tg">Your templates</p>
+      <p v-if="!templates.length" class="mut">None yet. Use "Save as template" in any update's ⋯ menu.</p>
       <div v-for="t in templates" :key="t.id" class="tp"><span>{{ t.title }}</span><span class="row"><button class="btn sm" @click="nu.template = t.id; tpl = false; create()">Use</button><NuxtLink :to="'/updates/' + t.id" class="btn secondary sm">Edit</NuxtLink></span></div>
     </AppModal>
     <AppModal :open="snd" title="Sending address" wide @close="snd = false"><ReportSender v-if="snd" /></AppModal>
@@ -53,5 +62,5 @@ const tpl = ref(false)
 .mut { color: var(--c-muted); font-size: 13.5px; } .act { white-space: nowrap; text-align: right; } .ic { background: none; border: 0; font-size: 17px; color: var(--c-muted); cursor: pointer; padding: 2px 6px; } .ic.on { color: #e6a020; } .mw { position: relative; }
 .mn { position: absolute; right: 0; top: 26px; background: #fff; border: 1px solid var(--c-rule); box-shadow: var(--shadow-pop); z-index: 20; display: flex; flex-direction: column; min-width: 170px; padding: 6px; text-align: left; } .mn button { background: none; border: 0; padding: 8px 10px; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; } .mn button:hover { background: var(--c-paper-2); }
 .none { padding: 32px; text-align: center; } .none p { color: var(--c-ink-soft); max-width: 460px; margin: 6px auto 14px; } .frm { display: flex; flex-direction: column; gap: 12px; } label.label { display: flex; flex-direction: column; gap: 6px; }
-.tp { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .btn.sm { padding: 5px 12px; font-size: 13px; text-decoration: none; } .error { color: var(--c-danger); }
+.tp { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--c-rule); } .tpi { display: flex; flex-direction: column; } .tpi b { font-weight: 500; } .tpi em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .tg { margin: 14px 0 2px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); } .tg:first-child { margin-top: 0; } .sd { margin: 0; } .btn.sm { padding: 5px 12px; font-size: 13px; text-decoration: none; } .error { color: var(--c-danger); }
 </style>

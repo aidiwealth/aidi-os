@@ -1,4 +1,5 @@
 // A company's public investor page: its story, chosen metrics with trends, deck and contact. Views are counted.
+import { rollUp, withSecurities } from '~/shared/fin-view'
 export default defineEventHandler(async (event) => {
   const slug = String(getRouterParam(event, 'slug') ?? '').toLowerCase()
   if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) throw apiError('not_found', 'This page does not exist.', 404)
@@ -15,14 +16,31 @@ export default defineEventHandler(async (event) => {
   const is = await investorSubject(), inGroup = <T>(fn: () => Promise<T>) => (is.subject === 'group' ? withAllCompanies(fn) : fn())
   // Figures are cached for 5 minutes per workspace so the page opens quickly; the page's own text never is.
   const T0 = Date.now(), ok = p.organization_id, M = 5 * 60 * 1000
-  const rows = is.subject ? (await memo('stmt:' + ok + ':' + is.subject + ':' + p.period_type + ':' + is.currency, M, () => loadStatements(is.subject!, p.period_type, is.currency))).slice(-12) : []
+  // Quarters and years: the company's own quarterly or yearly statements, or its months added up when it only keeps
+  // months (the period still under way is left out until it ends).
+  const stmts = (pt: string) => memo('pstmt:' + ok + ':' + is.subject + ':' + pt + ':' + is.currency, M, () => loadStatements(is.subject!, pt, is.currency))
+  let rows: { period_end: string; period_type: string; currency: string; lines: Record<string, number | null | undefined>; kpis?: Record<string, number> | null }[] = []
+  if (is.subject) {
+    if (p.period_type === 'month') rows = await stmts('month')
+    else {
+      const own = await stmts(p.period_type), by = p.period_type === 'year' ? 'year' : 'quarter'
+      const months = (await stmts('month')).map((x) => ({ period_end: x.period_end, period_type: 'month', currency: x.currency, lines: x.lines as Record<string, number | null | undefined>, kpis: (x.kpis ?? {}) as Record<string, number>, derived: {} }))
+      const rolled = rollUp(months, by), need = by === 'year' ? 12 : 3
+      while (rolled.length > 1 && (rolled[rolled.length - 1]!.months ?? need) < need) rolled.pop()
+      rows = own.length >= rolled.length ? own : rolled
+    }
+    rows = rows.slice(-12)
+  }
+  // Treasury bills and other marketable securities counted with cash, when the company chose that for investors.
+  const sec = await investorCashPolicy()
+  const fig = (x: (typeof rows)[number]) => withSecurities(derive(x.lines as never, x.period_type) as Record<string, number | null>, sec)
   // Financial figures from the statements; customer metrics (retention, recurring revenue…) and the company's own KPIs
   // at the end of each period.
   // Only what the company's plan includes: on Free, the basic figures; boards, updates and customer sectors need their features.
   const on = await enabledModules(), free = await onFreePlan()
   p.metrics = p.metrics.filter((m) => metricOnPlan(m, free) && (!isCustKey(m) || on.has('fin_customers')))
   const cust = await memo('cust:' + ok + ':' + p.metrics.join(',') + ':' + rows.length, M, () => inGroup(() => customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7)))))
-  const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : derive(x.lines, x.period_type)[m] ?? null })) }))
+  const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : fig(x)[m] ?? null })) }))
   const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors && on.has('fin_customers') ? await memo('sect:' + ok, M, () => inGroup(() => sectorShares())).catch(() => null) : null
   await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }

@@ -10,5 +10,6 @@ export default defineEventHandler(async (event) => {
       const lid = (r.rows[0] as { room_link_id?: string | null } | undefined)?.room_link_id
       const l = lid ? (await db().query<{ views: number; revoked: boolean }>('SELECT views, revoked FROM fundraise.links WHERE id = $1', [lid])).rows[0] : undefined
       return { available: true, files, on: !!l && !l.revoked, views: l?.views ?? 0 } })(),
+    cash_sec: { has: !!(await db().query("SELECT 1 FROM financials.statements WHERE coalesce((lines->>'investments')::numeric, 0) <> 0 LIMIT 1").catch(() => ({ rowCount: 0 }))).rowCount, on: await investorCashPolicy() },
     exists: !!r.rows[0], base: ((await currentOrg())?.kind === 'company' ? brands().finvry.url : brands().aidi.url) + '/c/', metrics: (await metricCatalog()).map((m) => ({ key: m.key, label: m.label, group: m.group })), company: org.name }
 })
