@@ -5,8 +5,22 @@ import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import type { Drawing } from './inline-charts'
 const clean = (s: string) => s.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u2022/g, '-').replace(/\u2026/g, '...').replace(/\u20A6/g, 'NGN ').replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
+// Text written in the app's editor can carry HTML tables (<table><tr><td><p>…), escaped characters and pictures in
+// the middle of a line. Make it plain: tables become | rows |, pictures get their own line, tags and entities go.
+const ent = (t: string) => t.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_m, n: string) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&')
+export function normalizeDocMd(md: string): string {
+  let t = md.replace(/<table[\s\S]*?<\/table>/gi, (tb) => {
+    const rows = [...tb.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((r) => [...r[1]!.matchAll(/<t([hd])[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((c) => ent(c[2]!.replace(/<br\s*\/?>/gi, ' ').replace(/<\/p>\s*<p[^>]*>/gi, ' ').replace(/<[^>]+>/g, '')).replace(/\|/g, '/').replace(/\s+/g, ' ').trim()))
+    return rows.length ? '\n' + rows.map((r) => '| ' + r.join(' | ') + ' |').join('\n') + '\n' : ''
+  })
+  t = t.replace(/!\[([^\]]*)\]\((\S+?)\)/g, (_m, alt: string, url: string) => '\n![' + alt.replace(/\s+/g, ' ') + '](' + url + ')\n')
+  t = t.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h[1-6])>/gi, '\n').replace(/<[^>]+>/g, '')
+  return ent(t).replace(/\\([\\`*_{}\[\]()#+\-.!|$>])/g, '$1').replace(/\n{3,}/g, '\n\n')
+}
 export interface DocHeader { eyebrow?: string; badge?: string; fields: { label: string; value: string; wide?: boolean }[] }
-export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null; font?: 'garamond' } = {}): Promise<Uint8Array> {
+// style 'memo': an investment memo's cover block (eyebrow, large title, company and date) and navy table headings.
+export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null; font?: 'garamond'; style?: 'memo' } = {}): Promise<Uint8Array> {
+  docs = docs.map((d) => ({ ...d, md: normalizeDocMd(d.md) }))
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit)
   pdf.setTitle(docs.map((d) => d.title).join(' + ')); pdf.setProducer(opts.logo === 'aidi' ? 'Aidi OS' : 'Finvry'); pdf.setCreator(clean(company))
   // Aidi client documents (wealth reports) can be set in Garamond; everything else keeps the site's typeface.
@@ -77,6 +91,15 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
       const c = clean(company), cw = sans.widthOfTextAtSize(c, 9); page.drawText(c, { x: W - M - cw, y: top - lh / 2 - 3, size: 9, font: sans, color: rgb(0.45, 0.45, 0.45) })
       const ry = top - lh - 18; page.drawLine({ start: { x: M, y: ry }, end: { x: W - M, y: ry }, thickness: 0.6, color: rule }); y = ry - 40
     }
+    if (opts.style === 'memo' && !doc.header) {
+      page.drawText('INVESTMENT MEMO', { x: M, y, size: 8.5, font: bold, color: blue }); y -= 30
+      const ts = 26, tl: string[] = []; let cur = ''
+      for (const w of clean(doc.title).split(/\s+/)) { const t = cur ? cur + ' ' + w : w; if (bold.widthOfTextAtSize(t, ts) > maxW && cur) { tl.push(cur); cur = w } else cur = t } if (cur) tl.push(cur)
+      for (const t of tl) { page.drawText(t, { x: M, y, size: ts, font: bold, color: navy }); y -= ts + 6 }
+      const sub = clean(company) + '  ·  ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '  ·  Confidential'
+      y -= 4; page.drawText(sub, { x: M, y, size: 10, font: reg, color: rgb(0.36, 0.39, 0.44) }); y -= 18
+      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1.2, color: navy }); y -= 30
+    }
     if (doc.header) {
       // Title block: small eyebrow, large left-aligned title (wraps), a status badge, then a tinted panel of details.
       const h = doc.header
@@ -122,8 +145,10 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
         const wrapped = cells.map((cell, c) => { const out: string[] = []; let line = ''; for (const w of cell.split(/\s+/).filter(Boolean)) { const t2 = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(t2, size) > cws[c]! - pad * 2 && line) { out.push(line); line = w } else line = t2 } if (line) out.push(line); return out.length ? out : [''] })
         const h = Math.max(...wrapped.map((w) => w.length)) * (size + 3) + pad * 2
         need(h)
-        if (ri === 0) page.drawRectangle({ x: M, y: y - h + size + 2, width: maxW, height: h, color: rgb(0.93, 0.95, 0.98) })
-        wrapped.forEach((ls, c) => ls.forEach((s, k) => page.drawText(s, { x: right[c] ? M + cx(c) + cws[c]! - pad - font.widthOfTextAtSize(s, size) : M + cx(c) + pad, y: y - pad - k * (size + 3), size, font, color: ink })))
+        const memo = opts.style === 'memo'
+        if (ri === 0) page.drawRectangle({ x: M, y: y - h + size + 2, width: maxW, height: h, color: memo ? navy : rgb(0.93, 0.95, 0.98) })
+        else if (memo && ri % 2 === 0) page.drawRectangle({ x: M, y: y - h + size + 2, width: maxW, height: h, color: rgb(0.965, 0.961, 0.945) })
+        wrapped.forEach((ls, c) => ls.forEach((s, k) => page.drawText(s, { x: right[c] ? M + cx(c) + cws[c]! - pad - font.widthOfTextAtSize(s, size) : M + cx(c) + pad, y: y - pad - k * (size + 3), size, font, color: memo && ri === 0 ? rgb(1, 1, 1) : ink })))
         page.drawLine({ start: { x: M, y: y - h + size + 2 }, end: { x: M + maxW, y: y - h + size + 2 }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) })
         y -= h
       })
@@ -135,9 +160,12 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
       flushTable()
       if (!l) { y -= 5; continue }
       const im = /^!\[[^\]]*\]\((\S+?)\)$/.exec(l); if (im) { picture(im[1]!); continue }
-      if (l.startsWith('# ')) { const t = clean(l.slice(2)); need(40); const s = 18, tw = bold.widthOfTextAtSize(t, s); page.drawText(t, { x: (W - tw) / 2, y, size: s, font: bold, color: navy }); y -= 28; continue }
-      if (l.startsWith('## ')) { y -= 8; need(34); page.drawText(clean(l.slice(3)), { x: M, y, size: 13, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.5, color: rule }); y -= 22; continue }
-      if (l.startsWith('### ') || l.startsWith('#### ')) { y -= 4; need(30); page.drawText(clean(l.replace(/^#+ /, '')), { x: M, y, size: 11, font: bold, color: blue }); y -= 16; continue }
+      // Headings: bold markers inside them are dropped. A memo sets its sections (# or ##) large, with a rule.
+      if (/^#{1,4} /.test(l)) { const lv = /^(#+) /.exec(l)![1]!.length, t = clean(l.replace(/^#+ /, '').replace(/\*\*/g, '').trim())
+        if (opts.style === 'memo' && lv <= 2) { y -= 10; need(44); page.drawText(t, { x: M, y, size: 15, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 7 }, end: { x: W - M, y: y - 7 }, thickness: 0.5, color: rule }); y -= 26; continue }
+        if (lv === 1) { need(40); const s2 = 18, tw = bold.widthOfTextAtSize(t, s2); page.drawText(t, { x: (W - tw) / 2, y, size: s2, font: bold, color: navy }); y -= 28; continue }
+        if (lv === 2) { y -= 8; need(34); page.drawText(t, { x: M, y, size: 13, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.5, color: rule }); y -= 22; continue }
+        y -= 4; need(30); page.drawText(t, { x: M, y, size: 11, font: bold, color: blue }); y -= 16; continue }
       if (l.startsWith('> ')) { const startY = y; const top = y + 11; para([{ t: l.slice(2), f: ital }], 9, 10, 12, false); page.drawRectangle({ x: M, y: y + 6, width: 2, height: top - y - 6, color: rgb(0.11, 0.31, 0.61) }); void startY; y -= 4; continue }
       if (/^\*\*[^*]+\*\*$/.test(l) && !/^\*\*\(/.test(l)) { const t = clean(l.slice(2, -2)); need(18); if (/^(Company|Investor|Agreed|Accepted)/.test(t)) { y -= 8; need(110) } const tw = bold.widthOfTextAtSize(t, 11); page.drawText(t, { x: /SAFE|Valuation|Discount|MFN/.test(t) && !/^(Company|Investor)/.test(t) ? (W - tw) / 2 : M, y, size: 11, font: bold, color: ink }); y -= 16; continue }
       if (/^(By|Name|Title|Date|Email):/.test(l)) { para(runs(l), 11, 0, 17, false); continue }

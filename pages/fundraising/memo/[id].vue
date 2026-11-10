@@ -11,7 +11,7 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 async function save() { busy.value = 'save'; msg.value = ''; ok.value = ''; try { await $fetch('/api/fundraising/memo', { method: 'POST', body: { id, ...f } }); ok.value = 'Saved.'; await refresh() } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 async function generate() { busy.value = 'ai'; msg.value = ''; try { const r = await $fetch<{ body: string }>('/api/fundraising/memo/generate', { method: 'POST', body: { notes: f.notes } }); f.body = r.body; view.value = 'preview'; await save(); ok.value = 'Draft ready. Fill any [add: …] gaps and edit before sharing.' } catch (e) { msg.value = err(e) } finally { busy.value = '' } }
 const html = computed(() => renderMarkdown(f.body))
-const doPrint = () => downloadPdf({ kind: 'doc', title: f.title || 'Deal memo', company: f.title || 'Deal memo', md: f.body || '' })
+const doPrint = () => downloadPdf({ kind: 'doc', style: 'memo', title: f.title || 'Deal memo', company: f.title || 'Deal memo', md: f.body || '' })
 </script>
 <template>
   <section v-if="data">

@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     title = u.title || 'Investor update'; docs = [{ title, md: md.join('\n') }]; folder ||= 'Investor updates'
   }
   const ext = xlsx ? 'xlsx' : 'pdf', mime = xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
-  const bytes = xlsx ?? await legalPdf(org.name, docs)
+  const bytes = xlsx ?? await legalPdf(org.name, docs, d.kind === 'memo' ? { style: 'memo' } : {})
   const docId = randomUUID(), key = 'documents/' + docId + '.' + ext, name = (title.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 180) || 'document') + '.' + ext
   await putObject({ key, body: bytes, contentType: mime })
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [docId, 'Data room — ' + name, key, mime, bytes.length, createHash('sha256').update(bytes).digest('hex')])
