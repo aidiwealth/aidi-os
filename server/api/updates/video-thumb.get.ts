@@ -7,7 +7,12 @@ export default defineEventHandler(async (event) => {
   const url = String(getQuery(event).url ?? '').trim()
   if (!/^https:\/\//i.test(url) || url.length > 500) throw apiError('invalid', 'Paste the video link first.')
   const yt = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
-  if (yt) return { thumb: 'https://i.ytimg.com/vi/' + yt[1] + '/hqdefault.jpg' }
+  // YouTube: the wide 1280×720 picture when the video has one (most do), else the standard one.
+  if (yt) {
+    const wide = 'https://i.ytimg.com/vi/' + yt[1] + '/hq720.jpg'
+    const ok = await fetch(wide, { method: 'HEAD', signal: AbortSignal.timeout(5000) }).then((r) => r.ok).catch(() => false)
+    return { thumb: ok ? wide : 'https://i.ytimg.com/vi/' + yt[1] + '/hqdefault.jpg' }
+  }
   const oembed = /^https:\/\/(www\.)?vimeo\.com\//i.test(url) ? 'https://vimeo.com/api/oembed.json?width=1280&url=' : /^https:\/\/(www\.)?loom\.com\/share\//i.test(url) ? 'https://www.loom.com/v1/oembed?url=' : null
   if (!oembed) throw apiError('unsupported', 'A snapshot can be found for YouTube, Vimeo and Loom links. For others, upload a picture.', 400)
   const r = await $fetch<{ thumbnail_url?: string }>(oembed + encodeURIComponent(url), { timeout: 8000 }).catch(() => null)

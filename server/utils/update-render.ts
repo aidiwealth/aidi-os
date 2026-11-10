@@ -116,12 +116,14 @@ export async function renderBlocks(blocks: Block[], base: string, subject?: stri
     }
     else if (b.type === 'file' && b.media_id && /^[0-9a-f-]{36}$/.test(b.media_id)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:12px 14px"><a href="' + base + '/api/public/media/' + b.media_id + '" style="color:#1c4f9c;font-weight:600;text-decoration:none">📎 ' + esc(b.name || 'Attachment') + '</a></div>')
     else if (b.type === 'video' && b.url && /^https?:\/\//i.test(b.url) && videoThumb(b, base)) {
-      // The video's snapshot with a player bar under it; both open the video. (A bar, not an overlay, so it shows the
-      // same in every email app.)
-      const href = esc(b.url)
-      out.push('<div style="margin:0 0 18px"><a href="' + href + '" style="display:block;text-decoration:none"><img src="' + videoThumb(b, base) + '" alt="' + esc(b.title || 'Watch the video') + '" style="width:100%;max-width:100%;display:block;border:0"></a>' +
-        '<a href="' + href + '" style="display:block;text-decoration:none;background:#0c1a2e;padding:10px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="22" style="color:#ffffff;font-size:16px;line-height:16px;font-family:Arial,sans-serif">&#9654;</td>' +
-        '<td style="padding:0 0 0 8px;color:#ffffff;font-family:Helvetica,Arial,sans-serif;font-size:13.5px">' + esc(b.title || 'Watch the video') + '</td></tr></table></a></div>')
+      // The video's snapshot cut to a 16:9 frame (YouTube's letterbox bars fall outside it) with a faded play button in
+      // the middle, and its title under it; both open the video. Email apps that ignore background pictures (older
+      // Outlook) show a navy frame with the play button and the title.
+      const href = esc(b.url), img = videoThumb(b, base)!, title = esc(b.title || 'Watch the video')
+      out.push('<div style="margin:0 0 18px"><a href="' + href + '" style="display:block;text-decoration:none"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>' +
+        '<td class="vid" height="320" align="center" valign="middle" background="' + esc(img) + '" bgcolor="#0c1a2e" style="height:320px;background-color:#0c1a2e;background-image:url(\'' + esc(img) + '\');background-size:cover;background-position:center center;background-repeat:no-repeat;text-align:center;vertical-align:middle">' +
+        '<img src="' + base + '/brand/play-circle.png" width="68" height="68" alt="Play: ' + title + '" style="display:inline-block;width:68px;height:68px;border:0;max-width:68px!important"></td></tr></table></a>' +
+        '<a href="' + href + '" style="display:block;text-decoration:none;padding:9px 0 0;color:#1c547d;font-family:Helvetica,Arial,sans-serif;font-size:13.5px">&#9654;&nbsp; ' + title + '</a></div>')
     }
     else if ((b.type === 'video' || b.type === 'deck') && b.url && /^https?:\/\//i.test(b.url)) out.push('<div style="margin:0 0 18px;border:1px solid #e6e4dd;padding:14px 16px;background:#f7f9fc"><div style="font-size:12px;color:#6b6b6b;text-transform:uppercase;letter-spacing:.08em">' + (b.type === 'video' ? 'Video' : 'Deck') + '</div><a href="' + esc(b.url) + '" style="color:#1c4f9c;font-weight:600;text-decoration:none;font-size:15px">' + esc(b.title || (b.type === 'video' ? 'Watch the video' : 'View our deck')) + ' →</a></div>')
   }
@@ -143,7 +145,7 @@ export async function renderUpdateDoc(u: { title: string; blocks: Block[]; cover
   if (!o.email) return '<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</div>'
   // Phones: the card fills the width with smaller padding, headings shrink, side-by-side charts stack, wide tables
   // scroll, and pictures never overflow (clients that ignore <style> still get the inline layout).
-  const mobile = '<style>img{max-width:100%!important;height:auto}table{max-width:100%}@media only screen and (max-width:600px){.wrap{padding:12px 10px!important}.card{padding:22px 18px!important}.uh{font-size:24px!important}.two td{display:block!important;width:100%!important;padding:0!important}.tw{overflow-x:auto!important}.rx a{font-size:20px!important;padding:4px 6px!important}}</style>'
+  const mobile = '<style>img{max-width:100%!important;height:auto}table{max-width:100%}@media only screen and (max-width:600px){.vid{height:190px!important}.wrap{padding:12px 10px!important}.card{padding:22px 18px!important}.uh{font-size:24px!important}.two td{display:block!important;width:100%!important;padding:0!important}.tw{overflow-x:auto!important}.rx a{font-size:20px!important;padding:4px 6px!important}}</style>'
   return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">' + mobile + '</head><body style="margin:0;background:#f4f3ef;-webkit-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="wrap" align="center" style="padding:24px 12px">' +
     (o.viewUrl ? '<div style="max-width:640px;font-size:12px;color:#8a8a8a;text-align:right;margin:0 0 8px;font-family:Helvetica,Arial,sans-serif"><a href="' + o.viewUrl + '" style="color:#8a8a8a">View in browser</a></div>' : '') +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff"><tr><td class="card" style="padding:32px 36px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15.5px;line-height:1.65;color:#1d1d1f">' + inner + '</td></tr></table>' +

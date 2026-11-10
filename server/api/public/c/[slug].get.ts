@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const slug = String(getRouterParam(event, 'slug') ?? '').toLowerCase()
   if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) throw apiError('not_found', 'This page does not exist.', 404)
   const r = await asPlatform(() => db().query<{ organization_id: string; published: boolean; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; metrics: string[]; period_type: string; notify: boolean }>(
-    `SELECT p.room_link_id, p.slug AS page_slug, p.deck_id, p.board_id, p.forecast_id, p.captable_id, p.captable_detail, p.logo_id, p.cover_id, p.show_sectors, p.organization_id, p.published, p.headline, p.about, p.website, p.deck_url, p.contact_email, p.metrics, p.period_type, (p.last_viewed_at IS NULL OR p.last_viewed_at < now() - interval '6 hours') AS notify
+    `SELECT p.room_link_id, p.slug AS page_slug, p.deck_id, p.board_id, p.forecast_id, p.forecast_group, p.captable_id, p.captable_detail, p.logo_id, p.cover_id, p.show_sectors, p.organization_id, p.published, p.headline, p.about, p.website, p.deck_url, p.contact_email, p.metrics, p.period_type, (p.last_viewed_at IS NULL OR p.last_viewed_at < now() - interval '6 hours') AS notify
        FROM financials.public_pages p JOIN core.organizations o ON o.id = p.organization_id AND o.status = ANY($2::text[]) WHERE p.slug = $1`, [slug, LIVE_ORG_STATUSES]))
   const p = r.rows[0]
   if (!p || !p.published) throw apiError('not_found', 'This page does not exist.', 404)
@@ -58,9 +58,20 @@ export default defineEventHandler(async (event) => {
   const bRow = bid && on.has('boards') ? (await db().query<{ name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number }>('SELECT name, kpis, charts, period, count FROM financials.boards WHERE id = $1', [bid])).rows[0] : undefined
   const board = bRow ? { name: bRow.name, data: await memo('board:' + ok + ':' + bid, M, () => boardData(bRow.kpis, bRow.charts, bRow.period, bRow.count)), metrics: BOARD_METRICS } : null
   // A forecast and the cap table, when chosen (and the company's plan still includes them).
-  const pp = p as unknown as { forecast_id: string | null; captable_id: string | null; captable_detail: 'summary' | 'holders' }
+  const pp = p as unknown as { forecast_id: string | null; forecast_group: boolean; captable_id: string | null; captable_detail: 'summary' | 'holders' }
   const fRow = pp.forecast_id && on.has('forecast') ? (await db().query<{ name: string; assumptions: unknown; updated_at: string }>('SELECT name, assumptions, updated_at FROM financials.forecasts WHERE id = $1', [pp.forecast_id])).rows[0] : undefined
   const forecast = fRow ? { name: fRow.name, assumptions: fRow.assumptions, updated_at: fRow.updated_at } : null
+  // The group forecast: each company's forecast in the reporting currency, added together (only what is needed to draw
+  // it: company names, rates and the forecasts in use).
+  let forecast_group = null as null | { currency: string; name: string; companies: unknown[] }
+  if (pp.forecast_group && on.has('forecast')) {
+    const ents = await custEntities()
+    if (ents.length > 1) {
+      const base = (org.settings.currency as string) || 'USD'
+      const gf = await groupForecast({ group: true, entity: null, name: await groupName(), currency: (org.settings.reporting_currency as string) || base, main: false, companies: ents })
+      forecast_group = { currency: gf.currency, name: gf.name, companies: gf.companies.map((c) => ({ id: c.id, name: c.name, currency: c.currency, main: c.main, per: c.per, rate_source: c.rate_source, forecasts: [], use: c.use ? { id: c.use.id, name: c.use.name, assumptions: c.use.assumptions } : null })) }
+    }
+  }
   let captable: unknown = null
   if (pp.captable_id && on.has('equity')) {
     const ct = (await db().query<{ name: string }>('SELECT name FROM equity.captables WHERE id = $1', [pp.captable_id])).rows[0]
@@ -74,6 +85,6 @@ export default defineEventHandler(async (event) => {
   const og_image = lid && /^image\/(png|jpe?g|webp|gif)$/.test(lmime) ? mediaUrl(lid) : null
   const financials = await memo('ifin:' + ok, M, () => investorFinancials()).catch(() => null)
   setHeader(event, 'Server-Timing', 'page;dur=' + (Date.now() - T0))
-  return { sectors, financials, forecast, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
+  return { sectors, financials, forecast, forecast_group, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? is.currency, metrics, workspace: await publicWorkspace() }
 })

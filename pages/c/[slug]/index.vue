@@ -5,7 +5,7 @@ definePageMeta({ layout: 'public' })
 const route = useRoute()
 const slug = String(route.params.slug ?? route.params.handle ?? '')
 interface CtGroups { fd: number; groups: { label: string; shares: number; pct: number }[]; convertibles: { count: number; total: number; currency: string } }
-interface D { sectors?: { as_of: string; sectors: { sector: string; share: number; customers: number }[] } | null; forecast?: { name: string; assumptions: import('~/shared/forecast').Assumptions; updated_at: string } | null; captable?: { name: string; detail: 'summary' | 'holders'; data?: import('~/shared/captable').Data; groups?: CtGroups } | null; room_url?: string | null; board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
+interface D { forecast_group?: { currency: string; name: string; companies: import('~/shared/forecast').GroupCo[] } | null; sectors?: { as_of: string; sectors: { sector: string; share: number; customers: number }[] } | null; forecast?: { name: string; assumptions: import('~/shared/forecast').Assumptions; updated_at: string } | null; captable?: { name: string; detail: 'summary' | 'holders'; data?: import('~/shared/captable').Data; groups?: CtGroups } | null; room_url?: string | null; board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
 const nda = ref(String(useRoute().query.nda ?? ''))
 const goNda = (id: string) => { const u = new URL(window.location.href); u.searchParams.set('nda', id); window.location.replace(u.toString()) }
 const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-c-' + slug + (nda.value ? '-' + nda.value : '') })
@@ -25,7 +25,9 @@ const pct = (k: string) => unit(k) === 'pct'
 const fmt = (k: string, v: number | null | undefined) => v == null ? (k === 'runway' ? 'Cash-flow positive' : '—') : pct(k) ? v + '%' : unit(k) === 'months' ? v + ' months' : unit(k) === 'number' ? Math.round(v).toLocaleString('en-US') : (SYM[data.value?.currency ?? 'USD'] ?? '') + Math.round(v).toLocaleString('en-US')
 const last = (m: D['metrics'][number]) => { if (m.key === 'runway') return { cur: m.points[m.points.length - 1], prev: undefined }; const p = m.points.filter((x) => x.value !== null); return { cur: p[p.length - 1], prev: p[p.length - 2] } }
 const chg = (m: D['metrics'][number]) => { const { cur, prev } = last(m); return cur && prev && prev.value ? Math.round(((cur.value! - prev.value) / Math.abs(prev.value)) * 1000) / 10 : null }
-const lbl = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
+// Quarters read as Q3 '26 (Q3 2026 in headings); months as Sept 26; years as 2026.
+const qtr = (d: string, long = false) => 'Q' + (Math.floor((Number(d.slice(5, 7)) - 1) / 3) + 1) + (long ? ' ' + d.slice(0, 4) : " '" + d.slice(2, 4))
+const lbl = (d: string) => data.value?.period_type === 'quarter' ? qtr(d) : new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const updLink = (id: string) => '/c/' + slug + '/updates/' + id + (nda.value ? '?nda=' + nda.value : '')
 // ── The simple layout ──
 type Fin = { summary: { period: string; latest: string | null; currency: string; items: { label: string; value: number | null; unit: 'money' | 'pct' | 'months'; note?: string }[] } | null; sources: { name: string; url: string; synced: string | null }[] } | null
@@ -36,17 +38,26 @@ const bigVal = (i: { value: number | null; unit: string }) => (i.unit === 'pct' 
 // Short figures for the boxes ($469k rather than $468,766).
 const short = (k: string, v: number | null | undefined) => (v == null ? fmt(k, v) : unit(k) === 'money' ? briefMoney(v, data.value?.currency ?? 'USD') : fmt(k, v))
 const periodWord = computed(() => (data.value?.period_type === 'quarter' ? 'quarter' : data.value?.period_type === 'year' ? 'year' : 'month'))
-const lastPeriod = computed(() => { const ps = (data.value?.metrics ?? []).flatMap((m) => m.points.filter((p) => p.value != null).map((p) => p.period)).sort(); const d = ps[ps.length - 1]; return d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'long', year: 'numeric', timeZone: 'UTC' }) : (fin.value?.summary?.period ?? '') })
+const lastPeriod = computed(() => { const ps = (data.value?.metrics ?? []).flatMap((m) => m.points.filter((p) => p.value != null).map((p) => p.period)).sort(); const d = ps[ps.length - 1]; return d && data.value?.period_type === 'quarter' ? qtr(d, true) : d ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', data.value?.period_type === 'year' ? { year: 'numeric', timeZone: 'UTC' } : { month: 'long', year: 'numeric', timeZone: 'UTC' }) : (fin.value?.summary?.period ?? '') })
 // One clear chart: revenue (or the first money figure), the last eight periods.
 const rev = computed(() => {
   const m = data.value?.metrics.find((x) => x.key === 'revenue') ?? data.value?.metrics.find((x) => unit(x.key) === 'money' && x.key !== 'runway')
   if (!m) return null
   const pts = m.points.filter((p) => p.value != null).slice(-8)
   if (pts.length < 2) return null
-  const max = Math.max(...pts.map((p) => p.value as number), 1)
+  // A rounded top for the scale, so the guide lines read as plain amounts ($500k, $1M, $1.5M).
+  const top = Math.max(...pts.map((p) => p.value as number), 1), step = Math.pow(10, Math.floor(Math.log10(top))), max = Math.ceil(top / (step / 2)) * (step / 2)
   const a = pts[pts.length - 1]!.value as number, b = pts[pts.length - 2]!.value as number
-  return { key: m.key, label: m.label, bars: pts.map((p) => ({ label: lbl(p.period), value: p.value as number, h: Math.max(2, ((p.value as number) / max) * 100) })), last: a, change: b ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null }
+  // The same period a year earlier, and the last twelve months added up, from every reported period.
+  const all = m.points.filter((p) => p.value != null).map((p) => p.value as number), per = data.value?.period_type === 'quarter' ? 4 : data.value?.period_type === 'year' ? 1 : 12
+  const ago = all.length > per ? all[all.length - 1 - per]! : null
+  const yoy = ago ? Math.round(((a - ago) / Math.abs(ago)) * 1000) / 10 : null
+  const ttm = per > 1 && all.length >= per ? all.slice(-per).reduce((s, v) => s + v, 0) : null
+  return { key: m.key, label: m.label, bars: pts.map((p) => ({ label: lbl(p.period), value: p.value as number, h: Math.max(1.5, ((p.value as number) / max) * 100) })), last: a, lastLabel: lbl(pts[pts.length - 1]!.period), change: b ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null, yoy, ttm, ticks: [max, max / 2] }
 })
+// Ownership: Finvry's blues, darkest for the largest group.
+const OWN = ['#0c1a2e', '#1c547d', '#3d6e99', '#8fb3d6', '#c9d6e5', '#5d6470', '#a8b4c2']
+const own = computed(() => { const g = data.value?.captable?.groups; if (!g) return null; return { fd: g.fd, conv: g.convertibles, rows: [...g.groups].sort((a, b) => b.shares - a.shares).map((x, i) => ({ ...x, color: OWN[i % OWN.length]! })) } })
 // The change on the period before: percentage points for margins and other percentages, else a percentage.
 function tileChg(m: D['metrics'][number]) {
   const { cur, prev } = last(m), c = chg(m)
@@ -148,12 +159,22 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 
       <BoardView v-if="data.board" :id="big.length ? undefined : 'numbers'" :data="data.board.data" :metrics="data.board.metrics" class="sec pboard" />
       <template v-else>
-        <section v-if="rev" :id="big.length ? undefined : 'numbers'" class="sec">
-          <div class="sh"><h2>{{ rev.label }} each {{ periodWord }}</h2><span>Latest: <b>{{ short(rev.key, rev.last) }}</b><template v-if="rev.change != null">, {{ rev.change >= 0 ? 'up' : 'down' }} {{ Math.abs(rev.change) }}% on the {{ periodWord }} before</template></span></div>
-          <div class="bars" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }">
-            <span v-for="(x, n) in rev.bars" :key="n" :class="{ on: n === rev.bars.length - 1 }" :style="{ height: x.h + '%' }" :title="x.label + ': ' + short(rev.key, x.value)"><em>{{ short(rev.key, x.value) }}</em></span>
+        <section v-if="rev" :id="big.length ? undefined : 'numbers'" class="sec rvp">
+          <div class="rvh">
+            <div class="rvm"><span class="k">{{ rev.label }} · {{ rev.lastLabel }}</span><b>{{ short(rev.key, rev.last) }}</b>
+              <span v-if="rev.change != null" class="rvc"><i :class="rev.change >= 0 ? 'pos' : 'neg'">{{ rev.change >= 0 ? '↑' : '↓' }} {{ Math.abs(rev.change) }}%</i> on the {{ periodWord }} before</span></div>
+            <div class="rvx">
+              <div v-if="rev.yoy != null"><span>On a year ago</span><b :class="rev.yoy >= 0 ? 'pos' : 'neg'">{{ rev.yoy >= 0 ? '+' : '−' }}{{ Math.abs(rev.yoy) }}%</b></div>
+              <div v-if="rev.ttm != null"><span>Last 12 months</span><b>{{ short(rev.key, rev.ttm) }}</b></div>
+            </div>
           </div>
-          <div class="bl" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }"><span v-for="(x, n) in rev.bars" :key="n">{{ x.label }}</span></div>
+          <div class="plot">
+            <div class="grid"><span v-for="t in rev.ticks" :key="t" :style="{ bottom: (t / rev.ticks[0]!) * 100 + '%' }"><em>{{ short(rev.key, t) }}</em></span></div>
+            <div class="bars" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }">
+              <span v-for="(x, n) in rev.bars" :key="n" :class="{ on: n === rev.bars.length - 1 }" :style="{ height: x.h + '%' }" :title="x.label + ': ' + short(rev.key, x.value)"><em>{{ short(rev.key, x.value) }}</em></span>
+            </div>
+          </div>
+          <div class="bl" :style="{ gridTemplateColumns: 'repeat(' + rev.bars.length + ', minmax(0, 1fr))' }"><span v-for="(x, n) in rev.bars" :key="n" :class="{ on: n === rev.bars.length - 1 }">{{ x.label }}</span></div>
         </section>
 
         <section v-if="data.metrics.length" class="sec">
@@ -176,12 +197,21 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
         <h2>Revenue by customer sector</h2><p class="pm">Share of revenue over the last 12 months.</p>
         <div class="secs"><div v-for="x in data.sectors.sectors" :key="x.sector" class="sr"><span>{{ x.sector }}</span><i><em :style="{ width: Math.max(2, (x.share / Math.max(...data.sectors.sectors.map((y) => y.share))) * 100) + '%' }" /></i><b>{{ x.share }}%</b></div></div>
       </section>
-      <section v-if="data.forecast" class="sec"><h2>Forecast</h2><p class="pm">{{ data.forecast.name }} · updated {{ new Date(data.forecast.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}. An estimate from the company's assumptions, not a promise of results.</p><ForecastSummary :assumptions="data.forecast.assumptions" compact /></section>
+      <section v-if="data.forecast_group" class="sec"><h2>Forecast</h2><ForecastGroup :data="data.forecast_group" :can-edit="false" pub /></section>
+      <section v-else-if="data.forecast" class="sec"><h2>Forecast</h2><p class="pm">{{ data.forecast.name }} · updated {{ new Date(data.forecast.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}. An estimate from the company's assumptions, not a promise of results.</p><ForecastSummary :assumptions="data.forecast.assumptions" compact /></section>
       <section v-if="data.captable" class="sec"><h2>Ownership</h2>
         <CapTableSummary v-if="data.captable.detail === 'holders' && data.captable.data" :data="data.captable.data" />
-        <div v-else-if="data.captable.groups" class="og"><div class="card pad0"><table class="ot" data-nosearch><thead><tr><th>Group</th><th class="r">Shares (fully diluted)</th><th class="r">%</th></tr></thead><tbody><tr v-for="g in data.captable.groups.groups" :key="g.label"><td>{{ g.label }}</td><td class="r">{{ Math.round(g.shares).toLocaleString('en-US') }}</td><td class="r">{{ g.pct.toFixed(2) }}%</td></tr><tr class="tot"><td>Total</td><td class="r">{{ Math.round(data.captable.groups.fd).toLocaleString('en-US') }}</td><td class="r">100%</td></tr></tbody></table>
-          <p v-if="data.captable.groups.convertibles.count" class="pm pad">Plus {{ data.captable.groups.convertibles.count }} SAFE{{ data.captable.groups.convertibles.count === 1 ? '' : 's' }} or note{{ data.captable.groups.convertibles.count === 1 ? '' : 's' }} totalling {{ briefMoney(data.captable.groups.convertibles.total, data.captable.groups.convertibles.currency) }}, which convert at the next priced round.</p></div>
-          <div class="card"><DonutChart title="Fully diluted ownership" total-label="Shares" :segments="data.captable.groups.groups.map((g) => ({ label: g.label, value: g.shares }))" /></div></div></section>
+        <div v-else-if="own" class="own">
+          <div class="ownh">
+            <div><b>{{ Math.round(own.fd).toLocaleString('en-US') }}</b><span>shares, fully diluted</span></div>
+            <div v-if="own.conv.count" class="ownc"><b>{{ briefMoney(own.conv.total, own.conv.currency) }}</b><span>in {{ own.conv.count }} SAFE{{ own.conv.count === 1 ? '' : 's' }} or note{{ own.conv.count === 1 ? '' : 's' }}, converting at the next priced round</span></div>
+          </div>
+          <div class="stack" role="img" :aria-label="own.rows.map((r) => r.label + ' ' + r.pct.toFixed(1) + '%').join(', ')"><i v-for="r in own.rows" :key="r.label" :style="{ width: r.pct + '%', background: r.color }" :title="r.label + ': ' + r.pct.toFixed(2) + '%'" /></div>
+          <div class="ownl">
+            <div v-for="r in own.rows" :key="r.label" class="ownr"><span class="on"><i :style="{ background: r.color }" />{{ r.label }}</span><span class="os">{{ Math.round(r.shares).toLocaleString('en-US') }}</span><b>{{ r.pct.toFixed(r.pct < 1 ? 2 : 1) }}%</b></div>
+          </div>
+        </div>
+      </section>
 
       <section v-if="data.deck_url || data.contact_email || data.room_url" class="sec cta">
         <div><span>Investors</span><b>Talk to {{ data.company }}</b></div>
@@ -200,11 +230,11 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 <style scoped>
 .wrap { max-width: 920px; margin: -24px auto 0; } .ir { font-size: 16.5px; line-height: 1.65; color: #14161a; }
 .top { display: flex; align-items: center; gap: 22px; padding: 0 0 18px; border-bottom: 1px solid #ecebe7; position: sticky; top: 0; z-index: 5; background: #fff; padding-top: 12px; }
-.tlogo { max-height: 34px; max-width: 160px; object-fit: contain; } .tname { font-size: 20px; color: var(--c-navy); }
+.tlogo { height: 32px; width: auto; max-width: 180px; object-fit: contain; object-position: left center; display: block; } .tname { font-size: 20px; color: var(--c-navy); }
 .tl { display: flex; gap: 20px; margin-left: auto; font-size: 15px; } .tl a { color: var(--c-muted); text-decoration: none; } .tl a:hover { color: var(--c-navy); }
 .tbtn { background: var(--c-navy); color: #fff; padding: 9px 16px; text-decoration: none; font-size: 14.5px; font-weight: 600; }
 .covr { margin: 24px 0 0; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; }
-.hero { padding: 72px 0 48px; display: flex; flex-direction: column; gap: 20px; } .eyebrow { font-size: 14px; color: var(--c-muted); }
+.hero { padding: 64px 0 44px; display: flex; flex-direction: column; gap: 20px; } .eyebrow { font-size: 14px; color: var(--c-muted); }
 .hero h1 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; color: var(--c-navy); max-width: 680px; }
 .links, .ctab { display: flex; flex-wrap: wrap; gap: 10px; } .links a, .ctab a { text-decoration: none; font-size: 15px; padding: 12px 20px; }
 .b1 { background: var(--c-navy); color: #fff; font-weight: 600; } .b2 { border: 1px solid #d5d2cb; color: var(--c-navy); background: #fff; } .b3 { color: var(--c-blue-deep); padding-left: 8px !important; }
@@ -213,9 +243,15 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 .src { margin: 4px 0 0; font-size: 12.5px; color: var(--c-muted); } .src a { color: var(--c-blue-deep); }
 .sec { margin-top: 64px; min-width: 0; } .sec h2 { margin: 0 0 16px; font-size: 22px; color: var(--c-navy); } .pm { margin: -8px 0 12px; color: var(--c-muted); font-size: 13.5px; } .pm.pad { margin: 0; padding: 10px 14px; }
 .sh { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; } .sh h2 { margin: 0; } .sh > span { font-size: 14px; color: var(--c-muted); } .sh b { color: var(--c-navy); }
-.bars { display: grid; gap: 14px; align-items: end; height: 200px; border-bottom: 1px solid #d9d6cf; } .bars span { background: #c9d6e5; position: relative; min-height: 2px; } .bars span.on { background: var(--c-blue-deep); }
-.bars em { position: absolute; bottom: 100%; left: -12px; right: -12px; margin-bottom: 4px; text-align: center; font-style: normal; font-size: 12px; color: var(--c-muted); white-space: nowrap; opacity: 0; transition: opacity .15s; } .bars span:hover em, .bars span.on em { opacity: 1; } .bars span.on em { font-weight: 600; color: var(--c-navy); font-size: 13px; }
-.bl { display: grid; gap: 14px; text-align: center; font-size: 12.5px; color: var(--c-muted); padding-top: 8px; } .bl span { overflow: hidden; white-space: nowrap; }
+.rvp { border: 1px solid #ecebe7; padding: 28px 28px 22px; }
+.rvh { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 34px; }
+.rvm { display: flex; flex-direction: column; gap: 4px; } .rvm .k { font-size: 13.5px; color: var(--c-muted); } .rvm > b { font-size: 40px; line-height: 1.05; letter-spacing: -0.02em; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rvc { font-size: 13.5px; color: var(--c-muted); } .rvc i { font-style: normal; font-weight: 600; padding: 2px 7px; margin-right: 4px; } .rvc i.pos { background: #e6eef6; color: var(--c-blue-deep); } .rvc i.neg { background: #fbeee6; color: #b54708; }
+.rvx { display: flex; gap: 0; } .rvx > div { display: flex; flex-direction: column; gap: 2px; padding: 0 0 0 22px; margin-left: 22px; border-left: 1px solid #ecebe7; } .rvx span { font-size: 13px; color: var(--c-muted); } .rvx b { font-size: 22px; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; } .rvx b.pos { color: var(--c-blue-deep); } .rvx b.neg { color: #b54708; }
+.plot { position: relative; height: 220px; padding-left: 52px; } .grid { position: absolute; inset: 0 0 0 0; pointer-events: none; } .grid span { position: absolute; left: 0; right: 0; border-top: 1px dashed #e3e1dc; } .grid em { position: absolute; left: 0; top: -9px; font-style: normal; font-size: 11.5px; color: var(--c-muted); background: #fff; padding-right: 6px; }
+.bars { position: relative; display: grid; gap: 14px; align-items: end; height: 100%; border-bottom: 1px solid #c9c6bf; } .bars span { background: #c9d6e5; position: relative; min-height: 2px; transition: background .15s; } .bars span:hover { background: #8fb3d6; } .bars span.on { background: var(--c-navy); }
+.bars em { position: absolute; bottom: 100%; left: -12px; right: -12px; margin-bottom: 5px; text-align: center; font-style: normal; font-size: 12px; color: var(--c-muted); white-space: nowrap; font-variant-numeric: tabular-nums; } .bars span.on em { font-weight: 600; color: var(--c-navy); font-size: 13px; }
+.bl { display: grid; gap: 14px; text-align: center; font-size: 12.5px; color: var(--c-muted); padding: 9px 0 0 52px; } .bl span.on { color: var(--c-navy); font-weight: 600; } .bl span { overflow: hidden; white-space: nowrap; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; } .tile { background: #f6f5f1; padding: 18px; display: flex; flex-direction: column; gap: 2px; } .tile span { font-size: 13.5px; color: var(--c-muted); } .tile b { font-size: 24px; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; } .tile em { font-style: normal; font-size: 13px; color: var(--c-muted); } .tile em.pos { color: var(--c-blue-deep); } .tile em.neg { color: #b54708; } .spk { width: 100%; height: 38px; margin-top: 10px; display: block; }
 .story.withtoc { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; align-items: start; }
 .toc { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 9px; font-size: 14.5px; max-height: calc(100vh - 110px); overflow-y: auto; } .toc b { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-navy); margin-bottom: 2px; }
@@ -225,6 +261,12 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 .md :deep(.num) { color: var(--c-navy); font-weight: 600; background: #e6eef6; padding: 0 3px; white-space: nowrap; }
 .md :deep(table) { display: table; width: 100% !important; border-collapse: collapse; margin: 8px 0 24px !important; font-size: 14px !important; } .md :deep(th) { text-align: left !important; font-weight: 600 !important; font-size: 12.5px !important; color: #fff !important; background: var(--c-navy) !important; padding: 9px 12px !important; border: 0 !important; } .md :deep(td) { padding: 9px 12px !important; border: 0 !important; border-bottom: 1px solid #ecebe7 !important; font-variant-numeric: tabular-nums; vertical-align: top; }
 .md :deep(.tbar) { display: block; height: 6px; background: #eef1f5; margin-top: 5px; min-width: 60px; } .md :deep(.tbar em) { display: block; height: 100%; background: var(--c-blue-deep); }
+.own { border: 1px solid #ecebe7; padding: 28px; display: flex; flex-direction: column; gap: 22px; }
+.ownh { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; } .ownh > div { display: flex; flex-direction: column; gap: 2px; } .ownh b { font-size: 34px; line-height: 1.1; letter-spacing: -0.02em; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; } .ownh span { font-size: 13.5px; color: var(--c-muted); }
+.ownc { background: #f6f5f1; padding: 12px 16px; max-width: 360px; } .ownc b { font-size: 20px !important; }
+.stack { display: flex; height: 18px; gap: 2px; background: #fff; } .stack i { display: block; min-width: 3px; }
+.ownl { display: flex; flex-direction: column; } .ownr { display: grid; grid-template-columns: minmax(0, 1fr) 120px 80px; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid #ecebe7; font-size: 15px; } .ownr:last-child { border-bottom: 1px solid #ecebe7; }
+.ownr .on { display: flex; align-items: center; gap: 10px; min-width: 0; } .ownr .on i { width: 12px; height: 12px; flex: none; } .ownr .os { text-align: right; color: var(--c-muted); font-variant-numeric: tabular-nums; } .ownr b { text-align: right; color: var(--c-navy); font-weight: 600; font-variant-numeric: tabular-nums; }
 .og { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; } .pad0 { padding: 0; overflow-x: auto; } .ot { width: 100%; border-collapse: collapse; font-size: 14px; } .ot th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 10px 14px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; } .ot td { padding: 10px 14px; border-bottom: 1px solid var(--c-rule); font-variant-numeric: tabular-nums; } .ot .r { text-align: right; } .ot .tot td { font-weight: 600; }
 .secs { display: flex; flex-direction: column; gap: 8px; max-width: 640px; } .sr { display: grid; grid-template-columns: 180px 1fr 56px; gap: 10px; align-items: center; font-size: 14px; } .sr i { display: block; height: 10px; background: #eef1f6; } .sr em { display: block; height: 100%; background: var(--c-blue-deep); } .sr b { text-align: right; font-weight: 500; }
 .cta { background: #f6f5f1; padding: 32px 36px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px; } .cta > div:first-child { display: flex; flex-direction: column; } .cta span { font-size: 14px; color: var(--c-muted); } .cta b { font-size: 28px; color: var(--c-navy); letter-spacing: -0.02em; }
@@ -235,7 +277,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
   .wrap { margin-top: -36px; } .tl { display: none; } .tbtn { margin-left: auto; padding: 8px 12px; font-size: 13.5px; }
   .hero { padding: 40px 0 32px; } .hero h1 { font-size: 23px; } .links a { flex: 1 1 auto; text-align: center; }
   .big { grid-template-columns: 1fr 1fr !important; } .big > div { padding: 16px 14px 16px 0 !important; border-left: 0 !important; border-bottom: 1px solid #ecebe7; } .big > div:nth-child(2n) { padding-left: 14px !important; border-left: 1px solid #ecebe7 !important; } .big b { font-size: 26px; }
-  .sec { margin-top: 44px; } .bars { gap: 5px; height: 150px; } .bl { gap: 5px; font-size: 10.5px; } .bars em { display: none; } .tiles { grid-template-columns: 1fr 1fr; } .tile { padding: 14px; } .tile b { font-size: 20px; }
+  .sec { margin-top: 44px; } .rvp, .own { padding: 20px 16px; } .rvm > b { font-size: 32px; } .rvx > div:first-child { margin-left: 0; padding-left: 0; border-left: 0; } .plot { height: 160px; padding-left: 0; } .grid em { display: none; } .bars { gap: 5px; } .bl { gap: 5px; font-size: 10.5px; padding-left: 0; } .bars em { display: none; } .bars span.on em { display: block; font-size: 12px; } .ownh b { font-size: 28px; } .ownr { grid-template-columns: minmax(0, 1fr) 80px 60px; font-size: 14px; } .tiles { grid-template-columns: 1fr 1fr; } .tile { padding: 14px; } .tile b { font-size: 20px; }
   .og { grid-template-columns: 1fr; } .story.withtoc { display: block; } .toc { display: none; } .md :deep(table) { display: block; overflow-x: auto; } .md :deep(h2) { font-size: 23px; } .md :deep(h3) { font-size: 19px; }
   .sr { grid-template-columns: 110px 1fr 48px; } .cta { padding: 24px 20px; } .cta b { font-size: 22px; } .ctab { width: 100%; } .ctab a { flex: 1; text-align: center; }
 }

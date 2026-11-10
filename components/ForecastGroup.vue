@@ -4,7 +4,8 @@
 // companies (one company's settlement out, the other's in) cancels out when both forecasts carry it. Read only: each
 // company's forecast is built, imported and changed on that company.
 import { run, forecastRows, catParts, catValues, type Scenario, type GroupCo, type Month, type CostLine, type Assumptions } from '~/shared/forecast'
-const props = defineProps<{ data: { currency: string; name: string; companies: GroupCo[] }; canEdit: boolean }>()
+// pub: the read-only view on the public investor page (headline figures and the chart, no rates, table or controls).
+const props = defineProps<{ data: { currency: string; name: string; companies: GroupCo[] }; canEdit: boolean; pub?: boolean }>()
 const emit = defineEmits<{ open: [id: string]; refresh: [] }>()
 const sc = ref<Scenario>('base'), msg = ref(''), ok = ref('')
 const cur = computed(() => props.data.currency)
@@ -84,7 +85,8 @@ function csv() {
 
 <template>
   <div class="gf">
-    <p class="lead">Each company's forecast in {{ cur }}, added together.</p>
+    <p v-if="pub" class="lead">{{ ready.map((x) => x.c.name).join(', ') }}: each company's forecast in {{ cur }}, added together.</p>
+    <template v-else><p class="lead">Each company's forecast in {{ cur }}, added together.</p>
     <div class="card pad0"><table class="t sm co" data-nosearch><thead><tr><th>Company</th><th>Forecast used</th><th>Months</th><th>Cash at the end</th><th /></tr></thead>
       <tbody><tr v-for="c in data.companies" :key="c.id">
         <td><b>{{ c.name }}</b><span class="mut"> · {{ c.currency }}</span></td>
@@ -93,16 +95,17 @@ function csv() {
         <td>{{ c.use ? mon(c.use.assumptions.start) + ' · ' + c.use.assumptions.months : '—' }}</td>
         <td>{{ c.use ? m(runs.find((x) => x.c.id === c.id)?.r.summary.cash_end, c.currency) : '—' }}</td>
         <td class="r"><button type="button" class="lk" @click="emit('open', c.id)">{{ c.use ? 'Open' : 'Build or import' }}</button></td></tr></tbody></table></div>
-    <div v-if="curs.length" class="rates">
+    </template>
+    <div v-if="curs.length && !pub" class="rates">
       <span class="kl">Plan rates</span>
       <label v-for="q in curs" :key="q"><span>{{ q }} per 1 {{ cur }}</span><input v-model.number="rates[q]" type="number" min="0" step="any" :disabled="!canEdit"><em>{{ SRC[srcOf(q)] }}</em><button v-if="canEdit" type="button" class="lk" @click="saveRate(q)">Save</button></label>
       <span class="hint">One rate for every month. Your latest book rate by default.</span>
     </div>
     <p v-if="msg" class="error">{{ msg }}</p><p v-if="ok" class="ok">{{ ok }}</p>
-    <p v-if="!runs.length" class="note">No company has a forecast yet. Open a company to build one.</p>
-    <p v-else-if="missingRate.length" class="note">Set a plan rate for {{ missingRate.map((c) => c.currency).join(', ') }} to add {{ missingRate.map((c) => c.name).join(', ') }} to the group.</p>
+    <p v-if="!runs.length && !pub" class="note">No company has a forecast yet. Open a company to build one.</p>
+    <p v-else-if="missingRate.length && !pub" class="note">Set a plan rate for {{ missingRate.map((c) => c.currency).join(', ') }} to add {{ missingRate.map((c) => c.name).join(', ') }} to the group.</p>
     <template v-if="sum && months.length">
-      <div class="tb"><div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div><span class="sp" /><button class="btn secondary" @click="csv">Export CSV</button></div>
+      <div class="tb"><div class="seg" role="tablist"><button v-for="s in (['base', 'best', 'worst'] as const)" :key="s" :class="{ on: sc === s }" @click="sc = s">{{ s === 'base' ? 'Base case' : s === 'best' ? 'Best case' : 'Worst case' }}</button></div><span class="sp" /><button v-if="!pub" class="btn secondary" @click="csv">Export CSV</button></div>
       <div class="fx-stats">
         <StatTile label="Group cash at the end" :value="m(sum.cash_end)" :note="mon(sum.end)" :red="sum.cash_end < 0" />
         <StatTile :label="sum.zero ? 'Group cash runs out' : 'Lowest group cash'" :value="sum.zero ? mon(sum.zero) : m(sum.min)" :note="sum.zero ? 'Raise or cut before then' : mon(sum.min_month)" :red="!!sum.zero" full />
@@ -111,7 +114,7 @@ function csv() {
       </div>
       <div class="card"><ForecastChart :actual="[]" :forecast="chart" :currency="cur" /></div>
       <p v-if="lateStart.length || shortEnd" class="fine">{{ lateStart.length ? lateStart.join(', ') + (lateStart.length === 1 ? '\'s forecast starts' : '\'s forecasts start') + ' later: until then it counts its opening cash only. ' : '' }}{{ shortEnd ? 'The group runs to ' + mon(shortEnd) + ', where the shortest forecast ends.' : '' }}</p>
-      <div class="card pad0"><div class="tw"><table class="t" data-nosearch><thead><tr><th class="st">{{ cur }}</th><th v-for="x in g" :key="x.month">{{ mon(x.month) }}</th></tr></thead>
+      <div v-if="!pub" class="card pad0"><div class="tw"><table class="t" data-nosearch><thead><tr><th class="st">{{ cur }}</th><th v-for="x in g" :key="x.month">{{ mon(x.month) }}</th></tr></thead>
         <tbody><tr v-for="(r, i) in ROWS" :key="i + r.label" :class="r.kind"><td class="st">{{ r.label }}</td><td v-for="x in g" :key="x.month" :class="{ neg: (r.get(x) ?? 0) < 0 }">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr>
           <tr class="sub"><td class="st">By company</td><td :colspan="g.length" /></tr>
           <template v-for="{ c } in ready" :key="c.id"><tr><td class="st">Revenue · {{ c.name }}</td><td v-for="x in g" :key="x.month">{{ full(x.by[c.id]?.revenue) }}</td></tr>
