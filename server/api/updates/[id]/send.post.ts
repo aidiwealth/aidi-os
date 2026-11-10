@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, 'gp')
   await rateLimit('update_send', user.userId, 20, 60 * 60 * 1000)
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
-  const b = z.object({ mode: z.enum(['test', 'email', 'email_publish', 'publish']) }).safeParse(await readBody(event))
+  const b = z.object({ mode: z.enum(['test', 'email', 'email_publish', 'publish']), again: z.boolean().optional() }).safeParse(await readBody(event))
   if (!id.success || !b.success) throw apiError('invalid', 'Invalid request.')
   const u = (await db().query<{ title: string; blocks: Block[]; cover_id: string | null; from_name: string | null; recipients: Recipients; subject: string | null; greeting: string | null }>('SELECT title, blocks, cover_id, from_name, recipients, subject, greeting FROM financials.updates WHERE id = $1', [id.data])).rows[0]
   if (!u) throw apiError('not_found', 'Not found', 404)
@@ -26,9 +26,9 @@ export default defineEventHandler(async (event) => {
   if (!people.length) throw apiError('invalid', 'Choose who to send it to in step 2.')
   let sent = 0, skipped = 0
   const as = await updateSendAs(org.id, user.email)
-  // Never the same update twice to one person (a second send, or the same investor reached by two addresses): only a
-  // send that failed is tried again.
-  const had = new Set((await db().query<{ investor_id: string }>("SELECT investor_id FROM financials.update_sends WHERE update_id = $1 AND coalesce(delivery, 'sent') <> 'failed'", [id.data])).rows.map((x) => x.investor_id))
+  // Normally nobody gets the same update twice (a second send, or one investor reached by two addresses): only a send
+  // that failed is tried again. "Send again to everyone" (again) emails people who already had it, still once each.
+  const had = new Set(b.data.again ? [] : (await db().query<{ investor_id: string }>("SELECT investor_id FROM financials.update_sends WHERE update_id = $1 AND coalesce(delivery, 'sent') <> 'failed'", [id.data])).rows.map((x) => x.investor_id))
   // Links in the update, numbered the same for every reader (kept from earlier sends so old emails still work).
   const links: string[] = (await db().query<{ l: string[] }>('SELECT link_urls AS l FROM financials.updates WHERE id = $1', [id.data])).rows[0]?.l ?? []
   for (const p of people) {
