@@ -47,6 +47,21 @@ const STAGES = [['contacted', 'Contacted'], ['meeting', 'Meeting'], ['diligence'
 const committed = computed(() => main.value?.committed ?? 0); const closed = computed(() => main.value?.closed ?? 0)
 const pct = (v: number, tg = main.value?.target) => (tg ? Math.min(100, Math.round((v / tg) * 100)) : 0)
 const mins = (s: number) => (s < 60 ? s + 's' : Math.round(s / 60) + ' min')
+// Recent data room activity, one row per person (and link): when they last looked, how long, and the files they opened.
+const ago = (d: string) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? 'Just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : when(d) }
+const initials = (e: string | null) => (e ? e.split('@')[0]!.split(/[._-]+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('') || e[0]!.toUpperCase() : '?')
+const actGroups = computed(() => {
+  const gs: { key: string; email: string | null; link: string; last: string; seconds: number; files: { name: string; seconds: number }[] }[] = []
+  for (const a of [...(data.value?.activity ?? [])].sort((x, y) => y.started_at.localeCompare(x.started_at))) {
+    const key = (a.viewer_email ?? '') + '|' + a.link
+    let g = gs.find((x) => x.key === key)
+    if (!g) { if (gs.length >= 5) continue; g = { key, email: a.viewer_email, link: a.link, last: a.started_at, seconds: 0, files: [] }; gs.push(g) }
+    g.seconds += a.seconds || 0
+    const nm = a.file ?? 'The data room', f = g.files.find((x) => x.name === nm)
+    if (f) f.seconds += a.seconds || 0; else g.files.push({ name: nm, seconds: a.seconds || 0 })
+  }
+  return gs
+})
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong.'
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
@@ -112,7 +127,16 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
       <EmptyState v-else card icon="fundraising" title="Set up your raise" text="Create a pipeline to track your raise."><button class="btn" @click="editRound()">New pipeline</button></EmptyState>
       <div class="fx-stats"><StatTile label="Investors in play" :value="inPlay" icon="users" tone="n" /><StatTile label="Data room files" :value="data.files.length" :note="data.rooms.length > 1 ? data.rooms.length + ' data rooms' : ''" icon="doc" tone="b" />
         <StatTile label="Data room views" :value="data.links.reduce((t, l) => t + l.views, 0)" icon="chart" tone="c" /><StatTile label="Time spent" :value="mins(data.links.reduce((t, l) => t + l.seconds, 0))" icon="clock" tone="g" /></div>
-      <div class="two"><div class="card"><h3>Recent data room activity</h3><div v-for="(a, i) in data.activity.slice(0, 8)" :key="i" class="li"><span><b>{{ a.viewer_email ?? 'Someone' }}</b> opened {{ a.file ?? 'the room' }}<em> · via {{ a.link }}</em></span><span class="mut">{{ when(a.started_at) }}{{ a.seconds ? ' · ' + mins(a.seconds) : '' }}</span></div><p v-if="!data.activity.length" class="mut">No views yet. Share your data room to start tracking.</p></div>
+      <div class="two"><div class="card act"><div class="acth"><h3>Recent data room activity</h3><span v-if="data.activity.length" class="mut">{{ actGroups.length }} {{ actGroups.length === 1 ? 'person' : 'people' }} lately</span></div>
+          <div v-for="g in actGroups" :key="g.key" class="ag">
+            <span class="av" aria-hidden="true">{{ initials(g.email) }}</span>
+            <div class="agb">
+              <div class="agt"><b :title="g.email ?? ''">{{ g.email ?? 'A visitor without an email' }}</b><span class="agw">{{ ago(g.last) }}</span></div>
+              <span class="ags">{{ g.files.every((f) => f.name === 'The data room') ? 'Opened the data room' : 'Opened ' + g.files.length + (g.files.length === 1 ? ' file' : ' files') }} via {{ g.link }}{{ g.seconds ? ' · ' + mins(g.seconds) + ' in total' : '' }}</span>
+              <div class="agf"><span v-for="f in g.files.slice(0, 4)" :key="f.name" class="fc" :title="f.name"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" /></svg><em>{{ f.name.replace(/\.pdf$/i, '') }}</em><i v-if="f.seconds">{{ mins(f.seconds) }}</i></span><span v-if="g.files.length > 4" class="fc more">+{{ g.files.length - 4 }} more</span></div>
+            </div>
+          </div>
+          <div v-if="!data.activity.length" class="act0"><span class="av" aria-hidden="true">·</span><p class="mut">No views yet. Share your data room or investor page and every open shows here.</p></div></div>
         <div class="card"><h3>Next steps</h3><NuxtLink to="/fundraising/prospects" class="nx fnd"><b>Find investors and grants</b><span>Matched to your stage and sector</span></NuxtLink><button class="nx" @click="go('room'); up.open = true"><b>Upload your deck</b><span>Then share tracked links with investors</span></button><button class="nx" @click="newMemo()"><b>Write your deal memo with AI</b><span>From your numbers and a few notes</span></button><button class="nx" @click="newSafe()"><b>Create a SAFE</b><span>Post-money cap, discount, MFN</span></button></div></div>
     </template>
 
@@ -252,6 +276,13 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--c-rule); margin: 14px 0 16px; } .tabs button { background: none; border: 0; padding: 10px 0; font: inherit; color: var(--c-muted); cursor: pointer; border-bottom: 2px solid transparent; } .tabs .on { color: var(--c-navy); border-bottom-color: var(--c-navy); font-weight: 500; }
 .rh { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; } .rh > div:first-child { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 6px; } .rh h2 { margin: 0; font-size: 34px; } .rh h2 em { font-style: normal; font-size: 15px; color: var(--c-muted); font-family: var(--font-body); }
 .bar { height: 8px; background: var(--c-paper-2); position: relative; } .bar i { position: absolute; left: 0; top: 0; bottom: 0; } .bar i.c { background: #9fb6d9; } .bar i.w { background: var(--c-navy); }
+.act { display: flex; flex-direction: column; } .acth { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 4px; } .acth h3 { margin: 0; } .acth .mut { font-size: 13px; }
+.ag { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--c-rule); } .ag:last-child { border-bottom: 0; padding-bottom: 2px; }
+.av { width: 36px; height: 36px; background: #e6eef6; color: var(--c-navy); font-size: 13px; font-weight: 600; display: grid; place-items: center; letter-spacing: .02em; }
+.agb { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .agt { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .agt b { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .agw { font-size: 12.5px; color: var(--c-muted); white-space: nowrap; flex: none; }
+.ags { font-size: 13px; color: var(--c-muted); } .agf { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fc { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: #f6f5f1; border: 1px solid var(--c-rule); padding: 4px 8px; font-size: 12.5px; color: #3b414b; } .fc svg { width: 13px; height: 13px; flex: none; color: var(--c-blue-deep); } .fc em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; } .fc i { font-style: normal; color: var(--c-muted); } .fc.more { color: var(--c-muted); }
+.act0 { display: flex; align-items: center; gap: 12px; padding: 12px 0 2px; } .act0 p { margin: 0; }
 .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; } h3 { margin: 0 0 10px; font-size: 18px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .li em { font-style: normal; color: var(--c-muted); }
 .nx { display: flex; flex-direction: column; gap: 2px; text-align: left; width: 100%; background: var(--c-paper-2); border: 0; padding: 12px 14px; margin-bottom: 8px; font: inherit; cursor: pointer; } .nx:hover { background: var(--c-signal-soft); } .nx span { font-size: 12.5px; color: var(--c-muted); }
 .cta { text-align: center; padding: 28px; margin-bottom: 12px; } .cta p { color: var(--c-ink-soft); max-width: 480px; margin: 6px auto 14px; }
