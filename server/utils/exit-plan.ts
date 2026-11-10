@@ -26,8 +26,9 @@ export interface Basis { arr: number | null; arr_source: string; revenue_ttm: nu
 const EMPTY: Basis = { arr: null, arr_source: '', revenue_ttm: null, ttm_source: '', ebitda_ttm: null, growth_pct: null, growth_source: '', latest: null, currency: 'USD', reporting: null, fx: null, months: 0, period: null, projected: [], note: '' }
 const kpi = (k: Record<string, unknown> | undefined, re: RegExp) => { const v = Object.entries(k ?? {}).find(([n]) => re.test(n.trim()))?.[1]; return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null }
 export async function revenueBasis(): Promise<Basis> {
-  const ent = await companyEntityId()
-  if (!ent) return { ...EMPTY }
+  // The group's figures when the company has subsidiaries, else the company's.
+  const subj = await analysisSubject()
+  if (!subj) return { ...EMPTY }
   const monthEnd = (() => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) })()
   const org = await currentOrg()
   const reporting = (org?.settings.reporting_currency as string | undefined) || null
@@ -37,7 +38,7 @@ export async function revenueBasis(): Promise<Basis> {
   const load = async (pt: 'month' | 'quarter' | 'year') => {
     // As Financials shows them (in the reporting currency), then in US dollars where a rate is known; without a rate
     // the figures are kept in their own currency rather than dropped.
-    const raw = await loadStatements('entity:' + ent, pt, 'USD').catch((e) => { console.error('[exit] statements', (e as Error).message); return [] })
+    const raw = await loadStatements(subj, pt, 'USD').catch((e) => { console.error('[exit] statements', (e as Error).message); return [] })
     seen += raw.length
     const out: { end: string; rev: number | null; ebitda: number | null; arr: number | null; mrr: number | null; cur: string }[] = []
     for (const r of raw) { const rate = await toUsd(r.currency); if (rate == null) noRate.add(r.currency); const k = rate ?? 1; const v = (x: unknown) => { const n = typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN; return Number.isFinite(n) ? n * k : null }

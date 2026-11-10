@@ -36,7 +36,7 @@ export async function updateFigures(orgId: string, updateId: string): Promise<{ 
   const u = (await asPlatform(() => db().query<{ title: string; period_type: string; period_end: string; blocks: Block[] | null; body: string | null; highlights: string | null }>(
     `SELECT title, period_type, to_char(period_end, 'YYYY-MM-DD') AS period_end, blocks, body, highlights FROM financials.updates WHERE id = $1 AND organization_id = $2 AND (sent_at IS NOT NULL OR status = 'published') AND ${SHARED('financials.updates', '$3')}`, [updateId, orgId, currentOrgId()]))).rows[0]
   if (!u) return null
-  const rows = await inOrg(orgId, async () => { const ent = await companyEntityId(); return ent ? loadStatements('entity:' + ent, 'month', 'USD') : [] })
+  const rows = await inOrg(orgId, async () => { const sj = await analysisSubject(); return sj ? loadStatements(sj, 'month', 'USD') : [] })
   const n = u.period_type === 'quarter' ? 3 : 1
   const end = u.period_end.slice(0, 7)
   const start = new Date(end + '-01T00:00:00Z'); start.setUTCMonth(start.getUTCMonth() - (n - 1))
@@ -90,7 +90,7 @@ export async function notifyPortfolioOfUpdate(orgId: string, updateId: string, t
 export async function finvryPrefill(companyId: string, period: string, months: 1 | 3): Promise<{ values: Record<string, number | null>; from: string } | null> {
   const c = (await asPlatform(() => db().query<{ finvry_org_id: string | null }>('SELECT finvry_org_id FROM portfolio.companies WHERE id = $1', [companyId]))).rows[0]
   if (!c?.finvry_org_id) return null
-  const { rows, sec } = await inOrg(c.finvry_org_id, async () => { const ent = await companyEntityId(); return { rows: ent ? await loadStatements('entity:' + ent, 'month', 'USD') : [], sec: await investorCashPolicy() } })
+  const { rows, sec } = await inOrg(c.finvry_org_id, async () => { const sj = await analysisSubject(); return { rows: sj ? await loadStatements(sj, 'month', 'USD') : [], sec: await investorCashPolicy() } })
   const end = period.slice(0, 7), start = new Date(end + '-01T00:00:00Z'); start.setUTCMonth(start.getUTCMonth() - (months - 1))
   const from = start.toISOString().slice(0, 7)
   const inP = rows.filter((r) => r.period_end.slice(0, 7) >= from && r.period_end.slice(0, 7) <= end)

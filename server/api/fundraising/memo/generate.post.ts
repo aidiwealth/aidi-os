@@ -6,8 +6,8 @@ export default defineEventHandler(async (event) => {
   const b = z.object({ notes: z.record(z.string(), z.string().max(3000)).default({}) }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const org = (await currentOrg())!
-  const ent = await companyEntityId()
-  const rows = ent ? (await loadStatements('entity:' + ent, 'month', (org.settings.currency as string) || 'USD')).slice(-12).map((r) => ({ period: r.period_end, ...derive(r.lines, 'month') })) : []
+  const is = await investorSubject()
+  const rows = is.subject ? (await loadStatements(is.subject, 'month', is.currency)).slice(-12).map((r) => ({ period: r.period_end, ...derive(r.lines, 'month') })) : []
   const page = (await db().query<{ headline: string | null; about: string | null }>('SELECT headline, about FROM financials.public_pages LIMIT 1')).rows[0]
   const round = (await db().query("SELECT name, instrument, currency, target::float, valuation_cap::float, discount::float FROM fundraise.rounds ORDER BY (status = 'open') DESC, created_at DESC LIMIT 1")).rows[0]
   const figures = rows.map((r) => r.period + ': ' + ['revenue', 'gross_margin', 'net_income', 'cash', 'burn'].map((k) => k + ' ' + ((r as Record<string, unknown>)[k] ?? '-')).join(', ')).join('\n')

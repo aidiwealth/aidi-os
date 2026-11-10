@@ -188,7 +188,7 @@ export async function syncBankFeed(force = false): Promise<number> { return sync
 // Cash and burn on the same basis as Financials and the Stage Monitor, for the runway each cut gives back.
 // keyFigures: the one cash, burn and runway shown on every page.
 export async function cashAndBurn(cur: string, subject?: string): Promise<{ cash: number | null; burn: number | null; runway: number | null; cash_at: string | null; investments: number; runway_to: string | null }> {
-  const ent = await companyEntityId(), subj = subject ?? (ent ? 'entity:' + ent : null)
+  const subj = subject ?? await analysisSubject()
   if (!subj) return { cash: null, burn: null, runway: null, cash_at: null, investments: 0, runway_to: null }
   const rows = (await loadStatements(subj, 'month', cur).catch(() => [])).filter((r) => r.period_type === 'month').slice(-12)
   const sec = await cashPolicy()

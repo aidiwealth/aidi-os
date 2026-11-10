@@ -19,7 +19,8 @@ export async function requireApiKey(event: Parameters<typeof getRequestHeader>[0
   return { orgId: k.organization_id, kind: k.kind, keyId: k.id }
 }
 export async function apiSubject(kind: string, given?: unknown): Promise<string> {
-  if (kind === 'company') { const ent = await companyEntityId(); if (!ent) throw apiError('invalid', 'Your company has no entity yet.'); return 'entity:' + ent }
+  // A company: the group's figures when it has subsidiaries, else its own.
+  if (kind === 'company') { const sj = await analysisSubject(); if (!sj) throw apiError('invalid', 'Your company has no entity yet.'); return sj }
   const s = String(given ?? '')
   if (!/^(entity|company):[0-9a-f-]{36}$/.test(s)) throw apiError('invalid', 'Pass subject as entity:<id> or company:<id>.')
   return s

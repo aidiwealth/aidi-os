@@ -54,8 +54,8 @@ export async function metricCatalog(subject?: string | null): Promise<MetricDef[
     // The same retention and revenue metrics for one group of customers (Enterprise only, SMB only, a segment…).
     for (const g of await customerGroups()) for (const key of ['cust:nrr', 'cust:grr', 'cust:logo_churn', 'cust:arr', 'cust:active']) { const k = key + '@' + g.by + '=' + g.value; out.push({ key: k, label: metricLabel(k), unit: metricUnit(k), group: 'Customers and retention' }) }
   }
-  const subj = subject ?? (await companyEntityId().then((e) => (e ? 'entity:' + e : null)).catch(() => null))
-  if (subj && /^(entity|company):/.test(subj)) {
+  const subj = subject ?? (await analysisSubject().catch(() => null))
+  if (subj && /^(entity|company):|^group$/.test(subj)) {
     const rows = await loadStatements(subj, 'month', ((await currentOrg())?.settings.currency as string) || 'USD').catch(() => [])
     const names = new Set<string>(); for (const r of rows.slice(-24)) for (const k of Object.keys(r.kpis ?? {})) names.add(k)
     for (const k of [...names].sort()) out.push({ key: 'kpi:' + k, label: k, unit: 'number', group: 'Your KPIs' })

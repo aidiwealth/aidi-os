@@ -20,7 +20,7 @@ export async function updateSubject(subject?: string | null): Promise<string | n
   if (org.kind === 'company') {
     if (subject === 'group') return 'group'
     if (subject?.startsWith('entity:') && (await db().query('SELECT 1 FROM core.entities WHERE id = $1', [subject.slice(7)]).catch(() => ({ rowCount: 0 }))).rowCount) return subject
-    const ent = await companyEntityId(); return ent ? 'entity:' + ent : null
+    return analysisSubject()
   }
   return subject || 'group'
 }

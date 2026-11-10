@@ -8,11 +8,13 @@ export async function valuationBasis(): Promise<ValCompany> {
   const b = await revenueBasis()
   const out: ValCompany = { currency: b.currency, latest: b.latest, revenue_ttm: b.revenue_ttm, ttm_source: b.ttm_source, run_rate: null, arr: b.arr, gross_profit_ttm: null, gross_margin_pct: null,
     ebitda_ttm: b.ebitda_ttm, ebitda_margin_pct: null, growth_pct: b.growth_pct, growth_source: b.growth_source, cash: null, debt: null, business_type: '', note: b.note }
-  const ent = await companyEntityId()
-  if (!ent) return out
+  // The group's consolidated figures when the company has subsidiaries, else the company's; the business type is the
+  // main company's.
+  const ent = await companyEntityId(), subj = await analysisSubject()
+  if (!ent || !subj) return out
   const org = await currentOrg()
   out.business_type = modelOf(((org?.settings.business_models as Record<string, string> | undefined) ?? {})['entity:' + ent])?.label ?? ''
-  const rows = (await loadStatements('entity:' + ent, 'month', 'USD').catch(() => [])).filter((r) => r.period_end <= new Date().toISOString().slice(0, 10))
+  const rows = (await loadStatements(subj, 'month', 'USD').catch(() => [])).filter((r) => r.period_end <= new Date().toISOString().slice(0, 10))
   const rate = async (cur: string) => (cur === 'USD' ? 1 : await fxRate(cur, 'USD').catch(() => null))
   const conv = async (r: (typeof rows)[number], v: unknown) => { const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN; if (!Number.isFinite(n)) return null; const k = await rate(r.currency); return k == null ? n : n * k }
   const last12 = rows.slice(-12)

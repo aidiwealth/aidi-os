@@ -12,6 +12,9 @@ export async function investorSubject(): Promise<{ subject: string | null; curre
   const ent = await companyEntityId()
   return { subject: ent ? 'entity:' + ent : null, currency: own }
 }
+// The figures every analysis in a company workspace reads: the group's consolidated statements when the company has
+// subsidiaries, else the company's own.
+export async function analysisSubject(): Promise<string | null> { return (await investorSubject()).subject }
 export async function investorFinancials(): Promise<InvestorFin | null> {
   const org = await currentOrg()
   if (!org || org.kind !== 'company') return null
