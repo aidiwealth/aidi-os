@@ -48,33 +48,58 @@ export interface Converted { conv: Conv; holder: string; price: number; shares: 
 export function round(d: Data, r: RoundIn, today: string) {
   const t = table(d, today)
   const fd0 = t.fd
-  let topup = 0, safeShares = 0, price = 0, newShares = 0, conv: Converted[] = []
-  for (let k = 0; k < 60; k++) {
-    const pre = fd0 + topup + safeShares
-    price = r.pre_money / Math.max(1, pre)
-    newShares = r.new_money / price
-    const post = pre + newShares
-    topup = Math.max(0, r.pool_target_pct / 100 * post - t.pool)
-    const capBase = fd0 + topup + safeShares
-    conv = t.convertibles.map((c) => {
-      const years = Math.max(0, monthsBetween(c.issued_on, r.on) / 12)
-      const amount = c.kind === 'note' && c.interest_pct ? c.amount * (1 + c.interest_pct / 100 * years) : c.amount
-      const cands: { m: 'cap' | 'discount' | 'round'; p: number }[] = [{ m: 'round', p: price }]
-      if (c.valuation_cap) cands.push({ m: 'cap', p: c.valuation_cap / Math.max(1, c.post_money ? capBase : fd0) })
-      if (c.discount_pct) cands.push({ m: 'discount', p: price * (1 - c.discount_pct / 100) })
-      const best = cands.reduce((a, b) => (b.p < a.p ? b : a))
-      return { conv: c, holder: d.holders.find((h) => h.id === c.holder_id)?.name ?? 'Investor', price: best.p, shares: amount / best.p, method: best.m, amount }
-    })
-    const next = conv.reduce((s, c) => s + c.shares, 0)
-    if (Math.abs(next - safeShares) < 0.5) { safeShares = next; break }
-    safeShares = next
+  const live = t.convertibles.map((c) => {
+    const years = Math.max(0, monthsBetween(c.issued_on, r.on) / 12)
+    return { c, amount: c.kind === 'note' && c.interest_pct ? c.amount * (1 + c.interest_pct / 100 * years) : c.amount }
+  })
+  // Solved directly rather than by repeated guessing (which ran away when the SAFEs were large next to the pre-money).
+  // In pre-money value: a post-money SAFE at its cap owns amount / cap of the shares before the new money; one
+  // converting at the round price (less any discount) takes amount / (1 - discount) of the pre-money's value; a
+  // pre-money cap gives a fixed number of shares. The pool top-up is a share of the post-money shares.
+  const solve = (pre: number) => {
+    let topup = 0, out = { preShares: 0, price: 0, newShares: 0, F: 0, conv: [] as Converted[] }
+    for (let k = 0; k < 40; k++) {
+      let F = 0, fixed = 0
+      const pick = live.map(({ c, amount }) => {
+        const disc = c.discount_pct ? c.discount_pct / 100 : 0
+        const roundVal = pre * (1 - disc)
+        if (c.valuation_cap && c.post_money && c.valuation_cap <= roundVal) { F += amount / c.valuation_cap; return { c, amount, m: 'cap' as const } }
+        if (c.valuation_cap && !c.post_money) {
+          const capShares = amount * fd0 / c.valuation_cap
+          // A pre-money cap converts at cap / fd0; use it when that is cheaper than the round price.
+          if (out.preShares && c.valuation_cap / Math.max(1, fd0) <= roundVal / out.preShares) { fixed += capShares; return { c, amount, m: 'cap' as const } }
+          if (!out.preShares) { fixed += capShares; return { c, amount, m: 'cap' as const } }
+        }
+        F += pre > 0 ? amount / roundVal : Infinity; return { c, amount, m: (disc ? 'discount' : 'round') as 'discount' | 'round' }
+      })
+      if (!(F < 1)) return { ...out, F, ok: false, topup }
+      const preShares = (fd0 + topup + fixed) / (1 - F)
+      const price = pre / preShares, newShares = r.new_money / price, post = preShares + newShares
+      const nextTop = Math.max(0, r.pool_target_pct / 100 * post - t.pool)
+      const conv = pick.map(({ c, amount, m }) => {
+        const p = m === 'cap' ? (c.post_money ? c.valuation_cap! / preShares : c.valuation_cap! / Math.max(1, fd0)) : price * (1 - (m === 'discount' ? c.discount_pct! / 100 : 0))
+        return { conv: c, holder: d.holders.find((h) => h.id === c.holder_id)?.name ?? 'Investor', price: p, shares: amount / p, method: m, amount }
+      })
+      const done = Math.abs(nextTop - topup) < 0.5 && Math.abs(preShares - out.preShares) < 0.5
+      out = { preShares, price, newShares, F, conv }; topup = nextTop
+      if (done) break
+    }
+    return { ...out, ok: out.preShares > 0 && Number.isFinite(out.preShares), topup }
   }
-  const pre = fd0 + topup + safeShares, post = pre + newShares
-  const rows = t.rows.map((x) => ({ name: x.holder.name, kind: x.holder.kind, before: x.fd, before_pct: fd0 ? x.fd / fd0 * 100 : 0, after: x.fd + conv.filter((c) => c.conv.holder_id === x.holder.id).reduce((s, c) => s + c.shares, 0) }))
-  for (const c of conv) if (!rows.some((x) => x.name === c.holder)) rows.push({ name: c.holder, kind: 'investor', before: 0, before_pct: 0, after: c.shares })
+  const s = solve(r.pre_money)
+  // When the SAFEs and notes would take the whole company, say so and find the lowest pre-money that works.
+  let min_pre: number | null = null
+  if (!s.ok || s.F > 0.97) { let lo = Math.max(1, r.pre_money), hi = Math.max(lo * 2, 1e6); for (let k = 0; k < 40 && solve(hi).F >= 0.9; k++) hi *= 2; for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (solve(mid).F < 0.9) hi = mid; else lo = mid } min_pre = Math.ceil(hi / 1e5) * 1e5 }
+  if (!s.ok) return { price: 0, pre_shares: 0, post_shares: 0, post_money: r.pre_money + r.new_money, new_shares: 0, topup: 0, conversions: [] as Converted[], rows: [], fd0, blocked: true, min_pre, safe_total: live.reduce((a, x) => a + x.amount, 0) }
+  const conv = s.conv, topup = s.topup, newShares = s.newShares
+  const pre = s.preShares, post = pre + newShares
+  const rows = t.rows.map((x) => ({ name: x.holder.name, kind: x.holder.kind, before: x.fd, before_pct: fd0 ? x.fd / fd0 * 100 : 0, after: x.fd + conv.filter((c) => c.conv.holder_id === x.holder.id).reduce((a, c) => a + c.shares, 0) }))
+  const inRows = new Set(t.rows.map((x) => x.holder.id)), extra = new Map<string, { name: string; kind: string; before: number; before_pct: number; after: number }>()
+  for (const c of conv) if (!inRows.has(c.conv.holder_id)) { const e = extra.get(c.conv.holder_id); if (e) e.after += c.shares; else extra.set(c.conv.holder_id, { name: c.holder, kind: 'investor', before: 0, before_pct: 0, after: c.shares }) }
+  rows.push(...extra.values())
   rows.push({ name: r.investor || 'New investors', kind: 'new', before: 0, before_pct: 0, after: newShares })
   rows.push({ name: 'Option pool (available)', kind: 'pool', before: t.pool, before_pct: fd0 ? t.pool / fd0 * 100 : 0, after: t.pool + topup })
-  return { price, pre_shares: pre, post_shares: post, post_money: r.pre_money + r.new_money, new_shares: newShares, topup, conversions: conv, rows: rows.map((x) => ({ ...x, after_pct: post ? x.after / post * 100 : 0 })).sort((a, b) => b.after - a.after), fd0 }
+  return { price: s.price, pre_shares: pre, post_shares: post, post_money: r.pre_money + r.new_money, new_shares: newShares, topup, conversions: conv, rows: rows.map((x) => ({ ...x, after_pct: post ? x.after / post * 100 : 0 })).sort((a, b) => b.after - a.after), fd0, blocked: false, min_pre, safe_total: live.reduce((a, x) => a + x.amount, 0) }
 }
 
 // Exit waterfall: preferred classes by seniority take their preference (multiple x money invested), unless converting
