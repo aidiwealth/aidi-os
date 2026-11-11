@@ -75,27 +75,33 @@ const fixed = computed(() => who.value.some((r) => /cash-out|repaid/i.test(r.how
 const bm = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: a.currency || 'USD', notation: Math.abs(v) >= 1e5 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(v) >= 1e7 ? 1 : Math.abs(v) >= 1e6 ? 2 : 0 }).format(v)
 const HOW: Record<string, string> = { common: 'Shares', options: 'Options, after the strike price' }
 const howOf = (h: string) => h.split(' + ').map((x) => HOW[x] ?? x.charAt(0).toUpperCase() + x.slice(1)).join(' + ')
+// The AI's reasons, one point per line rather than a block of text.
+const aiWhy = computed(() => (plan.value?.assumptions.ai_multiples?.rationale ?? '').split(/(?<=\.)\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean))
 const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', employee: '#1c547d', advisor: '#3d6e99', other: '#a8b4c2' }
 </script>
 <template>
   <div v-if="plan" class="xp">
     <div class="card">
       <div class="xh"><div><h3>Exit scenarios</h3><p class="mut">Sale value and what each holder receives, by case.</p></div><span class="mut">{{ saving ? 'Saving…' : '' }}</span></div>
-      <div class="xa">
-        <label class="label">Exit value based on<select v-model="a.basis"><option value="arr">ARR{{ plan.basis.arr ? ': ' + money(plan.basis.arr) : '' }}</option><option value="revenue_ttm">Revenue, last 12 months{{ plan.basis.revenue_ttm ? ': ' + money(plan.basis.revenue_ttm) : '' }}</option><option v-if="plan.basis.ebitda_ttm != null" value="ebitda_ttm">EBITDA, last 12 months: {{ money(plan.basis.ebitda_ttm) }}</option><option value="manual">A figure I enter (e.g. ARR at exit)</option></select></label>
-        <label v-if="a.basis === 'manual'" class="label">Figure<input v-model.number="a.basis_value" type="number" min="0" step="10000"></label>
-        <label class="label">Worst ×<input v-model.number="a.worst" type="number" min="0" step="0.5"></label>
-        <label class="label">Base ×<input v-model.number="a.base" type="number" min="0" step="0.5"></label>
-        <label class="label">Best ×<input v-model.number="a.best" type="number" min="0" step="0.5"></label>
-      </div>
-      <div v-if="a.basis !== 'manual'" class="xg"><label class="chk"><input v-model="a.project" type="checkbox"> Grow it to the exit year</label>
-        <template v-if="a.project"><label class="label">Years to exit<input v-model.number="a.years" type="number" min="0" max="15" step="1"></label><label class="label">Growth a year (%)<input v-model.number="a.growth" type="number" min="-90" max="1000" step="5" :placeholder="plan.basis.growth_pct != null ? String(plan.basis.growth_pct) : 'e.g. 40'"></label></template>
-        <span class="mut">{{ basisNote ? 'From your Financials: ' + basisNote + '.' : '' }}{{ a.project ? (projFromModel != null ? ' Using your projection for ' + exitYear + ': ' + money(projFromModel) + '.' : ' ' + money(nowVal) + ' today, growing ' + growthUsed + '% a year → ' + money(basisVal) + ' in ' + exitYear + '.') : '' }}{{ plan.basis.growth_pct != null ? ' Growth in your figures: ' + plan.basis.growth_pct + '% a year (' + plan.basis.growth_source.toLowerCase() + ').' : '' }}</span></div>
-      <p v-if="a.basis === 'ebitda_ttm' && (plan.basis.ebitda_ttm ?? 0) <= 0" class="warn">EBITDA is not positive yet: use revenue or ARR.</p>
-      <p v-if="!basisVal" class="warn">No {{ a.basis === 'arr' ? 'ARR' : a.basis === 'revenue_ttm' ? 'revenue' : a.basis === 'ebitda_ttm' ? 'EBITDA' : 'figure' }} to work from{{ a.basis !== 'manual' ? ': ' + ((plan.basis as any).note || 'add revenue in Financials.') + ' Or choose "A figure I enter".' : '.' }}</p>
-      <p v-else-if="(plan.basis as any).note" class="mut sm">{{ (plan.basis as any).note }}</p>
-      <div v-if="plan.assumptions.ai_multiples" class="aim"><span><b>Suggested multiples: {{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}×</b> {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}<span class="why" :class="{ clip: !aiMore }">{{ plan.assumptions.ai_multiples.rationale }}</span><button v-if="plan.assumptions.ai_multiples.rationale.length > 160" class="lk sm" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Less' : 'Why these' }}</button></span><button class="btn secondary sm" type="button" @click="useAi">Use these</button></div>
-      <label class="own">Or try your own sale price<input v-model.number="own" type="number" min="0" step="1000000" placeholder="e.g. 25000000"><span v-if="Number(own) > 0" class="mut sm">Added as a column below</span></label>
+      <section class="xin"><div class="xih"><b>If the company sold</b><span v-if="basisVal" class="mut">{{ a.basis === 'manual' ? 'Your figure' : a.basis === 'arr' ? 'ARR' : a.basis === 'ebitda_ttm' ? 'EBITDA' : 'Revenue' }} {{ bm(basisVal) }}{{ a.project ? ' in ' + exitYear : '' }}{{ plan.basis.growth_pct != null ? ' · growing ' + plan.basis.growth_pct + '% a year' : '' }}</span></div>
+        <div class="xa xa4">
+          <label class="label">Exit value based on<select v-model="a.basis"><option value="arr">ARR{{ plan.basis.arr ? ': ' + money(plan.basis.arr) : '' }}</option><option value="revenue_ttm">Revenue, last 12 months{{ plan.basis.revenue_ttm ? ': ' + money(plan.basis.revenue_ttm) : '' }}</option><option v-if="plan.basis.ebitda_ttm != null" value="ebitda_ttm">EBITDA, last 12 months: {{ money(plan.basis.ebitda_ttm) }}</option><option value="manual">A figure I enter (e.g. ARR at exit)</option></select></label>
+          <label v-if="a.basis === 'manual'" class="label">Figure<input v-model.number="a.basis_value" type="number" min="0" step="10000"></label>
+          <label class="label">Worst case ×<input v-model.number="a.worst" type="number" min="0" step="0.5"></label>
+          <label class="label">Base case ×<input v-model.number="a.base" type="number" min="0" step="0.5"></label>
+          <label class="label">Best case ×<input v-model.number="a.best" type="number" min="0" step="0.5"></label>
+        </div>
+        <p v-if="basisNote && a.basis !== 'manual'" class="src2">From your Financials: {{ basisNote }}.</p>
+        <div v-if="a.basis !== 'manual'" class="xg2"><label class="chk"><input v-model="a.project" type="checkbox"> Grow it to the year of the sale</label>
+          <template v-if="a.project"><label class="label">Years to the sale<input v-model.number="a.years" type="number" min="0" max="15" step="1"></label><label class="label">Growth a year (%)<input v-model.number="a.growth" type="number" min="-90" max="1000" step="5" :placeholder="plan.basis.growth_pct != null ? String(plan.basis.growth_pct) : 'e.g. 40'"></label>
+            <span class="src2">{{ projFromModel != null ? 'Using your projection for ' + exitYear + ': ' + money(projFromModel) + '.' : money(nowVal) + ' today, growing ' + growthUsed + '% a year, is ' + money(basisVal) + ' in ' + exitYear + '.' }}</span></template></div>
+        <p v-if="a.basis === 'ebitda_ttm' && (plan.basis.ebitda_ttm ?? 0) <= 0" class="warn">EBITDA is not positive yet: use revenue or ARR.</p>
+        <p v-if="!basisVal" class="warn">No {{ a.basis === 'arr' ? 'ARR' : a.basis === 'revenue_ttm' ? 'revenue' : a.basis === 'ebitda_ttm' ? 'EBITDA' : 'figure' }} to work from{{ a.basis !== 'manual' ? ': ' + ((plan.basis as any).note || 'add revenue in Financials.') + ' Or choose "A figure I enter".' : '.' }}</p>
+        <p v-else-if="(plan.basis as any).note" class="src2">{{ (plan.basis as any).note }}</p>
+        <div v-if="plan.assumptions.ai_multiples" class="aim2"><div class="aimr"><span class="ey2">AI suggests</span><b>{{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}× {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}</b><span class="mut aio">From similar sales of comparable companies.</span><button class="lk" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Hide the reasons' : 'Why these' }}</button><button class="btn sm" type="button" @click="useAi">Use these</button></div>
+          <ul v-if="aiMore" class="aiw"><li v-for="(x, i) in aiWhy" :key="i">{{ x }}</li></ul></div>
+        <label class="own">Or try your own sale price<input v-model.number="own" type="number" min="0" step="1000000" placeholder="e.g. 25000000"><span v-if="Number(own) > 0" class="mut sm">Added as a fourth case</span></label>
+      </section>
       <p v-if="!hasShares" class="warn">Issue shares first to see what each holder receives.</p>
       <div v-if="basisVal && hasShares" class="cs3"><button v-for="sc in scen" :key="sc.k" type="button" class="csc" :class="{ on: pick === sc.k }" @click="pick = sc.k"><span>{{ sc.label }}{{ sc.mult != null ? ' · ' + sc.mult + '×' : '' }}</span><b>{{ bm(sc.value) }}</b><em>Founders get <b>{{ bm(split(sc).f) }}</b> · investors <b>{{ bm(split(sc).i) }}</b></em></button></div>
       <section v-if="basisVal && hasShares && who.length" class="wg"><div class="wgh"><b>Who gets what · {{ picked.label.toLowerCase() }}</b><span class="seg"><button v-for="sc in scen" :key="sc.k" type="button" :class="{ on: pick === sc.k }" @click="pick = sc.k">{{ sc.label.replace(' case', '') }}</button></span></div>
@@ -163,4 +169,10 @@ const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', em
 .wr2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) 100px 56px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .wn { display: flex; flex-direction: column; min-width: 0; } .wn em { font-style: normal; font-size: 12px; color: var(--c-muted); } .wb { display: block; height: 10px; background: #f1f0ec; } .wb > i { display: block; height: 100%; }
 .xn { margin: 10px 0 0; font-size: 13px; color: var(--c-ink-soft); background: var(--c-paper-2); padding: 10px 12px; } .full summary { cursor: pointer; font-size: 13.5px; color: var(--c-blue-deep); padding: 6px 0 10px; }
 @media (max-width: 760px) { .wr2 { grid-template-columns: minmax(0, 1fr) 90px; } .wr2 .wb, .wr2 .mut { display: none; } }
+.xin { border: 1px solid #c9d6e5; background: #f5f8fb; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; margin: 14px 0 0; } .xih { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; } .xih b { font-size: 15px; color: var(--c-navy); } .xih .mut { font-size: 12.5px; }
+.xa4 { grid-template-columns: minmax(0, 1.5fr) repeat(auto-fit, minmax(110px, 1fr)); margin: 0; } .xin .xa input, .xin .xa select, .xin .xg2 input, .xin .own input { border-color: #c9d6e5; background: #fff; }
+.src2 { margin: 0; font-size: 12.5px; color: var(--c-muted); } .xg2 .src2 { flex: 1 1 260px; } .xg2 { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; } .xg2 label.label { display: flex; flex-direction: column; gap: 4px; width: 140px; font-size: 13px; } .xg2 input[type=number] { width: 100%; font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid #c9d6e5; }
+.aim2 { background: #fff; border: 1px solid #c9d6e5; padding: 12px 14px; font-size: 13px; } .aimr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ey2 { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c-blue-deep); } .aio { flex: 1 1 200px; }
+.aiw { margin: 10px 0 0; padding: 10px 0 0 18px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 6px; color: var(--c-ink-soft); line-height: 1.5; } .xin .own { margin: 0; }
+@media (max-width: 760px) { .xa4 { grid-template-columns: 1fr 1fr; } .xa4 > label:first-child { grid-column: 1 / -1; } }
 </style>

@@ -155,6 +155,14 @@ async function dropDoc(ev: DragEvent, holder: string, key: 'issuance_id' | 'conv
   try { const fd = new FormData(); fd.append('ct', String(data.value?.captable ?? '')); fd.append('holder_id', holder); fd.append(key, id); fd.append('kind', kind); fd.append('room', '1'); fd.append('file', file); await $fetch('/api/equity/docs', { method: 'POST', body: fd }); await refreshDocs() }
   catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not attach the document.') } finally { rowDrop.value = '' }
 }
+// Holders: each document as a short chip (its kind and round), not the full title with the holder's name again.
+const DKL: Record<string, string> = { safe: 'SAFE', note: 'Note', spa: 'SPA', certificate: 'Certificate', side_letter: 'Side letter', other: 'Document' }
+function holderDocs(id: string) {
+  const ds = docsFor('holder_id', id), seen: Record<string, number> = {}
+  return ds.map((d) => { const head = (d.title.split(' — ')[0] || '').trim(); let label = /pro rata/i.test(head) ? 'Pro rata letter' : d.kind !== 'other' ? DKL[d.kind] ?? head : head || 'Document'
+    if (d.round) label += ' · ' + d.round
+    seen[label] = (seen[label] ?? 0) + 1; return { ...d, label: seen[label]! > 1 ? label + ' (' + seen[label] + ')' : label } })
+}
 // Options: the pool.
 const poolInfo = computed(() => { const res = t.value?.reserved ?? 0, gr = t.value?.allocated ?? 0; return { res, gr, left: Math.max(0, res - gr), pctUsed: res ? Math.min(100, gr / res * 100) : 0 } })
 // SAFEs and notes: by cap, documents attached, and only the missing ones when asked.
@@ -226,12 +234,13 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
             <td class="r nw"><button class="lk" @click="attach({ holder_id: i.holder_id, issuance_id: i.id })">Attach</button> <button class="lk" @click="edit('issuance', i)">Edit</button></td></tr></tbody></table></div>
         <p v-if="data.issuances.length" class="hint">Drop a share purchase agreement or certificate onto a row to attach it.</p>
         <EmptyState v-if="!data.issuances.length" compact icon="equity" title="No shares issued yet" /></div>
-      <div class="two"><div class="card"><div class="ch0"><h3>Share classes</h3><button class="lk" @click="edit('class')">Add a class</button></div>
-          <div v-for="c in data.classes" :key="c.id" class="clc"><span class="clh"><b>{{ c.name }}</b><button class="lk" @click="edit('class', c)">Edit</button></span><span class="mut">{{ n(data.issuances.filter((i) => i.class_id === c.id).reduce((s2, i) => s2 + i.shares, 0)) }} shares · {{ c.kind === 'preferred' ? c.liq_pref + '× preference' + (c.participating ? ', participating' : '') + ' · seniority ' + c.seniority : 'no preference · paid last in a sale' }}</span></div>
-          <p class="hint0">Preferred classes from a priced round show here with their preference and seniority.</p></div>
-        <div class="card"><div class="ch0"><h3>Holders</h3><span class="row"><button v-if="data.holders.length" class="lk" @click="attach()">Attach a document</button><button v-if="data.holders.length" class="lk" @click="toCrm = true">Add to Fundraising</button><button class="lk" @click="edit('holder')">Add a holder</button></span></div>
-          <div v-for="h in data.holders" :key="h.id" class="hr"><span class="av">{{ h.name.replace(/[^A-Za-z ]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') }}</span><span class="hn"><b>{{ h.name }}</b><em>{{ KIND[h.kind] }}{{ h.email ? ' · ' + h.email : '' }}</em><span v-if="docsFor('holder_id', h.id).length" class="dch"><span v-for="d in docsFor('holder_id', h.id)" :key="d.id" class="dc"><button class="lk" :title="d.round ? d.round + (d.in_room ? ' · in the data room' : '') : ''" @click="openDoc(d.document_id)">{{ d.title }}</button><button class="x" :aria-label="'Detach ' + d.title" @click="detach(d)">×</button></span></span></span>
-            <span class="ha"><span v-if="!h.email" class="wtxt">Add email to sign</span><button class="lk" @click="attach({ holder_id: h.id })">Attach</button><button class="lk" @click="edit('holder', h)">Edit</button></span></div></div></div>
+      <div class="card clx"><b class="clt">Share classes</b><span v-for="c in data.classes" :key="c.id" class="clp"><b>{{ c.name }}</b><span class="mut">{{ n(data.issuances.filter((i) => i.class_id === c.id).reduce((s2, i) => s2 + i.shares, 0)) }} shares · {{ c.kind === 'preferred' ? c.liq_pref + '× preference' + (c.participating ? ', participating' : '') + ' · seniority ' + c.seniority : 'no preference, paid last in a sale' }}</span><button class="lk" @click="edit('class', c)">Edit</button></span><button class="lk" @click="edit('class')">+ Add a class</button></div>
+      <div class="card pad0"><div class="ch"><h3>Holders <span class="mut cnt">{{ data.holders.length }}</span></h3><span class="tb"><button v-if="data.holders.length" class="btn secondary sm" @click="toCrm = true">Add to Fundraising</button><button v-if="data.holders.length" class="btn secondary sm" @click="attach()">Attach a document</button><button class="btn sm" @click="edit('holder')">Add a holder</button></span></div>
+        <div v-for="h in data.holders" :key="h.id" class="hr2"><span class="av">{{ h.name.replace(/[^A-Za-z ]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') }}</span>
+          <span class="hn"><b :title="h.name">{{ h.name }}</b><em>{{ KIND[h.kind] }}<template v-if="h.email"> · {{ h.email }}</template><span v-else class="wtxt"> · add an email to send documents to sign</span></em></span>
+          <span class="dch2"><span v-for="d in holderDocs(h.id)" :key="d.id" class="dcp"><button :title="d.title + (d.in_room ? ' · in the data room' : '')" @click="openDoc(d.document_id)">{{ d.label }}</button><button class="x" :aria-label="'Detach ' + d.title" @click="detach(d)">×</button></span><span v-if="!holderDocs(h.id).length" class="mut sm2">No documents</span></span>
+          <span class="ha"><button class="lk" @click="attach({ holder_id: h.id })">Attach</button><button class="lk" @click="edit('holder', h)">Edit</button></span></div>
+        <EmptyState v-if="!data.holders.length" compact icon="equity" title="No holders yet" /></div>
     </template>
 
     <template v-else-if="tab === 'signing'">
@@ -396,4 +405,10 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
 td.pos { color: var(--c-blue-deep); } td.nw { white-space: nowrap; }
 .so { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; } .so button { text-align: left; background: #fff; border: 1px solid #c9d6e5; padding: 14px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; } .so button:hover { border-color: var(--c-blue-deep); } .so b { font-size: 14px; } .so em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
 @media (max-width: 900px) { .kt4, .so { grid-template-columns: 1fr 1fr; } .three { grid-template-columns: 1fr; } .gr { grid-template-columns: 32px minmax(0, 1fr); } .gv, .gr > .lk { grid-column: 2; } }
+.clx { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 16px; } .clt { font-size: 15px; color: var(--c-navy); margin-right: 6px; } .clp { display: inline-flex; align-items: baseline; gap: 10px; border: 1px solid var(--c-rule); padding: 8px 12px; font-size: 13.5px; }
+.ch + .hr2 { border-top: 0; } .cnt { font-weight: 400; font-size: 13px; margin-left: 4px; } .tb { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.hr2 { display: grid; grid-template-columns: 32px minmax(180px, 1.1fr) minmax(0, 1.6fr) auto; gap: 14px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--c-rule); }
+.hr2 .hn b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dch2 { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; text-align: left; } .sm2 { font-size: 12.5px; }
+.dcp { display: inline-flex; align-items: center; background: #e6eef6; font-size: 12px; } .dcp button { border: 0; background: none; font: inherit; color: var(--c-navy); cursor: pointer; padding: 3px 4px 3px 8px; white-space: nowrap; } .dcp .x { padding: 3px 7px 3px 3px; color: var(--c-muted); font-size: 13px; } .dcp .x:hover { color: #b54708; }
+@media (max-width: 760px) { .hr2 { grid-template-columns: 32px minmax(0, 1fr); padding: 12px; } .hr2 .dch2, .hr2 .ha { grid-column: 2; } .hr2 .sm2 { display: none; } .ch .tb { justify-content: flex-start; } }
 </style>
