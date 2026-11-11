@@ -16,6 +16,8 @@ const hName = (id: string | null) => props.data.holders.find((h) => h.id === id)
 // Pro rata in the next round.
 const nextRound = ref(2000000)
 const take = computed(() => proRataTake(P.value.rows, nextRound.value || 0))
+const ownAll = ref(false)
+const ownShown = computed(() => [...P.value.rows].sort((x, y) => (y.pctConverted ?? y.pctFd) - (x.pctConverted ?? x.pctFd)).slice(0, ownAll.value ? undefined : 8))
 const takeTotal = computed(() => take.value.reduce((a, x) => a + x.amount, 0))
 
 // Read letters with AI, then check who each right belongs to.
@@ -159,22 +161,19 @@ function heroDrop(ev: Event) { openRead(); upRead(ev) }
       <EmptyState v-else compact icon="equity" title="No rights recorded yet" text="Drop a side letter above and AI lists each right, or add one by hand." />
     </section>
 
-    <section class="card">
-      <div class="ch"><h3>Who holds what</h3><span class="mut">{{ P.converted ? 'Today, and once SAFEs convert at their caps' : 'Fully diluted; uncapped SAFEs and notes convert at the next round' }}</span></div>
-      <div class="tw"><table class="t" data-nosearch><thead><tr><th>Holder</th><th>Holds</th><th class="r">Today</th><th class="r">Converted</th><th>Rights</th><th>Flags</th></tr></thead>
-        <tbody><tr v-for="r in P.rows" :key="r.holder.id"><td><b>{{ r.holder.name }}</b><span class="sub">{{ KIND[r.holder.kind] ?? 'Other' }}</span></td>
-          <td><span v-for="(x, i) in r.instruments" :key="i" class="ins">{{ x.round }}<em>{{ x.shares != null ? x.shares.toLocaleString('en-US') + ' ' + (x.label === 'Options' ? 'options' : x.label === x.round ? 'shares' : x.label) : usd(x.amount ?? 0) + ' ' + x.label }}</em></span></td>
-          <td class="r">{{ pct(r.pctFd) }}</td><td class="r b">{{ pct(r.pctConverted) }}<span v-if="r.unplaced" class="sub">+ uncapped (next round)</span></td>
-          <td><button v-for="x in r.rights" :key="x.id" class="rc sm" :class="x.kind" :title="x.summary" @click="edit(x)">{{ RIGHT_LABEL[x.kind] }}</button><button class="lk sm" @click="edit(undefined, r.holder.id)">+ Add</button></td>
-          <td><span v-for="f in r.flags" :key="f.code" class="fl" :class="f.code">{{ f.text }}</span><span v-if="!r.flags.length" class="mut">—</span></td></tr></tbody></table></div>
-      <EmptyState v-if="!P.rows.length" compact icon="equity" title="No holders yet" />
+    <section class="two2">
+      <div class="card bx"><div class="bh"><b>Ownership, today and after conversion</b><span class="mut">{{ P.converted ? 'SAFEs at their caps' : 'Uncapped SAFEs convert at the next round' }}</span></div>
+        <div class="oh"><span /><span class="r">Today</span><span class="r">Converted</span></div>
+        <div v-for="r in ownShown" :key="r.holder.id" class="orow"><span class="on"><b>{{ r.holder.name }}</b><i class="ob"><i :style="{ width: Math.min(100, r.pctConverted ?? r.pctFd) + '%' }" /></i></span><span class="r mut">{{ pct(r.pctFd) }}</span><b class="r">{{ pct(r.pctConverted) }}</b></div>
+        <button v-if="P.rows.length > 8" class="lk al" @click="ownAll = !ownAll">{{ ownAll ? 'Show fewer' : 'Show all ' + P.rows.length }}</button>
+        <EmptyState v-if="!P.rows.length" compact icon="equity" title="No holders yet" /></div>
+      <div class="card bx"><div class="bh"><b>Pro rata at the next round</b><label class="nr">Round size (USD)<input v-model.number="nextRound" type="number" min="0" step="100000"></label></div>
+        <template v-if="take.length"><div class="oh"><span /><span class="r">Share</span><span class="r">May invest</span></div>
+          <div v-for="(x, i) in take" :key="i" class="orow"><span class="on"><b>{{ x.holder }}</b><em>{{ RIGHT_LABEL[x.kind] }}</em></span><span class="r mut">{{ pct(x.pct) }}</span><b class="r">{{ usd(x.amount) }}</b></div>
+          <div class="orow tot"><span class="on"><b>Reserved for pro rata</b></span><span class="r">{{ pct(nextRound ? takeTotal / nextRound * 100 : 0) }}</span><b class="r">{{ usd(takeTotal) }}</b></div>
+          <p class="fine">{{ usd(Math.max(0, nextRound - takeTotal)) }} left for new investors if everyone takes up their right{{ takeTotal > nextRound ? '; the rights are larger than the round, so they will be cut back' : '' }}.</p></template>
+        <p v-else class="mut">No pro rata rights recorded yet.</p></div>
     </section>
-
-    <div v-if="take.length" class="card"><div class="ch"><h3>Pro rata at the next round</h3><label class="nr">Next round size (USD)<input v-model.number="nextRound" type="number" min="0" step="100000"></label></div>
-      <table class="t" data-nosearch><thead><tr><th>Holder</th><th>Right</th><th class="r">Share of the round</th><th class="r">They may invest</th></tr></thead>
-        <tbody><tr v-for="(x, i) in take" :key="i"><td>{{ x.holder }}</td><td>{{ RIGHT_LABEL[x.kind] }}</td><td class="r">{{ pct(x.pct) }}</td><td class="r">{{ usd(x.amount) }}</td></tr>
-          <tr class="tot"><td colspan="2">Reserved for pro rata</td><td class="r">{{ pct(nextRound ? takeTotal / nextRound * 100 : 0) }}</td><td class="r">{{ usd(takeTotal) }}</td></tr></tbody></table>
-      <p class="fine">If every holder takes up their right, {{ usd(Math.max(0, nextRound - takeTotal)) }} is left for new investors{{ takeTotal > nextRound ? ': the rights are larger than the round, so they will be cut back pro rata' : '' }}. The letters decide the exact amounts.</p></div>
 
     <p v-if="shared.length" class="note">{{ shared.length }} right{{ shared.length === 1 ? '' : 's' }} not tied to one holder: {{ shared.map((r) => (r.party || 'All investors') + ' — ' + RIGHT_LABEL[r.kind]).join('; ') }}.</p>
 
@@ -248,6 +247,9 @@ input, select, textarea { font: inherit; font-size: 13.5px; padding: 7px 9px; bo
 .pl { margin: 0; font-size: 13.5px; color: var(--c-ink-soft); } .pl b { color: var(--c-navy); }
 .lt { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--c-rule); padding-top: 10px; font-size: 12.5px; } .lr { display: flex; align-items: center; gap: 8px; min-width: 0; } .lr svg { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--c-blue-deep); stroke-width: 1.3; } .lr .lk { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; } .lr em { font-style: normal; color: var(--c-muted); margin-left: auto; white-space: nowrap; }
 .tw { overflow-x: auto; }
+.two2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; } .bx { display: flex; flex-direction: column; gap: 2px; } .bh { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; } .bh > b { font-size: 15px; color: var(--c-navy); } .bh .nr input { width: 120px; }
+.oh, .orow { display: grid; grid-template-columns: minmax(0, 1fr) 78px 96px; gap: 10px; align-items: center; font-size: 13px; } .oh { font-size: 12px; color: var(--c-muted); padding-bottom: 4px; border-bottom: 1px solid var(--c-rule); } .orow { padding: 8px 0; border-bottom: 1px solid var(--c-rule); } .orow.tot { border-bottom: 0; } .on { display: flex; flex-direction: column; gap: 4px; min-width: 0; } .on b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .on em { font-style: normal; font-size: 12px; color: var(--c-muted); } .ob { display: block; height: 5px; background: #f1f0ec; } .ob > i { display: block; height: 100%; background: #1c547d; } .al { align-self: flex-start; margin-top: 8px; }
+@media (max-width: 900px) { .two2 { grid-template-columns: 1fr; } }
 .rv { display: flex; flex-direction: column; gap: 10px; } .rvc { display: grid; grid-template-columns: 20px minmax(0, 1fr) 220px; gap: 14px; padding: 14px 16px; border: 1px solid #c9d6e5; align-items: start; cursor: pointer; } .rvc.off { border-style: dashed; border-color: var(--c-rule-strong); background: #fbfaf7; color: var(--c-muted); } .rvc > input { margin-top: 4px; width: 16px; height: 16px; }
 .rvb { display: flex; flex-direction: column; gap: 4px; min-width: 0; } .rvt { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; } .rvt em { font-style: normal; font-size: 12.5px; color: var(--c-muted); } .ks { font-size: 12.5px !important; padding: 3px 6px !important; background: #e6eef6 !important; border-color: #c9d6e5 !important; font-weight: 600; } .rvb > b { font-size: 14.5px; } .rvh { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--c-muted); } .rvh select { width: 100%; }
 @media (max-width: 900px) { .three, .cards { grid-template-columns: 1fr; } .rvc { grid-template-columns: 20px minmax(0, 1fr); } .rvh { grid-column: 2; } }

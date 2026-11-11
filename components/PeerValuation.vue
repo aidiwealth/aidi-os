@@ -84,6 +84,9 @@ async function sendToExit() {
       <template v-if="res.equity">
         <div class="big"><div><span>Equity value</span><b>{{ money(res.equity[0]) }} – {{ money(res.equity[2]) }}</b><em>Middle {{ money(res.equity[1]) }} · enterprise value {{ money(res.ev![1]) }} {{ res.net_cash >= 0 ? '+' : '−' }} net cash {{ money(Math.abs(res.net_cash)) }}</em></div>
           <button class="btn secondary sm" type="button" :disabled="toExit || !res.methods.some((m) => m.key === 'ev_revenue')" title="Set the Exit tab's worst / base / best multiples from these peers" @click="sendToExit">Use for exit scenarios</button></div>
+        <div class="vr"><div class="vrh"><b>Value range</b><span class="mut">After a {{ res.discount }}% discount</span></div>
+          <div class="vrt"><i class="vrb" /><i class="vrr" :style="{ left: '12%', width: '76%' }" /><i class="vrm" :style="{ left: (12 + 76 * ((res.equity[1] - res.equity[0]) / Math.max(1, res.equity[2] - res.equity[0]))) + '%' }" />
+            <span class="vl lo">Low {{ money(res.equity[0]) }}</span><span class="vl md" :style="{ left: (12 + 76 * ((res.equity[1] - res.equity[0]) / Math.max(1, res.equity[2] - res.equity[0]))) + '%' }">{{ money(res.equity[1]) }}</span><span class="vl hi">High {{ money(res.equity[2]) }}</span></div></div>
         <div class="ff">
           <div v-for="m in res.methods" :key="m.key" class="fr">
             <div class="fl"><b>{{ m.label }}</b><span>{{ x(m.low) }} · {{ x(m.mid) }} · {{ x(m.high) }} of {{ m.metric.toLowerCase() }} · {{ m.peers }} peers</span></div>
@@ -93,14 +96,14 @@ async function sendToExit() {
         </div>
         <p class="mut sm">Equity value after a {{ res.discount }}% discount ({{ a.private_discount }}% for being private, {{ a.market_discount }}% for market risk). Range: peers' 25th to 75th percentile; middle is the median.</p>
       </template>
-      <EmptyState v-else compact icon="chart" title="No range yet" :text="res.warnings[0] || 'Find peers with AI, or add peers you know, to see a range.'" />
+      <div v-else class="cta"><span><b>No range yet.</b> {{ res.warnings[0] || 'Tick three or more peers, or let AI find them.' }}</span><button class="btn" type="button" :disabled="searching" @click="find">{{ searching ? 'Searching…' : 'Find peers with AI' }}</button></div>
       <ul v-if="res.warnings.length && res.equity" class="wr"><li v-for="w in res.warnings" :key="w">{{ w }}</li></ul>
       <div v-if="a.ai?.summary" class="ai"><b>Where you sit</b><p>{{ a.ai.summary }}</p></div>
     </div>
 
     <div class="card">
       <div class="hh"><div><h3>Discounts</h3><p class="mut">Private shares and riskier markets lower what a buyer would pay.</p></div></div>
-      <div class="ds"><label class="label">Private company (%)<input v-model.number="a.private_discount" type="number" min="0" max="90" step="5"></label><label class="label">Market risk (%)<input v-model.number="a.market_discount" type="number" min="0" max="90" step="5"></label>
+      <div class="ds"><label class="label sl">Private company<span><input v-model.number="a.private_discount" type="range" min="0" max="60" step="5" aria-label="Private company discount"><input v-model.number="a.private_discount" class="nm" type="number" min="0" max="90" step="5" aria-label="Private company discount, %"><b>%</b></span></label><label class="label sl">Market risk<span><input v-model.number="a.market_discount" type="range" min="0" max="60" step="5" aria-label="Market risk discount"><input v-model.number="a.market_discount" class="nm" type="number" min="0" max="90" step="5" aria-label="Market risk discount, %"><b>%</b></span></label>
         <div v-if="a.ai" class="sug"><span><b>Suggested: {{ a.ai.private_discount }}% and {{ a.ai.market_discount }}%</b> {{ a.ai.rationale }}</span><button class="lk" type="button" @click="useAi">Use these</button></div></div>
       <table v-if="res.compare.some((r) => r.peers != null)" class="t cmp" data-nosearch><thead><tr><th /><th class="r">You</th><th class="r">Peer median</th></tr></thead>
         <tbody><tr v-for="r in res.compare" :key="r.label"><td>{{ r.label }}</td><td class="r">{{ r.unit === '%' ? pct(r.company) : x(r.company) }}</td><td class="r">{{ r.unit === '%' ? pct(r.peers) : x(r.peers) }}</td></tr></tbody></table>
@@ -156,5 +159,10 @@ async function sendToExit() {
 .nm { width: 74px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--c-line-soft, #e3e6ec); background: #fff; text-align: right; } .ao { white-space: nowrap; font-size: 12.5px; } .ao .lk { display: block; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; } .btn.sm { padding: 5px 10px; font-size: 12.5px; white-space: nowrap; }
 .fine { font-size: 12px; color: var(--c-muted); margin: 10px 0 0; }
+.cta { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; background: #f5f8fb; border: 1px solid #c9d6e5; padding: 14px 16px; font-size: 13.5px; }
+.vr { border: 1px solid var(--c-rule); padding: 16px 18px; margin: 14px 0 4px; } .vrh { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; } .vrh b { color: var(--c-navy); font-size: 14px; }
+.vrt { position: relative; height: 60px; margin-top: 6px; } .vrb { position: absolute; left: 0; right: 0; top: 24px; height: 10px; background: #f1f0ec; } .vrr { position: absolute; top: 24px; height: 10px; background: #8fb3d6; } .vrm { position: absolute; top: 16px; width: 3px; height: 26px; margin-left: -1px; background: var(--c-navy); }
+.vl { position: absolute; font-size: 12px; color: var(--c-muted); white-space: nowrap; } .vl.lo { left: 12%; top: 42px; transform: translateX(-50%); } .vl.hi { left: 88%; top: 42px; transform: translateX(-50%); } .vl.md { top: 0; transform: translateX(-50%); font-weight: 600; font-size: 12.5px; color: var(--c-navy); }
+.ds .label.sl { width: 260px; } .sl > span { display: flex; align-items: center; gap: 10px; } .sl input[type=range] { flex: 1; accent-color: #1c547d; padding: 0; border: 0; } .sl .nm { width: 64px; }
 @media (max-width: 860px) { .kp { grid-template-columns: 1fr 1fr; } .kp > div { border-bottom: 1px solid var(--c-rule); } .fr { grid-template-columns: 1fr; gap: 6px; } .fv { text-align: left; } .ab, .np { grid-template-columns: 1fr; } }
 </style>

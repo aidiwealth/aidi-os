@@ -63,6 +63,19 @@ async function remove(b: Buyer) { if (!await askConfirm('Remove ' + b.name + ' f
 const nb = reactive({ open: false, name: '', website: '', why: '' })
 function addBuyer() { if (!nb.name.trim()) return; plan.value!.buyers.push({ name: nb.name.trim(), website: nb.website.trim(), type: 'strategic', why: nb.why.trim(), fit: 3, deals: '', price_note: '', contact: { name: '', title: '', email: '', linkedin: '', url: '' }, sources: [], status: 'shortlist', notes: '', found_at: new Date().toISOString() }); save(plan.value!.buyers); Object.assign(nb, { open: false, name: '', website: '', why: '' }) }
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }
+// Case cards and "who gets what": founders against everyone who invested, then holder by holder for the chosen case.
+const kindOf = computed(() => new Map(props.data.holders.map((h) => [h.name, h.kind])))
+const split = (s: typeof scen.value[number]) => { const r = s.wf?.rows ?? []; const f = r.filter((x) => kindOf.value.get(x.holder) === 'founder').reduce((t, x) => t + x.amount, 0); const i = r.filter((x) => kindOf.value.get(x.holder) === 'investor' || !kindOf.value.has(x.holder)).reduce((t, x) => t + x.amount, 0); return { f, i } }
+const pick = ref('base')
+const picked = computed(() => scen.value.find((s) => s.k === pick.value) ?? scen.value[1]!)
+const who = computed(() => { const s = picked.value; if (!s.wf || !s.value) return []; const rs = [...s.wf.rows].sort((x, y) => y.amount - x.amount); const top = rs.slice(0, 12), rest = rs.slice(12)
+  const max = Math.max(1, ...top.map((r) => r.amount)); const out = top.map((r) => ({ name: r.holder, how: r.how ?? '', amount: r.amount, pct: r.amount / s.value * 100, w: r.amount / max * 100, kind: kindOf.value.get(r.holder) ?? 'investor' }))
+  if (rest.length) { const amt = rest.reduce((t, r) => t + r.amount, 0); out.push({ name: 'Everyone else (' + rest.length + ')', how: '', amount: amt, pct: amt / s.value * 100, w: Math.min(100, amt / max * 100), kind: 'other' }) } return out })
+const fixed = computed(() => who.value.some((r) => /cash-out|repaid/i.test(r.how)))
+const bm = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: a.currency || 'USD', notation: Math.abs(v) >= 1e5 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(v) >= 1e7 ? 1 : Math.abs(v) >= 1e6 ? 2 : 0 }).format(v)
+const HOW: Record<string, string> = { common: 'Shares', options: 'Options, after the strike price' }
+const howOf = (h: string) => h.split(' + ').map((x) => HOW[x] ?? x.charAt(0).toUpperCase() + x.slice(1)).join(' + ')
+const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', employee: '#1c547d', advisor: '#3d6e99', other: '#a8b4c2' }
 </script>
 <template>
   <div v-if="plan" class="xp">
@@ -84,11 +97,15 @@ const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./,
       <div v-if="plan.assumptions.ai_multiples" class="aim"><span><b>Suggested multiples: {{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}×</b> {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}<span class="why" :class="{ clip: !aiMore }">{{ plan.assumptions.ai_multiples.rationale }}</span><button v-if="plan.assumptions.ai_multiples.rationale.length > 160" class="lk sm" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Less' : 'Why these' }}</button></span><button class="btn secondary sm" type="button" @click="useAi">Use these</button></div>
       <label class="own">Or try your own sale price<input v-model.number="own" type="number" min="0" step="1000000" placeholder="e.g. 25000000"><span v-if="Number(own) > 0" class="mut sm">Added as a column below</span></label>
       <p v-if="!hasShares" class="warn">Issue shares first to see what each holder receives.</p>
-      <div v-if="basisVal && hasShares" class="tw"><table class="t" data-nosearch>
+      <div v-if="basisVal && hasShares" class="cs3"><button v-for="sc in scen" :key="sc.k" type="button" class="csc" :class="{ on: pick === sc.k }" @click="pick = sc.k"><span>{{ sc.label }}{{ sc.mult != null ? ' · ' + sc.mult + '×' : '' }}</span><b>{{ bm(sc.value) }}</b><em>Founders get <b>{{ bm(split(sc).f) }}</b> · investors <b>{{ bm(split(sc).i) }}</b></em></button></div>
+      <section v-if="basisVal && hasShares && who.length" class="wg"><div class="wgh"><b>Who gets what · {{ picked.label.toLowerCase() }}</b><span class="seg"><button v-for="sc in scen" :key="sc.k" type="button" :class="{ on: pick === sc.k }" @click="pick = sc.k">{{ sc.label.replace(' case', '') }}</button></span></div>
+        <div v-for="r in who" :key="r.name" class="wr2"><span class="wn"><b>{{ r.name }}</b><em v-if="r.how">{{ howOf(r.how) }}</em></span><i class="wb"><i :style="{ width: Math.max(0.5, r.w) + '%', background: KC[r.kind] ?? '#a8b4c2' }" /></i><b class="r">{{ bm(r.amount) }}</b><span class="r mut">{{ (Math.round(r.pct * 10) / 10) }}%</span></div>
+        <p v-if="fixed" class="xn">In a sale each SAFE either converts into shares or takes its money back, whichever pays more. That's why some investors get a fixed amount in every case.</p></section>
+      <details v-if="basisVal && hasShares" class="full"><summary>All cases side by side</summary><div class="tw"><table class="t" data-nosearch>
         <thead><tr><th /><th v-for="s in scen" :key="s.k" class="r" :class="{ ownc: s.k === 'own' }">{{ s.label }}<em>{{ s.mult != null ? s.mult + '×' : 'Your figure' }}</em></th></tr></thead>
         <tbody><tr class="tot"><td><b>Exit value</b></td><td v-for="s in scen" :key="s.k" class="r"><b>{{ money(s.value) }}</b></td></tr>
           <tr v-for="r in rows" :key="r.name"><td>{{ r.name }}<span v-if="r.how" class="sub">{{ r.how }}</span></td><td v-for="(v, i) in r.v" :key="i" class="r">{{ money(v) }}<span class="sub">{{ scen[i]!.value ? Math.round(v / scen[i]!.value * 1000) / 10 + '%' : '' }}</span></td></tr>
-          <tr><td>Per common share</td><td v-for="s in scen" :key="s.k" class="r">{{ s.wf ? '$' + s.wf.per_common.toLocaleString('en-US', { maximumFractionDigits: s.wf.per_common < 1 ? 4 : 2 }) : '—' }}</td></tr></tbody></table></div>
+          <tr><td>Per common share</td><td v-for="s in scen" :key="s.k" class="r">{{ s.wf ? '$' + s.wf.per_common.toLocaleString('en-US', { maximumFractionDigits: s.wf.per_common < 1 ? 4 : 2 }) : '—' }}</td></tr></tbody></table></div></details>
       <p class="fine">Before fees, taxes, earn-outs and escrow. An estimate, not financial advice.</p>
     </div>
 
@@ -140,4 +157,10 @@ const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./,
 .why { margin: 0; font-size: 14px; } .ct, .src { margin: 0; font-size: 13px; color: var(--c-ink-soft); } .ct span, .src { color: var(--c-muted); } .ct a, .src a { margin-left: 8px; color: var(--c-blue-deep); }
 .nt { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--c-line-soft); background: #fff; margin-top: 4px; }
 .lk { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--c-blue-deep); cursor: pointer; text-decoration: none; }
+.cs3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; } .csc { text-align: left; font: inherit; background: #fff; border: 1px solid var(--c-rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; } .csc.on { border-color: var(--c-navy); } .csc > span { font-size: 12.5px; color: var(--c-muted); } .csc > b { font-size: 26px; font-weight: 600; color: var(--c-navy); } .csc em { font-style: normal; font-size: 12.5px; color: var(--c-ink-soft); } .csc em b { font-weight: 600; }
+.wg { border: 1px solid var(--c-rule); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; } .wgh { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .wgh > b { font-size: 15px; color: var(--c-navy); }
+.seg { display: inline-flex; border: 1px solid #d5d2cb; } .seg button { font: inherit; font-size: 12.5px; border: 0; background: #fff; padding: 5px 11px; cursor: pointer; } .seg button.on { background: var(--c-navy); color: #fff; }
+.wr2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) 100px 56px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .wn { display: flex; flex-direction: column; min-width: 0; } .wn em { font-style: normal; font-size: 12px; color: var(--c-muted); } .wb { display: block; height: 10px; background: #f1f0ec; } .wb > i { display: block; height: 100%; }
+.xn { margin: 10px 0 0; font-size: 13px; color: var(--c-ink-soft); background: var(--c-paper-2); padding: 10px 12px; } .full summary { cursor: pointer; font-size: 13.5px; color: var(--c-blue-deep); padding: 6px 0 10px; }
+@media (max-width: 760px) { .wr2 { grid-template-columns: minmax(0, 1fr) 90px; } .wr2 .wb, .wr2 .mut { display: none; } }
 </style>
