@@ -105,18 +105,40 @@ export function proRataTake(rows: Position[], newMoney: number): { holder: strin
 // Today's price per share: the latest priced round (a preferred class first, else a common issuance above a nominal
 // price); with none, the latest SAFE or note cap spread over the shares it would convert into. The founder can enter
 // another figure (e.g. a 409A or a recent secondary).
-export function currentPrice(d: Data): { price: number | null; source: string } {
-  const desc = <T extends { issued_on: string }>(a: T, b: T) => (a.issued_on < b.issued_on ? 1 : a.issued_on > b.issued_on ? -1 : 0)
-  const priced = d.issuances.filter((i) => i.price && i.price >= 0.01).sort(desc)
-  const x = priced.find((i) => d.classes.find((c) => c.id === i.class_id)?.kind === 'preferred') ?? priced[0]
-  if (x) return { price: x.price!, source: (d.classes.find((c) => c.id === x.class_id)?.name ?? 'Shares') + ' price, ' + x.issued_on }
+// The price per share an investor would recognise: from the most recent investment on the cap table. A priced
+// round (preferred shares, or shares an investor bought) gives its price; a SAFE or note gives its cap divided by the
+// shares there would be once the SAFEs convert (a post-money cap includes them). Shares a founder or employee bought
+// at a nominal price are not a valuation, so they are only offered when there is nothing else.
+export interface PriceOption { price: number; source: string; date: string; kind: 'round' | 'safe' | 'nominal'; how: string; after?: number }
+export function priceOptions(d: Data): PriceOption[] {
+  const out: PriceOption[] = []
+  const hk = (id: string) => d.holders.find((h) => h.id === id)?.kind ?? 'other'
+  const cls = (id: string) => d.classes.find((c) => c.id === id)
+  for (const i of d.issuances.filter((x) => x.price && x.price > 0)) {
+    const c = cls(i.class_id), investor = c?.kind === 'preferred' || hk(i.holder_id) === 'investor'
+    out.push({ price: i.price!, date: i.issued_on, kind: investor ? 'round' : 'nominal', source: (c?.name ?? 'Shares') + ' price paid by ' + (d.holders.find((h) => h.id === i.holder_id)?.name ?? 'a holder') + ', ' + i.issued_on,
+      how: investor ? 'What an investor paid for each share.' : 'A nominal price, usually what founders or staff paid: not a valuation.' })
+  }
   const live = d.convertibles.filter((c) => c.status === 'outstanding' && c.valuation_cap)
-  const last = live.slice().sort(desc)[0]
   const fd = table(d, new Date().toISOString().slice(0, 10)).fd
-  if (!last || !fd) return { price: null, source: '' }
-  const postS = live.filter((c) => c.kind === 'safe' && c.post_money).reduce((s, c) => s + c.amount / c.valuation_cap!, 0)
-  const shares = last.kind === 'safe' && last.post_money ? fd / Math.max(0.05, 1 - Math.min(0.95, postS)) : fd
-  return { price: Math.round(last.valuation_cap! / shares * 10000) / 10000, source: 'latest ' + (last.kind === 'safe' ? 'SAFE' : 'note') + ' cap (' + Math.round(last.valuation_cap! / 1e5) / 10 + 'M, ' + last.issued_on + ') ÷ shares' }
+  if (fd && live.length) {
+    const postS = live.filter((c) => c.kind === 'safe' && c.post_money).reduce((s, c) => s + c.amount / c.valuation_cap!, 0)
+    const after = Math.round(fd / Math.max(0.05, 1 - Math.min(0.95, postS)))
+    const last = live.slice().sort((x, y) => (x.issued_on < y.issued_on ? 1 : x.issued_on > y.issued_on ? -1 : (y.valuation_cap ?? 0) - (x.valuation_cap ?? 0)))[0]!
+    const post = last.kind === 'safe' && last.post_money, shares = post ? after : fd
+    const capM = last.valuation_cap! >= 1e6 ? '$' + Math.round(last.valuation_cap! / 1e5) / 10 + 'M' : '$' + Math.round(last.valuation_cap! / 1e3) + 'k'
+    out.push({ price: Math.round(last.valuation_cap! / shares * 10000) / 10000, after, date: last.issued_on, kind: 'safe', source: 'latest ' + (last.kind === 'safe' ? 'SAFE' : 'note') + ' cap (' + capM + ', ' + last.issued_on + ') ÷ shares',
+      how: capM + ' cap ÷ ' + shares.toLocaleString('en-US') + (post ? ' shares once the SAFEs convert (a post-money cap includes them)' : ' fully diluted shares') + '.' })
+  }
+  const rank = (o: PriceOption) => (o.kind === 'nominal' ? 1 : 0)
+  const sorted = out.sort((x, y) => rank(x) - rank(y) || (x.date < y.date ? 1 : x.date > y.date ? -1 : 0))
+  // One of each price, and only the latest nominal one.
+  const seen = new Set<number>(); let nominal = false
+  return sorted.filter((o) => { if (seen.has(o.price) || (o.kind === 'nominal' && nominal)) return false; seen.add(o.price); if (o.kind === 'nominal') nominal = true; return true })
+}
+export function currentPrice(d: Data): { price: number | null; source: string } {
+  const o = priceOptions(d)[0]
+  return o ? { price: o.price, source: o.source } : { price: null, source: '' }
 }
 
 // Row order for cap table views: the founder's saved order where it has one; otherwise founders, then holders of

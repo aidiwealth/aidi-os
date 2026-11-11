@@ -2,7 +2,7 @@
 // Finvry cap table: who owns what, the option pool and vesting, SAFEs and notes, and what a priced round or an exit
 // would mean for everyone.
 import { table, round, vested, liveShares, type Data } from '~/shared/captable'
-import { positions, orderRows, commonHolders, currentPrice, type Right } from '~/shared/positions'
+import { positions, orderRows, commonHolders, currentPrice, priceOptions, type Right } from '~/shared/positions'
 useHead({ title: 'Cap table' })
 type D = Data & { captable: string; captables: { id: string; name: string; note: string | null; is_main: boolean; updated_at: string; views?: number }[]; holders: (Data['holders'][number] & { email: string | null })[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; company: string }
 const route = useRoute(), router = useRouter()
@@ -116,11 +116,13 @@ const ovRows = computed(() => (t.value && data.value ? orderRows(t.value.rows.ma
 // and what each holder would receive in a sale today.
 const pf = reactive({ open: false, price: '' as string | number, note: '', busy: false, msg: '', done: '' })
 const cp = computed(() => (data.value ? currentPrice(data.value) : { price: null, source: '' }))
+const pOpts = computed(() => (data.value ? priceOptions(data.value) : []))
+const pOpt = computed(() => pOpts.value.find((o) => o.price === Number(pf.price)) ?? null)
 function openPf() { Object.assign(pf, { open: true, price: cp.value.price ?? '', note: cp.value.price ? '' : '', busy: false, msg: '', done: '' }) }
-const pfVal = computed(() => { const p = Number(pf.price) || 0; return p && t.value ? { fd: t.value.fd * p } : null })
+const pfVal = computed(() => { const p = Number(pf.price) || 0, after = pOpts.value.find((o) => o.after)?.after; return p && t.value ? { fd: t.value.fd * p, after: after ? after * p : null } : null })
 async function savePf() {
   pf.busy = true; pf.msg = ''
-  try { const r = await $fetch<{ title: string; folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: 'proforma', id: data.value!.captable, price: Number(pf.price) || undefined, price_note: Number(pf.price) !== cp.value.price ? (pf.note || 'set by the company') : undefined } }); pf.done = r.title + ' is in the data room, in ' + r.folder + '.' }
+  try { const r = await $fetch<{ title: string; folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: 'proforma', id: data.value!.captable, price: Number(pf.price) || undefined, price_note: Number(pf.price) === cp.value.price ? undefined : pOpt.value ? pOpt.value.source.slice(0, 120) : (pf.note || 'set by the company') } }); pf.done = r.title + ' is in the data room, in ' + r.folder + '.' }
   catch (e) { pf.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add it.' } finally { pf.busy = false }
 }
 const rkey = (r: { name: string; kind: string }) => (r.kind === 'new' ? '__new' : r.kind === 'pool' ? '__pool' : r.name)
@@ -354,9 +356,11 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
     <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="afterImport" />
     <AppModal :open="pf.open" title="Pro forma cap table for investors" @close="pf.open = false">
       <div class="pfm"><p class="mut">A PDF in the data room with every position today, after conversion, and on a sale.</p>
-        <label class="label">Price per share (USD)<input v-model="pf.price" type="number" min="0" step="0.0001" :placeholder="cp.price ? String(cp.price) : 'e.g. 1.25'"><span class="mut">{{ cp.price ? 'Suggested: ' + usd(cp.price) + ', from your ' + cp.source + '.' : 'No priced round recorded yet: enter a price (e.g. a 409A or your SAFE cap ÷ fully diluted shares).' }}</span></label>
-        <label v-if="cp.price && Number(pf.price) !== cp.price" class="label">Where this price comes from<input v-model="pf.note" maxlength="120" placeholder="e.g. 409A valuation, March 2026"></label>
-        <p v-if="pfVal" class="mut">Implied value today: <b>{{ usd(pfVal.fd) }}</b> fully diluted.</p>
+        <div v-if="pOpts.length" class="pfo"><span class="mut">Pick the price to value the shares at</span>
+          <label v-for="(o, i) in pOpts.slice(0, 4)" :key="i" class="pfc" :class="{ on: Number(pf.price) === o.price }"><input type="radio" name="pfp" :checked="Number(pf.price) === o.price" @change="pf.price = o.price"><span><b>{{ usd(o.price) }} a share</b><em v-if="i === 0 && o.kind !== 'nominal'" class="rec">Recommended</em><span class="mut">{{ o.kind === 'safe' ? 'From your latest SAFE' : o.kind === 'round' ? 'From your latest priced round' : 'Nominal price' }} · {{ o.date }}</span><span class="mut">{{ o.how }}</span></span></label></div>
+        <label class="label">{{ pOpts.length ? 'Or enter a price per share (USD)' : 'Price per share (USD)' }}<input v-model="pf.price" type="number" min="0" step="0.0001" placeholder="e.g. 1.25"><span v-if="!pOpts.length" class="mut">No round or SAFE with a cap recorded yet: enter a price, e.g. from a 409A valuation.</span></label>
+        <label v-if="Number(pf.price) && !pOpt" class="label">Where this price comes from<input v-model="pf.note" maxlength="120" placeholder="e.g. 409A valuation, March 2026"></label>
+        <p v-if="pfVal" class="pfv">At this price the company is worth <b>{{ briefMoney(pfVal.after ?? pfVal.fd, 'USD') }}</b>{{ pfVal.after ? ' once the SAFEs convert (' + briefMoney(pfVal.fd, 'USD') + ' on today\'s fully diluted shares)' : ' fully diluted today' }}<template v-if="pOpt?.kind === 'nominal'">. That's a nominal price, so investors will read this value as far too low.</template><template v-else>.</template></p>
         <p v-if="pf.done" class="ok">{{ pf.done }} <NuxtLink to="/fundraising?t=room">Open the data room</NuxtLink></p><p v-if="pf.msg" class="error">{{ pf.msg }}</p></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="pf.open = false">{{ pf.done ? 'Close' : 'Cancel' }}</button><button v-if="!pf.done" class="btn" :disabled="pf.busy || !Number(pf.price)" @click="savePf">{{ pf.busy ? 'Adding…' : 'Add to data room' }}</button></template>
     </AppModal>
@@ -411,4 +415,5 @@ td.pos { color: var(--c-blue-deep); } td.nw { white-space: nowrap; }
 .hr2 .hn b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dch2 { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; text-align: left; } .sm2 { font-size: 12.5px; }
 .dcp { display: inline-flex; align-items: center; background: #e6eef6; font-size: 12px; } .dcp button { border: 0; background: none; font: inherit; color: var(--c-navy); cursor: pointer; padding: 3px 4px 3px 8px; white-space: nowrap; } .dcp .x { padding: 3px 7px 3px 3px; color: var(--c-muted); font-size: 13px; } .dcp .x:hover { color: #b54708; }
 @media (max-width: 760px) { .hr2 { grid-template-columns: 32px minmax(0, 1fr); padding: 12px; } .hr2 .dch2, .hr2 .ha { grid-column: 2; } .hr2 .sm2 { display: none; } .ch .tb { justify-content: flex-start; } }
+.pfo { display: flex; flex-direction: column; gap: 8px; } .pfc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13px; } .pfc.on { border-color: var(--c-navy); background: #f5f8fb; } .pfc input { margin-top: 3px; } .pfc > span { display: flex; flex-direction: column; gap: 2px; } .pfc b { font-size: 14px; } .rec { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); text-transform: uppercase; letter-spacing: .05em; } .pfv { margin: 0; font-size: 13.5px; }
 </style>

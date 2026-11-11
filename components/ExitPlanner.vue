@@ -3,9 +3,10 @@
 // enter) and what each holder would receive in each, using the cap table's own waterfall; and potential buyers found
 // with AI (website, why they would buy, past deals, the contact route), worked as a short list.
 import { exitByHolder, type Data } from '~/shared/captable'
+import { ownFigures } from '~/shared/exit-text'
 const props = defineProps<{ data: Data; ct: string; hasShares: boolean }>()
 interface Buyer { name: string; website: string; type: 'strategic' | 'financial'; why: string; fit: number; deals: string; price_note: string; contact: { name: string; title: string; email: string; linkedin: string; url: string }; sources: string[]; status: string; notes: string; found_at: string }
-interface Plan { assumptions: { basis: 'arr' | 'revenue_ttm' | 'ebitda_ttm' | 'manual'; basis_value: number | null; currency: string; multiples: { worst: number; base: number; best: number }; rationale: string; years: number; growth: number | null; project: boolean; focus: string; about: string; ai_multiples?: { worst: number; base: number; best: number; basis: string; rationale: string } | null }
+interface Plan { assumptions: { basis: 'arr' | 'revenue_ttm' | 'ebitda_ttm' | 'manual'; basis_value: number | null; currency: string; multiples: { worst: number; base: number; best: number }; rationale: string; years: number; growth: number | null; project: boolean; focus: string; about: string; ai_multiples?: { worst: number; base: number; best: number; basis: string; rationale: string; as_of?: string; figures?: string } | null }
   buyers: Buyer[]; searched_at: string | null; search: { status: string; error: string | null; note: string | null }; basis: { arr: number | null; arr_source: string; revenue_ttm: number | null; ttm_source: string; ebitda_ttm: number | null; growth_pct: number | null; growth_source: string; latest: string | null; currency: string; reporting: string | null; fx: number | null; months: number; period: string | null; projected: { year: number; revenue: number }[] }; company: { name: string; about: string; website: string } }
 const { data: plan, refresh } = await useFetch<Plan>('/api/equity/exit', { query: { ct: computed(() => props.ct) } })
 const a = reactive({ basis: 'arr' as Plan['assumptions']['basis'], basis_value: null as number | null, currency: 'USD', worst: 2, base: 5, best: 10, rationale: '', focus: '', about: '', years: 3, growth: null as number | null, project: false })
@@ -76,7 +77,7 @@ const bm = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', cu
 const HOW: Record<string, string> = { common: 'Shares', options: 'Options, after the strike price' }
 const howOf = (h: string) => h.split(' + ').map((x) => HOW[x] ?? x.charAt(0).toUpperCase() + x.slice(1)).join(' + ')
 // The AI's reasons, one point per line rather than a block of text.
-const aiWhy = computed(() => (plan.value?.assumptions.ai_multiples?.rationale ?? '').split(/(?<=\.)\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean))
+const aiWhy = computed(() => ownFigures(plan.value?.assumptions.ai_multiples?.rationale ?? '', plan.value?.company.name ?? '').split(/(?<=\.)\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean))
 const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', employee: '#1c547d', advisor: '#3d6e99', other: '#a8b4c2' }
 </script>
 <template>
@@ -98,8 +99,8 @@ const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', em
         <p v-if="a.basis === 'ebitda_ttm' && (plan.basis.ebitda_ttm ?? 0) <= 0" class="warn">EBITDA is not positive yet: use revenue or ARR.</p>
         <p v-if="!basisVal" class="warn">No {{ a.basis === 'arr' ? 'ARR' : a.basis === 'revenue_ttm' ? 'revenue' : a.basis === 'ebitda_ttm' ? 'EBITDA' : 'figure' }} to work from{{ a.basis !== 'manual' ? ': ' + ((plan.basis as any).note || 'add revenue in Financials.') + ' Or choose "A figure I enter".' : '.' }}</p>
         <p v-else-if="(plan.basis as any).note" class="src2">{{ (plan.basis as any).note }}</p>
-        <div v-if="plan.assumptions.ai_multiples" class="aim2"><div class="aimr"><span class="ey2">AI suggests</span><b>{{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}× {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}</b><span class="mut aio">From similar sales of comparable companies.</span><button class="lk" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Hide the reasons' : 'Why these' }}</button><button class="btn sm" type="button" @click="useAi">Use these</button></div>
-          <ul v-if="aiMore" class="aiw"><li v-for="(x, i) in aiWhy" :key="i">{{ x }}</li></ul></div>
+        <div v-if="plan.assumptions.ai_multiples" class="aim2"><div class="aimr"><span class="ey2">AI suggests</span><b>{{ plan.assumptions.ai_multiples.worst }}× · {{ plan.assumptions.ai_multiples.base }}× · {{ plan.assumptions.ai_multiples.best }}× {{ plan.assumptions.ai_multiples.basis === 'revenue_ttm' ? 'revenue' : 'ARR' }}</b><span class="mut aio">{{ plan.assumptions.ai_multiples.as_of ? 'From comparable sales, against your figures · ' + plan.assumptions.ai_multiples.as_of : 'From comparable sales. Suggested before your current figures were used.' }} <button class="lk" type="button" :disabled="searching" @click="find">{{ searching ? 'Refreshing…' : 'Refresh' }}</button></span><button class="lk" type="button" @click="aiMore = !aiMore">{{ aiMore ? 'Hide the reasons' : 'Why these' }}</button><button class="btn sm" type="button" @click="useAi">Use these</button></div>
+          <p v-if="aiMore && plan.assumptions.ai_multiples.figures" class="aif">Your figures used: {{ plan.assumptions.ai_multiples.figures }}</p><ul v-if="aiMore" class="aiw"><li v-for="(x, i) in aiWhy" :key="i">{{ x }}</li></ul></div>
         <label class="own">Or try your own sale price<input v-model.number="own" type="number" min="0" step="1000000" placeholder="e.g. 25000000"><span v-if="Number(own) > 0" class="mut sm">Added as a fourth case</span></label>
       </section>
       <p v-if="!hasShares" class="warn">Issue shares first to see what each holder receives.</p>
@@ -173,6 +174,6 @@ const KC: Record<string, string> = { founder: '#0c1a2e', investor: '#8fb3d6', em
 .xa4 { grid-template-columns: minmax(0, 1.5fr) repeat(auto-fit, minmax(110px, 1fr)); margin: 0; } .xin .xa input, .xin .xa select, .xin .xg2 input, .xin .own input { border-color: #c9d6e5; background: #fff; }
 .src2 { margin: 0; font-size: 12.5px; color: var(--c-muted); } .xg2 .src2 { flex: 1 1 260px; } .xg2 { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; } .xg2 label.label { display: flex; flex-direction: column; gap: 4px; width: 140px; font-size: 13px; } .xg2 input[type=number] { width: 100%; font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid #c9d6e5; }
 .aim2 { background: #fff; border: 1px solid #c9d6e5; padding: 12px 14px; font-size: 13px; } .aimr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ey2 { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c-blue-deep); } .aio { flex: 1 1 200px; }
-.aiw { margin: 10px 0 0; padding: 10px 0 0 18px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 6px; color: var(--c-ink-soft); line-height: 1.5; } .xin .own { margin: 0; }
+.aif { margin: 10px 0 0; font-size: 12.5px; color: var(--c-muted); } .aiw { margin: 10px 0 0; padding: 10px 0 0 18px; border-top: 1px solid var(--c-rule); display: flex; flex-direction: column; gap: 6px; color: var(--c-ink-soft); line-height: 1.5; } .xin .own { margin: 0; }
 @media (max-width: 760px) { .xa4 { grid-template-columns: 1fr 1fr; } .xa4 > label:first-child { grid-column: 1 / -1; } }
 </style>
