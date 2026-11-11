@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     await store(bytes, fname, mime)
     await audit({ event, actorUserId: user.userId, action: 'financials.report_file', objectType: 'subject', detail: { format: d.format, year, room: d.room === '1' } })
     setHeader(event, 'content-type', mime)
-    setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
+    setHeader(event, 'content-disposition', dispo('attachment', fname))
     return bytes
   }
   const s = buildStatements(raw, { company: name, period_type: d.period_type, count: d.count, withSecurities: await investorCashPolicy(d.securities === undefined ? null : d.securities === '1'), comments: d.comments, notes: { income: d.note_income, balance: d.note_balance, cash: d.note_cash }, safe: await safeTreatment() })
@@ -64,6 +64,6 @@ export default defineEventHandler(async (event) => {
   await store(bytes, fname, mime)
   await audit({ event, actorUserId: user.userId, action: 'financials.statements_file', objectType: 'subject', detail: { format: d.format, periods: s.periods.length, room: d.room === '1' } })
   setHeader(event, 'content-type', mime)
-  setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
+  setHeader(event, 'content-disposition', dispo('attachment', fname))
   return bytes
 })

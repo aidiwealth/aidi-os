@@ -12,6 +12,6 @@ export default defineEventHandler(async (event) => {
   const fname = (title + ' ' + new Date().toISOString().slice(0, 10)).replace(/[^A-Za-z0-9 ._()-]/g, '') + '.' + q.data.format
   await audit({ event, actorUserId: user.userId, action: 'portfolio.export', objectType: 'portfolio', detail: { format: q.data.format, company: q.data.company ?? null, companies: list.length } })
   setHeader(event, 'content-type', q.data.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
-  setHeader(event, 'content-disposition', 'attachment; filename="' + fname + '"')
+  setHeader(event, 'content-disposition', dispo('attachment', fname))
   return bytes
 })

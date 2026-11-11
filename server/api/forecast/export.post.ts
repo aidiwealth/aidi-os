@@ -18,6 +18,6 @@ export default defineEventHandler(async (event) => {
   const fname = (fc.company + ' forecast ' + fc.name).replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 150) + '.' + b.data.format
   await audit({ event, actorUserId: user.userId, action: 'forecast.export', objectType: 'forecast', objectId: b.data.id, detail: { format: b.data.format } })
   setHeader(event, 'content-type', b.data.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
-  setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
+  setHeader(event, 'content-disposition', dispo('attachment', fname))
   return bytes
 })

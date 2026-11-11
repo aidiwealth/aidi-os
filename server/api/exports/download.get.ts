@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
   const r = exportRange(k, q.data.from, q.data.to, DIRECT_DAYS)
   const f = await toFile(await k.build(event, r.from, r.to), q.data.format)
   await audit({ event, actorUserId: user.userId, action: 'export.download', objectType: 'export', detail: { kind: q.data.kind, from: r.from, to: r.to, format: q.data.format } })
-  setHeader(event, 'content-type', f.mime); setHeader(event, 'content-disposition', 'attachment; filename="' + f.file + '"'); setHeader(event, 'cache-control', 'no-store')
+  setHeader(event, 'content-type', f.mime); setHeader(event, 'content-disposition', dispo('attachment', f.file)); setHeader(event, 'cache-control', 'no-store')
   return f.bytes
 })

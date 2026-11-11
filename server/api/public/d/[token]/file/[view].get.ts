@@ -15,6 +15,6 @@ export default defineEventHandler(async (event) => {
   // A protected PDF can't be stamped: it is sent as it is and the viewer shows the mark over each page.
   if (!out) setHeader(event, 'x-unstamped', '1')
   setHeader(event, 'content-type', 'application/pdf'); setHeader(event, 'cache-control', 'no-store')
-  setHeader(event, 'content-disposition', (dl ? 'attachment' : 'inline') + '; filename="' + v.title.replace(/["\\\r\n]/g, '_') + '"')
+  setHeader(event, 'content-disposition', dispo(dl ? 'attachment' : 'inline', v.title))
   return Buffer.from(out ?? src)
 })

@@ -35,7 +35,7 @@ export async function signedGetUrl(input: { key: string; filename: string; secon
   const { aws, base } = r2()
   const u = new URL(base + '/' + keyPath(input.key))
   u.searchParams.set('X-Amz-Expires', String(input.seconds))
-  u.searchParams.set('response-content-disposition', (input.inline ? 'inline' : 'attachment') + '; filename="' + input.filename.replace(/["\\\r\n]/g, '_') + '"')
+  u.searchParams.set('response-content-disposition', dispo(input.inline ? 'inline' : 'attachment', input.filename))
   const signed = await aws.sign(new Request(u.toString(), { method: 'GET' }), { aws: { signQuery: true } })
   return signed.url
 }

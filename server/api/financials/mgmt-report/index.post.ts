@@ -110,6 +110,6 @@ export default defineEventHandler(async (event) => {
   if (d.deliver === 'room') return { ok: true, name: fname, update_id: updateId }
   if (updateId) setHeader(event, 'x-update-id', updateId)
   setHeader(event, 'content-type', mime)
-  setHeader(event, 'content-disposition', 'attachment; filename="' + fname.replace(/"/g, '') + '"')
+  setHeader(event, 'content-disposition', dispo('attachment', fname))
   return bytes
 })

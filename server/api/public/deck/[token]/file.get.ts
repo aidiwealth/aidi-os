@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   if (String(getQuery(event).download ?? '') === '1') {
     if (!deck.allow_download) throw apiError('forbidden', 'Downloads are turned off for this deck.', 403)
     await db().query('UPDATE fundraise.deck_visits SET downloads = downloads + 1, last_at = now() WHERE id = $1', [visit.id])
-    setHeader(event, 'content-disposition', 'attachment; filename="' + (version.filename ?? 'deck.pdf').replace(/"/g, '') + '"')
+    setHeader(event, 'content-disposition', dispo('attachment', version.filename ?? 'deck.pdf'))
   }
   return Buffer.from(await getObject(doc.storage_key))
 })

@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
   if (x.status !== 'done' || !x.storage_key) throw apiError('not_ready', x.status === 'failed' ? 'This export failed. Ask for it again.' : 'This export is still being prepared.', 409)
   const bytes = await getObject(x.storage_key)
   setHeader(event, 'content-type', x.file_name?.endsWith('.csv') ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-  setHeader(event, 'content-disposition', 'attachment; filename="' + (x.file_name ?? 'export') + '"'); setHeader(event, 'cache-control', 'no-store')
+  setHeader(event, 'content-disposition', dispo('attachment', x.file_name ?? 'export')); setHeader(event, 'cache-control', 'no-store')
   return bytes
 })

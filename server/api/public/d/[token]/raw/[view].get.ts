@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
   // With watermarking on, PDFs are only ever served stamped (through /file/); never the original here.
   if (v.mime_type === 'application/pdf' && (await brandingOf(l.organization_id)).watermark) throw apiError('watermark', 'Open this file from the data room.', 403)
   setHeader(event, 'content-type', v.mime_type); setHeader(event, 'cache-control', 'private, no-store')
-  setHeader(event, 'content-disposition', 'inline; filename="' + v.title.replace(/["\\\r\n]/g, '_') + '"')
+  setHeader(event, 'content-disposition', dispo('inline', v.title))
   return Buffer.from(await getObject(v.storage_key))
 })
