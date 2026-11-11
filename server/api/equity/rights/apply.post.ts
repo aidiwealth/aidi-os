@@ -18,6 +18,8 @@ export default defineEventHandler(async (event) => {
     if (r.id) {
       // Moved to another holder: the letter leaves the old holder unless another of their rights still uses it.
       const old = (await db().query<{ holder_id: string | null; document_id: string | null }>('SELECT holder_id, document_id FROM equity.rights WHERE id = $1 AND captable_id = $2', [r.id, ct])).rows[0]
+      // A new letter in place of the old one: the old letter leaves the holder too (unless another right uses it).
+      if (old?.holder_id && old.document_id && old.document_id !== doc && old.holder_id === hid) await db().query("DELETE FROM equity.holder_docs WHERE holder_id = $1 AND document_id = $2 AND kind = 'side_letter' AND NOT EXISTS (SELECT 1 FROM equity.rights WHERE holder_id = $1 AND document_id = $2 AND id <> $3)", [old.holder_id, old.document_id, r.id])
       if (old?.holder_id && old.document_id && old.holder_id !== hid) await db().query("DELETE FROM equity.holder_docs WHERE holder_id = $1 AND document_id = $2 AND kind = 'side_letter' AND NOT EXISTS (SELECT 1 FROM equity.rights WHERE holder_id = $1 AND document_id = $2 AND id <> $3)", [old.holder_id, old.document_id, r.id])
     }
     if (r.id) await db().query('UPDATE equity.rights SET holder_id = $2, party = $3, kind = $4, summary = $5, impact = $6, terms = $7, clause = $8, document_id = $9 WHERE id = $11 AND captable_id = $1', [...vals, r.id])

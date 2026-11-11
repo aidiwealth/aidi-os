@@ -41,13 +41,21 @@ async function saveRead() {
 }
 const unmatched = computed(() => rd.rows.filter((x) => x.on && !x.holder_id && x.party_role !== 'all_investors' && x.party_role !== 'company').length)
 // Change who a saved right belongs to, or add one by hand.
-const ed = reactive({ open: false, id: '', holder_id: '' as string | null, party: '', kind: 'pro_rata', summary: '', impact: '', clause: '', document_id: null as string | null, terms: {} as Record<string, string | number>, pctv: '' as string | number, msg: '' })
-function edit(r?: Right, holder?: string) { Object.assign(ed, r ? { open: true, id: r.id, holder_id: r.holder_id ?? '', party: r.party ?? '', kind: r.kind, summary: r.summary, impact: r.impact ?? '', clause: r.clause ?? '', document_id: r.document_id, terms: { ...(r.terms as Record<string, string | number>) }, pctv: (r.terms as Record<string, number>).pct ?? '', msg: '' } : { open: true, id: '', holder_id: holder ?? '', party: '', kind: 'pro_rata', summary: '', impact: '', clause: '', document_id: null, terms: {}, pctv: '', msg: '' }) }
+const ed = reactive({ room: true, up: false, doc_title: '', open: false, id: '', holder_id: '' as string | null, party: '', kind: 'pro_rata', summary: '', impact: '', clause: '', document_id: null as string | null, terms: {} as Record<string, string | number>, pctv: '' as string | number, msg: '' })
+function edit(r?: Right, holder?: string) { ed.up = false; ed.doc_title = r?.doc_title ?? ''; Object.assign(ed, r ? { open: true, id: r.id, holder_id: r.holder_id ?? '', party: r.party ?? '', kind: r.kind, summary: r.summary, impact: r.impact ?? '', clause: r.clause ?? '', document_id: r.document_id, terms: { ...(r.terms as Record<string, string | number>) }, pctv: (r.terms as Record<string, number>).pct ?? '', msg: '' } : { open: true, id: '', holder_id: holder ?? '', party: '', kind: 'pro_rata', summary: '', impact: '', clause: '', document_id: null, terms: {}, pctv: '', msg: '' }) }
 async function saveEd() {
   ed.msg = ''
   const terms = { ...ed.terms }; if (ed.pctv !== '' && Number(ed.pctv) > 0) terms.pct = Number(ed.pctv); else delete terms.pct
-  try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: false, rows: [{ id: ed.id || undefined, holder_id: ed.holder_id || null, party: ed.party || hName(ed.holder_id), kind: ed.kind, summary: ed.summary || RIGHT_LABEL[ed.kind], impact: ed.impact, clause: ed.clause, document_id: ed.document_id, terms }] } }); ed.open = false; emit('changed') }
+  try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: ed.room && !!ed.document_id, rows: [{ id: ed.id || undefined, holder_id: ed.holder_id || null, party: ed.party || hName(ed.holder_id), kind: ed.kind, summary: ed.summary || RIGHT_LABEL[ed.kind], impact: ed.impact, clause: ed.clause, document_id: ed.document_id, terms }] } }); ed.open = false; emit('changed') }
   catch (e) { ed.msg = err(e) }
+}
+// The letter behind a right: a pro rata letter, side letter or rights agreement, uploaded here (or replaced).
+async function upLetter(ev: Event) {
+  const file = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; if (!file) return
+  ed.up = true; ed.msg = ''
+  try { const fd = new FormData(); fd.append('file', file); fd.append('title', (ed.kind === 'pro_rata' || ed.kind === 'super_pro_rata' ? 'Pro rata letter' : 'Side letter') + (ed.holder_id ? ' — ' + hName(ed.holder_id) : ''))
+    const r = await $fetch<{ document_id: string; title: string }>('/api/equity/docs/upload', { method: 'POST', body: fd }); ed.document_id = r.document_id; ed.doc_title = r.title }
+  catch (e) { ed.msg = err(e) } finally { ed.up = false }
 }
 async function del(r: Right) { if (!await askConfirm('Remove this right? The letter stays in Documents.')) return; await $fetch('/api/equity/rights/' + r.id, { method: 'DELETE' }).catch(() => {}); emit('changed') }
 async function remap(r: Right, holder: string) { try { await $fetch('/api/equity/rights/apply', { method: 'POST', body: { ct: props.ct, room: true, rows: [{ id: r.id, holder_id: holder || null, party: r.party ?? '', kind: r.kind, summary: r.summary, impact: r.impact ?? '', clause: r.clause ?? '', document_id: r.document_id, terms: r.terms }] } }); emit('changed') } catch (e) { notify(err(e)) } }
@@ -113,6 +121,10 @@ const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.m
         <label v-if="ed.kind === 'pro_rata' || ed.kind === 'super_pro_rata'" class="label">Fixed share of the round (%)<input v-model="ed.pctv" inputmode="decimal" placeholder="Empty: keeps their stake"></label>
         <label class="label">Clause<input v-model="ed.clause" maxlength="300" placeholder="e.g. Side letter §2"></label>
         <label class="label w">What it means for the cap table<textarea v-model="ed.impact" rows="2" maxlength="600" /></label>
+        <div class="w ltr"><span class="label">Letter</span>
+          <div v-if="ed.document_id" class="lf"><span class="ln">{{ ed.doc_title || 'Attached letter' }}</span><button type="button" class="lk" @click="emit('open', ed.document_id!)">Open</button><label class="lk">Replace<input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden @change="upLetter"></label><button type="button" class="lk red" @click="ed.document_id = null; ed.doc_title = ''">Remove</button></div>
+          <label v-else class="btn secondary sm up">{{ ed.up ? 'Uploading…' : 'Attach the pro rata or side letter' }}<input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden :disabled="ed.up" @change="upLetter"></label>
+          <label v-if="ed.document_id && ed.holder_id" class="chk"><input v-model="ed.room" type="checkbox"> File it with the holder and in the data room (Financing, side letters)</label></div>
         <p v-if="ed.msg" class="error w">{{ ed.msg }}</p></form>
       <template #foot><button v-if="ed.id" class="lk red" @click="del(rights.find((r) => r.id === ed.id)!); ed.open = false">Remove</button><span class="sp" /><button class="btn secondary" @click="ed.open = false">Cancel</button><button class="btn" type="submit" form="rgf">Save</button></template>
     </AppModal>
@@ -134,4 +146,5 @@ const termsText = (t: Record<string, unknown>) => [t.pct ? t.pct + '%' : '', t.m
 input, select, textarea { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--c-rule-strong); background: #fff; max-width: 100%; box-sizing: border-box } .fm input:not([type=checkbox]), .fm select, .fm textarea { width: 100% } .t select { max-width: 260px }
 .mt { display: block; font-size: 11.5px; margin-top: 3px } .mt.ai, .mt.ok { color: var(--c-ink-soft) } .mt.name, .mt.by { color: #7a5a14 } .mt.none { color: var(--c-danger) } .error { color: var(--c-danger); margin: 0 }
 @media (max-width: 760px) { .vs { grid-template-columns: 1fr } }
+.ltr { display: flex; flex-direction: column; gap: 8px; } .lf { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fbfaf7; font-size: 14px; } .lf .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lf label.lk { cursor: pointer; } .up { align-self: flex-start; cursor: pointer; }
 </style>

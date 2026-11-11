@@ -84,6 +84,21 @@ const pos = computed(() => (data.value ? positions(data.value, today, rights.val
 const flagsOf = (hid: string) => pos.value?.rows.find((r) => r.holder.id === hid)
 const docsFor = (k: 'holder_id' | 'convertible_id' | 'issuance_id', id: string) => (hdocs.value ?? []).filter((d) => d[k] === id)
 async function detach(d: HD) { if (!await askConfirm('Detach "' + d.title + '"? It stays in Documents.')) return; await $fetch('/api/equity/docs/' + d.id, { method: 'DELETE' }).catch(() => {}); await refreshDocs() }
+// Documents on a SAFE / note or a share issuance, managed from its Edit window: upload, replace or remove.
+const dk = computed(() => (f.type === 'convertible' ? 'convertible_id' : f.type === 'issuance' ? 'issuance_id' : null) as 'convertible_id' | 'issuance_id' | null)
+const fDocs = computed(() => (dk.value && f.id ? docsFor(dk.value, f.id) : []))
+const dup = ref(false)
+async function upDoc(ev: Event, replace?: HD) {
+  const file = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; if (!file || !dk.value || !f.id) return
+  dup.value = true; msg.value = ''
+  try {
+    const fd = new FormData(); fd.append('ct', String(data.value?.captable ?? '')); fd.append('holder_id', f.d.holder_id); fd.append(dk.value, f.id)
+    fd.append('kind', f.type === 'convertible' ? (f.d.kind === 'note' ? 'note' : 'safe') : 'spa'); fd.append('room', replace ? (replace.in_room ? '1' : '0') : '1'); fd.append('file', file)
+    await $fetch('/api/equity/docs', { method: 'POST', body: fd })
+    if (replace) await $fetch('/api/equity/docs/' + replace.id, { method: 'DELETE' })
+    await refreshDocs()
+  } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload the document.' } finally { dup.value = false }
+}
 async function openDoc(id: string) { const r = await $fetch<{ url: string }>('/api/documents/' + id + '/download'); window.open(r.url, '_blank') }
 // Signed documents reach the cap table on their own; check now and then while some are out.
 let esTimer: ReturnType<typeof setInterval> | undefined
@@ -231,6 +246,10 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
           <div class="g3"><label class="label">Valuation cap<input v-model="f.d.valuation_cap" type="number" min="0"></label><label class="label">Discount %<input v-model="f.d.discount_pct" type="number" min="0" max="99"></label><label class="label">Date<input v-model="f.d.issued_on" type="date"></label></div>
           <div class="g3"><label v-if="f.d.kind === 'note'" class="label">Interest % a year<input v-model="f.d.interest_pct" type="number" min="0" max="100"></label><label v-if="f.d.kind === 'note'" class="label">Maturity date<input v-model="f.d.maturity_on" type="date"></label><label class="label">Status<select v-model="f.d.status"><option value="outstanding">Outstanding</option><option value="converted">Converted</option><option value="cancelled">Cancelled</option></select></label></div>
           <div class="tg"><label v-if="f.d.kind === 'safe'" class="chk"><input v-model="f.d.post_money" type="checkbox"> Post-money SAFE</label><label class="chk"><input v-model="f.d.mfn" type="checkbox"> Most favoured nation</label></div></template>
+        <div v-if="dk && f.id && f.d.holder_id" class="edocs"><span class="label">Documents</span>
+          <div v-for="d in fDocs" :key="d.id" class="lf"><span class="ln" :title="d.title">{{ d.title }}</span><em v-if="d.in_room" class="mut">In the data room</em><button type="button" class="lk" @click="openDoc(d.document_id)">Open</button><label class="lk">Replace<input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden :disabled="dup" @change="upDoc($event, d)"></label><button type="button" class="lk red" @click="detach(d)">Remove</button></div>
+          <label class="btn secondary sm up">{{ dup ? 'Uploading…' : fDocs.length ? 'Add another document' : 'Upload the ' + (f.type === 'convertible' ? (f.d.kind === 'note' ? 'note' : 'SAFE') : 'share purchase agreement or certificate') }}<input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden :disabled="dup" @change="upDoc($event)"></label>
+          <span class="mut sm">Removing takes it off this {{ f.type === 'convertible' ? 'SAFE' : 'issuance' }} and out of the data room; the file stays in Documents.</span></div>
         <p v-if="msg" class="error">{{ msg }}</p></div>
       <template #foot><button v-if="f.id" class="btn secondary danger" :disabled="busy" @click="save(true)">Delete</button><span class="sp" /><button class="btn secondary" @click="f.open = false">Cancel</button><button v-if="!f.id && ['issuance', 'grant', 'convertible'].includes(f.type)" class="btn secondary" :disabled="busy" title="Draft, sign and update the cap table" @click="startSign(f.type as 'issuance' | 'grant' | 'convertible', { ...f.d })">Send for e-signature</button><button class="btn" :disabled="busy" @click="save()">{{ busy ? 'Saving…' : f.id ? 'Save' : 'Record only' }}</button></template>
     </AppModal>
@@ -280,4 +299,5 @@ const plansAvail = (pid: string) => { const p = data.value?.plans.find((x) => x.
 .ch .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; } .ok { color: var(--c-ink-soft); background: var(--c-paper-3); padding: 10px 14px; margin: 0 0 12px; font-size: 13.5px; } .ok a { color: var(--c-blue-deep); }
 .mvb { display: flex; gap: 8px; flex-wrap: wrap; }
 .dch { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; } .dc { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; } .dc .x { background: none; border: 0; color: var(--c-muted); cursor: pointer; font-size: 14px; padding: 0 2px; }
+.edocs { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--c-rule); padding-top: 14px; } .edocs .lf { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--c-rule); background: #fbfaf7; font-size: 14px; } .edocs .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .edocs em { font-style: normal; font-size: 12.5px; } .edocs label.lk { cursor: pointer; } .edocs .up { align-self: flex-start; cursor: pointer; } .edocs .sm { font-size: 12.5px; }
 </style>
