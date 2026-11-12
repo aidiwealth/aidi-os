@@ -87,9 +87,26 @@ const story = computed(() => {
     if (part.startsWith('<')) { const t = /^<(\/?)(table|h[1-6]|a|code|pre)\b/i.exec(part); if (t) skip = Math.max(0, skip + (t[1] ? -1 : 1)); return part }
     return skip > 0 ? part : part.replace(NUM, '<span class="num">$1</span>')
   }).join('')
+  // Pictures load as they come into view, at screen size rather than the full upload.
+  html = html.replace(/<img\b([^>]*?)\ssrc="([^"]*\/api\/public\/media\/[0-9a-f-]{36})"/gi, '<img$1 src="$2?w=1200"').replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async"')
   const top = heads.filter((h) => h.tag === 'h2'), lvl = top.length >= 2 ? top : heads.filter((h) => h.tag === 'h3')
   return { html, toc: lvl.length >= 3 ? lvl.map(({ id, text }) => ({ id, text })) : [] }
 })
+// The story's opening paragraph sits under the headline (and then not again at the top of the story). A long one
+// shows its first two sentences there and stays whole in the story.
+const firstPara = computed(() => {
+  const html = story.value.html; if (!html) return null
+  const m = /^\s*<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(html); if (!m) return null
+  const text = m[1]!.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim()
+  return text.length >= 40 ? { text, raw: m[0] } : null
+})
+const lede = computed(() => {
+  const p = firstPara.value; if (!p) return ''
+  if (p.text.length <= 340) return p.text
+  const two = (p.text.match(/[^.!?]+[.!?]+/g) ?? [p.text]).slice(0, 2).join('').trim()
+  return two.length > 300 ? two.slice(0, 297).replace(/\s+\S*$/, '') + '…' : two
+})
+const storyHtml = computed(() => (firstPara.value && firstPara.value.text.length <= 340 ? story.value.html.replace(firstPara.value.raw, '') : story.value.html))
 // Tables in the text: the latest column of plain amounts gets a small bar in each cell, so sizes read at a glance.
 const storyEl = ref<HTMLElement | null>(null), active = ref('')
 function parseAmt(t: string): number | null {
@@ -137,15 +154,16 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
     <div v-else-if="data" class="ir">
       <nav class="top">
         <img v-if="data.logo" :src="data.logo" :alt="data.company" class="tlogo"><b v-else class="tname">{{ data.company }}</b>
-        <div class="tl"><a v-if="big.length || data.metrics.length || data.board" href="#numbers">Numbers</a><a v-if="data.about" href="#story">{{ story.toc.length ? 'Our story' : 'About' }}</a><a v-if="data.updates.length" href="#updates">Updates</a></div>
+        <div class="tl"><a v-if="big.length || data.metrics.length || data.board" href="#numbers">Numbers</a><a v-if="data.about && storyHtml.trim()" href="#story">{{ story.toc.length ? 'Our story' : 'About' }}</a><a v-if="data.updates.length" href="#updates">Updates</a></div>
         <a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="tbtn">Contact us</a>
       </nav>
 
-      <div v-if="data.cover" class="covr"><img :src="data.cover" alt=""></div>
+      <div v-if="data.cover" class="covr"><img :src="data.cover + '?w=1600'" alt="" fetchpriority="high"></div>
 
       <header class="hero">
-        <span class="eyebrow">{{ data.logo ? data.company + ' · ' : '' }}Investor relations{{ lastPeriod ? ' · updated ' + lastPeriod : '' }}</span>
+        <span class="eyebrow"><b>Investor relations</b>{{ data.logo ? data.company : '' }}{{ lastPeriod ? (data.logo ? ' · ' : '') + 'updated ' + lastPeriod : '' }}</span>
         <h1>{{ data.headline || data.company }}</h1>
+        <p v-if="lede" class="lede">{{ lede }}</p>
         <div class="links">
           <a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a>
           <a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">Open data room</a>
@@ -189,9 +207,9 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 
       </template>
 
-      <section v-if="data.about" id="story" class="sec story" :class="{ withtoc: story.toc.length }">
+      <section v-if="data.about && storyHtml.trim()" id="story" class="sec story" :class="{ withtoc: story.toc.length }">
         <nav v-if="story.toc.length" class="toc"><b>{{ data.company }}</b><a v-for="t in story.toc" :key="t.id" :href="'#' + t.id" :class="{ on: active === t.id }" @click.prevent="go(t.id)">{{ t.text }}</a></nav>
-        <article ref="storyEl" class="md" v-html="story.html" />
+        <article ref="storyEl" class="md" v-html="storyHtml" />
       </section>
 
       <section v-if="data.sectors?.sectors.length" class="sec">
@@ -230,13 +248,15 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 </template>
 <style scoped>
 .wrap { max-width: 920px; margin: -24px auto 0; } .ir { font-size: 16.5px; line-height: 1.65; color: #14161a; }
-.top { display: flex; align-items: center; gap: 22px; padding: 0 0 18px; border-bottom: 1px solid #ecebe7; position: sticky; top: 0; z-index: 5; background: #fff; padding-top: 12px; }
+.top { display: flex; align-items: center; gap: 22px; padding: 0 0 18px; position: sticky; top: 0; z-index: 5; background: #fff; padding-top: 12px; }
 .tlogo { height: 32px; width: auto; max-width: 180px; object-fit: contain; object-position: left center; display: block; } .tname { font-size: 20px; color: var(--c-navy); }
 .tl { display: flex; gap: 20px; margin-left: auto; font-size: 15px; } .tl a { color: var(--c-muted); text-decoration: none; } .tl a:hover { color: var(--c-navy); }
 .tbtn { background: var(--c-navy); color: #fff; padding: 9px 16px; text-decoration: none; font-size: 14.5px; font-weight: 600; }
 .covr { margin: 24px 0 0; } .covr img { width: 100%; max-height: 320px; object-fit: cover; display: block; }
-.hero { padding: 64px 0 44px; display: flex; flex-direction: column; gap: 20px; } .eyebrow { font-size: 14px; color: var(--c-muted); }
-.hero h1 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; color: var(--c-navy); max-width: 680px; }
+.hero { margin: 32px 0 12px; padding: 36px 40px; background: #f5f8fb; border: 1px solid #c9d6e5; display: flex; flex-direction: column; gap: 14px; }
+.eyebrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--c-muted); } .eyebrow b { background: #fff; border: 1px solid #c9d6e5; padding: 3px 10px; font-weight: 600; color: var(--c-blue-deep); }
+.hero h1 { margin: 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.015em; font-weight: 600; color: var(--c-navy); max-width: 760px; }
+.lede { margin: 0; font-size: 15.5px; line-height: 1.6; color: var(--c-ink-soft); max-width: 720px; } .hero .links { margin-top: 6px; } .hero .b2 { border-color: #c9d6e5; }
 .links, .ctab { display: flex; flex-wrap: wrap; gap: 10px; } .links a, .ctab a { text-decoration: none; font-size: 15px; padding: 12px 20px; }
 .b1 { background: var(--c-navy); color: #fff; font-weight: 600; } .b2 { border: 1px solid #d5d2cb; color: var(--c-navy); background: #fff; } .b3 { color: var(--c-blue-deep); padding-left: 8px !important; }
 .big { display: grid; border-top: 2px solid var(--c-navy); } .big > div { padding: 22px 20px; border-left: 1px solid #ecebe7; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .big > div:first-child { padding-left: 0; border-left: 0; }
@@ -276,7 +296,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 .nf { margin-top: 24px; } .nf p { color: var(--c-muted); margin: 8px 0 16px; } .nf .btn { text-decoration: none; }
 @media (max-width: 760px) {
   .wrap { margin-top: -36px; } .tl { display: none; } .tbtn { margin-left: auto; padding: 8px 12px; font-size: 13.5px; }
-  .hero { padding: 40px 0 32px; } .hero h1 { font-size: 23px; } .links a { flex: 1 1 auto; text-align: center; }
+  .hero { margin: 20px 0 8px; padding: 24px 20px; } .hero h1 { font-size: 21px; } .lede { font-size: 14.5px; } .links a { flex: 1 1 auto; text-align: center; }
   .big { grid-template-columns: 1fr 1fr !important; } .big > div { padding: 16px 14px 16px 0 !important; border-left: 0 !important; border-bottom: 1px solid #ecebe7; } .big > div:nth-child(2n) { padding-left: 14px !important; border-left: 1px solid #ecebe7 !important; } .big b { font-size: 26px; }
   .sec { margin-top: 44px; } .rvp, .own { padding: 20px 16px; } .rvm > b { font-size: 32px; } .rvx > div:first-child { margin-left: 0; padding-left: 0; border-left: 0; } .plot { height: 160px; padding-left: 0; } .grid em { display: none; } .bars { gap: 5px; } .bl { gap: 5px; font-size: 10.5px; padding-left: 0; } .bars em { display: none; } .bars span.on em { display: block; font-size: 12px; } .ownh b { font-size: 28px; } .ownr { grid-template-columns: minmax(0, 1fr) 80px 60px; font-size: 14px; } .tiles { grid-template-columns: 1fr 1fr; } .tile { padding: 14px; } .tile b { font-size: 20px; }
   .og { grid-template-columns: 1fr; } .story.withtoc { display: block; } .toc { display: none; } .md :deep(table) { display: block; overflow-x: auto; } .md :deep(h2) { font-size: 23px; } .md :deep(h3) { font-size: 19px; }

@@ -73,14 +73,14 @@ export default defineEventHandler(async (event) => {
     const ents = await custEntities()
     if (ents.length > 1) {
       const base = (org.settings.currency as string) || 'USD'
-      const gf = await groupForecast({ group: true, entity: null, name: await groupName(), currency: (org.settings.reporting_currency as string) || base, main: false, companies: ents })
+      const gf = await memo('pgf:' + ok, M, async () => groupForecast({ group: true, entity: null, name: await groupName(), currency: (org.settings.reporting_currency as string) || base, main: false, companies: ents }))
       forecast_group = { currency: gf.currency, name: gf.name, companies: gf.companies.map((c) => ({ id: c.id, name: c.name, currency: c.currency, main: c.main, per: c.per, rate_source: c.rate_source, forecasts: [], use: c.use ? { id: c.use.id, name: c.use.name, assumptions: c.use.assumptions } : null })) }
     }
   }
   let captable: unknown = null
   if (pp.captable_id && on.has('equity')) {
     const ct = (await db().query<{ name: string }>('SELECT name FROM equity.captables WHERE id = $1', [pp.captable_id])).rows[0]
-    if (ct) { const d = await loadCapTable(pp.captable_id); captable = { name: ct.name, detail: pp.captable_detail, ...(pp.captable_detail === 'holders' ? { data: { ...d, holders: d.holders.map((h) => ({ id: h.id, name: h.name, kind: h.kind })) } } : { groups: capGroups(d) }) } }
+    if (ct) { const d = await memo('pct:' + ok + ':' + pp.captable_id, M, () => loadCapTable(pp.captable_id!)); captable = { name: ct.name, detail: pp.captable_detail, ...(pp.captable_detail === 'holders' ? { data: { ...d, holders: d.holders.map((h) => ({ id: h.id, name: h.name, kind: h.kind })) } } : { groups: capGroups(d) }) } }
   }
   const mediaUrl = (x: string | null) => (x ? brands().finvry.url + '/api/public/media/' + x : null)
   const roomUrl = roomRow && !roomRow.dead && roomRow.slug ? appBase + '/' + (p as unknown as { page_slug: string }).page_slug + '/' + roomRow.slug : null
