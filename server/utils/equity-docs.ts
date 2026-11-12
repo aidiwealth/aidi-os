@@ -32,10 +32,12 @@ export async function storeFinancingDoc(f: { name: string; data: Buffer }, title
   return id
 }
 
-// The data room's Financing room (made the first time it is needed).
-async function financingRoom(): Promise<string> {
-  const r = (await db().query<{ id: string }>("SELECT id FROM fundraise.rooms WHERE lower(name) = 'financing' ORDER BY created_at LIMIT 1")).rows[0]
-  return r?.id ?? (await one<{ id: string }>("INSERT INTO fundraise.rooms (name, description) VALUES ('Financing', 'SAFEs, notes, share purchase agreements and certificates, by funding round') RETURNING id")).id
+// The data room cap table documents are filed in: the one chosen for them in the data room, else one named
+// Financing (made the first time it is needed). Its category: the one set for them there, else the funding round.
+async function financingRoom(): Promise<{ id: string; folder: string | null }> {
+  const r = (await db().query<{ id: string; financing_folder: string | null }>("SELECT id, financing_folder FROM fundraise.rooms WHERE financing OR lower(name) = 'financing' ORDER BY financing DESC, created_at LIMIT 1")).rows[0]
+  if (r) return { id: r.id, folder: r.financing_folder }
+  return { id: (await one<{ id: string }>("INSERT INTO fundraise.rooms (name, description, financing) VALUES ('Financing', 'SAFEs, notes, share purchase agreements and certificates, by funding round', true) RETURNING id")).id, folder: null }
 }
 
 export interface AttachIn { captableId: string; holderId: string; convertibleId?: string | null; issuanceId?: string | null; documentId: string; kind: string; round?: string | null; hint?: string | null; toRoom: boolean; userId: string | null }
@@ -55,8 +57,9 @@ export async function attachHolderDoc(a: AttachIn): Promise<{ id: string; round:
   let roomFile: string | null = null
   if (a.toRoom) {
     const room = await financingRoom()
-    roomFile = (await db().query<{ id: string }>('SELECT id FROM fundraise.files WHERE document_id = $1 AND room_id = $2', [a.documentId, room])).rows[0]?.id
-      ?? (await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, room_id) VALUES ($1, $2, $3, $4) RETURNING id', [a.documentId, title.slice(0, 200), round.slice(0, 60), room])).id
+    // Already in any data room (perhaps moved there by hand): left where it is.
+    roomFile = (await db().query<{ id: string }>('SELECT id FROM fundraise.files WHERE document_id = $1 ORDER BY (room_id = $2) DESC LIMIT 1', [a.documentId, room.id])).rows[0]?.id
+      ?? (await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, room_id) VALUES ($1, $2, $3, $4) RETURNING id', [a.documentId, title.slice(0, 200), (room.folder || round).slice(0, 60), room.id])).id
   }
   const id = (await one<{ id: string }>(`INSERT INTO equity.holder_docs (captable_id, holder_id, convertible_id, issuance_id, document_id, kind, round, room_file_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT (holder_id, document_id) DO UPDATE SET convertible_id = coalesce(EXCLUDED.convertible_id, equity.holder_docs.convertible_id), issuance_id = coalesce(EXCLUDED.issuance_id, equity.holder_docs.issuance_id), kind = EXCLUDED.kind, round = EXCLUDED.round, room_file_id = coalesce(EXCLUDED.room_file_id, equity.holder_docs.room_file_id) RETURNING id`,

@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
       (SELECT count(*)::int FROM crm.deals d JOIN crm.stages s ON s.id = d.stage_id WHERE d.pipeline_id = p.id AND s.kind IN ('open','committed')) AS in_play
     FROM crm.pipelines p ORDER BY (p.status = 'open') DESC, p.created_at DESC`)
   await roomId() // every company has at least one room
-  const rooms = await db().query('SELECT r.id, r.name, r.description, (SELECT count(*)::int FROM fundraise.files f WHERE f.room_id = r.id) AS files, (SELECT count(*)::int FROM fundraise.links l WHERE l.room_id = r.id) AS links, (SELECT coalesce(sum(l.views), 0)::int FROM fundraise.links l WHERE l.room_id = r.id) AS views FROM fundraise.rooms r ORDER BY r.created_at')
+  const rooms = await db().query('SELECT r.id, r.name, r.description, r.financing, r.financing_folder, (SELECT count(*)::int FROM fundraise.files f WHERE f.room_id = r.id) AS files, (SELECT count(*)::int FROM fundraise.links l WHERE l.room_id = r.id) AS links, (SELECT coalesce(sum(l.views), 0)::int FROM fundraise.links l WHERE l.room_id = r.id) AS views FROM fundraise.rooms r ORDER BY r.created_at')
   const memos = await db().query('SELECT id, title, updated_at FROM fundraise.memos ORDER BY updated_at DESC')
   const safes = await db().query("SELECT id, investor_name, amount::float, currency, valuation_cap::float, discount::float, to_char(safe_date, 'YYYY-MM-DD') AS safe_date FROM fundraise.safes ORDER BY created_at DESC")
   const handle = (await db().query<{ slug: string }>('SELECT slug FROM financials.public_pages LIMIT 1')).rows[0]?.slug ?? null
