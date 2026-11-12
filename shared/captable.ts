@@ -136,12 +136,15 @@ export function exitByHolder(d: Data, exit: number, today: string): { rows: { ho
   const t = table(d, today)
   const capBase = Math.max(1, t.issued + t.granted)
   const open = d.convertibles.filter((c) => c.status === 'outstanding')
-  const totalConv = open.reduce((s, c) => s + c.amount, 0)
+  // A post-money SAFE owns amount / cap of the company once the SAFEs convert, so its price is the cap spread over
+  // the shares there will be then (subtracting the SAFE money from the cap broke down once it was larger than a cap).
+  const postS = open.filter((c) => c.kind === 'safe' && c.post_money && c.valuation_cap).reduce((s, c) => s + c.amount / c.valuation_cap!, 0)
+  const liqCap = capBase / Math.max(0.05, 1 - Math.min(0.95, postS))
   let wf = waterfall(d, exit, today), per = wf.per_common
   let plan = open.map((c) => ({ c, shares: 0, cash: true }))
   for (let pass = 0; pass < 6; pass++) {
     plan = open.map((c) => {
-      const capPrice = c.valuation_cap ? (c.post_money ? Math.max(1, c.valuation_cap - totalConv) : c.valuation_cap) / capBase : null
+      const capPrice = c.valuation_cap ? c.valuation_cap / (c.post_money ? liqCap : capBase) : null
       const discPrice = c.discount_pct && per > 0 ? per * (1 - c.discount_pct / 100) : null
       const price = [capPrice, discPrice].filter((x): x is number => !!x && x > 0).reduce((m, x) => Math.min(m, x), Infinity)
       const shares = Number.isFinite(price) ? c.amount / price : 0

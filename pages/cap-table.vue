@@ -2,6 +2,7 @@
 // Finvry cap table: who owns what, the option pool and vesting, SAFEs and notes, and what a priced round or an exit
 // would mean for everyone.
 import { table, round, vested, liveShares, type Data } from '~/shared/captable'
+import { valuate } from '~/shared/valuation'
 import { positions, orderRows, commonHolders, currentPrice, priceOptions, type Right } from '~/shared/positions'
 useHead({ title: 'Cap table' })
 type D = Data & { captable: string; captables: { id: string; name: string; note: string | null; is_main: boolean; updated_at: string; views?: number }[]; holders: (Data['holders'][number] & { email: string | null })[]; safes: { id: string; investor_name: string; amount: number; currency: string; valuation_cap: number | null; discount: number | null; safe_date: string }[]; company: string }
@@ -114,11 +115,31 @@ watch(() => curCt.value, (c) => { savedOrder.value = ((c as unknown as { row_ord
 const ovRows = computed(() => (t.value && data.value ? orderRows(t.value.rows.map((r) => ({ ...r, key: r.holder.name, name: r.holder.name, kind: r.holder.kind, size: r.fd })), savedOrder.value, commonHolders(data.value)) : []))
 // Pro forma for the data room: every position in shares, % and value at today's price per share, as converted,
 // and what each holder would receive in a sale today.
-const pf = reactive({ open: false, price: '' as string | number, note: '', busy: false, msg: '', done: '' })
+const pf = reactive({ open: false, price: '' as string | number, value: '' as string | number, note: '', busy: false, msg: '', done: '' })
 const cp = computed(() => (data.value ? currentPrice(data.value) : { price: null, source: '' }))
-const pOpts = computed(() => (data.value ? priceOptions(data.value) : []))
+// The shares a company value is spread over: once the SAFEs convert where there are any, else fully diluted today.
+const pfShares = computed(() => priceOptions(data.value ?? ({ classes: [], holders: [], issuances: [], plans: [], grants: [], convertibles: [] } as any)).find((o) => o.after)?.after ?? t.value?.fd ?? 0)
+// The Valuation tab's peer-based value (its middle), offered as a choice when the founder has set it up.
+const peerMid = ref<{ value: number; peers: number; discount: number } | null>(null)
+async function loadPeerMid() {
+  try {
+    const v = await $fetch<{ company: import('~/shared/valuation').ValCompany; peers: import('~/shared/valuation').Peer[]; assumptions: import('~/shared/valuation').ValAssumptions }>('/api/equity/valuation', { query: { ct: data.value?.captable } })
+    const r = valuate(v.company, v.peers, v.assumptions)
+    peerMid.value = r.equity ? { value: r.equity[1], peers: v.peers.filter((p) => p.use).length, discount: r.discount } : null
+  } catch { peerMid.value = null }
+}
+const pOpts = computed(() => {
+  const base = data.value ? priceOptions(data.value) : []
+  if (!peerMid.value || !pfShares.value) return base
+  const m = peerMid.value, cap = m.value >= 1e6 ? '$' + Math.round(m.value / 1e5) / 10 + 'M' : '$' + Math.round(m.value / 1e3) + 'k'
+  const peer = { price: Math.round(m.value / pfShares.value * 10000) / 10000, date: new Date().toISOString().slice(0, 10), kind: 'peers' as const, after: undefined as number | undefined, source: 'trading peers, ' + cap + ' (middle of the range on the Valuation tab) ÷ shares', how: cap + ' from ' + m.peers + ' trading peers after a ' + m.discount + '% discount, ÷ ' + Math.round(pfShares.value).toLocaleString('en-US') + ' shares.' }
+  const i = base.findIndex((o) => o.kind === 'nominal')
+  return i < 0 ? [...base, peer] : [...base.slice(0, i), peer, ...base.slice(i)]
+})
 const pOpt = computed(() => pOpts.value.find((o) => o.price === Number(pf.price)) ?? null)
-function openPf() { Object.assign(pf, { open: true, price: cp.value.price ?? '', note: cp.value.price ? '' : '', busy: false, msg: '', done: '' }) }
+function openPf() { Object.assign(pf, { open: true, price: cp.value.price ?? '', value: '', note: cp.value.price ? '' : '', busy: false, msg: '', done: '' }); loadPeerMid() }
+// A company value typed in becomes the price per share.
+function setPfValue() { const v = Number(pf.value) || 0; if (v > 0 && pfShares.value) { pf.price = Math.round(v / pfShares.value * 10000) / 10000; pf.note = 'company valued at ' + briefMoney(v, 'USD') + ' by the company' } }
 const pfVal = computed(() => { const p = Number(pf.price) || 0, after = pOpts.value.find((o) => o.after)?.after; return p && t.value ? { fd: t.value.fd * p, after: after ? after * p : null } : null })
 async function savePf() {
   pf.busy = true; pf.msg = ''
@@ -360,10 +381,12 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
     <AppModal :open="pf.open" title="Pro forma cap table for investors" @close="pf.open = false">
       <div class="pfm"><p class="mut">A PDF in the data room with every position today, after conversion, and on a sale.</p>
         <div v-if="pOpts.length" class="pfo"><span class="mut">Pick the price to value the shares at</span>
-          <label v-for="(o, i) in pOpts.slice(0, 4)" :key="i" class="pfc" :class="{ on: Number(pf.price) === o.price }"><input type="radio" name="pfp" :checked="Number(pf.price) === o.price" @change="pf.price = o.price"><span><b>{{ usd(o.price) }} a share</b><em v-if="i === 0 && o.kind !== 'nominal'" class="rec">Recommended</em><span class="mut">{{ o.kind === 'safe' ? 'From your latest SAFE' : o.kind === 'round' ? 'From your latest priced round' : 'Nominal price' }} · {{ o.date }}</span><span class="mut">{{ o.how }}</span></span></label></div>
-        <label class="label">{{ pOpts.length ? 'Or enter a price per share (USD)' : 'Price per share (USD)' }}<input v-model="pf.price" type="number" min="0" step="0.0001" placeholder="e.g. 1.25"><span v-if="!pOpts.length" class="mut">No round or SAFE with a cap recorded yet: enter a price, e.g. from a 409A valuation.</span></label>
+          <label v-for="(o, i) in pOpts.slice(0, 4)" :key="i" class="pfc" :class="{ on: Number(pf.price) === o.price }"><input type="radio" name="pfp" :checked="Number(pf.price) === o.price" @change="pf.price = o.price"><span><b>{{ usd(o.price) }} a share</b><em v-if="i === 0 && o.kind !== 'nominal'" class="rec">Recommended</em><span class="mut">{{ o.kind === 'safe' ? 'From your latest SAFE' : o.kind === 'round' ? 'From your latest priced round' : (o.kind as string) === 'peers' ? 'From trading peers (Valuation tab)' : 'Nominal price' }} · {{ o.date }}</span><span class="mut">{{ o.how }}</span></span></label></div>
+        <div class="pf2"><label class="label">Or value the company at (USD)<input v-model="pf.value" type="number" min="0" step="1000000" placeholder="e.g. 40000000" @input="setPfValue"><span class="mut">Spread over {{ Math.round(pfShares).toLocaleString('en-US') }} shares{{ data.convertibles.some((c) => c.status === 'outstanding') ? ' once the SAFEs convert' : '' }}.</span></label>
+        <label class="label">{{ pOpts.length ? 'Or a price per share (USD)' : 'Price per share (USD)' }}<input v-model="pf.price" type="number" min="0" step="0.0001" placeholder="e.g. 1.25" @input="pf.value = ''; pf.note = ''"><span v-if="!pOpts.length" class="mut">No round or SAFE with a cap recorded yet: enter a price, e.g. from a 409A valuation.</span></label>
+        </div>
         <label v-if="Number(pf.price) && !pOpt" class="label">Where this price comes from<input v-model="pf.note" maxlength="120" placeholder="e.g. 409A valuation, March 2026"></label>
-        <p v-if="pfVal" class="pfv">At this price the company is worth <b>{{ briefMoney(pfVal.after ?? pfVal.fd, 'USD') }}</b>{{ pfVal.after ? ' once the SAFEs convert (' + briefMoney(pfVal.fd, 'USD') + ' on today\'s fully diluted shares)' : ' fully diluted today' }}<template v-if="pOpt?.kind === 'nominal'">. That's a nominal price, so investors will read this value as far too low.</template><template v-else>.</template></p>
+        <p v-if="pfVal" class="pfv">At this price the company is worth <b>{{ briefMoney(pfVal.after ?? pfVal.fd, 'USD') }}</b>{{ pfVal.after ? ' once the SAFEs convert' : ' fully diluted' }}<template v-if="pOpt?.kind === 'nominal'">. That's a nominal price, so investors will read this value as far too low.</template><template v-else>.</template></p>
         <p v-if="pf.done" class="ok">{{ pf.done }} <NuxtLink to="/fundraising?t=room">Open the data room</NuxtLink></p><p v-if="pf.msg" class="error">{{ pf.msg }}</p></div>
       <template #foot><span class="sp" /><button class="btn secondary" @click="pf.open = false">{{ pf.done ? 'Close' : 'Cancel' }}</button><button v-if="!pf.done" class="btn" :disabled="pf.busy || !Number(pf.price)" @click="savePf">{{ pf.busy ? 'Adding…' : 'Add to data room' }}</button></template>
     </AppModal>
@@ -418,5 +441,5 @@ td.pos { color: var(--c-blue-deep); } td.nw { white-space: nowrap; }
 .hr2 .hn b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dch2 { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; text-align: left; } .sm2 { font-size: 12.5px; }
 .dcp { display: inline-flex; align-items: center; background: #e6eef6; font-size: 12px; } .dcp button { border: 0; background: none; font: inherit; color: var(--c-navy); cursor: pointer; padding: 3px 4px 3px 8px; white-space: nowrap; } .dcp .x { padding: 3px 7px 3px 3px; color: var(--c-muted); font-size: 13px; } .dcp .x:hover { color: #b54708; }
 @media (max-width: 760px) { .hr2 { grid-template-columns: 32px minmax(0, 1fr); padding: 12px; } .hr2 .dch2, .hr2 .ha { grid-column: 2; } .hr2 .sm2 { display: none; } .ch .tb { justify-content: flex-start; } }
-.pfo { display: flex; flex-direction: column; gap: 8px; } .pfc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13px; } .pfc.on { border-color: var(--c-navy); background: #f5f8fb; } .pfc input { margin-top: 3px; } .pfc > span { display: flex; flex-direction: column; gap: 2px; } .pfc b { font-size: 14px; } .rec { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); text-transform: uppercase; letter-spacing: .05em; } .pfv { margin: 0; font-size: 13.5px; }
+.pfo { display: flex; flex-direction: column; gap: 8px; } .pfc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13px; } .pfc.on { border-color: var(--c-navy); background: #f5f8fb; } .pfc input { margin-top: 3px; } .pfc > span { display: flex; flex-direction: column; gap: 2px; } .pfc b { font-size: 14px; } .rec { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); text-transform: uppercase; letter-spacing: .05em; } .pfv { margin: 0; font-size: 13.5px; } .pf2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 600px) { .pf2 { grid-template-columns: 1fr; } }
 </style>

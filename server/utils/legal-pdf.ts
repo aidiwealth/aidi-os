@@ -130,15 +130,24 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
     let tbl: string[][] = []
     const flushTable = () => {
       if (!tbl.length) return
-      const cols = Math.max(...tbl.map((r) => r.length)), size = cols > 6 ? 8 : 9.5, pad = cols > 6 ? 4 : 5
-      // Columns as wide as their content (long text capped); spare width goes to the first column, and when the
-      // content is too wide every column shrinks in proportion and text wraps. Numbers are right-aligned.
+      const cols = Math.max(...tbl.map((r) => r.length)), size = cols > 6 ? 8 : 9, pad = cols > 6 ? 5 : 6
+      // Number columns are as wide as their widest figure, so figures never run into each other (only their headings
+      // wrap); text columns share what is left, by how much they hold, and wrap. Numbers are right-aligned.
       const txt = (r: string[], c: number) => clean(r[c] ?? '').replace(/\*\*/g, '')
-      const nat = Array.from({ length: cols }, (_, c) => Math.min(maxW * 0.6, Math.max(24, ...tbl.map((r, ri) => (ri === 0 ? bold : reg).widthOfTextAtSize(txt(r, c), size) + pad * 2))))
-      const tot = nat.reduce((a, b) => a + b, 0)
-      const cws = tot <= maxW ? nat.map((w, c) => (c === 0 ? w + maxW - tot : w)) : nat.map((w) => w * maxW / tot), cx = (c: number) => cws.slice(0, c).reduce((a, b) => a + b, 0)
-      const isNum = (s: string) => /^[-–(]?[$€£₦]?[\d.,]+[)%x]?$|^[-–]$/.test(s.replace(/\s/g, ''))
+      const isNum = (s: string) => /^[-–(]?[$€£₦]?[\d.,]+[)%xMkK]?(\s?\(\d+\))?$|^[-–]$/.test(s.replace(/\s/g, ''))
       const right = Array.from({ length: cols }, (_, c) => { const b = tbl.slice(1).map((r) => txt(r, c)).filter(Boolean); return c > 0 && b.length > 0 && b.filter(isNum).length > b.length / 2 })
+      const wordMax = (c: number, ri0 = 0) => Math.max(0, ...tbl.slice(ri0).flatMap((r, ri) => txt(r, c).split(/\s+/).map((w) => (ri + ri0 === 0 ? bold : reg).widthOfTextAtSize(w, size))))
+      const bodyMax = (c: number) => Math.max(0, ...tbl.slice(1).map((r) => reg.widthOfTextAtSize(txt(r, c), size)))
+      const gap = 8
+      const fixed = Array.from({ length: cols }, (_, c) => (right[c] ? Math.max(bodyMax(c), wordMax(c)) + pad * 2 + gap : 0))
+      const want = Array.from({ length: cols }, (_, c) => (right[c] ? 0 : Math.min(maxW * 0.6, Math.max(24, ...tbl.map((r, ri) => (ri === 0 ? bold : reg).widthOfTextAtSize(txt(r, c), size) + pad * 2)))))
+      const fixedTot = fixed.reduce((a, b) => a + b, 0), wantTot = want.reduce((a, b) => a + b, 0), left = maxW - fixedTot
+      let cws: number[]
+      if (left >= wantTot) cws = Array.from({ length: cols }, (_, c) => (right[c] ? fixed[c]! : want[c]! + (c === right.indexOf(false) ? left - wantTot : 0)))
+      else if (left > 0 && wantTot > 0) { const minT = Array.from({ length: cols }, (_, c) => (right[c] ? 0 : wordMax(c) + pad * 2)); const room = Math.max(0, left - minT.reduce((a, b) => a + b, 0)), extra = want.map((w, c) => Math.max(0, w - minT[c]!)), et = extra.reduce((a, b) => a + b, 0) || 1
+        cws = Array.from({ length: cols }, (_, c) => (right[c] ? fixed[c]! : minT[c]! + extra[c]! * Math.min(1, room / et))) }
+      else { const all = Array.from({ length: cols }, (_, c) => (right[c] ? fixed[c]! : want[c]!)), at = all.reduce((a, b) => a + b, 0); cws = all.map((w) => w * maxW / at) }
+      const cx = (c: number) => cws.slice(0, c).reduce((a, b) => a + b, 0)
       tbl.forEach((row, ri) => {
         const font = ri === 0 ? bold : reg
         const cells = Array.from({ length: cols }, (_, c) => clean(row[c] ?? '').replace(/\*\*/g, ''))

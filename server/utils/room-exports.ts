@@ -120,21 +120,24 @@ export function proformaMd(name: string, d: Data, o: { price: number; source: st
   if (t.pool) rows.push({ key: '__pool', name: 'Option pool (available)', kind: 'pool', size: t.pool, hid: null, shares: 0, options: t.pool, fd: t.pool, conv: 0, safe: 0 })
   const ordered = orderRows(rows, o.order, common)
   const rk = (hid: string | null) => [...new Set((o.rights ?? []).filter((x) => x.holder_id === hid).map((x) => RIGHT_LABEL[x.kind] ?? x.kind))].join(', ')
-  const out = ['# Pro forma cap table — ' + name, '', 'As of ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '. Values use a price of **' + usd(P) + ' a share** (' + o.source + ').', '',
+  const value = asFd * P
+  const big = (v: number) => (v >= 1e6 ? '$' + (Math.round(v / 1e4) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }) + 'M' : usd(v))
+  const out = ['# Pro forma cap table — ' + name, '', 'As of ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '. The company is valued at **' + big(value) + '**' + (live.length ? ' once the SAFEs and notes convert' : '') + ', which is **' + usd(P) + ' a share** (' + o.source + ').', '',
     '## Summary', '', '| | |', '|---|---|',
-    '| Price per share | ' + usd(P) + ' |', '| Fully diluted shares today | ' + n0(t.fd) + ' |', '| Implied value today (fully diluted × price) | ' + usd(t.fd * P) + ' |',
-    '| SAFEs and notes outstanding | ' + usd(live.reduce((s, c) => s + c.amount, 0)) + ' (' + live.length + ') |', '| Shares once they convert (estimate) | ' + n0(asFd) + ' |', '| Implied value as converted | ' + usd(asFd * P) + ' |', '',
+    '| Company value' + (live.length ? ' (as converted)' : '') + ' | ' + big(value) + ' |', '| Price per share | ' + usd(P) + ' |', '| Fully diluted shares today | ' + n0(t.fd) + ' |',
+    ...(live.length ? ['| SAFEs and notes outstanding | ' + usd(live.reduce((s, c) => s + c.amount, 0)) + ' (' + live.length + ') |', '| Shares once they convert (estimate) | ' + n0(asFd) + ' |'] : []), '',
     '## Positions today', '', 'Shares and options held now. SAFEs and notes are shown at their amount until they convert.', '',
-    '| Holder | Type | Shares | Options | Fully diluted | % | Value today | SAFEs / notes |', '|---|---|---|---|---|---|---|---|']
-  for (const r of ordered) out.push('| ' + r.name + ' | ' + (r.kind === 'pool' ? 'Pool' : KIND[r.kind] ?? 'Other') + ' | ' + (r.shares ? n0(r.shares) : '-') + ' | ' + (r.options ? n0(r.options) : '-') + ' | ' + n0(r.fd) + ' | ' + pct(t.fd ? r.fd / t.fd * 100 : 0) + ' | ' + (r.hid ? usd(shareVal(r.hid) + optVal(r.hid)) : '-') + ' | ' + (r.safe ? usd(r.safe) : '-') + ' |')
-  out.push('| **Total** | | ' + n0(t.issued) + ' | ' + n0(t.granted + t.pool) + ' | ' + n0(t.fd) + ' | 100% | ' + usd(d.holders.reduce((s, h) => s + shareVal(h.id) + optVal(h.id), 0)) + ' | ' + usd(live.reduce((s, c) => s + c.amount, 0)) + ' |', '')
+    '| Holder | Type | Shares | Options | % today | SAFEs / notes |', '|---|---|---|---|---|---|']
+  for (const r of ordered) out.push('| ' + r.name + ' | ' + (r.kind === 'pool' ? 'Pool' : KIND[r.kind] ?? 'Other') + ' | ' + (r.shares ? n0(r.shares) : '-') + ' | ' + (r.options ? n0(r.options) : '-') + ' | ' + (r.fd ? pct(t.fd ? r.fd / t.fd * 100 : 0) : '-') + ' | ' + (r.safe ? usd(r.safe) : '-') + ' |')
+  out.push('| **Total** | | ' + n0(t.issued) + ' | ' + n0(t.granted + t.pool) + ' | 100% | ' + usd(live.reduce((s, c) => s + c.amount, 0)) + ' |', '')
   if (live.length) {
     out.push('## Positions once SAFEs and notes convert', '', 'Each SAFE or note converted at its valuation cap (uncapped ones at today\'s price). An estimate: the next round\'s terms decide.', '',
-      '| Holder | Fully diluted today | From SAFEs / notes | As converted | % as converted | Value as converted |', '|---|---|---|---|---|---|')
-    for (const r of ordered) out.push('| ' + r.name + ' | ' + n0(r.fd) + ' | ' + (r.conv ? n0(r.conv) : '-') + ' | ' + n0(r.fd + r.conv) + ' | ' + pct(asFd ? (r.fd + r.conv) / asFd * 100 : 0) + ' | ' + (r.hid ? usd(shareVal(r.hid) + optVal(r.hid) + r.conv * P) : '-') + ' |')
+      '| Holder | Today | From SAFEs | As converted | % | Value |', '|---|---|---|---|---|---|')
+    for (const r of [...ordered].sort((x, y) => (y.fd + y.conv) - (x.fd + x.conv))) out.push('| ' + r.name + ' | ' + (r.fd ? n0(r.fd) : '-') + ' | ' + (r.conv ? n0(r.conv) : '-') + ' | ' + n0(r.fd + r.conv) + ' | ' + pct(asFd ? (r.fd + r.conv) / asFd * 100 : 0) + ' | ' + (r.hid ? usd(shareVal(r.hid) + optVal(r.hid) + r.conv * P) : '-') + ' |')
     out.push('| **Total** | ' + n0(t.fd) + ' | ' + n0(convTotal) + ' | ' + n0(asFd) + ' | 100% | ' + usd(d.holders.reduce((s, h) => s + shareVal(h.id) + optVal(h.id), 0) + convTotal * P) + ' |', '', 'Values: shares at the price, options at the price less their strike, SAFE and note shares at the price. The unallocated pool has no value until granted.', '',
-      '### SAFEs and notes', '', '| Investor | Type | Amount | Valuation cap | Discount | Shares on conversion (est.) |', '|---|---|---|---|---|---|')
-    for (const c of live) out.push('| ' + hname(c.holder_id) + ' | ' + (c.kind === 'safe' ? (c.post_money ? 'Post-money SAFE' : 'Pre-money SAFE') : 'Note' + (c.interest_pct ? ', ' + c.interest_pct + '%' : '')) + (c.mfn ? ', MFN' : '') + ' | ' + usd(c.amount) + ' | ' + (c.valuation_cap ? usd(c.valuation_cap) : 'None') + ' | ' + (c.discount_pct ? c.discount_pct + '%' : '-') + ' | ' + n0(convShares(c)) + ' |')
+      '### SAFEs and notes', '', '| Investor | Type | Date | Amount | Cap | Discount | Shares (est.) |', '|---|---|---|---|---|---|---|')
+    const capS = (v: number) => (v >= 1e6 ? '$' + (Math.round(v / 1e4) / 100).toString() + 'M' : '$' + Math.round(v / 1e3) + 'k')
+    for (const c of [...live].sort((x, y) => (x.issued_on < y.issued_on ? -1 : 1))) out.push('| ' + hname(c.holder_id) + ' | ' + (c.kind === 'safe' ? (c.post_money ? 'SAFE, post' : 'SAFE, pre') : 'Note' + (c.interest_pct ? ', ' + c.interest_pct + '%' : '')) + (c.mfn ? ', MFN' : '') + ' | ' + c.issued_on + ' | ' + usd(c.amount) + ' | ' + (c.valuation_cap ? capS(c.valuation_cap) : 'None') + ' | ' + (c.discount_pct ? c.discount_pct + '%' : '-') + ' | ' + n0(convShares(c)) + ' |')
     out.push('')
   }
   // A sale today at the implied value, paid out through the preferences.
@@ -142,7 +145,7 @@ export function proformaMd(name: string, d: Data, o: { price: number; source: st
   if (exit > 0) {
     const x = exitByHolder(d, exit, today)
     const byName = new Map(x.rows.map((r) => [r.holder, r]))
-    out.push('## If the company were sold today', '', 'A sale at ' + usd(exit) + ' (the implied value as converted), before fees and taxes: preferred shares take their preference or convert, whichever pays more; SAFEs and notes are paid back or convert, whichever is worth more; options receive the price less their strike.', '',
+    out.push('## If the company were sold today', '', 'A sale at ' + big(exit) + ' (the company value above), before fees and taxes: preferred shares take their preference or convert, whichever pays more; SAFEs and notes are paid back or convert, whichever is worth more; options receive the price less their strike.', '',
       '| Holder | How they are paid | Proceeds | Share of the sale |', '|---|---|---|---|')
     for (const r of ordered.filter((r) => r.hid && byName.has(r.name))) { const v = byName.get(r.name)!; out.push('| ' + r.name + ' | ' + v.how + ' | ' + usd(v.amount) + ' | ' + pct(v.amount / exit * 100) + ' |') }
     for (const v of x.rows.filter((v) => !ordered.some((r) => r.name === v.holder))) out.push('| ' + v.holder + ' | ' + v.how + ' | ' + usd(v.amount) + ' | ' + pct(v.amount / exit * 100) + ' |')

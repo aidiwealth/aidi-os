@@ -17,8 +17,9 @@ export default defineEventHandler(async (event) => {
     const price = d.price ?? cp.price
     if (!price) throw apiError('invalid', 'Enter the price per share to value the positions (e.g. your last round\'s price).')
     const rights = (await db().query<{ holder_id: string | null; kind: string }>('SELECT holder_id, kind FROM equity.rights WHERE captable_id = $1', [ct])).rows
-    title = 'Pro forma cap table - ' + c.name; folder ||= 'Financing'
-    docs = [{ title, md: proformaMd(c.name, data as import('~/shared/captable').Data, { price, source: d.price && d.price !== cp.price ? (d.price_note || 'set by the company') : cp.source, order: c.row_order ?? [], rights }) }]
+    const label = /^(main )?cap table$/i.test(c.name.trim()) ? org.name : org.name + ', ' + c.name
+    title = 'Pro forma cap table - ' + label; folder ||= 'Financing'
+    docs = [{ title, md: proformaMd(label, data as import('~/shared/captable').Data, { price, source: d.price && d.price !== cp.price ? (d.price_note || 'set by the company') : cp.source, order: c.row_order ?? [], rights }) }]
   } else if (d.kind === 'forecast' || d.kind === 'captable') {
     await requireModule(event, d.kind === 'forecast' ? 'forecast' : 'equity')
     if (d.kind === 'forecast') {
