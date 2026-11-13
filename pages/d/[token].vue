@@ -9,10 +9,11 @@ interface Fi { id: string; title: string; folder: string; folder_id?: string | n
 interface Fo { id: string; parent_id: string | null; name: string; position: number; link: boolean }
 const nda = ref(String(useRoute().query.nda ?? ''))
 const goNda = (id: string) => { const u = new URL(window.location.href); u.searchParams.set('nda', id); window.location.replace(u.toString()) }
-const { data, error, refresh } = await useFetch<{ company: string; logo?: string | null; require_email: boolean; allow_download: boolean; watermark: boolean; nda: { required: boolean; text: string; key: string }; files: Fi[]; folders?: Fo[] }>(() => api + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-d-' + ref0 + (nda.value ? '-' + nda.value : '') })
+const { data, error, refresh } = await useFetch<{ invite?: { page: string }; viewer?: string | null; company: string; logo?: string | null; require_email: boolean; allow_download: boolean; watermark: boolean; nda: { required: boolean; text: string; key: string }; files: Fi[]; folders?: Fo[] }>(() => api + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-d-' + ref0 + (nda.value ? '-' + nda.value : '') })
 useHead({ titleTemplate: '%s', title: () => (data.value ? data.value.company + ' · Data room' : 'Data room'), meta: [{ name: 'robots', content: 'noindex' }] })
 const email = ref(''); const entered = ref(false); const msg = ref('')
-onMounted(() => { const e = localStorage.getItem('finvry-dr-email'); if (e) { email.value = e; entered.value = true } const k = data.value?.nda?.key; if (data.value?.nda?.required && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s && s !== nda.value) goNda(s) } })
+watchEffect(() => { const v = data.value?.viewer; if (v) { email.value = v; entered.value = true } })
+onMounted(() => { const e = localStorage.getItem('finvry-dr-email'); if (e && !data.value?.viewer) { email.value = e; entered.value = true } const k = data.value?.nda?.key; if (data.value?.nda?.required && k) { const s = localStorage.getItem('finvry-nda-' + k); if (s && s !== nda.value) goNda(s) } })
 function signed(id: string) { goNda(id) }
 function enter() { if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) { localStorage.setItem('finvry-dr-email', email.value); entered.value = true } else msg.value = 'Enter a valid email.' }
 const viewing = ref<{ title: string; url: string; mark: string | null; overlay?: string | null; mime?: string } | null>(null); let viewId = ''; let timer: ReturnType<typeof setInterval> | undefined
@@ -76,6 +77,8 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
   <section class="wrap">
     <div v-if="!error && data?.nda.required && data.logo" class="brand"><span class="lg"><img :src="data.logo" :alt="data.company"></span></div>
     <div v-if="error" class="card"><h1>{{ error.statusCode === 410 ? 'This link is no longer active' : 'This link is not valid' }}</h1><p class="mut">Ask the company for a new link.</p></div>
+    <template v-else-if="data && data.invite"><div class="brand"><span v-if="data.logo" class="lg"><img :src="data.logo" :alt="data.company"></span><div><p class="label">Data room</p><h1>{{ data.company }}</h1></div></div>
+      <InviteGate :slug="data.invite.page" :company="data.company" what="room" @done="refresh()" /></template>
     <NdaGate v-else-if="data && data.nda.required" :company="data.company" :text="data.nda.text" kind="room" :ref-key="ref0" :org-key="data.nda.key" @signed="signed" />
     <template v-else-if="data">
       <div class="brand"><span v-if="data.logo" class="lg"><img :src="data.logo" :alt="data.company"></span><div><p class="label">Data room</p><h1>{{ data.company }}</h1></div></div>

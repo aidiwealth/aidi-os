@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   const l = await findRoomLink(ref)
   if (!l) throw apiError('invalid_link', 'This link is not valid.', 404)
   if (l.dead) throw apiError('expired', 'This link is no longer active.', 410)
+  if (await roomShut(event, ref, l.organization_id)) throw apiError('invite_only', 'This data room is invite-only. Confirm your email to open it.', 403)
   // Folder links show on links to a whole room and on the company's own data room address (every room); not on a
   // link to chosen files.
   if (l.file_ids.length) throw apiError('not_found', 'Not found', 404)

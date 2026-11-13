@@ -482,3 +482,25 @@ export async function sendWalletStatement(input: { to: string; company: string; 
   const body = 'Attached is the wallet statement for ' + input.company + ', ' + input.from + ' to ' + input.till + ' (CSV, opens in Excel, Numbers or Google Sheets).'
   await sendEmail({ to: input.to, subject: head + ' · ' + input.from + ' to ' + input.till, text: head + '\n\n' + body, html: shell(h1(esc(head)) + para(esc(body)), body), brand: 'finvry', attachments: [input.file] })
 }
+
+// Invite-only parts of an investor page: the one-time code, the invitation, and a visitor asking to be let in.
+export async function sendPageCode(to: string, company: string, code: string): Promise<void> {
+  const text = 'Your code to open ' + company + "'s investor documents: " + code + '\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this email.'
+  const html = shell(h1('Your code for ' + esc(company)) + para('Enter this code to open ' + esc(company) + "'s investor documents. It expires in 10 minutes.") +
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 6px;"><tr><td style="background:${BRAND.soft};border:1px solid ${BRAND.rule};padding:16px 26px;">` +
+    `<span style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:32px;letter-spacing:0.32em;font-weight:600;color:${BRAND.navy};">${code}</span></td></tr></table>` + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">If you didn't ask for this code, you can ignore this email.</p>`, 'Your code is ' + code)
+  await sendEmail({ to, subject: 'Your code for ' + company, text, html })
+}
+export async function sendPageInvite(to: string, company: string, link: string): Promise<void> {
+  const text = company + ' invited you to see its investor documents, including the data room.\n\nOpen them: ' + link + '\n\nUse this email address; we will send you a one-time code to confirm it.'
+  const html = shell(h1(esc(company) + ' invited you') + para(esc(company) + ' has shared its investor documents with you, including the data room.') + button('Open the investor page →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Use this email address (${esc(to)}). We'll send you a one-time code to confirm it.</p>`, company + ' shared its investor documents with you')
+  await sendEmail({ to, subject: company + ' invited you to its data room', text, html })
+}
+export async function sendPageAccessRequest(to: string, who: { email: string; name: string | null; company: string | null; note: string | null }, link: string): Promise<void> {
+  const label = (who.name ? who.name + ' (' + who.email + ')' : who.email) + (who.company ? ', ' + who.company : '')
+  const text = label + ' asked to see your data room.' + (who.note ? '\n\n"' + who.note + '"' : '') + '\n\nApprove or decline: ' + link
+  const html = shell(h1('Someone asked to see your data room') + para('<b>' + esc(label) + '</b> asked for access.') + (who.note ? para('“' + esc(who.note) + '”') : '') + button('Approve or decline →', link), 'Data room access request')
+  await sendEmail({ to, subject: 'Data room request: ' + (who.name || who.email), text, html })
+}

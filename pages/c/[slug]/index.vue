@@ -5,7 +5,7 @@ definePageMeta({ layout: 'public' })
 const route = useRoute()
 const slug = String(route.params.slug ?? route.params.handle ?? '')
 interface CtGroups { fd: number; groups: { label: string; shares: number; pct: number }[]; convertibles: { count: number; total: number; currency: string } }
-interface D { email_gate?: boolean; forecast_group?: { currency: string; name: string; companies: import('~/shared/forecast').GroupCo[] } | null; sectors?: { as_of: string; sectors: { sector: string; share: number; customers: number }[] } | null; forecast?: { name: string; assumptions: import('~/shared/forecast').Assumptions; updated_at: string } | null; captable?: { name: string; detail: 'summary' | 'holders'; data?: import('~/shared/captable').Data; groups?: CtGroups } | null; room_url?: string | null; board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
+interface D { invite?: { viewer: string | null; team: boolean; room: boolean; captable: boolean } | null; email_gate?: boolean; forecast_group?: { currency: string; name: string; companies: import('~/shared/forecast').GroupCo[] } | null; sectors?: { as_of: string; sectors: { sector: string; share: number; customers: number }[] } | null; forecast?: { name: string; assumptions: import('~/shared/forecast').Assumptions; updated_at: string } | null; captable?: { name: string; detail: 'summary' | 'holders'; data?: import('~/shared/captable').Data; groups?: CtGroups } | null; room_url?: string | null; board?: { name: string; data: InstanceType<typeof BoardViewT>['$props']['data']; metrics: Record<string, { label: string; unit: string }> } | null; logo?: string | null; cover?: string | null; gated: boolean; nda: { required: boolean; text: string; key: string } | null; updates: { id: string; title: string; published_at: string }[]; company: string; headline: string | null; about: string | null; website: string | null; deck_url: string | null; contact_email: string | null; period_type: string; currency: string; metrics: { key: string; label: string; points: { period: string; value: number | null }[] }[] }
 const nda = ref(String(useRoute().query.nda ?? ''))
 const goNda = (id: string) => { const u = new URL(window.location.href); u.searchParams.set('nda', id); window.location.replace(u.toString()) }
 const { data, error, refresh } = await useFetch<D>(() => '/api/public/c/' + slug + (nda.value ? '?nda=' + encodeURIComponent(nda.value) : ''), { key: 'pub-c-' + slug + (nda.value ? '-' + nda.value : '') })
@@ -166,7 +166,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
         <p v-if="lede" class="lede">{{ lede }}</p>
         <div class="links">
           <a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a>
-          <a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">Open data room</a>
+          <a v-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2"><svg v-if="data.invite?.room" class="lk" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" /></svg>{{ data.invite?.room ? 'Data room · invite only' : 'Open data room' }}</a>
           <a v-if="data.website" :href="webUrl(data.website)" target="_blank" rel="noopener" class="b3">{{ data.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') }} ↗</a>
         </div>
       </header>
@@ -218,6 +218,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
       </section>
       <section v-if="data.forecast_group" class="sec"><h2>Forecast</h2><ForecastGroup :data="data.forecast_group" :can-edit="false" pub /></section>
       <section v-else-if="data.forecast" class="sec"><h2>Forecast</h2><p class="pm">{{ data.forecast.name }} · updated {{ new Date(data.forecast.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}. An estimate from the company's assumptions, not a promise of results.</p><ForecastSummary :assumptions="data.forecast.assumptions" compact /></section>
+      <section v-if="data.invite?.captable" class="sec"><h2>Ownership</h2><InviteGate :slug="slug" :company="data.company" what="captable" compact @done="refresh()" /></section>
       <section v-if="data.captable" class="sec"><h2>Ownership</h2>
         <CapTableSummary v-if="data.captable.detail === 'holders' && data.captable.data" :data="data.captable.data" />
         <div v-else-if="own" class="own">
@@ -234,7 +235,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 
       <section v-if="data.deck_url || data.contact_email || data.room_url" class="sec cta">
         <div><span>Investors</span><b>Talk to {{ data.company }}</b></div>
-        <div class="ctab"><a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="b2">Contact us</a><a v-else-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">Open data room</a></div>
+        <div class="ctab"><a v-if="data.deck_url" :href="webUrl(data.deck_url)" target="_blank" rel="noopener" class="b1">View our deck</a><a v-if="data.contact_email" :href="'mailto:' + data.contact_email" class="b2">Contact us</a><a v-else-if="data.room_url" :href="webUrl(data.room_url)" target="_blank" rel="noopener" class="b2">{{ data.invite?.room ? 'Data room · invite only' : 'Open data room' }}</a></div>
       </section>
 
       <section v-if="data.updates.length" id="updates" class="sec">
@@ -258,7 +259,7 @@ const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavio
 .hero h1 { margin: 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.015em; font-weight: 600; color: var(--c-navy); max-width: 760px; }
 .lede { margin: 0; font-size: 15.5px; line-height: 1.6; color: var(--c-ink-soft); max-width: 720px; } .hero .links { margin-top: 6px; } .hero .b2 { border-color: #c9d6e5; }
 .links, .ctab { display: flex; flex-wrap: wrap; gap: 10px; } .links a, .ctab a { text-decoration: none; font-size: 15px; padding: 12px 20px; }
-.b1 { background: var(--c-navy); color: #fff; font-weight: 600; } .b2 { border: 1px solid #d5d2cb; color: var(--c-navy); background: #fff; } .b3 { color: var(--c-blue-deep); padding-left: 8px !important; }
+.b1 { background: var(--c-navy); color: #fff; font-weight: 600; } .b2 .lk { width: 14px; height: 14px; margin-right: 7px; vertical-align: -2px; } .b2 { border: 1px solid #d5d2cb; color: var(--c-navy); background: #fff; } .b3 { color: var(--c-blue-deep); padding-left: 8px !important; }
 .big { display: grid; border-top: 2px solid var(--c-navy); } .big > div { padding: 22px 20px; border-left: 1px solid #ecebe7; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .big > div:first-child { padding-left: 0; border-left: 0; }
 .big b { font-size: 34px; color: var(--c-navy); letter-spacing: -0.02em; font-weight: 600; font-variant-numeric: tabular-nums; } .big b.neg { color: #b54708; } .big span { font-size: 14px; color: var(--c-muted); } .big em { font-style: normal; font-size: 14px; color: var(--c-blue-deep); font-weight: 600; }
 .src { margin: 4px 0 0; font-size: 12.5px; color: var(--c-muted); } .src a { color: var(--c-blue-deep); }

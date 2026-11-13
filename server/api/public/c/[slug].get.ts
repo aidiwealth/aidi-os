@@ -77,8 +77,11 @@ export default defineEventHandler(async (event) => {
       forecast_group = { currency: gf.currency, name: gf.name, companies: gf.companies.map((c) => ({ id: c.id, name: c.name, currency: c.currency, main: c.main, per: c.per, rate_source: c.rate_source, forecasts: [], use: c.use ? { id: c.use.id, name: c.use.name, assumptions: c.use.assumptions } : null })) }
     }
   }
+  // Invite-only parts (the data room, the cap table) stay shut until the visitor proves an email on the company's list.
+  const inv = await inviteOnly(ok), viewer = inv.size ? await invitedViewer(event, ok) : null
+  const shut = (part: Locked) => inv.has(part) && !viewer
   let captable: unknown = null
-  if (pp.captable_id && on.has('equity')) {
+  if (pp.captable_id && on.has('equity') && !shut('captable')) {
     const ct = (await db().query<{ name: string }>('SELECT name FROM equity.captables WHERE id = $1', [pp.captable_id])).rows[0]
     if (ct) { const d = await memo('pct:' + ok + ':' + pp.captable_id, M, () => loadCapTable(pp.captable_id!)); captable = { name: ct.name, detail: pp.captable_detail, ...(pp.captable_detail === 'holders' ? { data: { ...d, holders: d.holders.map((h) => ({ id: h.id, name: h.name, kind: h.kind })) } } : { groups: capGroups(d) }) } }
   }
@@ -90,6 +93,7 @@ export default defineEventHandler(async (event) => {
   const og_image = lid && /^image\/(png|jpe?g|webp|gif)$/.test(lmime) ? mediaUrl(lid) : null
   const financials = await memo('ifin:' + ok, M, () => investorFinancials()).catch(() => null)
   setHeader(event, 'Server-Timing', 'page;dur=' + (Date.now() - T0))
-  return { sectors, financials, forecast, forecast_group, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
+  const invite = inv.size ? { viewer: viewer === 'team' ? null : viewer, team: viewer === 'team', room: !!roomUrl && shut('room'), captable: !!pp.captable_id && on.has('equity') && shut('captable') } : null
+  return { invite, sectors, financials, forecast, forecast_group, captable, og_image, room_url: roomUrl, board, logo: mediaUrl(lid), cover: mediaUrl((p as unknown as { cover_id: string | null }).cover_id), gated: false, branding, updates, company: org.name, headline: p.headline, about: p.about, website: p.website, deck_url: (chosenDeck && mainDeck ? appBase + '/deck/' + mainDeck.token : null) || p.deck_url || (mainDeck ? appBase + '/deck/' + mainDeck.token : null), contact_email: p.contact_email, period_type: p.period_type,
     currency: rows[rows.length - 1]?.currency ?? is.currency, metrics, workspace: await publicWorkspace() }
 })

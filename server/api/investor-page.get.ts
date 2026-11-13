@@ -2,10 +2,10 @@
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'gp', 'team')
   const org = (await currentOrg())!
-  const r = await db().query('SELECT slug, published, headline, about, website, deck_url, contact_email, metrics, period_type, views, last_viewed_at, logo_id, cover_id, board_id, deck_id, room_link_id, forecast_id, forecast_group, email_gate, captable_id, captable_detail, show_sectors FROM financials.public_pages LIMIT 1')
+  const r = await db().query('SELECT slug, published, headline, about, website, deck_url, contact_email, metrics, period_type, views, last_viewed_at, logo_id, cover_id, board_id, deck_id, room_link_id, forecast_id, forecast_group, email_gate, invite_only, captable_id, captable_detail, show_sectors FROM financials.public_pages LIMIT 1')
   const slug = org.name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || org.slug
   // Each part on its own, all at once rather than one after another.
-  const [room, cash_sec, visitors, ents, metrics, me] = await Promise.all([
+  const [room, cash_sec, visitors, ents, metrics, me, invites] = await Promise.all([
     (async () => { const on = await enabledModules(); if (!on.has('fundraising')) return { available: false }
       const files = Number((await db().query<{ n: string }>('SELECT count(*) AS n FROM fundraise.files')).rows[0]?.n ?? 0)
       const lid = (r.rows[0] as { room_link_id?: string | null } | undefined)?.room_link_id
@@ -15,8 +15,9 @@ export default defineEventHandler(async (event) => {
     (async () => { const v = await db().query<{ email: string; name: string | null; created_at: string; last_viewed_at: string; views: number }>('SELECT email, name, created_at, last_viewed_at, views FROM financials.page_access ORDER BY last_viewed_at DESC LIMIT 50').catch(() => ({ rows: [] })); const n = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM financials.page_access').catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0; return { total: n, recent: v.rows } })(),
     custEntities().catch(() => []),
     metricCatalog(),
-    currentOrg()])
+    currentOrg(),
+    db().query<{ id: string; email: string; status: string; name: string | null; company: string | null; note: string | null; invited_at: string | null; requested_at: string | null; last_seen_at: string | null; views: number }>("SELECT id, email, status, name, company, note, invited_at, requested_at, last_seen_at, views FROM financials.page_invites WHERE status <> 'declined' ORDER BY status = 'requested' DESC, coalesce(requested_at, invited_at, created_at) DESC LIMIT 500").then((x) => x.rows).catch(() => [])])
   return { page: r.rows[0] ?? { slug, published: false, headline: '', about: '', website: '', deck_url: '', contact_email: '', metrics: ['revenue', 'gross_margin', 'net_income', 'cash'], period_type: 'month', views: 0, last_viewed_at: null },
-    room, cash_sec, visitors, group_forecast: ents.length > 1,
+    room, cash_sec, visitors, invites, group_forecast: ents.length > 1,
     exists: !!r.rows[0], base: (me?.kind === 'company' ? brands().finvry.url : brands().aidi.url) + '/c/', metrics: metrics.map((m) => ({ key: m.key, label: m.label, group: m.group })), company: org.name }
 })
