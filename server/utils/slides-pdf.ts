@@ -1,10 +1,10 @@
 // PowerPoint (.pptx) decks are turned into PDF on upload, on our own server, with LibreOffice (installed at build
 // time from the Aptfile). One conversion runs at a time to keep memory in check; nothing leaves the server.
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 
 export const isPptx = (d: Uint8Array, name: string) => /\.pptx$/i.test(name) && d[0] === 0x50 && d[1] === 0x4b && d[2] === 0x03 && d[3] === 0x04
 
@@ -21,10 +21,23 @@ function soffice(): string | null {
     if (r === '/layers' && existsSync(r)) for (const a of safeLs(r)) for (const b of safeLs(join(r, a))) c.push(join(r, a, b, 'usr/lib/libreoffice/program/soffice'))
     if (r === '/opt' && existsSync(r)) for (const a of safeLs(r)) if (/^libreoffice/i.test(a)) c.push(join(r, a, 'program/soffice'))
   }
-  found = c.find((p) => existsSync(p)) ?? null
+  const hit = c.find((p) => existsSync(p))
+  found = hit ? realpathSync(hit) : null
   return found
 }
 function safeLs(d: string) { try { return readdirSync(d) } catch { return [] } }
+
+// Ubuntu's LibreOffice expects to live in /usr/lib/libreoffice with its settings in /etc/libreoffice. Packages from
+// the Aptfile are unpacked under another folder, so tell it where it really is, or it crashes on start.
+function placeArgs(bin: string, profile: string): string[] {
+  const base = dirname(dirname(bin))
+  if (base === '/usr/lib/libreoffice' || !base.endsWith('/lib/libreoffice')) return []
+  const prefix = base.slice(0, -'/lib/libreoffice'.length).replace(/\/usr$/, '')
+  const reg = [join(prefix, 'etc/libreoffice/registry'), join(base, 'share/registry')].find((d) => existsSync(join(d, 'main.xcd')))
+  const args = ['-env:BRAND_BASE_DIR=file://' + base]
+  if (reg) args.push('-env:CONFIGURATION_LAYERS=xcsxcu:file://' + reg + ' res:file://' + reg + ' user:file://' + profile + '/user/registrymodifications.xcu')
+  return args
+}
 
 let queue: Promise<unknown> = Promise.resolve()
 export function pptxToPdf(data: Uint8Array): Promise<Uint8Array> {
@@ -40,12 +53,17 @@ async function convert(data: Uint8Array): Promise<Uint8Array> {
   try {
     const src = join(dir, 'deck.pptx')
     await writeFile(src, data)
+    const profile = join(dir, 'profile')
+    let log = ''
     const ok = await new Promise<boolean>((resolve) => {
-      const p = spawn(bin, ['--headless', '--invisible', '--norestore', '--nolockcheck', '--nodefault', '-env:UserInstallation=file://' + join(dir, 'profile'), '--convert-to', 'pdf:impress_pdf_Export', '--outdir', dir, src], { stdio: 'ignore', env: { ...process.env, HOME: dir, SAL_USE_VCLPLUGIN: 'svp' } })
-      const t = setTimeout(() => { p.kill('SIGKILL'); resolve(false) }, 120_000)
-      p.on('error', () => { clearTimeout(t); resolve(false) })
+      const p = spawn(bin, ['--headless', '--invisible', '--norestore', '--nolockcheck', '--nodefault', '-env:UserInstallation=file://' + profile, ...placeArgs(bin, profile), '--convert-to', 'pdf:impress_pdf_Export', '--outdir', dir, src], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: dir, SAL_USE_VCLPLUGIN: 'svp' } })
+      const keep = (b: Buffer) => { log = (log + b.toString()).slice(-2000) }
+      p.stdout?.on('data', keep); p.stderr?.on('data', keep)
+      const t = setTimeout(() => { p.kill('SIGKILL'); log += ' [timed out]'; resolve(false) }, 120_000)
+      p.on('error', (e) => { clearTimeout(t); log += ' ' + e.message; resolve(false) })
       p.on('exit', (code) => { clearTimeout(t); resolve(code === 0) })
     })
+    if (!ok || !existsSync(join(dir, 'deck.pdf'))) console.error('[decks] PowerPoint conversion failed', bin, log.trim())
     const out = join(dir, 'deck.pdf')
     if (!ok || !existsSync(out)) throw apiError('bad_type', "We couldn't read this PowerPoint. Save it as a PDF and upload that.")
     const pdf = new Uint8Array(await readFile(out))
