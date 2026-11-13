@@ -53,6 +53,20 @@ const sections = computed(() => { const out: { id: string; title: string; files:
   else if (folder.value === 'deck') out.push({ id: 'deck', title: 'Pitch deck', files: decks.value })
   else { const fl = filesIn(folder.value); if (fl.length) out.push({ id: folder.value, title: '', files: fl }) }
   return out })
+// A long list shows 40 documents at a time and adds more as the reader scrolls (a large room no longer draws every
+// row at once). Each folder starts again from the top.
+const PAGE = 40
+const shown = ref(PAGE)
+watch(folder, () => { shown.value = PAGE })
+const total = computed(() => sections.value.reduce((t, g) => t + g.files.length, 0))
+const paged = computed(() => { let left = shown.value; const out: typeof sections.value = []
+  for (const g of sections.value) { if (left <= 0) break; out.push({ ...g, files: g.files.slice(0, left) }); left -= g.files.length }
+  return out })
+const more = ref<HTMLElement | null>(null)
+let io: IntersectionObserver | null = null
+watch(more, (el) => { io?.disconnect(); if (!el || typeof IntersectionObserver === 'undefined') return
+  io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting) && shown.value < total.value) shown.value += PAGE }, { rootMargin: '600px 0px' }); io.observe(el) })
+onBeforeUnmount(() => io?.disconnect())
 const subs = computed(() => (folder.value === 'all' || folder.value === 'deck' ? [] : kidsOf(folder.value)))
 const KIND: Record<string, string> = { 'application/pdf': 'PDF', 'text/csv': 'CSV', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX' }
 const badge = (f: Fi) => KIND[f.mime_type] ?? (f.mime_type.startsWith('image/') ? 'IMG' : (f.title.includes('.') ? f.title.split('.').pop()!.toUpperCase().slice(0, 4) : 'FILE'))
@@ -75,9 +89,10 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
         <p v-if="folder !== 'all' && folder !== 'deck'" class="crumb"><template v-for="(x, i) in pathTo(folder)" :key="x.id"><span v-if="i" class="sl">/</span><button v-if="i < pathTo(folder).length - 1" class="cl" @click="folder = x.id">{{ x.name }}</button><b v-else>{{ x.name }}</b></template></p>
         <div v-if="subs.length" class="subs"><button v-for="k in subs" :key="k.id" class="card sfo" @click="pick(k)"><span class="fic" aria-hidden="true"><template v-if="k.link">↗</template><svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h6l2 2h10v10H3z" /></svg></span><b>{{ k.name }}</b><em>{{ k.link ? 'Opens outside the data room' : countIn(k.id) + (countIn(k.id) === 1 ? ' document' : ' documents') }}</em></button></div>
         <p v-if="folder !== 'all' && folder !== 'deck' && !subs.length && !sections.length" class="mut">This folder is empty.</p>
-        <div v-for="g in sections" :key="g.id" class="grp"><h2 v-if="g.title">{{ g.title }}</h2>
+        <div v-for="g in paged" :key="g.id" class="grp"><h2 v-if="g.title">{{ g.title }}</h2>
           <div v-for="f in g.files" :key="f.id" class="card fi"><FileBadge :name="f.title" :mime="f.mime_type" size="lg" /><span class="ft"><b>{{ f.title }}</b><em>{{ size(f.size_bytes) }}</em></span>
             <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download && (!data.watermark || f.mime_type.includes('pdf'))" class="btn secondary" @click="open(f, true)">Download</button></div></div>
+        <div v-if="shown < total" ref="more" class="more"><button class="btn secondary" @click="shown += PAGE">Show more ({{ total - shown }} left)</button></div>
         </div></div><!-- /dr -->
         <EmptyState v-if="!data.files.length && !fos.some((f) => f.link)" compact icon="documents" title="No documents shared yet" />
       </template>
@@ -101,6 +116,7 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
 .main .grp:first-child h2 { margin-top: 0; }
 .side button.sub { font-size: 13.5px; padding-top: 7px; padding-bottom: 7px; } .side .dp1 { padding-left: 26px; } .side .dp2 { padding-left: 40px; } .side .dp3 { padding-left: 54px; }
 .car { font-style: normal; display: inline-block; width: 14px; color: var(--c-muted); font-size: 11px; } .ext { font-weight: 500; font-size: 12px; color: var(--c-blue-deep); white-space: nowrap; }
+.more { display: flex; justify-content: center; padding: 16px 0 8px; }
 .crumb { margin: 0 0 12px; font-size: 13.5px; color: var(--c-muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .crumb b { color: var(--c-ink); } .crumb .sl { color: var(--c-rule-strong); } .cl { border: 0; background: none; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 18px; } .sfo { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 0 10px; align-items: center; text-align: left; font: inherit; cursor: pointer; color: var(--c-ink); } .sfo:hover { border-color: var(--c-blue-deep); }
 .sfo .fic { grid-row: span 2; width: 28px; height: 22px; background: var(--c-signal-soft); display: grid; place-items: center; font-size: 12px; color: var(--c-blue-deep); } .sfo b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .sfo em { font-style: normal; font-size: 12px; color: var(--c-muted); }
