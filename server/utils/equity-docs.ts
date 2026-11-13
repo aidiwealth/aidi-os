@@ -40,6 +40,15 @@ async function financingRoom(): Promise<{ id: string; folder: string | null }> {
   return { id: (await one<{ id: string }>("INSERT INTO fundraise.rooms (name, description, financing) VALUES ('Financing', 'SAFEs, notes, share purchase agreements and certificates, by funding round', true) RETURNING id")).id, folder: null }
 }
 
+// With a category set for cap table documents, each round gets a sub-folder inside it (made when first needed).
+async function roundFolder(room: string, category: string, round: string): Promise<string> {
+  const find = async (parent: string | null, name: string) => (await db().query<{ id: string }>('SELECT id FROM fundraise.folders WHERE room_id = $1 AND parent_id IS NOT DISTINCT FROM $2 AND name = $3 AND link_url IS NULL ORDER BY position LIMIT 1', [room, parent, name])).rows[0]?.id
+  const make = async (parent: string | null, name: string) => (await one<{ id: string }>('INSERT INTO fundraise.folders (room_id, parent_id, name, position) VALUES ($1, $2, $3, (SELECT coalesce(max(position) + 1, 0) FROM fundraise.folders WHERE room_id = $1 AND parent_id IS NOT DISTINCT FROM $2)) RETURNING id', [room, parent, name])).id
+  const top = (await find(null, category.slice(0, 60))) ?? (await make(null, category.slice(0, 60)))
+  const r = (round || 'Other').slice(0, 60)
+  return (await find(top, r)) ?? (await make(top, r))
+}
+
 export interface AttachIn { captableId: string; holderId: string; convertibleId?: string | null; issuanceId?: string | null; documentId: string; kind: string; round?: string | null; hint?: string | null; toRoom: boolean; userId: string | null }
 export async function attachHolderDoc(a: AttachIn): Promise<{ id: string; round: string; in_room: boolean }> {
   const h = (await db().query<{ name: string }>('SELECT name FROM equity.holders WHERE id = $1 AND captable_id = $2', [a.holderId, a.captableId])).rows[0]
@@ -59,7 +68,7 @@ export async function attachHolderDoc(a: AttachIn): Promise<{ id: string; round:
     const room = await financingRoom()
     // Already in any data room (perhaps moved there by hand): left where it is.
     roomFile = (await db().query<{ id: string }>('SELECT id FROM fundraise.files WHERE document_id = $1 ORDER BY (room_id = $2) DESC LIMIT 1', [a.documentId, room.id])).rows[0]?.id
-      ?? (await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, room_id) VALUES ($1, $2, $3, $4) RETURNING id', [a.documentId, title.slice(0, 200), (room.folder || round).slice(0, 60), room.id])).id
+      ?? (await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, folder_id, room_id) VALUES ($1, $2, $3, $4, $5) RETURNING id', [a.documentId, title.slice(0, 200), (room.folder || round).slice(0, 60), room.folder ? await roundFolder(room.id, room.folder, round) : null, room.id])).id
   }
   const id = (await one<{ id: string }>(`INSERT INTO equity.holder_docs (captable_id, holder_id, convertible_id, issuance_id, document_id, kind, round, room_file_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT (holder_id, document_id) DO UPDATE SET convertible_id = coalesce(EXCLUDED.convertible_id, equity.holder_docs.convertible_id), issuance_id = coalesce(EXCLUDED.issuance_id, equity.holder_docs.issuance_id), kind = EXCLUDED.kind, round = EXCLUDED.round, room_file_id = coalesce(EXCLUDED.room_file_id, equity.holder_docs.room_file_id) RETURNING id`,
