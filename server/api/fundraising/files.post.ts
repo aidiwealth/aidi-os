@@ -8,7 +8,12 @@ export default defineEventHandler(async (event) => {
   const file = parts?.find((p) => p.name === 'file' && p.filename)
   const folder = (parts?.find((p) => p.name === 'folder')?.data.toString() || 'General').trim().slice(0, 60) || 'General'
   const isDeck = parts?.find((p) => p.name === 'is_deck')?.data.toString() === 'true'
-  const room = await roomId(parts?.find((p) => p.name === 'room_id')?.data.toString())
+  let room = await roomId(parts?.find((p) => p.name === 'room_id')?.data.toString())
+  // Straight into a folder (any depth): its room wins.
+  const fid = parts?.find((p) => p.name === 'folder_id')?.data.toString() || null
+  const target = fid && /^[0-9a-f-]{36}$/i.test(fid) ? (await db().query<{ room_id: string }>('SELECT room_id FROM fundraise.folders WHERE id = $1 AND link_url IS NULL', [fid])).rows[0] : null
+  if (fid && !target) throw apiError('not_found', 'That folder no longer exists.', 404)
+  if (target) room = target.room_id
   if (!file || !file.data.length) throw apiError('invalid', 'Choose a file.')
   if (file.data.length > 50 * 1024 * 1024) throw apiError('too_large', 'Files can be up to 50 MB.', 413)
   const ext = (file.filename ?? '').split('.').pop()?.toLowerCase() ?? ''
@@ -19,6 +24,6 @@ export default defineEventHandler(async (event) => {
   const title = (file.filename ?? 'file').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200) || 'file'
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,$4,$5,$6)", [docId, 'Data room — ' + title, key, mime, file.data.length, createHash('sha256').update(file.data).digest('hex')])
   if (isDeck) await db().query('UPDATE fundraise.files SET is_deck = false WHERE room_id = $1', [room])
-  const r = await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, is_deck, room_id) VALUES ($1,$2,$3,$4,$5) RETURNING id', [docId, title, folder, isDeck, room])
+  const r = await one<{ id: string }>('INSERT INTO fundraise.files (document_id, title, folder, folder_id, is_deck, room_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [docId, title, folder, target && !isDeck ? fid : null, isDeck, room])
   return { ok: true, id: r.id }
 })

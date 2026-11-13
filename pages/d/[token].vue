@@ -39,7 +39,7 @@ const openSet = ref<Record<string, boolean>>({})
 const pathTo = (id: string): Fo[] => { const f = fos.value.find((x) => x.id === id); return f ? [...(f.parent_id ? pathTo(f.parent_id) : []), f] : [] }
 // The menu, flattened: each folder with its depth; a folder's sub-folders show while it is open or holds the one chosen.
 const menu = computed(() => { const out: { f: Fo; depth: number; kids: boolean }[] = []; const onPath = new Set(pathTo(folder.value).map((x) => x.id))
-  const walk = (pid: string | null, depth: number) => { for (const f of kidsOf(pid)) { if (!f.link && !countIn(f.id)) continue; const kids = kidsOf(f.id).some((k) => k.link || countIn(k.id)); out.push({ f, depth, kids }); if (kids && (openSet.value[f.id] ?? onPath.has(f.id))) walk(f.id, depth + 1) } }
+  const walk = (pid: string | null, depth: number) => { for (const f of kidsOf(pid)) { const kids = kidsOf(f.id).length > 0; out.push({ f, depth, kids }); if (kids && (openSet.value[f.id] ?? onPath.has(f.id))) walk(f.id, depth + 1) } }
   walk(null, 0); return out })
 function pick(f: Fo) { if (f.link) return openLink(f); const was = folder.value === f.id; folder.value = f.id; openSet.value = { ...openSet.value, [f.id]: was ? !(openSet.value[f.id] ?? true) : true } }
 async function openLink(f: Fo) {
@@ -53,7 +53,7 @@ const sections = computed(() => { const out: { id: string; title: string; files:
   else if (folder.value === 'deck') out.push({ id: 'deck', title: 'Pitch deck', files: decks.value })
   else { const fl = filesIn(folder.value); if (fl.length) out.push({ id: folder.value, title: '', files: fl }) }
   return out })
-const subs = computed(() => (folder.value === 'all' || folder.value === 'deck' ? [] : kidsOf(folder.value).filter((k) => k.link || countIn(k.id))))
+const subs = computed(() => (folder.value === 'all' || folder.value === 'deck' ? [] : kidsOf(folder.value)))
 const KIND: Record<string, string> = { 'application/pdf': 'PDF', 'text/csv': 'CSV', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX' }
 const badge = (f: Fi) => KIND[f.mime_type] ?? (f.mime_type.startsWith('image/') ? 'IMG' : (f.title.includes('.') ? f.title.split('.').pop()!.toUpperCase().slice(0, 4) : 'FILE'))
 const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB')
@@ -74,6 +74,7 @@ const size = (b: number) => (b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(
           <button v-for="m in menu" :key="m.f.id" :class="['dp' + Math.min(m.depth, 3), { on: folder === m.f.id, sub: m.depth > 0 }]" :aria-expanded="m.kids ? (openSet[m.f.id] ?? pathTo(folder).some((x) => x.id === m.f.id)) : undefined" @click="pick(m.f)"><span><i v-if="m.kids" class="car">{{ (openSet[m.f.id] ?? pathTo(folder).some((x) => x.id === m.f.id)) ? '▾' : '▸' }}</i>{{ m.f.name }}</span><em v-if="!m.f.link">{{ countIn(m.f.id) }}</em><b v-else class="ext">Open ↗</b></button></nav><div class="main">
         <p v-if="folder !== 'all' && folder !== 'deck'" class="crumb"><template v-for="(x, i) in pathTo(folder)" :key="x.id"><span v-if="i" class="sl">/</span><button v-if="i < pathTo(folder).length - 1" class="cl" @click="folder = x.id">{{ x.name }}</button><b v-else>{{ x.name }}</b></template></p>
         <div v-if="subs.length" class="subs"><button v-for="k in subs" :key="k.id" class="card sfo" @click="pick(k)"><span class="fic" aria-hidden="true"><template v-if="k.link">↗</template><svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h6l2 2h10v10H3z" /></svg></span><b>{{ k.name }}</b><em>{{ k.link ? 'Opens outside the data room' : countIn(k.id) + (countIn(k.id) === 1 ? ' document' : ' documents') }}</em></button></div>
+        <p v-if="folder !== 'all' && folder !== 'deck' && !subs.length && !sections.length" class="mut">This folder is empty.</p>
         <div v-for="g in sections" :key="g.id" class="grp"><h2 v-if="g.title">{{ g.title }}</h2>
           <div v-for="f in g.files" :key="f.id" class="card fi"><FileBadge :name="f.title" :mime="f.mime_type" size="lg" /><span class="ft"><b>{{ f.title }}</b><em>{{ size(f.size_bytes) }}</em></span>
             <button class="btn" @click="open(f)">{{ f.mime_type.includes('pdf') || f.mime_type.startsWith('image/') ? 'View' : 'Open' }}</button><button v-if="data.allow_download && (!data.watermark || f.mime_type.includes('pdf'))" class="btn secondary" @click="open(f, true)">Download</button></div></div>

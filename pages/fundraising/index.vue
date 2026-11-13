@@ -68,7 +68,9 @@ const err = (e: unknown) => (e as { data?: { data?: { error?: { message?: string
 const msg = ref(''); const ok = ref(''); const busy = ref(false)
 
 // data room: upload
-const up = reactive({ open: false, folder: 'General', is_deck: false })
+const up = reactive({ open: false, folder: 'General', folder_id: '' as string, is_deck: false })
+// The upload box puts files in any folder of this room (sub-folders included), or a new category.
+watch(() => up.open, (o) => { if (o) { const first = destinations.value.find((d) => d.room === curRoom.value?.name); Object.assign(up, { folder_id: first?.id ?? 'new', folder: '' }) } })
 const genDoc = reactive({ open: false, kind: 'safe' as 'safe' | 'memo' | 'nda' | 'update' | 'forecast' | 'captable' | 'proforma', id: '', format: 'pdf' as 'pdf' | 'xlsx', busy: false, msg: '' })
 const { data: gens, refresh: refreshGens } = await useFetch<{ safes: { id: string; title: string }[]; memos: { id: string; title: string }[]; updates: { id: string; title: string }[]; forecasts: { id: string; title: string }[]; captables: { id: string; title: string }[]; nda: boolean }>('/api/fundraising/generated', { key: 'room-gens', default: () => ({ safes: [], memos: [], updates: [], forecasts: [], captables: [], nda: false }) })
 // SAFEs already held (on the cap table, with their signed documents), beside the ones drafted here.
@@ -84,7 +86,7 @@ const fromDeck = reactive({ open: false, deck_id: '', is_deck: true, busy: false
 const { data: myDecks } = await useFetch<{ decks: { id: string; title: string; primary_deck: boolean; versions: number; stats: { total: number } }[] }>('/api/documents/decks', { key: 'room-decks', default: () => ({ decks: [] }) })
 async function addDeck() { fromDeck.busy = true; fromDeck.msg = ''; try { await $fetch('/api/fundraising/files/deck', { method: 'POST', body: { deck_id: fromDeck.deck_id, is_deck: fromDeck.is_deck, room_id: curRoom.value?.id } }); fromDeck.open = false; await refresh() } catch (e) { fromDeck.msg = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the deck.' } finally { fromDeck.busy = false } }
 async function upload(ev: Event) { const files = Array.from((ev.target as HTMLInputElement).files ?? []); busy.value = true; msg.value = ''
-  for (const f of files) { const fd = new FormData(); fd.append('file', f); fd.append('folder', up.folder); fd.append('is_deck', String(up.is_deck && files.length === 1)); if (curRoom.value) fd.append('room_id', curRoom.value.id); try { await $fetch('/api/fundraising/files', { method: 'POST', body: fd }) } catch (e) { msg.value = f.name + ': ' + err(e) } }
+  for (const f of files) { const fd = new FormData(); fd.append('file', f); fd.append('folder', up.folder); if (up.folder_id && up.folder_id !== 'new' && !up.is_deck) fd.append('folder_id', up.folder_id); fd.append('is_deck', String(up.is_deck && files.length === 1)); if (curRoom.value) fd.append('room_id', curRoom.value.id); try { await $fetch('/api/fundraising/files', { method: 'POST', body: fd }) } catch (e) { msg.value = f.name + ': ' + err(e) } }
   busy.value = false; up.open = false; await refresh() }
 // The room's folders: categories in the company's order, sub-folders at any depth, links to folders elsewhere.
 const roomFolders = computed(() => (data.value?.folders ?? []).filter((f) => f.room_id === curRoom.value?.id))
@@ -105,11 +107,14 @@ const destinations = computed(() => { const out: { id: string; label: string; ro
 const post = (url: string, body: Record<string, unknown>) => $fetch<{ ok: boolean; id?: string | null }>(url, { method: 'POST', body })
 async function act(fn: () => Promise<unknown>) { msg.value = ''; try { await fn(); await refresh() } catch (e) { msg.value = err(e) } }
 const over = ref('')
+const upBusy = ref('')
 let dragging: { k: 'file' | 'folder'; id: string } | null = null
 const dr: DrCtx = {
   kids: (id) => kidsOf(id), files: (id) => filesIn(id) as never, count: countIn, isOpen, toggle: (id) => { opened.value = { ...opened.value, [id]: !isOpen(id) } }, over,
   drag: (e, k, id) => { dragging = { k, id }; e.dataTransfer?.setData('text/plain', k + ':' + id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move' },
-  drop: (_e, t) => { over.value = ''; const d = dragging; dragging = null; if (!d) return
+  drop: (e, t) => { over.value = ''; const d = dragging; dragging = null
+    if (!d && t.folder && !t.folder.link_url && e.dataTransfer?.files.length) return uploadTo(t.folder.id, Array.from(e.dataTransfer.files))
+    if (!d) return
     if (t.folder) {
       if (t.folder.link_url || d.id === t.folder.id) return
       if (d.k === 'file') return act(() => post('/api/fundraising/files/move', { ids: [d.id], folder_id: t.folder!.id }))
@@ -119,9 +124,31 @@ const dr: DrCtx = {
       return act(async () => { const src = roomFiles.value.find((x) => x.id === d.id); if (src?.folder_id !== target.folder_id) await post('/api/fundraising/files/move', { ids: [d.id], folder_id: target.folder_id })
         const list = filesIn(target.folder_id!).map((x) => x.id).filter((x) => x !== d.id); list.splice(list.indexOf(target.id), 0, d.id); await post('/api/fundraising/files/move', { ids: list, order: true }) }) }
   },
-  step: (f, dd) => { const sib = kidsOf(f.parent_id); const i = sib.findIndex((x) => x.id === f.id), j = i + dd; if (j < 0 || j >= sib.length) return; const ids = sib.map((x) => x.id); [ids[i], ids[j]] = [ids[j]!, ids[i]!]; act(() => post('/api/fundraising/folders', { action: 'order', ids })) },
-  addSub: (f) => newFolder(f.id), edit: (f) => editFolder(f), moveFile: (f) => moveFile(f as F), writeFile: (f) => openWrite(f as F), deleted: () => refresh() }
+  busy: upBusy,
+  folder: (f, what) => {
+    if (what === 'upload') { up.open = true; nextTick(() => { up.folder_id = f.id; up.is_deck = false }) }
+    else if (what === 'sub') newFolder(f.id)
+    else if (what === 'link') newFolder(f.id, true)
+    else if (what === 'up' || what === 'down') { const sib = kidsOf(f.parent_id); const i = sib.findIndex((x) => x.id === f.id), j = i + (what === 'up' ? -1 : 1); if (j < 0 || j >= sib.length) return; const ids = sib.map((x) => x.id); [ids[i], ids[j]] = [ids[j]!, ids[i]!]; act(() => post('/api/fundraising/folders', { action: 'order', ids })) }
+    else if (what === 'delete') delFolder(f)
+    else editFolder(f, what)
+  },
+  file: (f, what) => { const x = roomFiles.value.find((y) => y.id === f.id)!; if (what === 'rename') renameFile(x); else if (what === 'move') moveFile(x); else if (what === 'edit') openWrite(x); else delRecord('dr_file', x.id, x.title) } }
+// Delete with a confirmation (the same check the delete buttons elsewhere use).
+async function delRecord(type: string, id: string, name: string, after?: () => void) { if (!await askConfirm('Delete ' + name + '? This cannot be undone.')) return; await act(async () => { await $fetch('/api/records/' + type + '/' + id, { method: 'DELETE' }); after?.() }) }
+async function delFolder(f: DrFolder) { if (countIn(f.id)) { msg.value = 'Move or delete the files in ' + f.name + ' first.'; return } if (!await askConfirm('Delete ' + f.name + '?')) return; await act(() => post('/api/fundraising/folders', { action: 'delete', id: f.id })) }
 provide('dr', dr)
+// Upload straight into a folder: its Upload button, or files dropped from the computer onto its name.
+async function uploadTo(folderId: string, files: File[]) {
+  if (!files.length) return
+  upBusy.value = folderId; msg.value = ''
+  for (const f of files) { const fd = new FormData(); fd.append('file', f); fd.append('folder_id', folderId); try { await $fetch('/api/fundraising/files', { method: 'POST', body: fd }) } catch (e) { msg.value = f.name + ': ' + err(e) } }
+  upBusy.value = ''; opened.value = { ...opened.value, [folderId]: true }; await refresh()
+}
+// Rename a file (the name investors see).
+const rn = reactive({ open: false, id: '', title: '', busy: false, msg: '' })
+function renameFile(f: F) { Object.assign(rn, { open: true, id: f.id, title: f.title, busy: false, msg: '' }) }
+async function saveRename() { rn.busy = true; rn.msg = ''; try { await post('/api/fundraising/files/rename', { id: rn.id, title: rn.title.trim() }); rn.open = false; await refresh() } catch (e) { rn.msg = err(e) } finally { rn.busy = false } }
 // Dropping a folder on the strip under the list makes it a top-level category of this room.
 function dropTop() { over.value = ''; const d = dragging; dragging = null; if (d?.k === 'folder') act(() => post('/api/fundraising/folders', { action: 'move', id: d.id, parent_id: null, room_id: curRoom.value!.id })) }
 // New category, sub-folder or link.
@@ -131,7 +158,7 @@ async function saveNew() { nf.busy = true; nf.msg = ''; try { await post('/api/f
 // Edit a folder: rename (and change a link), move it (inside another folder, to the top level, or to another room),
 // make it a data room of its own, or delete it once empty.
 const fe = reactive({ open: false, f: null as DrFolder | null, act: 'rename' as 'rename' | 'move' | 'own' | 'delete', name: '', url: '', dest: '', busy: false, msg: '' })
-function editFolder(f: DrFolder) { Object.assign(fe, { open: true, f, act: 'rename', name: f.name, url: f.link_url ?? '', dest: '', busy: false, msg: '' }); fe.dest = feDest.value.find((x) => x.id !== (f.parent_id ?? 'top:' + f.room_id))?.id ?? '' }
+function editFolder(f: DrFolder, what: 'rename' | 'move' | 'own' = 'rename') { Object.assign(fe, { open: true, f, act: what, name: f.name, url: f.link_url ?? '', dest: '', busy: false, msg: '' }); fe.dest = feDest.value.find((x) => x.id !== (f.parent_id ?? 'top:' + f.room_id))?.id ?? '' }
 const feDest = computed(() => { if (!fe.f) return []; const bad = new Set<string>(); const mark = (id: string) => { bad.add(id); for (const k of (data.value?.folders ?? []).filter((x) => x.parent_id === id)) mark(k.id) }; mark(fe.f.id)
   return [...(data.value?.rooms ?? []).map((r) => ({ id: 'top:' + r.id, label: 'Top level', room: r.name })), ...destinations.value.filter((x) => !bad.has(x.id))].sort((a, b) => (a.room === curRoom.value?.name ? -1 : 0) - (b.room === curRoom.value?.name ? -1 : 0)) })
 async function saveFolder() {
@@ -209,13 +236,14 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
     <template v-else-if="tab === 'room'">
       <div class="rms"><button v-for="r in data.rooms" :key="r.id" :class="{ on: curRoom?.id === r.id }" @click="room = r.id">{{ r.name }}<em>{{ r.files }}</em></button><button class="nr" @click="editRoom()">+ New data room</button></div>
       <div v-if="curRoom" class="rmh"><div><h2>{{ curRoom.name }}</h2><span class="mut">{{ curRoom.description || roomFiles.length + ' file' + (roomFiles.length === 1 ? '' : 's') + ' · investors only see what each link shares' }}</span></div>
-        <div class="row rma"><button class="btn secondary sm" @click="editRoom(curRoom)">Room settings</button><button v-if="data.rooms.length > 1" class="btn secondary sm" @click="openMerge()">Merge into another room</button><DeleteButton v-if="data.rooms.length > 1" type="dr_room" :id="curRoom.id" :name="curRoom.name + ' with its files and links'" link @deleted="room = ''; refresh()" /></div></div>
-      <div class="bar2"><div class="row"><button class="btn secondary" @click="openWrite()">Write a document</button><button class="btn secondary" @click="genDoc.open = true; genDoc.msg = ''; refreshGens()">Add a Finvry document</button><button class="btn secondary" @click="fromDeck.open = true; fromDeck.deck_id = myDecks?.decks.find((d) => d.primary_deck)?.id ?? myDecks?.decks[0]?.id ?? ''">Add from Decks</button><button class="btn secondary" @click="up.open = true">Upload files</button></div><button class="btn" :disabled="!roomFiles.length" @click="newLink()">Create tracked link</button></div>
-      <div class="two"><div><div class="fhd"><h3>Files</h3><span class="row"><button class="btn secondary sm" @click="newFolder()">+ Category</button><button class="btn secondary sm" @click="newFolder('', true)">+ Link to a folder</button></span></div>
-        <div v-if="deckFiles.length" class="card fold"><div class="flh"><span class="fl">Pitch deck<em>{{ deckFiles.length }}</em></span></div><div v-for="f in deckFiles" :key="f.id" class="fi"><FileBadge :name="f.title" :mime="f.mime_type" /><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
+        <div class="rma"><MoreMenu label="+ Add"><p>Files</p><button @click="up.open = true">Upload files</button><button @click="openWrite()">Write a document</button><button @click="genDoc.open = true; genDoc.msg = ''; refreshGens()">A Finvry document</button><button @click="fromDeck.open = true; fromDeck.deck_id = myDecks?.decks.find((d) => d.primary_deck)?.id ?? myDecks?.decks[0]?.id ?? ''">From Decks</button><p>Folders</p><button @click="newFolder()">New category</button><button @click="newFolder('', true)">Link to a folder elsewhere</button></MoreMenu>
+          <button class="btn" :disabled="!roomFiles.length" @click="newLink()">Share</button>
+          <MoreMenu dots label="Room actions"><button @click="editRoom(curRoom)">Room settings</button><button v-if="data.rooms.length > 1" @click="openMerge()">Merge into another room</button><template v-if="data.rooms.length > 1"><hr><button class="red" @click="delRecord('dr_room', curRoom.id, curRoom.name + ' with its files and links', () => { room = '' })">Delete this room</button></template></MoreMenu></div></div>
+      <div class="two"><div><div class="fhd"><h3>Files</h3></div>
+        <div v-if="deckFiles.length" class="card fold"><div class="flh"><span class="fl">Pitch deck<em>{{ deckFiles.length }}</em></span></div><div v-for="f in deckFiles" :key="f.id" class="fi"><FileBadge :name="f.title" :mime="f.mime_type" /><span class="ft">{{ f.title }}<em>{{ (f.size_bytes / 1e6).toFixed(1) }} MB</em></span><MoreMenu dots :label="'Actions for ' + f.title"><button @click="renameFile(f)">Rename</button><hr><button class="red" @click="delRecord('dr_file', f.id, f.title)">Delete</button></MoreMenu></div></div>
         <DrNode v-for="f in roots" :key="f.id" :f="f" :depth="0" />
-        <div v-if="loose.length" class="card fold"><div class="flh"><span class="fl">Not in a folder<em>{{ loose.length }}</em></span></div><div v-for="f in loose" :key="f.id" class="fi"><FileBadge :name="f.title" :mime="f.mime_type" /><span class="ft">{{ f.title }}</span><button class="link" @click="moveFile(f)">Move</button><DeleteButton type="dr_file" :id="f.id" :name="f.title" link @deleted="refresh()" /></div></div>
-        <div v-if="roots.length" class="dtop" :class="{ over: over === 'top' }" @dragover.prevent="over = 'top'" @dragleave="over === 'top' && (over = '')" @drop.prevent="dropTop">Drag folders and files by ⋮⋮ to reorder or move them. Drop a folder here to make it a category. Investors see this order.</div>
+        <div v-if="loose.length" class="card fold"><div class="flh"><span class="fl">Not in a folder<em>{{ loose.length }}</em></span></div><div v-for="f in loose" :key="f.id" class="fi"><FileBadge :name="f.title" :mime="f.mime_type" /><span class="ft">{{ f.title }}</span><MoreMenu dots :label="'Actions for ' + f.title"><button @click="renameFile(f)">Rename</button><button @click="moveFile(f)">Move to…</button><hr><button class="red" @click="delRecord('dr_file', f.id, f.title)">Delete</button></MoreMenu></div></div>
+        <div v-if="roots.length" class="dtop" :class="{ over: over === 'top' }" @dragover.prevent="over = 'top'" @dragleave="over === 'top' && (over = '')" @drop.prevent="dropTop">Drag ⋮⋮ to reorder or move into a folder · drop files from your computer onto a folder to upload them there · drop a folder here to make it a category. Investors see this order.</div>
         <p v-if="curRoom?.financing" class="fine">Cap table documents are filed in this room{{ curRoom.financing_folder ? ', under ' + curRoom.financing_folder + ' with a sub-folder per round' : ', one category per round' }}.</p>
           <EmptyState v-if="!roomFiles.length" card icon="upload" title="This data room is empty" text="Upload your deck and documents, or write one here."><div class="row"><button class="btn" @click="up.open = true">Upload files</button><button class="btn secondary" @click="openWrite()">Write a document</button></div></EmptyState></div>
         <div><h3>Tracked links</h3><div v-for="l in roomLinks" :key="l.id" class="card lnk" :class="{ dead: l.revoked }"><div class="lh"><b>{{ l.name }}</b><span class="pill" :class="{ off: l.revoked }">{{ l.revoked ? 'Off' : 'Live' }}</span></div>
@@ -262,9 +290,10 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
 
     <AppModal :open="!!ndaView" title="Signed NDA" wide @close="ndaView = null"><div v-if="ndaView" class="ndv"><div class="ndt" v-html="renderMarkdown(ndaView.nda_text)" /><div class="sg"><span>Signed electronically by</span><b class="sig">{{ ndaView.signature }}</b><span>{{ ndaView.name }} · {{ ndaView.email }}{{ ndaView.company ? ' · ' + ndaView.company : '' }} · {{ new Date(ndaView.signed_at).toLocaleString('en-GB') }}</span></div></div></AppModal>
     <AppModal :open="up.open" :title="'Upload to ' + (curRoom?.name ?? 'the data room')" @close="up.open = false">
-      <div class="frm"><label class="label">Category<input v-model="up.folder" list="dr-cats" maxlength="60" placeholder="e.g. Financials"></label><datalist id="dr-cats"><option v-for="c in catsIn(curRoom?.id ?? '')" :key="c" :value="c" /></datalist>
-        <label class="chk"><input v-model="up.is_deck" type="checkbox"> This is our pitch deck</label>
-        <DropZone multiple accept=".pdf,.pptx,.xlsx,.docx,.csv,.png,.jpg,.jpeg" :disabled="busy" :label="busy ? 'Uploading…' : ''" hint="PDF, PowerPoint, Excel, Word, CSV or images · or click to choose" @change="upload" /><p class="mut">Up to 50 MB per file. PDF views best.</p></div>
+      <div class="frm"><label class="chk"><input v-model="up.is_deck" type="checkbox"> This is our pitch deck</label>
+        <template v-if="!up.is_deck"><label class="label">Put it in<select v-model="up.folder_id"><option v-for="x in destinations.filter((d) => d.room === curRoom?.name)" :key="x.id" :value="x.id">{{ x.label }}</option><option value="new">A new category…</option></select></label>
+          <label v-if="up.folder_id === 'new' || !destinations.some((d) => d.room === curRoom?.name)" class="label">New category<input v-model="up.folder" maxlength="60" placeholder="e.g. Financials"></label></template>
+        <DropZone multiple no-tip accept=".pdf,.pptx,.xlsx,.docx,.csv,.png,.jpg,.jpeg" :disabled="busy" :label="busy ? 'Uploading…' : ''" hint="PDF, PowerPoint, Excel, Word, CSV or images · or click to choose" @change="upload" /><p class="mut">Up to 50 MB per file. PDF views best.</p></div>
     </AppModal>
     <AppModal :open="lk.open" :title="lk.url ? 'Your link is ready' : 'Create a tracked link'" @close="lk.open = false">
       <div v-if="lk.url" class="frm"><p>Send this to {{ lk.name }}. You'll see what they open.</p><div class="cp"><input :value="lk.url" readonly><button class="btn" @click="copy(lk.url)">{{ copied === lk.url ? 'Copied' : 'Copy' }}</button></div></div>
@@ -336,6 +365,10 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
         <p class="mut">Need a new folder? Add it with + Category or + Sub-folder, then move the file. A file moved to another room leaves this room's tracked links.</p><p v-if="mv.msg" class="error">{{ mv.msg }}</p></form>
       <template #foot><button class="btn secondary" @click="mv.open = false">Cancel</button><button class="btn" type="submit" form="mvf" :disabled="mv.busy || !mv.dest">{{ mv.busy ? 'Moving…' : 'Move' }}</button></template>
     </AppModal>
+    <AppModal :open="rn.open" title="Rename a file" @close="rn.open = false">
+      <form id="rnf" class="frm" @submit.prevent="saveRename"><label class="label">Name<input v-model="rn.title" maxlength="200" required></label><p class="mut">The name investors see in the data room. The file itself doesn't change.</p><p v-if="rn.msg" class="error">{{ rn.msg }}</p></form>
+      <template #foot><button class="btn secondary" @click="rn.open = false">Cancel</button><button class="btn" type="submit" form="rnf" :disabled="rn.busy || !rn.title.trim()">{{ rn.busy ? 'Saving…' : 'Save' }}</button></template>
+    </AppModal>
     <AppModal :open="nf.open" :title="nf.link ? 'Link to a folder' : nf.parent ? 'New sub-folder in ' + (data.folders.find((x) => x.id === nf.parent)?.name ?? '') : 'New category'" @close="nf.open = false">
       <form id="nff" class="frm" @submit.prevent="saveNew"><label class="label">{{ nf.link ? 'Name in the menu' : 'Name' }}<input v-model="nf.name" maxlength="60" required :placeholder="nf.link ? 'e.g. Bank statements' : nf.parent ? 'e.g. US company' : 'e.g. Governing documents'"></label>
         <template v-if="nf.link"><label class="label">Folder link<input v-model="nf.url" type="url" maxlength="2000" required placeholder="https://drive.google.com/drive/folders/…"></label>
@@ -344,16 +377,13 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
         <p v-if="nf.msg" class="error">{{ nf.msg }}</p></form>
       <template #foot><button class="btn secondary" @click="nf.open = false">Cancel</button><button class="btn" type="submit" form="nff" :disabled="nf.busy">{{ nf.busy ? 'Adding…' : 'Add' }}</button></template>
     </AppModal>
-    <AppModal :open="fe.open" :title="(fe.f?.link_url ? 'Link: ' : fe.f?.parent_id ? 'Folder: ' : 'Category: ') + (fe.f?.name ?? '')" @close="fe.open = false">
+    <AppModal :open="fe.open" :title="(fe.act === 'move' ? 'Move ' : fe.act === 'own' ? 'Make a data room of ' : fe.f?.link_url ? 'Edit link: ' : 'Rename ') + (fe.f?.name ?? '')" @close="fe.open = false">
       <form v-if="fe.f" id="fef" class="frm" @submit.prevent="saveFolder">
-        <div class="acts"><label :class="{ on: fe.act === 'rename' }"><input v-model="fe.act" type="radio" value="rename"><b>{{ fe.f.link_url ? 'Change the name or link' : 'Rename it' }}</b><span>Stays where it is</span></label>
-          <label :class="{ on: fe.act === 'move' }"><input v-model="fe.act" type="radio" value="move"><b>Move it</b><span>Inside another folder, to the top level, or to another room, with everything in it</span></label>
-          <label v-if="!fe.f.link_url" :class="{ on: fe.act === 'own' }"><input v-model="fe.act" type="radio" value="own"><b>Make it a data room</b><span>A new room called “{{ fe.f.name }}”; its sub-folders become categories there</span></label>
-          <label :class="{ on: fe.act === 'delete' }"><input v-model="fe.act" type="radio" value="delete"><b>Delete it</b><span>{{ fe.f.link_url ? 'Removes the link from the menu' : 'Only once it holds no files' }}</span></label></div>
+        <p v-if="fe.act === 'own'" class="mut">A new data room called “{{ fe.f.name }}”, with everything in it. Its sub-folders become the categories there.</p>
         <template v-if="fe.act === 'rename'"><label class="label">Name<input v-model="fe.name" maxlength="60" required></label><label v-if="fe.f.link_url" class="label">Folder link<input v-model="fe.url" type="url" maxlength="2000" required></label></template>
         <label v-if="fe.act === 'move'" class="label">Move to<select v-model="fe.dest" required><optgroup v-for="r in data.rooms" :key="r.id" :label="r.name"><option v-for="x in feDest.filter((d) => d.room === r.name)" :key="x.id" :value="x.id">{{ x.label === 'Top level' ? 'Top level of ' + r.name : 'Inside ' + x.label }}</option></optgroup></select></label>
         <p v-if="fe.act === 'move' || fe.act === 'own'" class="mut">Files that leave this room drop out of its tracked links.</p><p v-if="fe.msg" class="error">{{ fe.msg }}</p></form>
-      <template #foot><button class="btn secondary" @click="fe.open = false">Cancel</button><button class="btn" :class="{ danger: fe.act === 'delete' }" type="submit" form="fef" :disabled="fe.busy">{{ fe.busy ? 'Saving…' : fe.act === 'rename' ? 'Save' : fe.act === 'move' ? 'Move' : fe.act === 'own' ? 'Make it a data room' : 'Delete' }}</button></template>
+      <template #foot><button class="btn secondary" @click="fe.open = false">Cancel</button><button class="btn" :class="{ danger: fe.act === 'delete' }" type="submit" form="fef" :disabled="fe.busy">{{ fe.busy ? 'Saving…' : fe.act === 'rename' ? 'Save' : fe.act === 'move' ? 'Move' : 'Make it a data room' }}</button></template>
     </AppModal>
     <AppModal :open="mg.open" :title="'Merge ' + (curRoom?.name ?? '') + ' into another room'" @close="mg.open = false">
       <form id="mgf" class="frm" @submit.prevent="saveMerge"><p class="mut">Its files become part of the room you choose, and this room closes.</p><label class="label">Merge into<select v-model="mg.into"><option v-for="r in data.rooms.filter((x) => x.id !== curRoom?.id)" :key="r.id" :value="r.id">{{ r.name }}</option></select></label>
@@ -392,7 +422,7 @@ async function saveSafe() { busy.value = true; msg.value = ''; try { const r = a
 .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; } h3 { margin: 0 0 10px; font-size: 18px; } .li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--c-rule); font-size: 13.5px; } .li em { font-style: normal; color: var(--c-muted); }
 .nx { display: flex; flex-direction: column; gap: 2px; text-align: left; width: 100%; background: var(--c-paper-2); border: 0; padding: 12px 14px; margin-bottom: 8px; font: inherit; cursor: pointer; } .nx:hover { background: var(--c-signal-soft); } .nx span { font-size: 12.5px; color: var(--c-muted); }
 .cta { text-align: center; padding: 28px; margin-bottom: 12px; } .cta p { color: var(--c-ink-soft); max-width: 480px; margin: 6px auto 14px; }
-.bar2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; } .fold { margin-bottom: 10px; padding: 12px 14px; } .flh { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .flh .btn.sm, .rma .btn.sm { padding: 5px 10px; font-size: 12.5px; } .rma { align-items: center; gap: 8px; }
+.bar2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; } .fold { margin-bottom: 10px; padding: 12px 14px; } .flh { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .flh .btn.sm, .rma .btn.sm { padding: 5px 10px; font-size: 12.5px; } .rma { display: flex; align-items: center; gap: 8px; }
 .fhd { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .fhd h3 { margin: 0; } .fhd .btn.sm { padding: 5px 10px; font-size: 12.5px; } .dtop { border: 1.5px dashed var(--c-rule-strong); padding: 10px 12px; font-size: 12.5px; color: var(--c-muted); margin: 4px 0 10px; } .dtop.over { border-color: var(--c-blue-deep); background: #f5f8fb; color: var(--c-blue-deep); }
 .acts { display: flex; flex-direction: column; gap: 8px; } .acts label { display: grid; grid-template-columns: 20px 1fr; gap: 2px 8px; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13.5px; } .acts label.on { border-color: var(--c-navy); background: #f5f8fb; } .acts input { grid-row: span 2; margin: 3px 0 0; } .acts span { color: var(--c-muted); font-size: 12.5px; } .fl em { font-style: normal; font-weight: 400; margin-left: 6px; } .fin { margin-left: 8px; font-size: 11px; letter-spacing: 0; text-transform: none; background: #e6eef6; color: var(--c-navy); padding: 1px 7px; font-weight: 500; }
 .fl { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); }
