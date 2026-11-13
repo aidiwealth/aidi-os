@@ -9,7 +9,7 @@ const aidi = computed(() => meK.value?.org?.kind !== 'company')
 const { data: ents } = await useFetch<{ id: string; name: string }[]>('/api/entities', { immediate: aidi.value, default: () => [] })
 const f = reactive({ entity_id: '', title: '', description: '', source: 'upload' as 'upload' | 'doc', doc: '', primary: false, file: null as File | null })
 function startNew() { Object.assign(f, { entity_id: meK.value?.entity_scoped ? ents.value?.[0]?.id ?? '' : '', title: '', description: '', source: 'upload', doc: '', primary: !data.value?.decks.length, file: null }); msg.value = ''; open.value = true }
-function onFile(ev: Event) { f.file = (ev.target as HTMLInputElement).files?.[0] ?? null; if (f.file && !f.title) f.title = f.file.name.replace(/\.pdf$/i, '') }
+function onFile(ev: Event) { f.file = (ev.target as HTMLInputElement).files?.[0] ?? null; if (f.file && !f.title) f.title = f.file.name.replace(/\.(pdf|pptx)$/i, '') }
 const ready = computed(() => (f.source === 'upload' ? !!f.file : !!f.doc))
 async function create() {
   if (!ready.value) return
@@ -36,7 +36,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
     <div class="fx-stats"><StatTile label="Decks" :value="data.decks.length" icon="doc" tone="n" :note="data.decks.some((d) => d.primary_deck) ? 'Main deck set' : 'No main deck yet'" /><StatTile label="Total visits" :value="totals.visits" icon="chart" tone="b" :note="lastView ? 'Last ' + ago(lastView) : 'No visits yet'" /><StatTile label="Unique visitors" :value="totals.unique" icon="users" tone="c" note="people who opened it" /><StatTile label="Avg time on deck" :value="mmss(avgAll)" icon="clock" tone="a" note="per visit" /><StatTile label="Downloads" :value="totals.downloads" icon="inbox" tone="g" note="PDF downloads" /></div>
     <div v-if="!data.decks.length" class="empty">
       <div class="et"><span class="eic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6V3Zm8 0v4h4M9 12h6m-6 4h6" /></svg></span>
-        <h2>Add your first deck</h2><p>Upload a PDF to get a tracked link for investors.</p>
+        <h2>Add your first deck</h2><p>Upload a PDF or PowerPoint to get a tracked link for investors.</p>
         <button class="btn" @click="startNew">+ Upload a deck</button></div>
       <ul class="ep"><li><b>Private tracked link</b><span>Optional email capture and downloads.</span></li><li><b>Viewer analytics</b><span>Visits, time and per-slide views.</span></li><li><b>Versions</b><span>New uploads keep the same link.</span></li><li><b>Investor page</b><span>Your ★ main deck shows there and in updates.</span></li></ul>
     </div>
@@ -47,7 +47,7 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
           <h3>{{ d.title }}</h3>
           <p class="desc"><template v-if="d.entity">{{ d.entity }} · </template>{{ d.description || d.current || 'PDF deck' }}</p>
           <div class="nums"><div><b>{{ d.stats.total }}</b><span>Visits</span></div><div><b>{{ d.stats.unique }}</b><span>Unique</span></div><div><b>{{ mmss(d.stats.avg_seconds) }}</b><span>Avg time</span></div><div><b>{{ d.stats.downloads }}</b><span>Downloads</span></div></div>
-          <div class="foot"><span v-if="!d.versions" class="nofile">No file yet: upload a PDF</span><span v-else>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
+          <div class="foot"><span v-if="!d.versions" class="nofile">No file yet: upload a PDF or PowerPoint</span><span v-else>{{ d.versions }} version{{ d.versions === 1 ? '' : 's' }} · {{ d.stats.last_view ? 'Last viewed ' + ago(d.stats.last_view) : 'Not viewed yet' }}</span>
             <button class="lk" @click.prevent.stop="copy(d)">{{ copied === d.id ? 'Copied' : 'Copy link' }}</button></div>
         </NuxtLink>
         <button class="dk add" @click="startNew"><span>+</span>New deck</button>
@@ -58,13 +58,13 @@ const lastView = computed(() => (data.value?.decks ?? []).map((d) => d.stats.las
         <label>Name<input v-model="f.title" maxlength="200" placeholder="e.g. Seed round deck"></label>
         <label v-if="aidi && ents?.length">Company<select v-model="f.entity_id"><option v-if="!meK?.entity_scoped" value="">Group / not one company</option><option v-for="e in ents" :key="e.id" :value="e.id">{{ e.name }}</option></select></label>
         <label>What it's for <em>optional</em><input v-model="f.description" maxlength="500" placeholder="e.g. Short version for demo day investors"></label>
-        <div class="src"><button :class="{ on: f.source === 'upload' }" @click="f.source = 'upload'">Upload a PDF</button><button :class="{ on: f.source === 'doc' }" :disabled="!data.pdfs.length" @click="f.source = 'doc'">Use one from Documents</button></div>
-        <DropZone v-if="f.source === 'upload'" accept=".pdf" :label="f.file ? f.file.name : 'Drag and drop the PDF here'" :hint="f.file ? Math.round(f.file.size / 1024) + ' KB · drop another to replace it' : 'PDF · or click to choose'" @change="onFile" />
+        <div class="src"><button :class="{ on: f.source === 'upload' }" @click="f.source = 'upload'">Upload a file</button><button :class="{ on: f.source === 'doc' }" :disabled="!data.pdfs.length" @click="f.source = 'doc'">Use one from Documents</button></div>
+        <DropZone v-if="f.source === 'upload'" accept=".pdf,.pptx" :label="f.file ? f.file.name : 'Drag and drop the PDF or PowerPoint here'" :hint="f.file ? Math.round(f.file.size / 1024) + ' KB · drop another to replace it' : 'PDF or PowerPoint (.pptx) · or click to choose'" @change="onFile" />
         <select v-else v-model="f.doc"><option value="">Choose a PDF</option><option v-for="p in data.pdfs" :key="p.id" :value="p.id">{{ p.title }}</option></select>
         <label class="chk"><input v-model="f.primary" type="checkbox"> Make this my main deck</label>
         <p v-if="msg" class="error">{{ msg }}</p>
       </div>
-      <template #foot><button class="btn secondary" @click="open = false">Cancel</button><button class="btn" :disabled="!ready || busy" @click="create">{{ busy ? 'Creating…' : 'Create deck' }}</button></template>
+      <template #foot><button class="btn secondary" @click="open = false">Cancel</button><button class="btn" :disabled="!ready || busy" @click="create">{{ busy ? (f.file && /\.pptx$/i.test(f.file.name) ? 'Converting…' : 'Creating…') : 'Create deck' }}</button></template>
     </AppModal>
   </section>
 </template>

@@ -1,9 +1,10 @@
-// Decks: shareable, versioned PDFs with per-visitor, per-slide analytics.
+// Decks: shareable, versioned PDFs (PowerPoint files are converted to PDF on upload) with per-visitor, per-slide analytics.
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 export const deckUrl = async (token: string) => ((await currentOrg())?.kind === 'company' ? brands().finvry.url : brands().aidi.url) + '/deck/' + token
 export async function storeDeckPdf(data: Uint8Array, filename: string): Promise<string> {
   if (data.length > 50 * 1024 * 1024) throw apiError('too_large', 'Decks can be up to 50 MB.', 413)
-  if (!(data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46)) throw apiError('bad_type', 'Upload the deck as a PDF.')
+  if (isPptx(data, filename)) { data = await pptxToPdf(data); filename = filename.replace(/\.pptx$/i, '.pdf') }
+  if (!(data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46)) throw apiError('bad_type', 'Upload the deck as a PDF or PowerPoint (.pptx).')
   const id = randomUUID(), key = 'documents/' + id + '.pdf', name = filename.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 200) || 'deck.pdf'
   await putObject({ key, body: data, contentType: 'application/pdf' })
   await db().query("INSERT INTO core.documents (id, title, kind, sensitivity, storage_key, mime_type, size_bytes, sha256) VALUES ($1,$2,'other','normal',$3,'application/pdf',$4,$5)", [id, name, key, data.length, createHash('sha256').update(data).digest('hex')])
