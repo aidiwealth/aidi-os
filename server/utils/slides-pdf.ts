@@ -1,5 +1,5 @@
-// PowerPoint (.pptx) decks are turned into PDF on upload, on our own server, with LibreOffice (installed at build
-// time from the Aptfile). One conversion runs at a time to keep memory in check; nothing leaves the server.
+// PowerPoint (.pptx) decks are turned into PDF on upload, on our own server, with LibreOffice (unpacked into the app
+// at build time by scripts/libreoffice.mjs). One conversion runs at a time to keep memory in check; nothing leaves the server.
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -13,6 +13,8 @@ function soffice(): string | null {
   if (found !== undefined) return found
   const c: string[] = []
   if (process.env.SOFFICE_PATH) c.push(process.env.SOFFICE_PATH)
+  // Unpacked into the app by the build (scripts/libreoffice.mjs).
+  for (const d of [process.cwd(), '/workspace', '/app']) c.push(join(d, '.libreoffice/usr/lib/libreoffice/program/soffice'))
   for (const d of (process.env.PATH ?? '').split(delimiter)) if (d) c.push(join(d, 'soffice'), join(d, 'libreoffice'))
   // Packages from the Aptfile land outside the usual folders, so look where the build puts them.
   const roots = ['/layers', '/workspace/.apt', '/app/.apt', process.cwd() + '/.apt', '/usr', '/opt']
@@ -33,18 +35,19 @@ function placeArgs(bin: string, profile: string): string[] {
   const base = dirname(dirname(bin))
   if (base === '/usr/lib/libreoffice' || !base.endsWith('/lib/libreoffice')) return []
   const prefix = base.slice(0, -'/lib/libreoffice'.length).replace(/\/usr$/, '')
-  const reg = [join(prefix, 'etc/libreoffice/registry'), join(base, 'share/registry')].find((d) => existsSync(join(d, 'main.xcd')))
+  const reg = [join(prefix, 'etc/libreoffice/registry'), join(base, 'share/registry'), join(base, 'share/.registry')].find((d) => existsSync(join(d, 'main.xcd')))
   const args = ['-env:BRAND_BASE_DIR=file://' + base]
   if (reg) args.push('-env:CONFIGURATION_LAYERS=xcsxcu:file://' + reg + ' res:file://' + reg + ' user:file://' + profile + '/user/registrymodifications.xcu')
   return args
 }
 
 // The same folder problem for the libraries and fonts that came with it: point the loader and fontconfig there too.
+// LibreOffice's own folder goes first: its libraries find each other through it, not through the linked copies.
 async function placeEnv(bin: string, dir: string): Promise<Record<string, string>> {
   const base = dirname(dirname(bin))
   if (base === '/usr/lib/libreoffice' || !base.endsWith('/lib/libreoffice')) return {}
   const prefix = base.slice(0, -'/lib/libreoffice'.length).replace(/\/usr$/, '')
-  const libs = ['usr/lib/x86_64-linux-gnu', 'lib/x86_64-linux-gnu', 'usr/lib', 'lib'].map((x) => join(prefix, x)).filter((x) => existsSync(x))
+  const libs = [join(base, 'program'), ...['usr/lib/x86_64-linux-gnu', 'lib/x86_64-linux-gnu', 'usr/lib', 'lib'].map((x) => join(prefix, x))].filter((x) => existsSync(x))
   const fonts = [join(prefix, 'usr/share/fonts'), join(base, 'share/fonts'), '/usr/share/fonts'].filter((x) => existsSync(x))
   const conf = join(dir, 'fonts.conf')
   await writeFile(conf, '<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig>' + fonts.map((f) => '<dir>' + f + '</dir>').join('') + '<cachedir>' + join(dir, 'fc') + '</cachedir></fontconfig>')

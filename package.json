@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "nuxt dev",
+    "prebuild": "node scripts/libreoffice.mjs",
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
