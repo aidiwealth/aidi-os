@@ -18,15 +18,6 @@ const passed = computed(() => inView.value.filter((d) => d.stage === 'passed'))
 const days = (s: string) => Math.max(0, Math.floor((Date.now() - new Date(s).getTime()) / 86400000))
 const money = (v: string | null) => (v ? shortAmount(v) : '')
 const adding = ref(false)
-const form = reactive({ company: '', one_liner: '', website: '', round: '', raise_usd: '', source: 'referral', stage: 'screening', vehicle_entity_id: '' })
-const msg = ref('')
-async function add() {
-  msg.value = ''
-  try {
-    const r = await $fetch<{ id: string }>('/api/pipeline', { method: 'POST', body: { ...form, round: form.round || undefined, raise_usd: form.raise_usd.replace(/[^0-9]/g, '') || undefined } })
-    await navigateTo('/pipeline/' + r.id)
-  } catch (e) { msg.value = (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not add the deal.' }
-}
 </script>
 
 <template>
@@ -40,18 +31,7 @@ async function add() {
       </div>
     </div>
 
-    <AppModal :open="adding" title="Add a deal" @close="adding = false"><form class="mfrm" @submit.prevent="add">
-      <label class="label">Company<input v-model="form.company" required maxlength="200"></label>
-      <label class="label">One-liner<input v-model="form.one_liner" maxlength="300"></label>
-      <label class="label">Website<input v-model="form.website" maxlength="500" placeholder="https://"></label>
-      <label class="label">Round<select v-model="form.round"><option value="">—</option><option v-for="(l, k) in ROUND" :key="k" :value="k">{{ l }}</option></select></label>
-      <label class="label">Raising (USD)<input v-model="form.raise_usd" inputmode="numeric"></label>
-      <label class="label">Source<select v-model="form.source"><option value="referral">Referral</option><option value="network">Network</option><option value="outbound">Outbound</option><option value="other">Other</option></select></label>
-      <label class="label"><span>Vehicle · <NuxtLink to="/settings#vehicles" class="mng">manage</NuxtLink></span><select v-model="form.vehicle_entity_id"><option value="">Default vehicle</option><option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }}</option></select></label>
-      <label class="label">Start at<select v-model="form.stage"><option value="screening">Screening</option><option value="first_call">First call</option><option value="diligence">Diligence</option></select></label>
-      <button class="btn" type="submit">Add to pipeline</button>
-      <p v-if="msg" class="error" role="alert">{{ msg }}</p>
-    </form></AppModal>
+    <AddDealDialog :open="adding" :vehicles="vehicles" @close="adding = false" />
 
     <p v-if="error" class="error" role="alert">Could not load the pipeline.</p>
     <EmptyState v-else-if="!COLS.some((c) => col(c.v).length) && !passed.length" card icon="pipeline" title="Your pipeline is empty" text="Add the companies you are looking at and move them from screening to IC and investment. Pitches from your pitch form can be moved here too."><button class="btn" @click="adding = true">Add a deal</button><NuxtLink to="/deals" class="btn secondary">See pitches</NuxtLink></EmptyState>
@@ -62,6 +42,7 @@ async function add() {
         <NuxtLink v-for="d in col(c.v)" :key="d.id" :to="'/pipeline/' + d.id" class="cardlet">
           <b>{{ d.company }}</b>
           <span v-if="d.one_liner" class="one">{{ d.one_liner }}</span>
+          <span v-if="d.sector || d.country" class="meta">{{ [d.sector, d.country].filter(Boolean).join(' · ') }}</span>
           <span class="meta">{{ [d.round ? ROUND[d.round] : '', money(d.raise_usd)].filter(Boolean).join(' · ') }}</span>
           <span class="meta">{{ d.owner ?? 'No owner' }} · {{ days(d.stage_since) }}d in stage</span>
           <span v-if="d.vehicle" class="veh">{{ d.vehicle }}</span>

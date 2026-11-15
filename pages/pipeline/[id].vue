@@ -2,7 +2,7 @@
 const id = useRoute().params.id as string
 interface Ev { id: string; kind: string; body: string | null; meeting_at: string | null; from_stage: string | null; to_stage: string | null; created_at: string; by_name: string | null; document_id: string | null; document_title: string | null }
 interface Vote { vote: string; note: string | null; voted_at: string; voter: string; mine: boolean }
-interface Deal { vehicle_entity_id: string | null; vehicle_name: string | null; id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
+interface Deal { founders: { name: string; role: string; linkedin: string }[]; ai_unchecked: string[]; ai_sources: { title: string; url: string }[]; ai_looked_up_at: string | null; [k: string]: unknown; vehicle_entity_id: string | null; vehicle_name: string | null; id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
 // Fetched together, not one after another (each wait is a round trip to the server).
 const [__p782_0, __p782_1, __p782_2, __p782_3] = await Promise.all([
   useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean }>('/api/pipeline/' + id),
@@ -68,6 +68,7 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
 
     <div class="grid">
       <div class="col">
+        <DealCompany :deal="data.deal" :vehicles="vehicles" @changed="refresh()" />
         <div v-if="data.deal.stage === 'ic' || data.votes.length" class="card ic">
           <h2>Investment committee</h2>
           <p class="tally"><b>{{ data.tally.approvals }}</b> of {{ data.required }} GP approvals<template v-if="data.tally.rejections"> · <span class="rej">{{ data.tally.rejections }} rejection</span></template></p>
