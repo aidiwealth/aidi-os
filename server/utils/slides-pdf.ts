@@ -39,6 +39,18 @@ function placeArgs(bin: string, profile: string): string[] {
   return args
 }
 
+// The same folder problem for the libraries and fonts that came with it: point the loader and fontconfig there too.
+async function placeEnv(bin: string, dir: string): Promise<Record<string, string>> {
+  const base = dirname(dirname(bin))
+  if (base === '/usr/lib/libreoffice' || !base.endsWith('/lib/libreoffice')) return {}
+  const prefix = base.slice(0, -'/lib/libreoffice'.length).replace(/\/usr$/, '')
+  const libs = ['usr/lib/x86_64-linux-gnu', 'lib/x86_64-linux-gnu', 'usr/lib', 'lib'].map((x) => join(prefix, x)).filter((x) => existsSync(x))
+  const fonts = [join(prefix, 'usr/share/fonts'), join(base, 'share/fonts'), '/usr/share/fonts'].filter((x) => existsSync(x))
+  const conf = join(dir, 'fonts.conf')
+  await writeFile(conf, '<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig>' + fonts.map((f) => '<dir>' + f + '</dir>').join('') + '<cachedir>' + join(dir, 'fc') + '</cachedir></fontconfig>')
+  return { LD_LIBRARY_PATH: [...libs, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'), FONTCONFIG_FILE: conf }
+}
+
 let queue: Promise<unknown> = Promise.resolve()
 export function pptxToPdf(data: Uint8Array): Promise<Uint8Array> {
   const run = queue.then(() => convert(data), () => convert(data))
@@ -53,10 +65,10 @@ async function convert(data: Uint8Array): Promise<Uint8Array> {
   try {
     const src = join(dir, 'deck.pptx')
     await writeFile(src, data)
-    const profile = join(dir, 'profile')
+    const profile = join(dir, 'profile'), env = await placeEnv(bin, dir)
     let log = ''
     const ok = await new Promise<boolean>((resolve) => {
-      const p = spawn(bin, ['--headless', '--invisible', '--norestore', '--nolockcheck', '--nodefault', '-env:UserInstallation=file://' + profile, ...placeArgs(bin, profile), '--convert-to', 'pdf:impress_pdf_Export', '--outdir', dir, src], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: dir, SAL_USE_VCLPLUGIN: 'svp' } })
+      const p = spawn(bin, ['--headless', '--invisible', '--norestore', '--nolockcheck', '--nodefault', '-env:UserInstallation=file://' + profile, ...placeArgs(bin, profile), '--convert-to', 'pdf:impress_pdf_Export', '--outdir', dir, src], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: dir, SAL_USE_VCLPLUGIN: 'svp', ...env } })
       const keep = (b: Buffer) => { log = (log + b.toString()).slice(-2000) }
       p.stdout?.on('data', keep); p.stderr?.on('data', keep)
       const t = setTimeout(() => { p.kill('SIGKILL'); log += ' [timed out]'; resolve(false) }, 120_000)
