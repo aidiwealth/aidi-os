@@ -1,5 +1,6 @@
 // "Ask Finvry AI" on finvry.com: answers questions about Finvry only. Live plan prices and the services list come from
 // the database on every question; the product facts below mirror the finvry.com pages. Keep them in step with the site.
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
 export const SITE_ASK_FACTS = `
 WHAT FINVRY IS
@@ -50,4 +51,86 @@ ${SITE_ASK_FACTS}
 
 LIVE PRICE LIST
 ${live}`
+}
+
+// ---------------------------------------------------------------- gates that run before any AI call
+// Cheap checks so spam and off-topic questions never reach the model: a human check (Cloudflare Turnstile, when
+// configured) that hands back a signed pass, junk and topic filters with fixed replies, strikes for off-topic use,
+// short-lived answer cache, and tight per-visitor limits.
+
+export const SITE_ASK = {
+  maxChars: 400, // one question
+  maxTurns: 6, // visitor questions in one conversation
+  perHour: 12, perDay: 40, // per visitor (IP)
+  strikesPerHour: 4, // off-topic or junk questions before the visitor is paused for the hour
+  allPerDay: 1500, // whole site
+  passHours: 6 // how long a passed human check lasts
+}
+
+export const REPLY = {
+  offTopic: 'I can only help with questions about Finvry: plans and pricing, the free trial, features, integrations or company services. For anything else, email support@finvry.com.',
+  junk: 'Please ask a question about Finvry, for example "How much does Finvry cost?"',
+  repeat: 'I answered that just above. Ask something else about Finvry, or email support@finvry.com.',
+  long: 'Please keep your question under 400 characters.',
+  turns: 'That is as far as I can go in one conversation. Start a new one, or email support@finvry.com and the team will help.',
+  paused: 'You have asked a lot of questions that are not about Finvry, so Finvry AI is paused for you for an hour. For help now, email support@finvry.com.',
+  busy: 'Finvry AI has answered a lot of questions today. Email support@finvry.com and the team will help.'
+}
+
+const FINVRY = /\b(?:finvry|price|pricing|cost|costs|pay|paid|payment|plan|plans|tier|free|trial|discount|partner|coupon|subscription|subscribe|cancel|refund|invoice|billing|bill|naira|dollar|usd|ngn|wallet|annual|seat|member|team|storage|limit|feature|product|platform|software|tool|app|dashboard|investor|fundrais|raise|raising|round|seed|series|pipeline|deck|data ?room|nda|safe|safes|convertible note|data api|cap ?table|equity|shares|option|vesting|409a|valuation|board|update|report|annual report|statement|financial|p&l|balance sheet|cash|burn|runway|forecast|retention|churn|cohort|customer|metric|kpi|revenue|account|bank|quickbooks|sheets|google|excel|pdf|integrat|connect|import|export|sync|api|developer|webhook|status|uptime|security|secure|privacy|gdpr|soc|compliance|compliant|filing|tax|franchise|registered agent|agent|ein|formation|incorporat|llc|c-?corp|delaware|dissolution|reinstatement|service|services|perk|reward|grant|accelerator|incubator|vc|pulley|carta|visible|eqvista|compare|alternative|competitor|sign ?up|signup|sign ?in|login|log in|access|invite|waitlist|queue|demo|support|help|contact|email|who are you|what (is|does) (this|it|finvry)|what do you (do|offer)|how (does|do) (it|this|finvry|i)|how much|how long|can i|do you (offer|have|support|integrate|work)|is there|are there)/i
+const GREETING = /^(hi|hello|hey|yo|good (morning|afternoon|evening)|thanks|thank you|ok|okay|cool|great|nice)[\s!.?]*$/i
+
+export function normalize(t: string): string { return t.toLowerCase().replace(/[^a-z0-9₦$%\s]/g, ' ').replace(/\s+/g, ' ').trim() }
+
+/** A fixed reply (and whether it counts as a strike) when a question should not reach the model; null to ask the model. */
+export function precheck(msgs: { role: 'user' | 'assistant'; text: string }[]): { reply: string; strike: boolean } | null {
+  const users = msgs.filter((m) => m.role === 'user')
+  const q = users[users.length - 1]!.text.trim()
+  if (q.length > SITE_ASK.maxChars) return { reply: REPLY.long, strike: false }
+  if (users.length > SITE_ASK.maxTurns) return { reply: REPLY.turns, strike: false }
+  if (GREETING.test(q)) return { reply: 'Hi. What would you like to know about Finvry? You can ask about plans and pricing, the free trial, features or integrations.', strike: false }
+  const letters = (q.match(/[a-z]/gi) ?? []).length
+  const words = q.split(/\s+/).filter(Boolean)
+  // Junk: almost no letters, one character repeated, keyboard mash, or links.
+  if (letters < 3 || /(.)\1{5,}/.test(q) || /https?:\/\/|www\./i.test(q) || words.some((w) => w.length > 30 && !/@/.test(w)) || (words.length >= 2 && !/[aeiou]/i.test(q)))
+    return { reply: REPLY.junk, strike: true }
+  const prev = users.length > 1 ? users[users.length - 2]!.text : ''
+  if (prev && normalize(prev) === normalize(q)) return { reply: REPLY.repeat, strike: true }
+  // Topic: the question must touch Finvry, or be a short follow-up in a conversation that already did.
+  const onTopic = FINVRY.test(q) || (words.length <= 7 && users.slice(0, -1).some((u) => FINVRY.test(u.text)))
+  if (!onTopic) return { reply: REPLY.offTopic, strike: true }
+  return null
+}
+
+// A signed pass after a human check: ties the visitor's address to an expiry so the check runs once per few hours.
+const ipTag = (ip: string) => createHash('sha256').update('site-ask:' + ip).digest('base64url').slice(0, 16)
+export function issuePass(ip: string): string {
+  const exp = Math.floor(Date.now() / 1000) + SITE_ASK.passHours * 3600
+  const body = ipTag(ip) + '.' + exp
+  return body + '.' + createHmac('sha256', useRuntimeConfig().jwtSecret).update('site-ask:' + body).digest('base64url').slice(0, 32)
+}
+export function validPass(pass: string | undefined, ip: string): boolean {
+  if (!pass) return false
+  const [tag, exp, sig] = pass.split('.')
+  if (!tag || !exp || !sig || tag !== ipTag(ip) || Number(exp) < Date.now() / 1000) return false
+  const want = createHmac('sha256', useRuntimeConfig().jwtSecret).update('site-ask:' + tag + '.' + exp).digest('base64url').slice(0, 32)
+  return want.length === sig.length && timingSafeEqual(Buffer.from(want), Buffer.from(sig))
+}
+export function humanCheckOn(): { on: boolean; siteKey: string } {
+  const c = useRuntimeConfig() as unknown as { turnstileSecret: string; public: { turnstileSiteKey: string } }
+  return { on: !!(c.turnstileSecret && c.public.turnstileSiteKey), siteKey: c.public.turnstileSiteKey || '' }
+}
+
+// Answers to a conversation's first question are kept for an hour (keyed by the question and the price list), so the
+// common questions cost one AI call an hour, not one per visitor.
+const cache = new Map<string, { at: number; out: { answer: string; kind: string } }>()
+export function cacheKey(q: string, live: string): string { return createHash('sha256').update(normalize(q) + '|' + live).digest('base64url') }
+export function cached(key: string): { answer: string; kind: string } | null {
+  const c = cache.get(key); if (!c) return null
+  if (Date.now() - c.at > 3600_000) { cache.delete(key); return null }
+  return c.out
+}
+export function remember(key: string, out: { answer: string; kind: string }): void {
+  if (cache.size > 500) cache.delete(cache.keys().next().value as string)
+  cache.set(key, { at: Date.now(), out })
 }
