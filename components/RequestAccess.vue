@@ -59,11 +59,12 @@ onMounted(() => { void focus() })
 
 <template>
   <div class="ra">
+    <header class="top"><a href="https://finvry.com" class="mk" aria-label="Finvry home"><BrandMark /></a><nav><a href="https://finvry.com/pricing/" class="si">Pricing</a><NuxtLink to="/login" class="si">Sign in</NuxtLink></nav></header>
+    <div class="box">
     <video class="bg" autoplay muted loop playsinline preload="metadata" aria-hidden="true"><source src="https://pub-4af29fd81be44e49861e29c7da302f4a.r2.dev/hero2.mp4" type="video/mp4"></video>
-    <div class="shade" aria-hidden="true" />
-    <header class="top"><a href="https://finvry.com" class="mk"><BrandMark light /></a><NuxtLink to="/login" class="si">Sign in</NuxtLink></header>
+    <div class="shade" aria-hidden="true" /><div class="grid" aria-hidden="true" />
     <div class="wrap">
-      <div class="intro"><p class="ey">Request access</p><h1>The OS for every founder.</h1><p>We open Finvry to new companies in small groups so each one is set up properly. Answer a few questions and we'll email your invitation.</p></div>
+      <div class="intro"><p class="ey">Request access</p><h1>The OS for <span>every founder.</span></h1><p>We open Finvry in small groups so each company is set up properly. Answer a few questions and we'll email your invitation.</p></div>
       <section class="chat" aria-live="polite">
         <div ref="thread" class="thread">
           <template v-for="(x, i) in Q" :key="i">
@@ -96,20 +97,25 @@ onMounted(() => { void focus() })
         <HumanCheck ref="hc" v-model="human" v-model:ready="humanReady" />
       </section>
     </div>
+    </div>
+    <footer class="fl"><span>© {{ new Date().getFullYear() }} TAGroup. Finvry is a product of TAGroup.</span><span><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="mailto:support@finvry.com">support@finvry.com</a></span></footer>
   </div>
 </template>
 
 <style scoped>
-.ra { position: relative; min-height: var(--vh100, 100vh); color: #fff; font-family: var(--font-body); overflow: hidden; background: #0c1a2e; }
+.ra { min-height: var(--vh100, 100vh); display: flex; flex-direction: column; color: #0c1a2e; font-family: var(--font-body); background: #fff; }
 .ra * { box-sizing: border-box; border-radius: 0; }
+.top { display: flex; justify-content: space-between; align-items: center; max-width: 1376px; width: 100%; margin: 0 auto; padding: 0 32px; height: 68px; }
+.mk { color: #0c1a2e; text-decoration: none; display: flex; } .top nav { display: flex; gap: 28px; } .si { color: #3b4658; text-decoration: none; font-size: 15px; font-weight: 500; } .si:hover { color: #0c1a2e; }
+.box { position: relative; flex: 1; margin: 0 16px; max-width: 1408px; width: calc(100% - 32px); align-self: center; background: #0c1a2e; color: #fff; overflow: hidden; display: flex; align-items: center; }
 .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.shade { position: absolute; inset: 0; background: linear-gradient(100deg, rgba(8,18,32,.92) 0%, rgba(8,18,32,.78) 45%, rgba(8,18,32,.55) 100%); }
-.top { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: 28px 48px; } .mk { color: #fff; text-decoration: none; } .si { color: rgba(255,255,255,.8); text-decoration: none; font-size: 15px; } .si:hover { color: #fff; }
-.wrap { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 64px; align-items: center; max-width: 1240px; margin: 0 auto; padding: 24px 48px 64px; min-height: calc(var(--vh100, 100vh) - 100px); }
-.ey { margin: 0 0 16px; font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8cc3e6; }
-.intro h1 { font-family: var(--font-heading); color: #fff; font-size: clamp(36px, 4.4vw, 60px); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 600; }
-.intro p { margin: 0; font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.75); max-width: 460px; }
-.chat { background: rgba(255,255,255,.97); color: #0c1a2e; box-shadow: 0 30px 80px -30px rgba(0,0,0,.6); display: flex; flex-direction: column; max-height: min(720px, calc(var(--vh100, 100vh) - 140px)); }
+.shade { position: absolute; inset: 0; background: linear-gradient(100deg, rgba(5,10,20,.9) 0%, rgba(5,10,20,.78) 50%, rgba(5,10,20,.6) 100%); }
+.grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size: 44px 44px; }
+.wrap { position: relative; z-index: 2; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 72px; align-items: center; max-width: 1312px; margin: 0 auto; padding: 80px 48px; }
+.ey { margin: 0 0 18px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+.intro h1 { font-family: var(--font-heading); color: #fff; font-size: clamp(38px, 4.6vw, 68px); line-height: 1; letter-spacing: -.04em; margin: 0 0 22px; font-weight: 600; } .intro h1 span { display: block; color: #a1bdd4; }
+.intro p { margin: 0; font-size: 18px; line-height: 1.6; color: #c3d1e4; max-width: 470px; }
+.chat { background: #fff; color: #0c1a2e; box-shadow: 0 30px 80px -30px rgba(0,0,0,.6); display: flex; flex-direction: column; max-height: min(640px, calc(var(--vh100, 100vh) - 220px)); }
 .thread { flex: 1; overflow-y: auto; padding: 26px 26px 8px; display: flex; flex-direction: column; gap: 12px; }
 .bot { display: flex; gap: 10px; align-items: flex-start; max-width: 92%; animation: in .35s ease both; }
 .bot p { margin: 0; background: #f1f4f8; padding: 11px 14px; font-size: 15px; line-height: 1.5; color: #1c2a3d; }
@@ -129,9 +135,10 @@ onMounted(() => { void focus() })
 .sending { font-size: 13.5px; color: #6b7686; }
 .err { margin: 6px 26px 0; color: #b42318; font-size: 13.5px; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 26px 18px; flex-wrap: wrap; }
+.fl { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; max-width: 1376px; width: 100%; margin: 0 auto; padding: 22px 32px; font-size: 13px; color: #6b7686; } .fl span:last-child { display: flex; gap: 20px; } .fl a { color: inherit; text-decoration: none; } .fl a:hover { color: #0c1a2e; }
 .dots { display: flex; gap: 5px; } .dots i { width: 14px; height: 3px; background: #dfe3e9; } .dots i.on { background: #0c1a2e; }
 .lnk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: #1c547d; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .code { display: flex; gap: 6px; } .code input { padding: 8px 10px; font-size: 14px; text-transform: uppercase; } .code button { font: inherit; font-size: 13.5px; padding: 0 12px; border: 0; background: #0c1a2e; color: #fff; cursor: pointer; } .code button:disabled { opacity: .5; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
-@media (max-width: 900px) { .top { padding: 20px; } .wrap { grid-template-columns: 1fr; gap: 24px; padding: 8px 16px 32px; align-items: start; } .intro h1 { font-size: 34px; } .intro p { font-size: 15px; } .chat { max-height: none; } .two { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .top { padding: 0 20px; height: 60px; } .top nav { gap: 18px; } .box { margin: 0 8px; width: calc(100% - 16px); } .wrap { grid-template-columns: 1fr; gap: 28px; padding: 40px 18px 18px; align-items: start; } .intro h1 { font-size: 36px; } .intro p { font-size: 15.5px; } .chat { max-height: none; } .two { grid-template-columns: 1fr; } .fl { padding: 18px 20px; } }
 </style>
