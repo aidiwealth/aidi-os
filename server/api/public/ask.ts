@@ -39,7 +39,12 @@ async function livePrices(): Promise<string> {
 
 export default defineEventHandler(async (event) => {
   if (handleCors(event, { origin: ['https://finvry.com', 'https://www.finvry.com', 'http://localhost:8080', 'http://localhost:8765'], methods: ['POST', 'OPTIONS'] })) return
-  const b = Body.safeParse(await readBody(event))
+  // One file for POST and the CORS preflight (OPTIONS): a .post.ts route would leave OPTIONS to the page router.
+  if (getMethod(event) !== 'POST') throw apiError('method', 'Use POST.', 405)
+  // finvry.com posts as text/plain so the browser sends a simple request with no CORS preflight; read the JSON either way.
+  let raw: unknown = await readBody(event)
+  if (typeof raw === 'string') { try { raw = JSON.parse(raw) } catch { raw = null } }
+  const b = Body.safeParse(raw)
   if (!b.success || b.data.messages[b.data.messages.length - 1]!.role !== 'user') throw apiError('invalid', 'Type a question about Finvry.')
   const ip = clientIp(event)
   await rateLimit('site_ask', ip, 30, 60 * 60 * 1000)
