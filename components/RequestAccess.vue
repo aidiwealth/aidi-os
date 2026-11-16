@@ -2,6 +2,8 @@
 // Request access to Finvry as a short conversation: one question at a time, answers kept as replies you can tap to
 // change, over the landing page's film. Sends the same request as before (name, email, company, country, stage, team,
 // needs, how they heard, demo) and keeps the bot check. A partner or community code skips the queue.
+// Built in the browser so Cloudflare's email obfuscation does not turn it into "[email protected]".
+const SUPPORT = ['support', 'finvry.com'].join('@')
 const props = defineProps<{ mode: 'invite_only' | 'closed'; inviteFailed?: boolean }>()
 const emit = defineEmits<{ partner: [v: { code: string; ok: { partner: string; pct: number; months: number | null } }] }>()
 const COUNTRIES = ['United States', 'Nigeria', 'United Kingdom', 'Kenya', 'Ghana', 'Canada']
@@ -98,7 +100,7 @@ onMounted(() => { void focus() })
       </section>
     </div>
     </div>
-    <footer class="fl"><span>© {{ new Date().getFullYear() }} TAGroup. Finvry is a product of TAGroup.</span><span><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="mailto:support@finvry.com">support@finvry.com</a></span></footer>
+    <footer class="fl"><span>© {{ new Date().getFullYear() }} TAGroup. Finvry is a product of TAGroup.</span><span><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><ClientOnly><a :href="'mailto:' + SUPPORT">{{ SUPPORT }}</a><template #fallback><span>Support</span></template></ClientOnly></span></footer>
   </div>
 </template>
 
@@ -139,6 +141,7 @@ onMounted(() => { void focus() })
 .dots { display: flex; gap: 5px; } .dots i { width: 14px; height: 3px; background: #dfe3e9; } .dots i.on { background: #0c1a2e; }
 .lnk { background: none; border: 0; padding: 0; font: inherit; font-size: 13.5px; color: #1c547d; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .code { display: flex; gap: 6px; } .code input { padding: 8px 10px; font-size: 14px; text-transform: uppercase; } .code button { font: inherit; font-size: 13.5px; padding: 0 12px; border: 0; background: #0c1a2e; color: #fff; cursor: pointer; } .code button:disabled { opacity: .5; }
+.chat :deep(.hc) { margin: 0 26px 16px; } .chat :deep(.hc .st) { margin: 0; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
 @media (max-width: 900px) { .top { padding: 0 20px; height: 60px; } .top nav { gap: 18px; } .box { margin: 0 8px; width: calc(100% - 16px); } .wrap { grid-template-columns: 1fr; gap: 28px; padding: 40px 18px 18px; align-items: start; } .intro h1 { font-size: 36px; } .intro p { font-size: 15.5px; } .chat { max-height: none; } .two { grid-template-columns: 1fr; } .fl { padding: 18px 20px; } }
 </style>
