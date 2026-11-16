@@ -20,9 +20,13 @@ function newChat() { chatId.value = null; msgs.value = []; err.value = ''; input
 async function showList() { view.value = 'list'; listBusy.value = true; try { chats.value = await $fetch<Chat[]>('/api/ai/chats') } catch { chats.value = [] } finally { listBusy.value = false } }
 async function delChat(c: Chat) { if (!await askConfirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
 const when = (s: string) => { const d = new Date(s), n = Date.now() - d.getTime(); return n < 6e4 ? 'just now' : n < 36e5 ? Math.round(n / 6e4) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
-// The hint shows once, for a few seconds, then never again: it must not sit over the page.
-onMounted(() => { try { if (!localStorage.getItem('analyst_hint')) { setTimeout(() => { hint.value = true; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } setTimeout(() => (hint.value = false), 7000) }, 1800) } } catch { /* storage off */ } })
-function toggle() { open.value = !open.value; hint.value = false; try { localStorage.setItem('analyst_hint', '1') } catch { /* ignore */ } if (open.value) { if (!msgs.value.length) { let id: string | null = null; try { id = localStorage.getItem('analyst_chat') } catch { /* ignore */ } if (id) void resume(id) } nextTick(() => ta.value?.focus()) } }
+// The greeting card (as on finvry.com) shows above the button once per sign-in session, hides itself after a few
+// seconds so it never sits over the page, and stays away once closed or once the chat is opened.
+const aiName = computed(() => (brand.key === 'finvry' ? 'Finvry AI' : 'Aidi AI'))
+const HINT = 'analyst_hint_s'
+onMounted(() => { try { if (!sessionStorage.getItem(HINT)) { setTimeout(() => { if (!open.value) hint.value = true; setTimeout(() => (hint.value = false), 12000) }, 1800) } } catch { /* storage off */ } })
+function dismissHint() { hint.value = false; try { sessionStorage.setItem(HINT, '1') } catch { /* ignore */ } }
+function toggle() { open.value = !open.value; dismissHint(); if (open.value) { if (!msgs.value.length) { let id: string | null = null; try { id = localStorage.getItem('analyst_chat') } catch { /* ignore */ } if (id) void resume(id) } nextTick(() => ta.value?.focus()) } }
 async function send(q?: string) {
   const text = (q ?? input.value).trim(); if (!text || busy.value) return
   msgs.value.push({ role: 'user', content: text }); input.value = ''; busy.value = true; err.value = ''; scroll()
@@ -51,8 +55,12 @@ function md(s: string) { return renderMarkdown(s) }
 </script>
 <template>
   <div class="an" :class="{ open }">
-    <transition name="hint"><div v-if="hint && !open" class="hint" @click="toggle"><b>Ask the AI analyst</b><span>{{ brand.key === 'finvry' ? 'Metrics, investors, decks, filings: just ask.' : 'Deals, credit, cash, rentals, meetings: just ask.' }}</span></div></transition>
-    <button v-if="!open" type="button" class="fab" aria-label="Open the AI analyst" @click="toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z" fill="currentColor"/><path d="M18.5 14.5l.8 2.1 2.2.9-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.9z" fill="currentColor" opacity=".7"/></svg></button>
+    <transition name="hint"><div v-if="hint && !open" class="hint" role="button" tabindex="0" @click="toggle" @keydown.enter="toggle">
+      <button type="button" class="hx" aria-label="Dismiss" @click.stop="dismissHint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" /></svg></button>
+      <span class="hav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM18.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor"/></svg></span>
+      <span class="htx"><b>Hi there 👋</b><span>You are speaking with {{ aiName }}. How can I help?</span><em>{{ aiName }} · Just now</em></span>
+    </div></transition>
+    <button v-if="!open" type="button" class="fab" :aria-label="'Open ' + aiName" @click="toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 10.5c1.9 1.6 5.1 1.6 7 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <aside v-if="open" class="pnl" aria-label="AI analyst">
       <header><span class="ttl"><i />AI analyst</span>
         <span class="hb"><button type="button" class="hbtn" :class="{ on: view === 'list' }" title="Earlier chats" @click="view === 'list' ? (view = 'chat') : showList()"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></svg>Chats</button><button type="button" class="hbtn" title="Start a new chat" @click="newChat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>New</button><button type="button" class="x" aria-label="Close (the chat is kept)" title="Close (the chat is kept)" @click="toggle">×</button></span></header>
@@ -78,9 +86,13 @@ function md(s: string) { return renderMarkdown(s) }
 </template>
 <style scoped>
 .an { position: fixed; right: 22px; bottom: 22px; z-index: 80; font-family: var(--font-body); }
-.fab { width: 52px; height: 52px; border: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 10px 28px rgba(12,26,46,.28); transition: transform .15s; } .fab:hover { transform: translateY(-2px); } .fab svg { width: 24px; height: 24px; }
-.hint { position: absolute; right: 64px; bottom: 6px; width: 230px; background: #fff; border: 1px solid var(--c-rule); padding: 10px 12px; box-shadow: 0 10px 28px rgba(12,26,46,.12); cursor: pointer; font-size: 13px; } .hint b { display: block; color: var(--c-ink); } .hint span { color: var(--c-muted); }
-.hint-enter-active, .hint-leave-active { transition: opacity .25s, transform .25s; } .hint-enter-from, .hint-leave-to { opacity: 0; transform: translateX(6px); }
+.fab { width: 58px; height: 58px; border: 0; background: var(--c-navy); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 14px 34px rgba(12,26,46,.3); transition: transform .15s; } .fab:hover { transform: translateY(-2px); } .fab svg { width: 26px; height: 26px; }
+/* Greeting card above the button, the same design as on finvry.com */
+.hint { position: absolute; right: 0; bottom: 72px; width: 330px; max-width: calc(100vw - 44px); background: #fff; border: 1px solid var(--c-rule); box-shadow: 0 18px 44px rgba(12,26,46,.16); padding: 18px 18px 16px; display: flex; gap: 14px; cursor: pointer; }
+.hav { width: 38px; height: 38px; flex: none; background: var(--c-navy); color: #a1bdd4; display: grid; place-items: center; } .hav svg { width: 18px; height: 18px; }
+.htx { display: flex; flex-direction: column; gap: 5px; font-size: 15px; line-height: 1.45; color: var(--c-ink); } .htx b { font-weight: 600; } .htx em { font-style: normal; font-size: 12.5px; color: var(--c-muted); }
+.hx { position: absolute; top: -12px; right: -12px; width: 26px; height: 26px; background: #fff; border: 1px solid var(--c-rule); color: var(--c-muted); display: grid; place-items: center; cursor: pointer; padding: 0; } .hx svg { width: 12px; height: 12px; }
+.hint-enter-active, .hint-leave-active { transition: opacity .25s, transform .25s; } .hint-enter-from, .hint-leave-to { opacity: 0; transform: translateY(6px); }
 .pnl { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(440px, calc(100vw - 24px)); background: #fff; border: 1px solid var(--c-rule); box-shadow: 0 20px 60px rgba(12,26,46,.18); display: flex; flex-direction: column; animation: slide .22s ease; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
 header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--c-rule); } .ttl { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--c-ink); } .ttl i { width: 8px; height: 8px; background: #3f85bf; }
