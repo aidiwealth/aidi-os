@@ -25,13 +25,12 @@ async function showList() { view.value = 'list'; listBusy.value = true; try { ch
 async function delChat(c: Chat) { if (!await askConfirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
 const when = (s: string) => { const d = new Date(s), n = Date.now() - d.getTime(); return n < 6e4 ? 'just now' : n < 36e5 ? Math.round(n / 6e4) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 // The greeting card introduces the AI (the same design as on finvry.com): it appears above the button shortly after
-// the app loads, with a "1" on the button, and stays until it is closed or the chat is opened; then it stays away
-// until the next sign-in session.
+// each page load, with a "1" on the button, and stays until the chat is opened. Its × hides it for this browser tab.
 const aiName = computed(() => (brand.key === 'finvry' ? 'Finvry AI' : 'Aidi AI'))
 const HINT = 'analyst_hint_s'
 onMounted(() => { let seen = false; try { seen = !!sessionStorage.getItem(HINT) } catch { /* storage off */ } if (!seen) setTimeout(() => { if (!open.value) hint.value = true }, 1500) })
 function dismissHint() { hint.value = false; try { sessionStorage.setItem(HINT, '1') } catch { /* ignore */ } }
-function toggle() { open.value = !open.value; dismissHint(); if (open.value) { if (msgs.value.length) { view.value = 'chat'; nextTick(() => ta.value?.focus()) } else void showHome() } }
+function toggle() { open.value = !open.value; hint.value = false; if (open.value) { if (msgs.value.length) { view.value = 'chat'; nextTick(() => ta.value?.focus()) } else void showHome() } }
 async function send(q?: string) {
   const text = (q ?? input.value).trim(); if (!text || busy.value) return
   msgs.value.push({ role: 'user', content: text }); input.value = ''; busy.value = true; err.value = ''; scroll()
@@ -150,7 +149,8 @@ footer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--c-r
 .ch { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 6px; border-bottom: 1px solid var(--c-rule); } .ch .ib { color: var(--c-navy); }
 .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; } .tt b { font-size: 15px; color: var(--c-navy); } .tt em { font-style: normal; font-size: 12px; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m.assistant { background: var(--c-paper-2); padding: 10px 13px; } .m.assistant.thinking { background: none; padding: 0; } .greet { display: flex; flex-direction: column; gap: 4px; } .greet .md p { margin: 0; } .who { font-style: normal; font-size: 11.5px; color: var(--c-muted); }
-.inbox { flex: 1; display: flex; gap: 8px; align-items: flex-end; border: 1.5px solid var(--c-navy); padding: 6px 6px 6px 10px; } .inbox textarea { border: 0; outline: none; padding: 6px 0; background: none; } .inbox button { width: 36px; height: 36px; flex: none; }
+.inbox { flex: 1; display: flex; gap: 8px; align-items: flex-end; border: 1.5px solid var(--c-rule-strong); padding: 6px 6px 6px 12px; background: #fff; transition: border-color .15s, box-shadow .15s; } .inbox:focus-within { border-color: var(--c-navy); box-shadow: 0 0 0 3px var(--c-signal-soft); }
+.inbox textarea, .inbox textarea:focus { border: 0 !important; box-shadow: none !important; outline: none; padding: 7px 0; background: none; border-radius: 0; } .inbox button { width: 38px; height: 38px; flex: none; background: var(--c-navy); } .inbox button:disabled { opacity: .5; }
 @media print { .an { display: none; } }
 .thinking :deep(.ait) { margin: 0; }
 </style>
