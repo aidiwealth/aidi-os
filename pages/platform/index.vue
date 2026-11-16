@@ -3,7 +3,15 @@ import { shortAmount } from '~/shared/compact'
 useHead({ title: 'Finvry · Overview' })
 interface O { kpis: { total: number; active: number; trial: number; past_due: number; suspended: number; new30: number; seats: number; mrr: number; arr: number; newMrr: number; churnMrr: number; pipelineOpen: number; pipeline: number; weighted: number; overdueCount: number; overdue: number }
   mrrSeries: { period: string; value: number }[]; renewals: { id: string; customer: string; organization_id: string; renews: string; amount_usd: string; billing: string }[]
+  requests: { pending: number; week: number; items: Req[] }
   byPlan: { plan: string; n: number }[]; trials: { id: string; name: string; ends: string | null }[]; recent: { id: string; name: string; status: string; plan: string }[] }
+interface Req { id: string; name: string; email: string; company: string; website: string | null; country: string; stage: string; team_size: string; needs: string[]; needs_note: string | null; source: string | null; community: string | null; want_demo: boolean; flags: string[]; status: string; created: string }
+// New access requests: who asked, for which company, and what they want Finvry for; decisions are made on the Access page.
+const STAGE: Record<string, string> = { idea: 'Idea', pre_seed: 'Pre-seed', seed: 'Seed', series_a: 'Series A+', established: 'Established' }
+const NEED: Record<string, string> = { reporting: 'Reporting', investors: 'Investor relations', fundraising: 'Fundraising', cap_table: 'Cap table', forecast: 'Forecasts', customers: 'Customers', group: 'Group', compliance: 'Compliance', services: 'Services' }
+const FLAG: Record<string, string> = { regulated: 'Regulated activity?', personal_email: 'Personal email', idea_stage: 'No company yet' }
+const ago = (s: string) => { const n = Date.now() - new Date(s).getTime(); return n < 36e5 ? Math.max(1, Math.round(n / 6e4)) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : n < 7 * 864e5 ? Math.round(n / 864e5) + ' d ago' : new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
+const site = (w: string | null) => (w ? w.replace(/^https?:\/\//, '').replace(/\/$/, '') : '')
 const { data } = await useFetch<O>('/api/platform/overview')
 const usd = (v: number | string) => shortAmount(v)
 const pts = (s?: { period: string; value: number }[]) => (s ?? []).map((x) => ({ label: new Date(x.period + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }), value: x.value }))
@@ -20,6 +28,20 @@ const day = (d: string | null) => (d ? new Date(d.slice(0, 10) + 'T00:00:00Z').t
       <StatTile label="This month" :value="'+' + usd(data.kpis.newMrr)" pos :note="'−' + usd(data.kpis.churnMrr) + ' churned'" :note-tone="data.kpis.churnMrr ? 'red' : ''" icon="chart" tone="g" />
       <StatTile label="Customers" :value="data.kpis.active" :note="data.kpis.trial + ' on trial · ' + data.kpis.past_due + ' past due'" icon="users" tone="b" />
       <StatTile label="Pipeline" :value="usd(data.kpis.weighted)" :note="'weighted MRR · ' + data.kpis.pipelineOpen + ' open deals (' + usd(data.kpis.pipeline) + ')'" icon="briefcase" tone="c" />
+    </div>
+    <div v-if="data.requests" class="card rq">
+      <div class="rqh"><h3>New access requests <span class="n">{{ data.requests.pending }} waiting · {{ data.requests.week }} this week</span></h3><NuxtLink to="/platform/access" class="btn secondary">Review requests</NuxtLink></div>
+      <div v-if="data.requests.items.length" class="tw"><table class="rqt">
+        <thead><tr><th>Person</th><th>Company</th><th>Stage · team</th><th>Wants help with</th><th>Heard via</th><th>Received</th></tr></thead>
+        <tbody><tr v-for="r in data.requests.items" :key="r.id">
+          <td><b>{{ r.name }}</b><a :href="'mailto:' + r.email">{{ r.email }}</a></td>
+          <td><b>{{ r.company }}</b><span>{{ r.country }}<template v-if="r.website"> · <a :href="/^https?:/.test(r.website) ? r.website : 'https://' + r.website" target="_blank" rel="noopener">{{ site(r.website) }}</a></template></span></td>
+          <td>{{ STAGE[r.stage] ?? r.stage }}<span>{{ r.team_size }} {{ r.team_size === '1' ? 'person' : 'people' }}</span></td>
+          <td><span class="tags"><i v-for="n in r.needs" :key="n">{{ NEED[n] ?? n }}</i></span><span v-if="r.needs_note" class="note">“{{ r.needs_note }}”</span></td>
+          <td>{{ r.source ?? '—' }}<span v-if="r.community">{{ r.community }}</span></td>
+          <td>{{ ago(r.created) }}<span v-if="r.want_demo || r.status === 'demo'" class="demo">Wants a demo</span><span v-for="f in r.flags" :key="f" class="flag">{{ FLAG[f] ?? f }}</span></td>
+        </tr></tbody></table></div>
+      <EmptyState v-else compact icon="customers" title="No requests waiting" />
     </div>
     <div class="charts">
       <TrendChart title="Monthly recurring revenue" sub="Last 12 months" unit="usd" :points="pts(data.mrrSeries)" :foot="data.kpis.seats + ' seats in use'" />
@@ -49,5 +71,12 @@ h3 { font-family: var(--font-heading); font-size: 20px; font-weight: 500; color:
 .warn { margin: 14px 0 0; font-size: 13px; } .warn a { color: var(--c-danger); }
 .list { list-style: none; padding: 0; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 14px; } .list span { color: var(--c-muted); font-size: 12.5px; text-transform: capitalize; white-space: nowrap; } .list span.nc { text-transform: none; }
 .muted { color: var(--c-muted); }
+.rq { margin-bottom: 16px; } .rqh { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; } .rqh h3 { margin: 0; } .rqh .n { font-family: var(--font-body); font-size: 13px; color: var(--c-muted); margin-left: 8px; font-weight: 400; } .rqh .btn { text-decoration: none; }
+.tw { overflow-x: auto; } .rqt { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 860px; }
+.rqt th { text-align: left; font-weight: 500; font-size: 12px; color: var(--c-muted); padding: 10px 12px 8px 0; border-bottom: 1px solid var(--c-rule); }
+.rqt td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--c-rule); vertical-align: top; color: var(--c-ink); } .rqt tr:last-child td { border-bottom: 0; }
+.rqt td b { display: block; font-weight: 600; color: var(--c-navy); } .rqt td > span, .rqt td > a { display: block; font-size: 12.5px; color: var(--c-muted); margin-top: 2px; } .rqt a { color: var(--c-blue); text-decoration: none; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; } .tags i { font-style: normal; font-size: 12px; background: var(--c-paper-2); border: 1px solid var(--c-rule); padding: 2px 7px; color: var(--c-ink); } .rqt .note { max-width: 260px; }
+.rqt .demo { color: var(--c-navy) !important; font-weight: 600; } .rqt .flag { color: var(--c-danger) !important; }
 @media (max-width: 1100px) { .charts, .three { grid-template-columns: 1fr; } }
 </style>

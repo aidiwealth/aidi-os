@@ -39,8 +39,15 @@ export default defineEventHandler(async (event) => {
       "SELECT p.name AS plan, count(o.id)::int AS n FROM core.plans p LEFT JOIN core.organizations o ON o.plan_code = p.code AND o.status IN ('trial','active','past_due') WHERE p.code <> 'internal' GROUP BY p.name, p.sort ORDER BY p.sort")
     const trials = await db().query("SELECT id, name, to_char(trial_ends_at, 'YYYY-MM-DD') AS ends FROM core.organizations WHERE status = 'trial' ORDER BY trial_ends_at NULLS LAST LIMIT 8")
     const recent = await db().query("SELECT o.id, o.name, o.status, p.name AS plan, o.created_at FROM core.organizations o JOIN core.plans p ON p.code = o.plan_code WHERE o.plan_code <> 'internal' ORDER BY o.created_at DESC LIMIT 6")
+    // New access requests (waiting for a decision), newest first, with what they told us on the request form.
+    const reqs = await db().query(`SELECT id, name, email, company, website, country, stage, team_size, needs, needs_note, source, community, want_demo, flags, status,
+        to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created
+      FROM platform.access_requests WHERE status IN ('pending', 'demo') ORDER BY created_at DESC LIMIT 8`).catch((e) => { console.error('[overview] access requests', e); return { rows: [] } })
+    const rq = await one<{ pending: number; week: number }>(`SELECT count(*) FILTER (WHERE status IN ('pending', 'demo'))::int AS pending,
+        count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS week FROM platform.access_requests`).catch(() => ({ pending: 0, week: 0 }))
     const mrr = Number(m.mrr)
     return {
+      requests: { pending: rq.pending, week: rq.week, items: reqs.rows },
       kpis: { ...k, mrr, arr: mrr * 12, newMrr: Number(m.new_mrr), churnMrr: Number(m.churn_mrr), pipelineOpen: pipe.open, pipeline: Number(pipe.value), weighted: Number(pipe.weighted), overdueCount: overdue.n, overdue: Number(overdue.v) },
       mrrSeries: series.rows.map((r) => ({ period: r.b, value: Number(r.v) })), renewals, byPlan: byPlan.rows, trials: trials.rows, recent: recent.rows
     }
