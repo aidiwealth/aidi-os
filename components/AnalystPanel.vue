@@ -24,13 +24,15 @@ function ask(q: string) { newChat(); void send(q) }
 async function showList() { view.value = 'list'; listBusy.value = true; try { chats.value = await $fetch<Chat[]>('/api/ai/chats') } catch { chats.value = [] } finally { listBusy.value = false } }
 async function delChat(c: Chat) { if (!await askConfirm('Delete "' + c.title + '"?')) return; await $fetch('/api/ai/chats/' + c.id, { method: 'DELETE' }).catch(() => {}); chats.value = chats.value.filter((x) => x.id !== c.id); if (chatId.value === c.id) newChat(); view.value = 'list' }
 const when = (s: string) => { const d = new Date(s), n = Date.now() - d.getTime(); return n < 6e4 ? 'just now' : n < 36e5 ? Math.round(n / 6e4) + ' min ago' : n < 864e5 ? Math.round(n / 36e5) + ' h ago' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
-// The greeting card introduces the AI (the same design as on finvry.com): it appears above the button shortly after
-// each page load, with a "1" on the button, and stays until the chat is opened. Its × hides it for this browser tab.
+// The greeting card introduces the AI (the same design as on finvry.com): it sits above the button whenever the chat
+// is closed, with a "1" on the button, including after a chat. Its × hides it for this browser tab.
 const aiName = computed(() => (brand.key === 'finvry' ? 'Finvry AI' : 'Aidi AI'))
 const HINT = 'analyst_hint_s'
-onMounted(() => { let seen = false; try { seen = !!sessionStorage.getItem(HINT) } catch { /* storage off */ } if (!seen) setTimeout(() => { if (!open.value) hint.value = true }, 1500) })
+const dismissed = () => { try { return !!sessionStorage.getItem(HINT) } catch { return false } }
+onMounted(() => { if (!dismissed()) setTimeout(() => { if (!open.value) hint.value = true }, 1500) })
 function dismissHint() { hint.value = false; try { sessionStorage.setItem(HINT, '1') } catch { /* ignore */ } }
-function toggle() { open.value = !open.value; hint.value = false; if (open.value) { if (msgs.value.length) { view.value = 'chat'; nextTick(() => ta.value?.focus()) } else void showHome() } }
+// The card steps aside while the chat is open and comes back when it closes, chat or no chat; only its × hides it.
+function toggle() { open.value = !open.value; hint.value = !open.value && !dismissed(); if (open.value) { if (msgs.value.length) { view.value = 'chat'; nextTick(() => ta.value?.focus()) } else void showHome() } }
 async function send(q?: string) {
   const text = (q ?? input.value).trim(); if (!text || busy.value) return
   msgs.value.push({ role: 'user', content: text }); input.value = ''; busy.value = true; err.value = ''; scroll()
