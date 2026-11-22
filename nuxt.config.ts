@@ -36,6 +36,8 @@ export default defineNuxtConfig({
     r2Bucket: 'aidi-os-documents',
     r2Endpoint: '',
     turnstileSecret: '',
+    // Sites allowed to send Turnstile tokens; siteverify rejects a token solved anywhere else (set NUXT_TURNSTILE_HOSTNAMES to change).
+    turnstileHostnames: 'app.theaidigroup.com,app.finvry.com,finvry.com,www.finvry.com,aidiventures.com,www.aidiventures.com',
     anthropicBaseUrl: 'https://api.anthropic.com',
     aiModelPitchScreen: 'claude-haiku-4-5-20251001',
     aiModelAnalyst: '', // the AI analyst chat; empty uses Claude Haiku (set NUXT_AI_MODEL_ANALYST for a larger model)
