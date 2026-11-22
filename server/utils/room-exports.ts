@@ -213,30 +213,53 @@ function capSections(d: Data, o: CapExportOpts): { summary: string[]; secs: Sec[
   }
   return { summary, secs }
 }
-export function capTableExportMd(name: string, d: Data, o: CapExportOpts): string {
-  const { summary, secs } = capSections(d, o)
+// Footer line on downloads: the company decides who else may read its cap table.
+const capConfidential = (company: string) => 'Confidential. Get permission from ' + company + ' before sharing this with a third party.'
+export function capTableExportMd(name: string, d: Data, o: CapExportOpts, company: string): string {
+  const { secs } = capSections(d, o)
   const cell = (v: string | number, i: number, s: Sec) => (typeof v === 'number' ? (s.num.includes(i) ? n0(v) : s.head[i]?.startsWith('%') ? v.toFixed(2) + '%' : String(v)) : (v || '-').replace(/\|/g, '/'))
-  const out = ['# ' + name, '', (o.version === 'summary' ? 'Summary cap table' : 'Full cap table') + ' as of ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '.', '', '## Summary', '', ...summary.map((s) => '- ' + s), '']
+  // The cover (title, details, headline figures) is drawn by the PDF header; the body opens with who owns the company.
+  const out = ['![Ownership by holder type](drawing:ownership)', '']
   for (const s of secs) {
     out.push('## ' + s.title, '', ...(s.note ? [s.note, ''] : []), '| ' + s.head.join(' | ') + ' |', '|' + s.head.map(() => '---').join('|') + '|')
     for (const r of s.rows) out.push('| ' + r.map((v, i) => cell(v, i, s)).join(' | ') + ' |')
     if (s.total) out.push('| ' + s.total.map((v, i) => (i === 0 ? '**Total**' : v === '' ? '' : cell(v, i, s))).join(' | ') + ' |')
     out.push('')
   }
-  out.push('Confidential. As recorded by the company; check against the share register.')
+  out.push(capConfidential(company))
   return out.join('\n')
 }
-export async function capTableXlsx(name: string, company: string, d: Data, o: CapExportOpts): Promise<Buffer> {
+// The PDF cover for a cap table download: details, four headline figures, and an ownership donut by holder type.
+export function capTableCover(name: string, d: Data, o: CapExportOpts): { header: { eyebrow: string; badge: string; fields: { label: string; value: string; wide?: boolean }[]; stats: { label: string; value: string }[] }; ownership: { title: string; sub: string; slices: { label: string; value: number }[] } } {
+  const t = table(d, new Date().toISOString().slice(0, 10))
+  const by = (k: string) => t.rows.filter((r) => (KINDS[r.holder.kind] ? r.holder.kind : 'other') === k).reduce((a, r) => a + r.fd, 0)
+  const cur = new Set(t.convertibles.map((c) => c.currency))
+  const conv = t.convertibles.length ? (cur.size === 1 ? money(t.convertibleTotal, t.convertibles[0]!.currency) : t.convertibles.length + ' outstanding') : 'None'
+  const asOf = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  return {
+    header: { eyebrow: 'Capitalization table', badge: o.version === 'summary' ? 'Summary' : 'Full',
+      fields: [{ label: 'As of', value: asOf }, { label: 'Cap table', value: name }, { label: 'Share classes', value: d.classes.map((c) => c.name).join(', ') || 'None yet' }, { label: 'Holders', value: String(t.rows.length) }],
+      stats: [{ label: 'Fully diluted shares', value: n0(t.fd) }, { label: 'Shares issued', value: n0(t.issued) }, { label: 'Option pool available', value: n0(t.pool) }, { label: 'SAFEs and notes', value: conv }] },
+    ownership: { title: 'Ownership by holder type', sub: 'Fully diluted · ' + n0(t.fd) + ' shares', slices: [
+      { label: 'Founders', value: by('founder') }, { label: 'Investors', value: by('investor') }, { label: 'Employees', value: by('employee') },
+      { label: 'Advisors', value: by('advisor') }, { label: 'Option pool (available)', value: t.pool }, { label: 'Other holders', value: by('other') }].filter((x) => x.value > 0) }
+  }
+}
+export async function capTableXlsx(name: string, company: string, d: Data, o: CapExportOpts, logo?: { data: Buffer; ext: 'png' | 'jpeg' } | null, accent?: string | null): Promise<Buffer> {
   const { default: Excel } = await import('exceljs')
   const { summary, secs } = capSections(d, o), wb = new Excel.Workbook()
   const ov = wb.addWorksheet('Summary'); ov.getColumn(1).width = 60
   ov.addRow([company + ': ' + name]).font = { bold: true, size: 14 }
   ov.addRow([(o.version === 'summary' ? 'Summary cap table' : 'Full cap table') + ' as of ' + new Date().toISOString().slice(0, 10)])
   ov.addRow([]); for (const s of summary) ov.addRow([s])
-  ov.addRow([]); ov.addRow(['Confidential. As recorded by the company; check against the share register.']).font = { italic: false, color: { argb: 'FF6B7686' } }
+  ov.addRow([]); ov.addRow([capConfidential(company)]).font = { color: { argb: 'FF6B7686' } }
+  // The company's logo (Settings) at the top right of the summary sheet, and its brand colour on the headings.
+  if (logo) { const img = wb.addImage({ buffer: logo.data as unknown as ArrayBuffer, extension: logo.ext }); ov.getColumn(2).width = 18; ov.addImage(img, { tl: { col: 1.2, row: 0 }, ext: { width: 110, height: 32 } }) }
+  const head = /^#[0-9a-f]{6}$/i.test(accent ?? '') ? 'FF' + accent!.slice(1).toUpperCase() : 'FF0C1A2E'
+  ov.getRow(1).font = { bold: true, size: 14, color: { argb: head } }
   for (const s of secs) {
     const ws = wb.addWorksheet(s.title.slice(0, 31), { views: [{ state: 'frozen', ySplit: 1 }] })
-    const h = ws.addRow(s.head); h.font = { bold: true }
+    const h = ws.addRow(s.head); h.font = { bold: true, color: { argb: 'FFFFFFFF' } }; h.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: head } } })
     for (const r of s.rows) ws.addRow(r)
     if (s.total) { const tr = ws.addRow(s.total.map((v) => (v === '' ? null : v))); tr.font = { bold: true } }
     s.head.forEach((hd, i) => { const col = ws.getColumn(i + 1); col.width = Math.max(12, Math.min(40, hd.length + 4, ...s.rows.map((r) => String(r[i] ?? '').length + 2))); if (s.num.includes(i)) col.numFmt = '#,##0'; else if (hd.startsWith('%')) col.numFmt = '0.00"%"' })

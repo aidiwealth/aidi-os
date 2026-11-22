@@ -1,19 +1,19 @@
 <script setup lang="ts">
 // A read-only forecast: headline figures, the chart and (unless compact) the monthly table. Used on shared links and
-// on boards.
-import { run, defaults, forecastRows, type Assumptions, type Scenario } from '~/shared/forecast'
-const props = withDefaults(defineProps<{ assumptions: Assumptions; compact?: boolean; scenarios?: boolean }>(), { compact: false, scenarios: true })
+// on boards. A group forecast comes worked out already (pack: each company's forecast added up in one currency).
+import { run, defaults, forecastRows, type Assumptions, type Scenario, type Result } from '~/shared/forecast'
+const props = withDefaults(defineProps<{ assumptions?: Assumptions | null; pack?: { currency: string; months: number; base: Result; best: Result; worst: Result } | null; compact?: boolean; scenarios?: boolean }>(), { assumptions: null, pack: null, compact: false, scenarios: true })
 const sc = ref<Scenario>('base')
-const a = computed(() => ({ ...defaults(props.assumptions.start), ...props.assumptions }))
-const res = computed(() => run(a.value, sc.value))
-const cur = computed(() => a.value.currency)
+const a = computed(() => (props.assumptions ? { ...defaults(props.assumptions.start), ...props.assumptions } : { ...defaults(props.pack?.base.months[0]?.month ?? new Date().toISOString().slice(0, 7)), currency: props.pack?.currency ?? 'USD', months: props.pack?.months ?? 0 }))
+const res = computed(() => (props.pack ? props.pack[sc.value] : run(a.value as Assumptions, sc.value)))
+const cur = computed(() => props.pack?.currency ?? a.value.currency)
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : briefMoney(v, cur.value))
 const full = (v: number | null | undefined) => (v === null || v === undefined ? '—' : (v < 0 ? '(' : '') + Math.abs(Math.round(v)).toLocaleString('en-US') + (v < 0 ? ')' : ''))
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const chart = computed(() => res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })))
 // Every line, with the company's own lines (products, carriers, costs) under theirs; ARR and headcount at the end.
-const ROWS = computed(() => forecastRows(a.value, res.value.months).filter((r) => r.label !== 'Customers'))
-const fixedRange = computed(() => { const k = Object.keys(a.value.fixed ?? {}).sort(); return k.length ? mon(k[0]!) + ' to ' + mon(k[k.length - 1]!) : '' })
+const ROWS = computed(() => (props.pack ? [] : forecastRows(a.value as Assumptions, res.value.months).filter((r) => r.label !== 'Customers')))
+const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.keys(a.value.fixed ?? {}).sort(); return k.length ? mon(k[0]!) + ' to ' + mon(k[k.length - 1]!) : '' })
 </script>
 <template>
   <div class="fs">
@@ -22,11 +22,11 @@ const fixedRange = computed(() => { const k = Object.keys(a.value.fixed ?? {}).s
       <StatTile label="Cash at the end" :value="m(res.summary.cash_end)" :note="mon(res.months[res.months.length - 1]?.month ?? null)" :red="res.summary.cash_end < 0" />
       <StatTile :label="res.summary.zero_cash ? 'Cash runs out' : 'Lowest cash'" :value="res.summary.zero_cash ? mon(res.summary.zero_cash) : m(res.summary.min_cash)" :note="res.summary.zero_cash ? '' : mon(res.summary.min_cash_month)" :red="!!res.summary.zero_cash" full />
       <StatTile label="Break-even" :value="res.summary.break_even ? mon(res.summary.break_even) : 'Not in this forecast'" note="First month with a profit" full />
-      <StatTile label="ARR at the end" :value="m(res.summary.arr_end)" :note="'Revenue ' + m(res.summary.revenue_total) + ' over ' + a.months + ' months'" />
+      <StatTile label="ARR at the end" :value="m(res.summary.arr_end)" :note="'Revenue ' + m(res.summary.revenue_total) + ' over ' + res.months.length + ' months'" />
     </div>
     <div class="card"><ForecastChart :actual="[]" :forecast="chart" :currency="cur" /></div>
     <p v-if="fixedRange" class="mut">{{ fixedRange }} uses figures from {{ a.source?.file || 'an imported forecast' }}; later months follow the forecast's assumptions.</p>
-    <div v-if="!compact" class="card pad0"><table class="t" data-nosearch><thead><tr><th>{{ cur }}</th><th v-for="x in res.months" :key="x.month" class="r">{{ mon(x.month) }}</th></tr></thead>
+    <div v-if="!compact && !pack" class="card pad0"><table class="t" data-nosearch><thead><tr><th>{{ cur }}</th><th v-for="x in res.months" :key="x.month" class="r">{{ mon(x.month) }}</th></tr></thead>
       <tbody><tr v-for="(r, i) in ROWS" :key="i" :class="r.kind"><td>{{ r.label }}</td><td v-for="x in res.months" :key="x.month" class="r">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr></tbody></table></div>
   </div>
 </template>

@@ -24,32 +24,29 @@ export async function ensureBoards(): Promise<void> {
 export function boardMetric(k: string): { label: string; unit: string } { return BOARD_METRICS[k] ?? { label: metricLabel(k), unit: metricUnit(k) } }
 // Revenue growth over twelve months, at the end of each period on a board.
 // LTM: revenue in the last 12 months against the 12 months before (all 24 months must have figures).
-// NTM: the forecast's revenue for the next 12 months against the last 12 months of actual revenue. The forecast is the
-// one on the board, else the workspace's latest; months the forecast does not cover (or a forecast in another currency)
-// leave the figure blank.
-async function twelveMonthGrowth(ends: string[], subject: string | null | undefined, forecast: unknown, currency: string) {
+// NTM: the forecast's revenue for the next 12 months against the last 12 months of actual revenue (see boardForecast:
+// the forecast for the company or group being viewed, whether or not the board shows it). Months the forecast does not
+// cover leave the figure blank.
+async function twelveMonthGrowth(ends: string[], subject: string | null | undefined, fc: Map<string, number>) {
   const m = await metricSeries(['revenue'], 'month', 36, subject)
   const rev = new Map<string, number>()
   const vals = m.series.find((x) => x.key === 'revenue')?.values ?? []
   for (const [i, e] of (m.ends ?? []).entries()) { const v = vals[i]; if (typeof v === 'number') rev.set(e, v) }
   const sum = (from: string, n: number, src: Map<string, number>) => { let t = 0; for (let i = 0; i < n; i++) { const v = src.get(addMonths(from, i)); if (v == null) return null; t += v } return t }
-  const fc = new Map<string, number>()
-  const a = forecast as Assumptions | null | undefined
-  if (a && Array.isArray(a.costs) && (!a.currency || a.currency === currency)) { try { for (const x of run(a).months) fc.set(x.month, x.revenue) } catch { /* a forecast that cannot run leaves NTM blank */ } }
   const pct = (now: number | null, before: number | null) => (now != null && before != null && before > 0 ? Math.round((now / before - 1) * 1000) / 10 : null)
   return {
     ltm: ends.map((e) => pct(sum(addMonths(e, -11), 12, rev), sum(addMonths(e, -23), 12, rev))),
     ntm: ends.map((e) => pct(sum(addMonths(e, 1), 12, fc), sum(addMonths(e, -11), 12, rev)))
   }
 }
-export async function boardData(kpis: string[], charts: BoardChart[], period: string, count: number, subject?: string | null, forecast?: unknown) {
+export async function boardData(kpis: string[], charts: BoardChart[], period: string, count: number, subject?: string | null, chosen?: ChosenForecast | null) {
   const want = [...new Set([...kpis, ...charts.flatMap((c) => c.metrics)].flatMap((m) => (m === 'growth' ? ['revenue'] : m === 'ltm_growth' || m === 'ntm_growth' ? [] : [m])))]
   const s = await metricSeries(want, period, count + 1, subject)
   const get = (k: string) => s.series.find((x) => x.key === k)?.values ?? []
   const rev = get('revenue')
   const growth = rev.map((v, i) => (i && v != null && rev[i - 1] ? Math.round(((v - rev[i - 1]!) / Math.abs(rev[i - 1]!)) * 1000) / 10 : null))
   const all = [...kpis, ...charts.flatMap((c) => c.metrics)]
-  const tw = all.some((k) => k === 'ltm_growth' || k === 'ntm_growth') ? await twelveMonthGrowth(s.ends ?? [], subject, forecast, s.currency) : null
+  const tw = all.some((k) => k === 'ltm_growth' || k === 'ntm_growth') ? await twelveMonthGrowth(s.ends ?? [], subject, (await boardForecast(subject, chosen, s.currency))?.revenue ?? new Map()) : null
   const val = (k: string) => (k === 'growth' ? growth : k === 'ltm_growth' ? tw!.ltm : k === 'ntm_growth' ? tw!.ntm : get(k))
   const labels = s.labels.slice(1)
   const series: Record<string, (number | null)[]> = {}
@@ -59,4 +56,26 @@ export async function boardData(kpis: string[], charts: BoardChart[], period: st
     return { key: k, label: def.label, unit: def.unit, value: last, prev, change: last != null && prev != null && prev !== 0 && def.unit === 'money' ? Math.round(((last - prev) / Math.abs(prev)) * 1000) / 10 : last != null && prev != null && def.unit !== 'money' ? Math.round((last - prev) * 10) / 10 : null } })
   const defs = Object.fromEntries([...new Set([...kpis, ...charts.flatMap((c) => c.metrics)])].map((k) => [k, boardMetric(k)]))
   return { labels, series, kpis: kpiCards, charts, currency: s.currency, period, defs }
+}
+
+// The forecast for what a board is showing. The group (chosen at the top) uses the group forecast: every company's main
+// forecast in the reporting currency. One company uses the forecast picked on the board when it is that company's,
+// else that company's main forecast. Used for the board's forecast panel and for NTM revenue growth (NTM uses it even
+// when the board does not show a forecast). A forecast in another currency than the board's figures is not used for NTM.
+export interface ChosenForecast { id: string; name: string; entity_id: string | null; assumptions: unknown }
+export interface BoardForecast { name: string; group: boolean; id: string | null; assumptions: unknown | null; pack: { currency: string; months: number; base: unknown; best: unknown; worst: unknown } | null; revenue: Map<string, number> }
+export async function boardForecast(subject: string | null | undefined, chosen: ChosenForecast | null | undefined, currency?: string): Promise<BoardForecast | null> {
+  const ent = subject?.startsWith('entity:') ? subject.slice(7) : null
+  const rev = (months: { month: string; revenue: number }[], cur: string) => new Map(!currency || cur === currency ? months.map((x) => [x.month, x.revenue] as [string, number]) : [])
+  const mine = chosen && (subject !== 'group') && (!ent || chosen.entity_id === ent) ? chosen : null
+  if (mine) {
+    const a = mine.assumptions as Assumptions | null
+    let months: { month: string; revenue: number }[] = []
+    if (a && Array.isArray(a.costs)) { try { months = run(a).months } catch { /* a forecast that cannot run gives no NTM */ } }
+    return { name: mine.name, group: false, id: mine.id, assumptions: mine.assumptions, pack: null, revenue: rev(months, a?.currency || currency || '') }
+  }
+  const p = await forecastPack({ subject: subject ?? undefined, currency }).catch(() => null)
+  if (!p) return null
+  return { name: p.companies > 1 ? 'Group forecast' : p.name, group: p.companies > 1, id: null, assumptions: p.companies > 1 ? null : p.a,
+    pack: p.companies > 1 ? { currency: p.currency, months: p.months, base: p.base, best: p.best, worst: p.worst } : null, revenue: rev(p.base.months, p.currency) }
 }

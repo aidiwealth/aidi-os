@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   setOrgContext(b.organization_id)
   // A switch of company or period is the same visit: only the first load counts as a view.
   if (!getQuery(event).period && !getQuery(event).subject) await asPlatform(() => db().query('UPDATE financials.boards SET views = views + 1, last_viewed_at = now() WHERE id = $1', [b.id]))
-  const fc = b.forecast_id ? (await db().query<{ name: string; assumptions: unknown }>('SELECT name, assumptions FROM financials.forecasts WHERE id = $1', [b.forecast_id]).catch(() => ({ rows: [] }))).rows[0] ?? null : null
+  const fc = b.forecast_id ? (await db().query<{ id: string; name: string; entity_id: string | null; assumptions: unknown }>('SELECT id, name, entity_id, assumptions FROM financials.forecasts WHERE id = $1', [b.forecast_id]).catch(() => ({ rows: [] }))).rows[0] ?? null : null
   // The viewer can look at the group or any one company in it, and by month, quarter or year (the board's own
   // choices are the starting point). Only the companies the company's plan shows are offered.
   const q = getQuery(event)
@@ -19,5 +19,6 @@ export default defineEventHandler(async (event) => {
   const choices = ents.length > 1 ? [{ id: 'group', name: (await groupName().catch(() => 'Group')) + ' (group)' }, ...ents.map((e) => ({ id: 'entity:' + e.id, name: e.name }))] : []
   const asked = String(q.subject ?? '')
   const subject = choices.some((c) => c.id === asked) ? asked : null
-  return { forecast: fc, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject, fc?.assumptions), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
+  const shown = fc ? await boardForecast(subject ?? (choices.length ? 'group' : null), fc).catch(() => null) : null
+  return { forecast: shown ? { name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack } : null, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject, fc), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
 })

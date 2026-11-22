@@ -17,9 +17,10 @@ export function normalizeDocMd(md: string): string {
   t = t.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h[1-6])>/gi, '\n').replace(/<[^>]+>/g, '')
   return ent(t).replace(/\\([\\`*_{}\[\]()#+\-.!|$>])/g, '$1').replace(/\n{3,}/g, '\n\n')
 }
-export interface DocHeader { eyebrow?: string; badge?: string; fields: { label: string; value: string; wide?: boolean }[] }
+// stats: a row of headline figures under the details panel (large value, small label).
+export interface DocHeader { eyebrow?: string; badge?: string; fields: { label: string; value: string; wide?: boolean }[]; stats?: { label: string; value: string }[] }
 // style 'memo': an investment memo's cover block (eyebrow, large title, company and date) and navy table headings.
-export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null; font?: 'garamond'; style?: 'memo' } = {}): Promise<Uint8Array> {
+export async function legalPdf(company: string, docs: { title: string; md: string; header?: DocHeader }[], opts: { logo?: 'aidi' | 'finvry' | null; font?: 'garamond'; style?: 'memo'; ownLogo?: { data: Buffer; ext: 'png' | 'jpeg' } | null; accent?: string | null; drawings?: Record<string, Drawing> } = {}): Promise<Uint8Array> {
   docs = docs.map((d) => ({ ...d, md: normalizeDocMd(d.md) }))
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit)
   pdf.setTitle(docs.map((d) => d.title).join(' + ')); pdf.setProducer(opts.logo === 'aidi' ? 'Aidi OS' : 'Finvry'); pdf.setCreator(clean(company))
@@ -27,8 +28,11 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
   const F = opts.font === 'garamond' ? { regular: GARAMOND_TTF.regular, semibold: GARAMOND_TTF.semibold, italic: GARAMOND_TTF.regular } : INSTRUMENT_TTF
   const reg = await pdf.embedFont(Buffer.from(F.regular, 'base64'), { subset: true }), bold = await pdf.embedFont(Buffer.from(F.semibold, 'base64'), { subset: true })
   const ital = await pdf.embedFont(Buffer.from(F.italic, 'base64'), { subset: true }), sans = reg
-  const lg = opts.logo ? LOGO_PNG[opts.logo] : null, logo = lg ? await pdf.embedPng(Buffer.from(lg.b64, 'base64')) : null
-  const W = 612, H = 792, M = 64, maxW = W - M * 2, ink = rgb(0.08, 0.09, 0.12), navy = rgb(12 / 255, 26 / 255, 46 / 255), blue = rgb(28 / 255, 84 / 255, 125 / 255), rule = rgb(0.86, 0.88, 0.91)
+  // A company's own logo (Settings) takes the letterhead in place of the Aidi or Finvry mark.
+  const own = opts.ownLogo ? await (opts.ownLogo.ext === 'png' ? pdf.embedPng(opts.ownLogo.data) : pdf.embedJpg(opts.ownLogo.data)).catch(() => null) : null
+  const lg = own ? { w: own.width, h: own.height } : opts.logo ? LOGO_PNG[opts.logo] : null, logo = own ?? (lg && opts.logo ? await pdf.embedPng(Buffer.from(LOGO_PNG[opts.logo]!.b64, 'base64')) : null)
+  const W = 612, H = 792, M = 64, maxW = W - M * 2, ink = rgb(0.08, 0.09, 0.12), brand = /^#[0-9a-f]{6}$/i.test(opts.accent ?? '') ? opts.accent! : null
+  const navy = brand ? rgb(parseInt(brand.slice(1, 3), 16) / 255, parseInt(brand.slice(3, 5), 16) / 255, parseInt(brand.slice(5, 7), 16) / 255) : rgb(12 / 255, 26 / 255, 46 / 255), blue = brand ? navy : rgb(28 / 255, 84 / 255, 125 / 255), rule = rgb(0.86, 0.88, 0.91)
   let page!: PDFPage, y = 0
   const newPage = () => { page = pdf.addPage([W, H]); y = H - M }
   const need = (h: number) => { if (y - h < M) newPage() }
@@ -57,6 +61,8 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
   const pics = new Map<string, { chart?: Drawing; img?: Awaited<ReturnType<typeof pdf.embedPng>> }>()
   for (const doc of docs) for (const m of doc.md.matchAll(/!\[[^\]]*\]\((\S+?)\)/g)) {
     const url = m[1]!; if (pics.has(url)) continue
+    // Charts drawn by the caller and placed with ![alt](drawing:key).
+    if (url.startsWith('drawing:')) { const d = opts.drawings?.[url.slice(8)]; if (d) pics.set(url, { chart: d }); continue }
     try {
       const ch = /\/api\/public\/charts\/([0-9a-f-]{36})\.svg/.exec(url), md = /\/api\/public\/media\/([0-9a-f-]{36})/.exec(url)
       if (ch) { const c = await chartById(ch[1]!); if (c?.drawing) pics.set(url, { chart: c.drawing }) }
@@ -86,7 +92,7 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
     newPage()
     if (logo && lg) {
       // Letterhead: logo left, company right (vertically centred on the logo), a rule, then room before the title.
-      const lh = 26, lw = lh * lg.w / lg.h, top = H - 54
+      const lh = own ? Math.min(34, 140 * lg.h / lg.w) : 26, lw = lh * lg.w / lg.h, top = H - 54
       page.drawImage(logo, { x: M, y: top - lh, width: lw, height: lh })
       const c = clean(company), cw = sans.widthOfTextAtSize(c, 9); page.drawText(c, { x: W - M - cw, y: top - lh / 2 - 3, size: 9, font: sans, color: rgb(0.45, 0.45, 0.45) })
       const ry = top - lh - 18; page.drawLine({ start: { x: M, y: ry }, end: { x: W - M, y: ry }, thickness: 0.6, color: rule }); y = ry - 40
@@ -124,6 +130,18 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
         let yy = y - pad - 4
         for (const r of rows) { r.forEach((c, i) => { const x = M + pad + 4 + (c.wide ? 0 : i * (colW + 16)); page.drawText(c.label.toUpperCase(), { x, y: yy, size: ls, font: bold, color: rgb(0.42, 0.45, 0.5) }); c.lines.forEach((ln, k) => page.drawText(ln, { x, y: yy - 13 - k * vl, size: vs, font: reg, color: ink })) }); yy -= rh(r) }
         y -= total + 22
+      }
+      if (h.stats?.length) {
+        const n = h.stats.length, gap = 10, tw = (maxW - gap * (n - 1)) / n, th = 56
+        need(th + 10)
+        h.stats.forEach((st, i) => {
+          const x = M + i * (tw + gap)
+          page.drawRectangle({ x, y: y - th, width: tw, height: th, borderColor: rule, borderWidth: 0.8 })
+          let v = clean(st.value), vs2 = 17; while (vs2 > 10 && bold.widthOfTextAtSize(v, vs2) > tw - 20) vs2 -= 1
+          page.drawText(v, { x: x + 10, y: y - 24, size: vs2, font: bold, color: navy })
+          page.drawText(clean(st.label).toUpperCase(), { x: x + 10, y: y - th + 12, size: 7, font: bold, color: rgb(0.42, 0.45, 0.5) })
+        })
+        y -= th + 26
       }
     }
     const lines = doc.md.split(/\r?\n/)
@@ -173,7 +191,8 @@ export async function legalPdf(company: string, docs: { title: string; md: strin
       if (/^#{1,4} /.test(l)) { const lv = /^(#+) /.exec(l)![1]!.length, t = clean(l.replace(/^#+ /, '').replace(/\*\*/g, '').trim())
         if (opts.style === 'memo' && lv <= 2) { y -= 10; need(44); page.drawText(t, { x: M, y, size: 15, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 7 }, end: { x: W - M, y: y - 7 }, thickness: 0.5, color: rule }); y -= 26; continue }
         if (lv === 1) { need(40); const s2 = 18, tw = bold.widthOfTextAtSize(t, s2); page.drawText(t, { x: (W - tw) / 2, y, size: s2, font: bold, color: navy }); y -= 28; continue }
-        if (lv === 2) { y -= 8; need(34); page.drawText(t, { x: M, y, size: 13, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.5, color: rule }); y -= 22; continue }
+        // A section heading is never left alone at the foot of a page: it needs room for a few lines under it.
+        if (lv === 2) { y -= 8; need(110); page.drawText(t, { x: M, y, size: 13, font: bold, color: navy }); page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.5, color: rule }); y -= 22; continue }
         y -= 4; need(30); page.drawText(t, { x: M, y, size: 11, font: bold, color: blue }); y -= 16; continue }
       if (l.startsWith('> ')) { const startY = y; const top = y + 11; para([{ t: l.slice(2), f: ital }], 9, 10, 12, false); page.drawRectangle({ x: M, y: y + 6, width: 2, height: top - y - 6, color: rgb(0.11, 0.31, 0.61) }); void startY; y -= 4; continue }
       if (/^\*\*[^*]+\*\*$/.test(l) && !/^\*\*\(/.test(l)) { const t = clean(l.slice(2, -2)); need(18); if (/^(Company|Investor|Agreed|Accepted)/.test(t)) { y -= 8; need(110) } const tw = bold.widthOfTextAtSize(t, 11); page.drawText(t, { x: /SAFE|Valuation|Discount|MFN/.test(t) && !/^(Company|Investor)/.test(t) ? (W - tw) / 2 : M, y, size: 11, font: bold, color: ink }); y -= 16; continue }

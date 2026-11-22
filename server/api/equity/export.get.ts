@@ -16,15 +16,22 @@ export default defineEventHandler(async (event) => {
   if (!c) throw apiError('not_found', 'Cap table not found.', 404)
   const org = (await currentOrg())!
   const d = await loadCapTable(ct)
+  // The company's own logo and brand colour (Settings → branding) on the download; a light colour falls back to navy.
+  const logo = await companyLogoImage(), br = await brandingOf(org.id)
+  const dark = (h: string | null) => { if (!h || !/^#[0-9a-f]{6}$/i.test(h)) return null; const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! < 0.55 ? h : null }
+  const accent = dark(br.bg) ?? dark(br.fg)
   const opts = { version: o.version, convertibles: o.convertibles, classes: o.classes, ledger: o.ledger, grants: o.grants, emails: o.emails }
   const file = ((o.version === 'summary' ? 'Cap table summary - ' : 'Cap table - ') + org.name + ' - ' + new Date().toISOString().slice(0, 10)).replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 120)
   setHeader(event, 'cache-control', 'private, no-store')
   if (o.format === 'xlsx') {
     setHeader(event, 'content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     setHeader(event, 'content-disposition', 'attachment; filename="' + file + '.xlsx"')
-    return await capTableXlsx(c.name, org.name, d, opts)
+    return await capTableXlsx(c.name, org.name, d, opts, logo, accent)
   }
-  const bytes = await legalPdf(org.name, [{ title: (o.version === 'summary' ? 'Cap table summary' : 'Cap table') + ' - ' + c.name, md: capTableExportMd(c.name, d, opts) }], { logo: org.settings.brand === 'aidi' ? 'aidi' : org.kind === 'company' ? null : 'aidi' })
+  const cover = capTableCover(c.name, d, opts)
+  const ownership = pieDrawing(cover.ownership.title, { sub: cover.ownership.sub, slices: cover.ownership.slices, currency: null })
+  const bytes = await legalPdf(org.name, [{ title: org.name + ' cap table', md: capTableExportMd(c.name, d, opts, org.name), header: cover.header }],
+    { ownLogo: logo ?? undefined, accent: accent ?? undefined, drawings: { ownership }, logo: logo ? null : org.settings.brand === 'aidi' ? 'aidi' : org.kind === 'company' ? null : 'aidi' })
   setHeader(event, 'content-type', 'application/pdf')
   setHeader(event, 'content-disposition', 'attachment; filename="' + file + '.pdf"')
   return Buffer.from(bytes)

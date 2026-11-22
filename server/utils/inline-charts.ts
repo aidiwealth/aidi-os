@@ -351,7 +351,7 @@ async function customerChart(sp: CustSpec): Promise<Drawing> {
 
 // Shares as a ring: the slices clockwise from the top, largest first; a legend with each share and amount.
 const PIE = ['#1C3D63', BLUE, '#8AA4C4', '#C3C3BA', '#5E7FA6', '#D5DEEA', '#E3E3DE', '#2B5A8C']
-function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
+export function pieDrawing(title: string, pie: NonNullable<Drawing['pie']>): Drawing {
   // Largest first; anything called "Other…" and the slices past the seventh go into one "Other" at the end.
   const isOther = (l: string) => /^(other\b|all other)/i.test(l)
   const sl = pie.slices.filter((x) => x.value > 0 && !isOther(x.label)).sort((a, b) => b.value - a.value), others = pie.slices.filter((x) => x.value > 0 && isOther(x.label))
