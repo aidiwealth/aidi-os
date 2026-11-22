@@ -19,5 +19,5 @@ export default defineEventHandler(async (event) => {
   const choices = ents.length > 1 ? [{ id: 'group', name: (await groupName().catch(() => 'Group')) + ' (group)' }, ...ents.map((e) => ({ id: 'entity:' + e.id, name: e.name }))] : []
   const asked = String(q.subject ?? '')
   const subject = choices.some((c) => c.id === asked) ? asked : null
-  return { forecast: fc, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
+  return { forecast: fc, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject, fc?.assumptions), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
 })

@@ -47,6 +47,9 @@ const BLANK: Record<Ty, () => Record<string, any>> = {
   convertible: () => ({ holder_id: '', holder_name: '', holder_kind: 'investor', kind: 'safe', amount: '', currency: 'USD', valuation_cap: '', discount_pct: '', post_money: true, mfn: false, interest_pct: '', issued_on: today, maturity_on: '', status: 'outstanding' }) }
 // Add to data room from the Actions menu (the PDF of this cap table goes into the data room's cap table folder).
 const roomMsg = ref('')
+// Download the cap table: a summary (founders and investors by name, others grouped) or the full version, as PDF or Excel.
+const dl = reactive({ open: false, version: 'summary' as 'summary' | 'full', format: 'pdf' as 'pdf' | 'xlsx', convertibles: true, classes: true, ledger: true, grants: true, emails: false })
+const dlUrl = computed(() => '/api/equity/export?' + new URLSearchParams({ ct: String(data.value?.captable ?? ''), version: dl.version, format: dl.format, convertibles: dl.convertibles ? '1' : '0', classes: dl.classes ? '1' : '0', ledger: dl.version === 'full' && dl.ledger ? '1' : '0', grants: dl.version === 'full' && dl.grants ? '1' : '0', emails: dl.emails ? '1' : '0' }).toString())
 async function addRoom() { roomMsg.value = 'Adding to the data room…'; try { const r = await $fetch<{ folder: string }>('/api/fundraising/files/generated', { method: 'POST', body: { kind: 'captable', id: data.value?.captable, format: 'pdf' } }); roomMsg.value = 'Added to the ' + r.folder + ' folder of the data room.' } catch { roomMsg.value = 'Could not add it to the data room. Try again.' } }
 const TITLE: Record<Ty, string> = { class: 'Share class', holder: 'Holder', issuance: 'Issue shares', plan: 'Option plan', grant: 'Grant options', convertible: 'SAFE or note' }
 function edit(type: Ty, row?: Record<string, any>) { f.type = type; f.id = row?.id ?? ''; f.d = { ...BLANK[type](), ...(row ? Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v ?? ''])) : {}) }; msg.value = ''; f.open = true }
@@ -219,7 +222,7 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
     <div class="hd"><div><h1>Cap table</h1><p class="lead">Shares, options, SAFEs and notes for {{ data.company }}.</p></div>
       <div class="acts"><button class="btn secondary" @click="shareOpen = true">Share</button>
         <MoreMenu label="Actions"><p>Add</p><button @click="edit('convertible')">Add a SAFE or note</button><button :disabled="!data.plans.length" @click="edit('grant')">Grant options</button><button @click="impFrom = 'files'; imp = true">Import from Pulley, Carta or files</button>
-          <hr><p>This cap table</p><button @click="ctForm('copy')">Copy as a what-if</button><button @click="ctForm('create')">New cap table</button><button @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" @click="ctAct('main')">Make it the main one</button>
+          <hr><p>This cap table</p><button :disabled="!data.classes.length" @click="dl.open = true">Download</button><button @click="ctForm('copy')">Copy as a what-if</button><button @click="ctForm('create')">New cap table</button><button @click="ctForm('rename')">Rename</button><button v-if="data.captables.length > 1 && !curCt?.is_main" @click="ctAct('main')">Make it the main one</button>
           <template v-if="hasRoom"><hr><p>Investors</p><button @click="addRoom">Add to data room</button><button @click="openPf">Pro forma for investors</button></template>
           <template v-if="data.captables.length > 1"><hr><button class="red" @click="ctAct('delete')">Delete this cap table</button></template></MoreMenu>
         <button class="btn" :disabled="!data.classes.length" @click="edit('issuance')">Issue shares</button></div></div>
@@ -378,6 +381,20 @@ const maxDrop = computed(() => Math.max(1, ...rrRows.value.map((r) => Math.abs(r
       <template #foot><span class="sp" /><button class="btn secondary" @click="cm.open = false">Cancel</button><button class="btn" :disabled="busy || !cm.name" @click="ctAct(cm.mode)">{{ cm.mode === 'rename' ? 'Save' : 'Create' }}</button></template>
     </AppModal>
     <CapImport :open="imp" :initial="pre" :ct="data.captable" :ct-name="curCt?.name ?? ''" :from="impFrom" :has-data="!!(data.issuances.length || data.grants.length || data.convertibles.length)" @close="imp = false; pre = []" @saved="afterImport" />
+    <AppModal :open="dl.open" title="Download the cap table" @close="dl.open = false">
+      <div class="pfm">
+        <div class="pfo"><span class="mut">Version</span>
+          <label class="pfc" :class="{ on: dl.version === 'summary' }"><input v-model="dl.version" type="radio" value="summary"><span><b>Summary</b><span class="mut">Founders and investors by name with their shares and percentage; employees, advisors and others grouped; the option pool; SAFEs and notes with each investor's terms.</span></span></label>
+          <label class="pfc" :class="{ on: dl.version === 'full' }"><input v-model="dl.version" type="radio" value="full"><span><b>Full</b><span class="mut">Every holder by share class, with options and vested options, and the records behind it.</span></span></label></div>
+        <div class="pfo"><span class="mut">Include</span>
+          <label class="dlc"><input v-model="dl.convertibles" type="checkbox"> SAFEs and convertible notes</label>
+          <label class="dlc"><input v-model="dl.classes" type="checkbox"> Share class terms</label>
+          <template v-if="dl.version === 'full'"><label class="dlc"><input v-model="dl.ledger" type="checkbox"> Share issuances (dates, prices, certificates)</label>
+            <label class="dlc"><input v-model="dl.grants" type="checkbox"> Option grants and vesting</label></template>
+          <label class="dlc"><input v-model="dl.emails" type="checkbox"> Holder email addresses</label></div>
+        <div class="pfo"><span class="mut">Format</span><div class="dlf"><label class="dlc"><input v-model="dl.format" type="radio" value="pdf"> PDF</label><label class="dlc"><input v-model="dl.format" type="radio" value="xlsx"> Excel</label></div></div></div>
+      <template #foot><span class="sp" /><button class="btn secondary" @click="dl.open = false">Cancel</button><a class="btn" :href="dlUrl" download @click="dl.open = false">Download</a></template>
+    </AppModal>
     <AppModal :open="pf.open" title="Pro forma cap table for investors" @close="pf.open = false">
       <div class="pfm"><p class="mut">A PDF in the data room with every position today, after conversion, and on a sale.</p>
         <div v-if="pOpts.length" class="pfo"><span class="mut">Pick the price to value the shares at</span>
@@ -441,5 +458,5 @@ td.pos { color: var(--c-blue-deep); } td.nw { white-space: nowrap; }
 .hr2 .hn b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dch2 { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; text-align: left; } .sm2 { font-size: 12.5px; }
 .dcp { display: inline-flex; align-items: center; background: #e6eef6; font-size: 12px; } .dcp button { border: 0; background: none; font: inherit; color: var(--c-navy); cursor: pointer; padding: 3px 4px 3px 8px; white-space: nowrap; } .dcp .x { padding: 3px 7px 3px 3px; color: var(--c-muted); font-size: 13px; } .dcp .x:hover { color: #b54708; }
 @media (max-width: 760px) { .hr2 { grid-template-columns: 32px minmax(0, 1fr); padding: 12px; } .hr2 .dch2, .hr2 .ha { grid-column: 2; } .hr2 .sm2 { display: none; } .ch .tb { justify-content: flex-start; } }
-.pfo { display: flex; flex-direction: column; gap: 8px; } .pfc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13px; } .pfc.on { border-color: var(--c-navy); background: #f5f8fb; } .pfc input { margin-top: 3px; } .pfc > span { display: flex; flex-direction: column; gap: 2px; } .pfc b { font-size: 14px; } .rec { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); text-transform: uppercase; letter-spacing: .05em; } .pfv { margin: 0; font-size: 13.5px; } .pf2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 600px) { .pf2 { grid-template-columns: 1fr; } }
+.pfo { display: flex; flex-direction: column; gap: 8px; } .dlc { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; } .dlf { display: flex; gap: 20px; } .pfm .pfo + .pfo { margin-top: 14px; } .pfc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--c-rule); padding: 10px 12px; cursor: pointer; font-size: 13px; } .pfc.on { border-color: var(--c-navy); background: #f5f8fb; } .pfc input { margin-top: 3px; } .pfc > span { display: flex; flex-direction: column; gap: 2px; } .pfc b { font-size: 14px; } .rec { font-style: normal; font-size: 11px; font-weight: 600; color: var(--c-blue-deep); text-transform: uppercase; letter-spacing: .05em; } .pfv { margin: 0; font-size: 13.5px; } .pf2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 600px) { .pf2 { grid-template-columns: 1fr; } }
 </style>

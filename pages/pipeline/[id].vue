@@ -48,6 +48,20 @@ const addEvent = () => run(async () => {
 })
 const voteNote = ref('')
 const vote = (v: 'approve' | 'reject') => run(async () => { await $fetch('/api/pipeline/' + id + '/vote', { method: 'POST', body: { vote: v, note: voteNote.value || undefined } }); voteNote.value = '' })
+// Founder documents: drop files and they go to Documents and onto this deal's timeline.
+const docList = computed(() => (data.value?.events ?? []).filter((e) => e.kind === 'document'))
+const up = reactive({ busy: false, msg: '', ok: true })
+async function dropDocs(e: Event) {
+  const files = Array.from(((e.target as HTMLInputElement).files ?? []) as ArrayLike<File>)
+  if (!files.length) return
+  up.busy = true; up.ok = true; up.msg = 'Uploading ' + files.length + (files.length === 1 ? ' file…' : ' files…')
+  try {
+    const fd = new FormData(); for (const f of files) fd.append('file', f)
+    const r = await $fetch<{ documents: { id: string }[] }>('/api/pipeline/' + id + '/documents', { method: 'POST', body: fd })
+    up.msg = r.documents.length + (r.documents.length === 1 ? ' document' : ' documents') + ' added to ' + (data.value?.deal.company ?? 'the company') + '\'s record.'
+    await refresh()
+  } catch (err) { up.ok = false; up.msg = errText(err) } finally { up.busy = false }
+}
 async function openDoc(docId: string) {
   try { const r = await $fetch<{ url: string }>('/api/documents/' + docId + '/download'); window.location.href = r.url } catch (e) { msg.value = errText(e) }
 }
@@ -80,6 +94,13 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
           <p v-else-if="data.deal.stage === 'ic'" class="muted">Only GPs vote. Invested unlocks at {{ data.required }} approvals with no rejection.</p>
         </div>
 
+        <div class="card docs">
+          <h2>Founder documents</h2>
+          <p class="muted small">Decks, financials, data room files and anything else the founder shared. Each file is saved in Documents and added to the timeline.</p>
+          <DropZone multiple :disabled="up.busy" accept=".pdf,.doc,.docx,.xls,.xlsx,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp" :label="up.busy ? 'Uploading…' : 'Drop the founder\'s files here'" hint="or click to choose · PDF, Word, Excel, PowerPoint, CSV or images, up to 25 MB each" @change="dropDocs" />
+          <p v-if="up.msg" class="small" :class="{ error: !up.ok }">{{ up.msg }}</p>
+          <ul v-if="docList.length" class="dl"><li v-for="e in docList" :key="e.id"><button v-if="e.document_id" type="button" class="link" @click="openDoc(e.document_id)"><FileBadge :name="e.document_title" size="sm" />{{ e.document_title }}</button><span v-else>{{ e.document_title }}</span><span class="muted small">{{ e.by_name ?? 'System' }} · {{ when(e.created_at) }}</span></li></ul>
+        </div>
         <div class="card">
           <h2>Timeline</h2>
           <form class="ev" @submit.prevent="addEvent">
@@ -150,6 +171,7 @@ textarea { resize: vertical; }
 .votes { list-style: none; padding: 0; margin: 0 0 12px; } .votes li { padding: 6px 0; border-bottom: 1px solid var(--c-rule); } .votes span { display: block; color: var(--c-muted); font-size: 13px; }
 .votes b.approve { color: var(--c-ok); } .votes b.reject { color: var(--c-danger); }
 .row { display: flex; gap: 10px; margin-top: 10px; }
+.docs { display: flex; flex-direction: column; gap: 12px; } .docs h2 { margin-bottom: 0; } .dl { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--c-rule); } .dl li { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--c-rule); } .dl .link { display: inline-flex; gap: 8px; align-items: center; text-align: left; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12px; margin: 0; } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }

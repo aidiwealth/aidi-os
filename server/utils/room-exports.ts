@@ -1,7 +1,7 @@
 // A forecast or cap table as a document for the data room: a PDF (summary and tables) or, for a forecast, an Excel
 // model with the monthly P&L and cash flow and the assumptions.
 import { run, defaults, outsideRows, catParts, type Assumptions } from '~/shared/forecast'
-import { table, exitByHolder, type Data } from '~/shared/captable'
+import { table, exitByHolder, vested, type Data } from '~/shared/captable'
 import { orderRows, commonHolders, RIGHT_LABEL } from '~/shared/positions'
 const n0 = (v: number) => (Math.round(v) === 0 ? '-' : v < 0 ? '(' + Math.abs(Math.round(v)).toLocaleString('en-US') + ')' : Math.round(v).toLocaleString('en-US'))
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'not in this forecast')
@@ -157,4 +157,90 @@ export function proformaMd(name: string, d: Data, o: { price: number; source: st
   if (withRights.length) { out.push('## Rights', '', '| Holder | Rights |', '|---|---|'); for (const r of withRights) out.push('| ' + r.name + ' | ' + rk(r.hid) + ' |'); out.push('') }
   out.push('Confidential. A planning estimate as recorded by the company, not a valuation; the share register, the SAFEs and the next round\'s terms decide the actual figures.')
   return out.join('\n')
+}
+
+// Cap table download (Cap table → Actions → Download). One set of sections drives both the PDF and the Excel file.
+// Summary: founders and investors one by one, everyone else grouped by type, the pool, and SAFEs and notes with each
+// investor's terms. Full: every holder by share class, plus the share issuance ledger and option grants if chosen.
+export interface CapExportOpts { version: 'summary' | 'full'; convertibles: boolean; classes: boolean; ledger: boolean; grants: boolean; emails: boolean }
+interface Sec { title: string; note?: string; head: string[]; rows: (string | number)[][]; total?: (string | number)[]; num: number[] }
+const KINDS: Record<string, string> = { founder: 'Founder', employee: 'Employee', advisor: 'Advisor', investor: 'Investor', other: 'Other' }
+const PLURAL: Record<string, string> = { employee: 'Employees', advisor: 'Advisors', other: 'Others' }
+function capSections(d: Data, o: CapExportOpts): { summary: string[]; secs: Sec[] } {
+  const today = new Date().toISOString().slice(0, 10), t = table(d, today)
+  const pc = (v: number) => Math.round(v * 100) / 100
+  const name = (id: string) => d.holders.find((h) => h.id === id)?.name ?? ''
+  const email = (id: string) => (d.holders.find((h) => h.id === id) as { email?: string | null } | undefined)?.email ?? ''
+  const summary = ['Fully diluted shares: ' + n0(t.fd), 'Shares issued and outstanding: ' + n0(t.issued), 'Option pool: ' + n0(t.reserved) + ' reserved, ' + n0(t.granted) + ' granted, ' + n0(t.pool) + ' available']
+  if (t.convertibles.length) summary.push('SAFEs and notes outstanding: ' + t.convertibles.length + (new Set(t.convertibles.map((c) => c.currency)).size === 1 ? ', ' + money(t.convertibleTotal, t.convertibles[0]!.currency) : ''))
+  const secs: Sec[] = []
+  // Holders with only a SAFE or note show in that section, not as empty ownership rows.
+  const rows = [...t.rows].filter((r) => r.fd > 0).sort((x, y) => y.fd - x.fd)
+  if (o.version === 'summary') {
+    const solo = rows.filter((r) => r.holder.kind === 'founder' || r.holder.kind === 'investor')
+    const out: (string | number)[][] = solo.map((r) => [r.holder.name, KINDS[r.holder.kind] ?? 'Other', ...(o.emails ? [email(r.holder.id)] : []), r.issued, r.options, r.fd, pc(r.pctFd)])
+    for (const k of ['employee', 'advisor', 'other']) {
+      const g = rows.filter((r) => (KINDS[r.holder.kind] ? r.holder.kind : 'other') === k && r.holder.kind !== 'founder' && r.holder.kind !== 'investor')
+      if (!g.length) continue
+      const s = (f: (r: typeof g[number]) => number) => g.reduce((a, r) => a + f(r), 0)
+      out.push([PLURAL[k] + ' (' + g.length + ')', 'Group', ...(o.emails ? [''] : []), s((r) => r.issued), s((r) => r.options), s((r) => r.fd), pc(s((r) => r.pctFd))])
+    }
+    if (t.pool) out.push(['Option pool (available)', 'Pool', ...(o.emails ? [''] : []), 0, t.pool, t.pool, pc(t.pool / t.fd * 100)])
+    secs.push({ title: 'Ownership', note: 'Founders and investors are listed by name; other holders are grouped by type.', head: ['Holder', 'Type', ...(o.emails ? ['Email'] : []), 'Shares', 'Options', 'Fully diluted', '% fully diluted'],
+      rows: out, total: ['Total', '', ...(o.emails ? [''] : []), t.issued, t.granted + t.pool, t.fd, 100], num: o.emails ? [3, 4, 5] : [2, 3, 4] })
+  } else {
+    const out: (string | number)[][] = rows.map((r) => [r.holder.name, KINDS[r.holder.kind] ?? 'Other', ...(o.emails ? [email(r.holder.id)] : []), ...d.classes.map((c) => r.byClass[c.id] ?? 0), r.options, r.vestedOptions, r.fd, pc(r.pctFd)])
+    if (t.pool) out.push(['Option pool (available)', 'Pool', ...(o.emails ? [''] : []), ...d.classes.map(() => 0), t.pool, 0, t.pool, pc(t.pool / t.fd * 100)])
+    const off = o.emails ? 3 : 2
+    secs.push({ title: 'Holders', head: ['Holder', 'Type', ...(o.emails ? ['Email'] : []), ...d.classes.map((c) => c.name), 'Options', 'Vested options', 'Fully diluted', '% fully diluted'], rows: out,
+      total: ['Total', '', ...(o.emails ? [''] : []), ...d.classes.map((c) => d.issuances.filter((i) => i.class_id === c.id).reduce((s, i) => s + i.shares, 0)), t.granted + t.pool, rows.reduce((s, r) => s + r.vestedOptions, 0), t.fd, 100],
+      num: Array.from({ length: d.classes.length + 3 }, (_, i) => off + i) })
+  }
+  if (o.classes && d.classes.length) secs.push({ title: 'Share classes', head: ['Class', 'Kind', 'Liquidation preference', 'Participating', 'Seniority'], num: [],
+    rows: d.classes.map((c) => [c.name, c.kind === 'preferred' ? 'Preferred' : 'Common', c.kind === 'preferred' ? c.liq_pref + 'x' : '-', c.kind === 'preferred' ? (c.participating ? 'Yes' : 'No') : '-', c.kind === 'preferred' ? String(c.seniority) : '-']) })
+  if (o.convertibles && t.convertibles.length) secs.push({ title: 'SAFEs and convertible notes', note: 'Outstanding. Not in the percentages above until they convert.', num: [],
+    head: ['Investor', ...(o.emails ? ['Email'] : []), 'Type', 'Amount', 'Valuation cap', 'Discount', 'MFN', 'Dated'],
+    rows: t.convertibles.map((c) => [name(c.holder_id), ...(o.emails ? [email(c.holder_id)] : []), c.kind === 'safe' ? (c.post_money ? 'Post-money SAFE' : 'Pre-money SAFE') : 'Convertible note' + (c.interest_pct ? ', ' + c.interest_pct + '% interest' : ''), money(c.amount, c.currency), c.valuation_cap ? money(c.valuation_cap, c.currency) : '-', c.discount_pct ? c.discount_pct + '%' : '-', c.mfn ? 'Yes' : 'No', c.issued_on]) })
+  if (o.version === 'full' && o.ledger && d.issuances.length) {
+    const cls = (id: string) => d.classes.find((c) => c.id === id)?.name ?? ''
+    secs.push({ title: 'Share issuances', head: ['Date', 'Holder', 'Class', 'Shares', 'Price per share', 'Certificate'], num: [3],
+      rows: d.issuances.map((i) => [i.issued_on, name(i.holder_id), cls(i.class_id), i.shares, i.price != null ? String(i.price) : '-', (i as unknown as { certificate?: string | null }).certificate || '-']) })
+  }
+  if (o.version === 'full' && o.grants && d.grants.length) {
+    const plan = (id: string) => d.plans.find((p) => p.id === id)?.name ?? ''
+    secs.push({ title: 'Option grants', head: ['Holder', 'Plan', 'Granted', 'Shares', 'Strike', 'Vesting', 'Vested today', 'Exercised', 'Cancelled'], num: [3, 6, 7],
+      rows: d.grants.map((g) => [name(g.holder_id), plan(g.plan_id), g.granted_on, g.shares, g.strike != null ? String(g.strike) : '-', g.vest_months ? g.vest_months + ' months, ' + g.cliff_months + '-month cliff, from ' + g.vest_start : 'Fully vested', vested(g, today), g.exercised, g.cancelled_on || '-']) })
+  }
+  return { summary, secs }
+}
+export function capTableExportMd(name: string, d: Data, o: CapExportOpts): string {
+  const { summary, secs } = capSections(d, o)
+  const cell = (v: string | number, i: number, s: Sec) => (typeof v === 'number' ? (s.num.includes(i) ? n0(v) : s.head[i]?.startsWith('%') ? v.toFixed(2) + '%' : String(v)) : (v || '-').replace(/\|/g, '/'))
+  const out = ['# ' + name, '', (o.version === 'summary' ? 'Summary cap table' : 'Full cap table') + ' as of ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '.', '', '## Summary', '', ...summary.map((s) => '- ' + s), '']
+  for (const s of secs) {
+    out.push('## ' + s.title, '', ...(s.note ? [s.note, ''] : []), '| ' + s.head.join(' | ') + ' |', '|' + s.head.map(() => '---').join('|') + '|')
+    for (const r of s.rows) out.push('| ' + r.map((v, i) => cell(v, i, s)).join(' | ') + ' |')
+    if (s.total) out.push('| ' + s.total.map((v, i) => (i === 0 ? '**Total**' : v === '' ? '' : cell(v, i, s))).join(' | ') + ' |')
+    out.push('')
+  }
+  out.push('Confidential. As recorded by the company; check against the share register.')
+  return out.join('\n')
+}
+export async function capTableXlsx(name: string, company: string, d: Data, o: CapExportOpts): Promise<Buffer> {
+  const { default: Excel } = await import('exceljs')
+  const { summary, secs } = capSections(d, o), wb = new Excel.Workbook()
+  const ov = wb.addWorksheet('Summary'); ov.getColumn(1).width = 60
+  ov.addRow([company + ': ' + name]).font = { bold: true, size: 14 }
+  ov.addRow([(o.version === 'summary' ? 'Summary cap table' : 'Full cap table') + ' as of ' + new Date().toISOString().slice(0, 10)])
+  ov.addRow([]); for (const s of summary) ov.addRow([s])
+  ov.addRow([]); ov.addRow(['Confidential. As recorded by the company; check against the share register.']).font = { italic: false, color: { argb: 'FF6B7686' } }
+  for (const s of secs) {
+    const ws = wb.addWorksheet(s.title.slice(0, 31), { views: [{ state: 'frozen', ySplit: 1 }] })
+    const h = ws.addRow(s.head); h.font = { bold: true }
+    for (const r of s.rows) ws.addRow(r)
+    if (s.total) { const tr = ws.addRow(s.total.map((v) => (v === '' ? null : v))); tr.font = { bold: true } }
+    s.head.forEach((hd, i) => { const col = ws.getColumn(i + 1); col.width = Math.max(12, Math.min(40, hd.length + 4, ...s.rows.map((r) => String(r[i] ?? '').length + 2))); if (s.num.includes(i)) col.numFmt = '#,##0'; else if (hd.startsWith('%')) col.numFmt = '0.00"%"' })
+    if (s.note) { ws.addRow([]); ws.addRow([s.note]) }
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer())
 }
