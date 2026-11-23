@@ -32,6 +32,10 @@ function requestEvent(): H3Event | undefined { try { return useEvent() } catch {
 export function currentOrgId(): string | null { return (requestEvent()?.context.orgId as string | undefined) ?? null }
 
 const applied = new WeakMap<pg.PoolClient, string>()
+// Connections handed out whole (for transactions) may come back with a transaction still open; rolling that back
+// later would also undo the workspace settings sent inside it. So the next checkout closes any open transaction
+// and always sends the settings again, never trusting the cache for such a connection.
+const held = new WeakSet<pg.PoolClient>()
 async function checkout(): Promise<pg.PoolClient> {
   const e = requestEvent()
   const org = (e?.context.orgId as string | undefined) ?? ''
@@ -40,6 +44,10 @@ async function checkout(): Promise<pg.PoolClient> {
   // Customer revenue: the company it is for (app.cust_entity, see 142_entity_customers.sql); empty reads every company.
   const cust = (e?.context.custEntity as string | undefined) ?? ''
   const client = await getPool().connect()
+  if (held.has(client)) {
+    held.delete(client); applied.delete(client)
+    try { await client.query('ROLLBACK') } catch (err) { client.release(err as Error); throw err }
+  }
   // Pooled connections keep their settings; only send them again when this request needs different ones.
   const key = org + '|' + bypass + '|' + scope + '|' + cust
   if (applied.get(client) === key) return client
@@ -61,7 +69,7 @@ const wrapper = {
       if (e) { e.context.__dbMs = ((e.context.__dbMs as number | undefined) ?? 0) + (performance.now() - t0); e.context.__dbN = ((e.context.__dbN as number | undefined) ?? 0) + 1 }
     }
   },
-  connect: checkout
+  async connect(): Promise<pg.PoolClient> { const c = await checkout(); held.add(c); return c }
 }
 export function db(): typeof wrapper { return wrapper }
 // Open a few connections ahead of the first visitors (after a deploy or restart).

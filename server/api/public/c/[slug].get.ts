@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
   const cust = await memo('cust:' + ok + ':' + p.metrics.join(',') + ':' + rows.length, M, () => inGroup(() => customerSeries(p.metrics.filter(isCustKey), rows.map((x) => x.period_end.slice(0, 7)))))
   const metrics = p.metrics.filter(isMetricKey).map((m) => ({ key: m, label: metricLabel(m), unit: metricUnit(m), points: rows.map((x, i) => ({ period: x.period_end, value: m in CUST_METRICS ? cust[m]?.[i] ?? null : m.startsWith('kpi:') ? (typeof x.kpis?.[m.slice(4)] === 'number' ? x.kpis[m.slice(4)]! : null) : fig(x)[m] ?? null })) }))
   const sectors = (p as unknown as { show_sectors?: boolean }).show_sectors && on.has('fin_customers') ? await memo('sect:' + ok, M, () => inGroup(() => sectorShares())).catch(() => null) : null
-  await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now()')
+  await db().query('UPDATE financials.public_pages SET views = views + 1, last_viewed_at = now() WHERE organization_id = $1', [p.organization_id])
   if (p.notify) { const to = await orgNotifyEmails(); for (const e of to) sendShareViewedEmail(e, org.name + ' investor page', brands().finvry.url + '/investor-page').catch(() => {}) }
   const updates = on.has('updates') ? (await db().query("SELECT id, title, to_char(published_at, 'YYYY-MM-DD') AS published_at FROM financials.updates WHERE status = 'published' ORDER BY period_end DESC LIMIT 12")).rows : []
   const chosenDeck = (p as unknown as { deck_id: string | null }).deck_id
