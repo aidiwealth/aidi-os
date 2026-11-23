@@ -14,13 +14,16 @@ export async function currentOrg(): Promise<{ id: string; name: string; slug: st
 }
 
 // Who hears about new pitches, reports and reminders: the workspace's notification list, else its admins.
+// Always this workspace's own admins, named explicitly (not left to row-level security alone), so an alert can never
+// reach someone in another workspace even if the request is acting at platform level.
 export async function orgNotifyEmails(): Promise<string[]> {
   const org = await currentOrg()
+  if (!org) return []
   const list = (org?.settings.notify_emails ?? []).filter((x) => typeof x === 'string' && x.includes('@'))
   if (list.length) return list
   const a = await db().query<{ email: string }>(
-    `SELECT DISTINCT u.email FROM core.memberships m JOIN core.users u ON u.id = m.user_id JOIN core.user_roles r ON r.user_id = m.user_id
-      WHERE m.status = 'active' AND u.status = 'active' AND r.role_code = 'admin' AND r.scope_entity_id IS NULL`)
+    `SELECT DISTINCT u.email FROM core.memberships m JOIN core.users u ON u.id = m.user_id JOIN core.user_roles r ON r.user_id = m.user_id AND r.organization_id = m.organization_id
+      WHERE m.organization_id = $1 AND m.status = 'active' AND u.status = 'active' AND r.role_code = 'admin' AND r.scope_entity_id IS NULL`, [org.id])
   return a.rows.map((x) => x.email)
 }
 

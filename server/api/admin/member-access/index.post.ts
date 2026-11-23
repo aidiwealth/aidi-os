@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!b.success) throw apiError('invalid', 'Invalid request.')
   const org = (await currentOrg())!
   if (org.kind !== 'company') throw apiError('not_found', 'Not found', 404)
-  const member = (await db().query<{ admin: boolean }>("SELECT EXISTS (SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'admin') AS admin FROM core.memberships WHERE user_id = $1", [b.data.user_id])).rows[0]
+  const member = (await db().query<{ admin: boolean }>("SELECT EXISTS (SELECT 1 FROM core.user_roles WHERE user_id = $1 AND organization_id = core.current_org() AND role_code = 'admin') AS admin FROM core.memberships WHERE user_id = $1", [b.data.user_id])).rows[0]
   if (!member) throw apiError('not_found', 'That person is not on this team.', 404)
   if (member.admin) throw apiError('invalid', 'Admins always have access to everything.')
   const codes = [...new Set(MEMBER_FEATURES.filter((f) => b.data.off.includes(f.key)).flatMap((f) => f.codes))]

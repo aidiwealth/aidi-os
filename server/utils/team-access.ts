@@ -16,7 +16,7 @@ export async function assertCanManage(actor: SessionUser, targetUserId: string |
   if (actor.roles.includes('admin')) return
   if (role === 'admin') throw apiError('forbidden', 'Only an admin can give or remove the Admin role.', 403)
   if (targetUserId) {
-    const a = await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND role_code = 'admin'", [targetUserId])
+    const a = await db().query("SELECT 1 FROM core.user_roles WHERE user_id = $1 AND organization_id = core.current_org() AND role_code = 'admin'", [targetUserId])
     if (a.rowCount) throw apiError('forbidden', 'Only an admin can change an admin.', 403)
   }
 }
