@@ -484,9 +484,9 @@ export async function sendWalletStatement(input: { to: string; company: string; 
 }
 
 // Invite-only parts of an investor page: the one-time code, the invitation, and a visitor asking to be let in.
-export async function sendPageCode(to: string, company: string, code: string): Promise<void> {
-  const text = 'Your code to open ' + company + "'s investor documents: " + code + '\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this email.'
-  const html = shell(h1('Your code for ' + esc(company)) + para('Enter this code to open ' + esc(company) + "'s investor documents. It expires in 10 minutes.") +
+export async function sendPageCode(to: string, company: string, code: string, what = 'investor documents'): Promise<void> {
+  const text = 'Your code to open ' + company + "'s " + what + ': ' + code + '\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this email.'
+  const html = shell(h1('Your code for ' + esc(company)) + para('Enter this code to open ' + esc(company) + "'s " + esc(what) + '. It expires in 10 minutes.') +
     `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 6px;"><tr><td style="background:${BRAND.soft};border:1px solid ${BRAND.rule};padding:16px 26px;">` +
     `<span style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:32px;letter-spacing:0.32em;font-weight:600;color:${BRAND.navy};">${code}</span></td></tr></table>` + divider() +
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">If you didn't ask for this code, you can ignore this email.</p>`, 'Your code is ' + code)
@@ -497,6 +497,13 @@ export async function sendPageInvite(to: string, company: string, link: string):
   const html = shell(h1(esc(company) + ' invited you') + para(esc(company) + ' has shared its investor documents with you, including the data room.') + button('Open the investor page →', link) + divider() +
     `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Use this email address (${esc(to)}). We'll send you a one-time code to confirm it.</p>`, company + ' shared its investor documents with you')
   await sendEmail({ to, subject: company + ' invited you to its data room', text, html })
+}
+// A company shared an invite-only board with this person.
+export async function sendBoardInvite(to: string, company: string, board: string, link: string): Promise<void> {
+  const text = company + ' shared its ' + board + ' board with you: its figures, kept up to date.\n\nOpen it: ' + link + '\n\nUse this email address; we will send you a one-time code to confirm it.'
+  const html = shell(h1(esc(company) + ' shared a board with you') + para(esc(company) + ' shared its <b>' + esc(board) + '</b> board with you. It stays up to date as new figures come in.') + button('Open the board →', link) + divider() +
+    `<p style="color:${BRAND.inkMute};font-size:12.5px;line-height:1.5;margin:0;">Use this email address (${esc(to)}). We'll send you a one-time code to confirm it.</p>`, company + ' shared its ' + board + ' board with you')
+  await sendEmail({ to, subject: company + ' shared its ' + board + ' board with you', text, html })
 }
 export async function sendPageAccessRequest(to: string, who: { email: string; name: string | null; company: string | null; note: string | null }, link: string): Promise<void> {
   const label = (who.name ? who.name + ' (' + who.email + ')' : who.email) + (who.company ? ', ' + who.company : '')

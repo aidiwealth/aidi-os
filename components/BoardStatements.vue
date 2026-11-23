@@ -3,9 +3,10 @@
 // company, eliminations and the group) for a chosen month; then the profit and loss by month and the balance sheet,
 // as on Financials.
 import { deriveLines } from '~/shared/fin-view'
-const props = defineProps<{ subject: string; currency: string }>()
+// On a shared board link, src is that link's statements (read-only, no link into the app).
+const props = defineProps<{ subject: string; currency: string; src?: string }>()
 interface St { id: string | null; period_end: string; period_type: string; currency: string; lines: Record<string, number>; kpis: Record<string, number>; detail?: Record<string, number>; derived: Record<string, number | null>; parts?: unknown[] }
-const { data } = useFetch<{ name: string; statements: St[]; safe_treatment?: 'equity' | 'liability' | null }>('/api/financials', { query: computed(() => ({ subject: props.subject, period_type: 'month', currency: props.currency })), watch: [() => props.subject, () => props.currency], server: false })
+const { data } = useFetch<{ name: string; statements: St[]; safe_treatment?: 'equity' | 'liability' | null }>(props.src ?? '/api/financials', { query: computed(() => ({ subject: props.subject, period_type: 'month', currency: props.currency })), watch: [() => props.subject, () => props.currency], server: false })
 const rows = computed(() => (data.value?.statements ?? []).filter((r) => r.period_end <= new Date().toISOString().slice(0, 10) && Object.keys(r.lines).length))
 const last = computed(() => [...rows.value].reverse().slice(0, 12))
 const lbl = (d: string) => new Date(d.slice(0, 7) + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })
@@ -14,7 +15,7 @@ const der = (r: St) => r.derived ?? deriveLines(r.lines, 1)
 </script>
 <template>
   <div v-if="rows.length" class="bs">
-    <div class="bsh"><h2>Financial statements</h2><NuxtLink :to="{ path: '/financials', query: { s: subject } }" class="lk2">Open Financials</NuxtLink></div>
+    <div class="bsh"><h2>Financial statements</h2><NuxtLink v-if="!src" :to="{ path: '/financials', query: { s: subject } }" class="lk2">Open Financials</NuxtLink></div>
     <ClientOnly><FinConsolidation v-if="rows.some((r) => r.parts?.length)" :rows="rows as any" :currency="currency" :name="data?.name ?? ''" :can-edit="false" :safe="data?.safe_treatment ?? null" /></ClientOnly>
     <div class="card pad0"><table class="t"><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th></tr></thead>
       <tbody><tr v-for="r in last" :key="r.period_end"><td>{{ lbl(r.period_end) }}</td><td class="n"><Money :value="der(r).revenue" :currency="r.currency" /></td><td class="n">{{ pct(der(r).gross_margin) }}</td>

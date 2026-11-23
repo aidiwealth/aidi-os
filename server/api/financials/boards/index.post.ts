@@ -7,7 +7,8 @@ export default defineEventHandler(async (event) => {
   const b = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(80).optional(), note: z.string().max(1000).optional(), kpis: z.array(metric).max(12).optional(),
     charts: z.array(z.object({ title: z.string().trim().min(1).max(80), metrics: z.array(metric).min(1).max(3), type: z.enum(['line', 'bar', 'area', 'pie', 'table']).default('line') })).max(10).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(2).max(36).optional(), forecast_id: z.string().uuid().nullable().optional(),
     sections: z.object({ forecast: z.boolean().optional(), statements: z.boolean().optional() }).optional(), documents: z.array(z.string().uuid()).max(30).optional(),
-    share: z.object({ enabled: z.boolean(), expires_days: z.number().int().min(0).max(365).default(0), reset: z.boolean().default(false) }).optional() }).safeParse(await readBody(event))
+    share: z.object({ enabled: z.boolean(), expires_days: z.number().int().min(0).max(365).default(0), reset: z.boolean().default(false) }).optional(),
+    access: z.object({ mode: z.enum(['public', 'invited']), emails: z.array(z.string().trim().toLowerCase().max(254).regex(/^([^\s@]+@|@)[^\s@]+\.[^\s@]+$/)).max(300), notify: z.boolean().default(false) }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the board settings.')
   const d = b.data
   let id = d.id
@@ -30,5 +31,20 @@ export default defineEventHandler(async (event) => {
     await db().query('UPDATE financials.boards SET share_token = $2, share_enabled = $3, share_expires = CASE WHEN $4::int > 0 THEN now() + make_interval(days => $4::int) ELSE NULL END WHERE id = $1', [id, token, d.share.enabled, d.share.expires_days])
     await audit({ event, actorUserId: user.userId, action: 'board.share_' + (d.share.enabled ? 'on' : 'off'), objectType: 'board', objectId: id })
   }
-  return { ok: true, id }
+  // Who can open the link: anyone with it, or only invited emails (or a whole firm as @fund.com). Newly added people
+  // can be emailed the link.
+  let invited = 0
+  if (d.access) {
+    const prev = (await db().query<{ share_emails: string[]; share_token: string | null; share_enabled: boolean; name: string }>('SELECT share_emails, share_token, share_enabled, name FROM financials.boards WHERE id = $1', [id])).rows[0]
+    if (!prev) throw apiError('not_found', 'Not found', 404)
+    const emails = [...new Set(d.access.emails)]
+    if (d.access.mode === 'invited' && !emails.length) throw apiError('invalid', 'Add at least one email, or let anyone with the link open it.')
+    await db().query('UPDATE financials.boards SET share_access = $2, share_emails = $3, updated_at = now() WHERE id = $1', [id, d.access.mode, emails])
+    await audit({ event, actorUserId: user.userId, action: 'board.access', objectType: 'board', objectId: id, detail: { mode: d.access.mode, emails: emails.length } })
+    if (d.access.notify && d.access.mode === 'invited' && prev.share_enabled && prev.share_token) {
+      const org = (await currentOrg())!, link = (org.kind === 'company' ? brands().finvry.url : brands().aidi.url) + '/b/' + prev.share_token
+      for (const e of emails.filter((x) => !x.startsWith('@') && !prev.share_emails.includes(x))) { await sendBoardInvite(e, org.name, prev.name, link).catch((x) => console.error('[boards] invite failed', x)); invited++ }
+    }
+  }
+  return { ok: true, id, invited }
 })

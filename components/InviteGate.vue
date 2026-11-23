@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // Opening an invite-only part of an investor page (the data room, the cap table): the visitor's email gets a one-time
 // code when it's on the company's list; anyone else can ask the company for access.
-const props = withDefaults(defineProps<{ slug: string; company: string; what: 'room' | 'captable'; compact?: boolean }>(), { compact: false })
+// Also used for an invite-only board link: api is that link's base, label names the thing, and noAsk drops the request
+// form (the visitor is told to ask the company).
+const props = withDefaults(defineProps<{ slug?: string; company: string; what?: 'room' | 'captable'; compact?: boolean; api?: string; label?: string; noAsk?: boolean }>(), { slug: '', what: 'room', compact: false, api: '', label: '', noAsk: false })
 const emit = defineEmits<{ done: [] }>()
 const step = ref<'email' | 'code' | 'ask' | 'asked'>('email')
 const f = reactive({ email: '', code: '', name: '', company: '', note: '', website_hp: '' }), busy = ref(false), msg = ref('')
-const api = '/api/public/c/' + props.slug + '/invite/'
-const thing = computed(() => (props.what === 'room' ? 'data room' : 'cap table'))
+const api = props.api || '/api/public/c/' + props.slug + '/invite/'
+const thing = computed(() => props.label || (props.what === 'room' ? 'data room' : 'cap table'))
 const errOf = (e: unknown) => (e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Something went wrong. Try again.'
 async function run(fn: () => Promise<void>) { busy.value = true; msg.value = ''; try { await fn() } catch (e) { msg.value = errOf(e) } finally { busy.value = false } }
 const sendCode = () => run(async () => {
@@ -31,6 +33,11 @@ const ask = () => run(async () => { const r = await $fetch<{ invited?: boolean }
       <p>We sent a 6-digit code to <b>{{ f.email }}</b>. It works for 10 minutes.</p>
       <form class="row" @submit.prevent="verify"><input v-model="f.code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="code"><button class="b1" :disabled="busy || f.code.trim().length !== 6">{{ busy ? 'Checking…' : 'Open' }}</button></form>
       <button class="lk" type="button" @click="step = 'email'; f.code = ''">Use a different email</button>
+    </template>
+    <template v-else-if="step === 'ask' && noAsk">
+      <h2>This email isn't on the list</h2>
+      <p><b>{{ f.email }}</b> hasn't been invited to {{ company }}'s {{ thing }}. Ask {{ company }} to add you, or use the email they invited.</p>
+      <button class="lk" type="button" @click="step = 'email'">Use a different email</button>
     </template>
     <template v-else-if="step === 'ask'">
       <h2>Ask {{ company }} for access</h2>

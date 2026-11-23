@@ -2,8 +2,8 @@
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'admin', 'gp', 'team', 'family')
   await ensureBoards()
-  const rows = (await db().query<{ id: string; audience: string; name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number; note: string | null; share_token: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; forecast_id: string | null; sections: { forecast?: boolean; statements?: boolean }; documents: string[] }>(
-    'SELECT id, audience, name, kpis, charts, period, count, note, share_token, share_enabled, share_expires, views, last_viewed_at, forecast_id, sections, documents FROM financials.boards ORDER BY sort, created_at')).rows
+  const rows = (await db().query<{ id: string; audience: string; name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number; note: string | null; share_token: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; forecast_id: string | null; sections: { forecast?: boolean; statements?: boolean }; documents: string[]; share_access: string; share_emails: string[] }>(
+    'SELECT id, audience, name, kpis, charts, period, count, note, share_token, share_enabled, share_expires, views, last_viewed_at, forecast_id, sections, documents, share_access, share_emails FROM financials.boards ORDER BY sort, created_at')).rows
   const isCo = (await currentOrg())?.kind === 'company', base = isCo ? brands().finvry.url : brands().aidi.url
   // A company with subsidiaries: the figures of the company (or the group) chosen at the top, like Financials.
   const sc = isCo ? await forecastScope(event).catch(() => null) : null, subject = sc ? (sc.group ? 'group' : sc.entity ? 'entity:' + sc.entity : null) : null
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     const shown = fcOn && (f || b.sections?.forecast) ? await boardForecast(subject, f, undefined) : null
     out.push({ ...b, share_url: b.share_token ? base + '/b/' + b.share_token : null, data: await boardData(b.kpis, b.charts, b.period, b.count, subject, fcOn ? f : null),
       forecast: shown ? { id: shown.id, name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack } : null, forecast_id: b.forecast_id,
-      sections: b.sections ?? {}, reports: await boardReports(b.documents) })
+      sections: b.sections ?? {}, reports: await boardReports(b.documents), viewers: b.share_access === 'invited' ? await boardViewers(b.id) : [] })
   }
   // Customer and KPI metrics are offered alongside the standard ones.
   const extra = Object.fromEntries((await metricCatalog()).filter((m) => !(m.key in BOARD_METRICS) && m.group !== 'Financials').map((m) => [m.key, { label: m.label, unit: m.unit }]))
