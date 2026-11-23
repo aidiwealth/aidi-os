@@ -12,7 +12,15 @@ const full = (v: number | null | undefined) => (v === null || v === undefined ? 
 const mon = (ym: string | null) => (ym ? new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
 const chart = computed(() => res.value.months.map((x) => ({ month: x.month, revenue: x.revenue, costs: x.cogs + x.opex, cash: x.cash })))
 // Every line, with the company's own lines (products, carriers, costs) under theirs; ARR and headcount at the end.
-const ROWS = computed(() => (props.pack ? [] : forecastRows(a.value as Assumptions, res.value.months).filter((r) => r.label !== 'Customers')))
+// A group forecast has no single set of assumptions: its table is the main lines, added up across the companies.
+type Row = { label: string; kind: string; get: (x: Result['months'][number]) => number | null }
+const PACK_ROWS: Row[] = [
+  { label: 'Revenue', kind: 'b', get: (x) => x.revenue }, { label: 'Cost of revenue', kind: '', get: (x) => x.cogs }, { label: 'Gross profit', kind: 'b', get: (x) => x.gross_profit },
+  { label: 'Gross margin %', kind: 'p', get: (x) => (x.revenue ? Math.round((x.gross_profit / x.revenue) * 1000) / 10 : null) }, { label: 'Payroll', kind: '', get: (x) => x.payroll },
+  { label: 'Operating costs', kind: '', get: (x) => x.opex }, { label: 'EBITDA', kind: 'b', get: (x) => x.ebitda }, { label: 'Tax', kind: '', get: (x) => x.tax },
+  { label: 'Net income', kind: 'b', get: (x) => x.net_income }, { label: 'Funding', kind: '', get: (x) => x.funding }, { label: 'Cash flow', kind: '', get: (x) => x.cash_flow },
+  { label: 'Cash at the end', kind: 'h', get: (x) => x.cash }, { label: 'ARR', kind: '', get: (x) => x.arr }, { label: 'Headcount', kind: 'n', get: (x) => x.headcount }]
+const ROWS = computed<Row[]>(() => (props.pack ? PACK_ROWS : forecastRows(a.value as Assumptions, res.value.months).filter((r) => r.label !== 'Customers') as unknown as Row[]))
 const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.keys(a.value.fixed ?? {}).sort(); return k.length ? mon(k[0]!) + ' to ' + mon(k[k.length - 1]!) : '' })
 </script>
 <template>
@@ -26,7 +34,7 @@ const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.
     </div>
     <div class="card"><ForecastChart :actual="[]" :forecast="chart" :currency="cur" /></div>
     <p v-if="fixedRange" class="mut">{{ fixedRange }} uses figures from {{ a.source?.file || 'an imported forecast' }}; later months follow the forecast's assumptions.</p>
-    <div v-if="!compact && !pack" class="card pad0"><table class="t" data-nosearch><thead><tr><th>{{ cur }}</th><th v-for="x in res.months" :key="x.month" class="r">{{ mon(x.month) }}</th></tr></thead>
+    <div v-if="!compact" class="card pad0"><table class="t" data-nosearch><thead><tr><th>{{ cur }}</th><th v-for="x in res.months" :key="x.month" class="r">{{ mon(x.month) }}</th></tr></thead>
       <tbody><tr v-for="(r, i) in ROWS" :key="i" :class="r.kind"><td>{{ r.label }}</td><td v-for="x in res.months" :key="x.month" class="r">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr></tbody></table></div>
   </div>
 </template>

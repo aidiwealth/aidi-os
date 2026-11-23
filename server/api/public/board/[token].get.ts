@@ -2,8 +2,8 @@
 export default defineEventHandler(async (event) => {
   const token = String(getRouterParam(event, 'token') ?? '')
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) throw apiError('not_found', 'This link is not valid.', 404)
-  const b = (await asPlatform(() => db().query<{ id: string; organization_id: string; name: string; note: string | null; kpis: string[]; charts: BoardChart[]; period: string; count: number; share_enabled: boolean; expired: boolean; forecast_id: string | null }>(
-    'SELECT id, organization_id, name, note, kpis, charts, period, count, share_enabled, forecast_id, (share_expires IS NOT NULL AND share_expires < now()) AS expired FROM financials.boards WHERE share_token = $1', [token]))).rows[0]
+  const b = (await asPlatform(() => db().query<{ id: string; organization_id: string; name: string; note: string | null; kpis: string[]; charts: BoardChart[]; period: string; count: number; share_enabled: boolean; expired: boolean; forecast_id: string | null; sections: { forecast?: boolean } }>(
+    'SELECT id, organization_id, name, note, kpis, charts, period, count, share_enabled, forecast_id, sections, (share_expires IS NOT NULL AND share_expires < now()) AS expired FROM financials.boards WHERE share_token = $1', [token]))).rows[0]
   if (!b || !b.share_enabled) throw apiError('not_found', 'This link is not valid.', 404)
   if (b.expired) throw apiError('expired', 'This link has expired. Ask the company for a new one.', 410)
   setOrgContext(b.organization_id)
@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
   const choices = ents.length > 1 ? [{ id: 'group', name: (await groupName().catch(() => 'Group')) + ' (group)' }, ...ents.map((e) => ({ id: 'entity:' + e.id, name: e.name }))] : []
   const asked = String(q.subject ?? '')
   const subject = choices.some((c) => c.id === asked) ? asked : null
-  const shown = fc ? await boardForecast(subject ?? (choices.length ? 'group' : null), fc).catch(() => null) : null
-  return { forecast: shown ? { name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack } : null, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject, fc), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
+  const shown = fc || b.sections?.forecast ? await boardForecast(subject ?? (choices.length ? 'group' : null), fc).catch(() => null) : null
+  return { forecast: shown ? { name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack, full: !!b.sections?.forecast } : null, name: b.name, note: b.note, period, base_period: b.period, entities: choices, subject: subject ?? (choices.length ? 'group' : null), data: await boardData(b.kpis, b.charts, period, count, subject, fc), workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
 })

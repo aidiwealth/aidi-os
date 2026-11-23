@@ -17,7 +17,7 @@ export const DEFAULT_BOARDS: { audience: string; name: string; sort: number; kpi
     charts: [{ title: 'Revenue', metrics: ['revenue'] }, { title: 'Monthly burn', metrics: ['burn'] }, { title: 'Cash', metrics: ['cash'] }] }]
 export async function ensureBoards(): Promise<void> {
   if ((await db().query('SELECT 1 FROM financials.boards LIMIT 1')).rowCount) return
-  for (const b of DEFAULT_BOARDS) await db().query('INSERT INTO financials.boards (audience, name, sort, kpis, charts, note) VALUES ($1,$2,$3,$4,$5,$6)', [b.audience, b.name, b.sort, b.kpis, JSON.stringify(b.charts), b.note])
+  for (const b of DEFAULT_BOARDS) await db().query('INSERT INTO financials.boards (audience, name, sort, kpis, charts, note, sections) VALUES ($1,$2,$3,$4,$5,$6,$7)', [b.audience, b.name, b.sort, b.kpis, JSON.stringify(b.charts), b.note, JSON.stringify(b.audience === 'cfo' ? { forecast: true, statements: true } : {})])
 }
 // Series for a board's metrics (growth is derived from revenue). Values follow the reporting currency.
 // Any metric a board can show: the standard ones, plus customer and KPI metrics.
@@ -78,4 +78,11 @@ export async function boardForecast(subject: string | null | undefined, chosen: 
   if (!p) return null
   return { name: p.companies > 1 ? 'Group forecast' : p.name, group: p.companies > 1, id: null, assumptions: p.companies > 1 ? null : p.a,
     pack: p.companies > 1 ? { currency: p.currency, months: p.months, base: p.base, best: p.best, worst: p.worst } : null, revenue: rev(p.base.months, p.currency) }
+}
+
+// Reports attached to a board (newest first): title, type and size, for the board's Reports card.
+export async function boardReports(ids: string[] | null | undefined): Promise<{ id: string; title: string; mime_type: string; size_bytes: number; created_at: string }[]> {
+  if (!ids?.length) return []
+  return (await db().query<{ id: string; title: string; mime_type: string; size_bytes: number; created_at: string }>(
+    'SELECT id, title, mime_type, size_bytes, created_at FROM core.documents WHERE id = ANY($1::uuid[]) ORDER BY created_at DESC', [ids])).rows
 }

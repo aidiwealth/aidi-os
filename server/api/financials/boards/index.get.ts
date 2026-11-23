@@ -2,8 +2,8 @@
 export default defineEventHandler(async (event) => {
   await requireRole(event, 'admin', 'gp', 'team', 'family')
   await ensureBoards()
-  const rows = (await db().query<{ id: string; audience: string; name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number; note: string | null; share_token: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; forecast_id: string | null }>(
-    'SELECT id, audience, name, kpis, charts, period, count, note, share_token, share_enabled, share_expires, views, last_viewed_at, forecast_id FROM financials.boards ORDER BY sort, created_at')).rows
+  const rows = (await db().query<{ id: string; audience: string; name: string; kpis: string[]; charts: BoardChart[]; period: string; count: number; note: string | null; share_token: string | null; share_enabled: boolean; share_expires: string | null; views: number; last_viewed_at: string | null; forecast_id: string | null; sections: { forecast?: boolean; statements?: boolean }; documents: string[] }>(
+    'SELECT id, audience, name, kpis, charts, period, count, note, share_token, share_enabled, share_expires, views, last_viewed_at, forecast_id, sections, documents FROM financials.boards ORDER BY sort, created_at')).rows
   const isCo = (await currentOrg())?.kind === 'company', base = isCo ? brands().finvry.url : brands().aidi.url
   // A company with subsidiaries: the figures of the company (or the group) chosen at the top, like Financials.
   const sc = isCo ? await forecastScope(event).catch(() => null) : null, subject = sc ? (sc.group ? 'group' : sc.entity ? 'entity:' + sc.entity : null) : null
@@ -13,11 +13,14 @@ export default defineEventHandler(async (event) => {
   for (const b of rows) {
     const f = forecasts.find((x) => x.id === b.forecast_id) ?? null
     // The forecast panel follows the company or group at the top (the group shows the group forecast); NTM always uses it.
-    const shown = f && fcOn ? await boardForecast(subject, f, undefined) : null
+    const shown = fcOn && (f || b.sections?.forecast) ? await boardForecast(subject, f, undefined) : null
     out.push({ ...b, share_url: b.share_token ? base + '/b/' + b.share_token : null, data: await boardData(b.kpis, b.charts, b.period, b.count, subject, fcOn ? f : null),
-      forecast: shown ? { id: shown.id, name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack } : null, forecast_id: b.forecast_id })
+      forecast: shown ? { id: shown.id, name: shown.name, group: shown.group, assumptions: shown.assumptions, pack: shown.pack } : null, forecast_id: b.forecast_id,
+      sections: b.sections ?? {}, reports: await boardReports(b.documents) })
   }
   // Customer and KPI metrics are offered alongside the standard ones.
   const extra = Object.fromEntries((await metricCatalog()).filter((m) => !(m.key in BOARD_METRICS) && m.group !== 'Financials').map((m) => [m.key, { label: m.label, unit: m.unit }]))
-  return { boards: out, metrics: { ...BOARD_METRICS, ...extra }, forecasts: forecasts.map((f) => ({ id: f.id, name: f.name })) }
+  // The subject the statements on a board use (as /api/financials takes it).
+  const fsubject = subject ?? (isCo ? await companyEntityId().then((id) => (id ? 'entity:' + id : 'group')).catch(() => 'group') : 'group')
+  return { subject: fsubject, boards: out, metrics: { ...BOARD_METRICS, ...extra }, forecasts: forecasts.map((f) => ({ id: f.id, name: f.name })) }
 })

@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   const metric = z.string().refine((m) => m in BOARD_METRICS || isMetricKey(m), 'Unknown metric')
   const b = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(80).optional(), note: z.string().max(1000).optional(), kpis: z.array(metric).max(12).optional(),
     charts: z.array(z.object({ title: z.string().trim().min(1).max(80), metrics: z.array(metric).min(1).max(3), type: z.enum(['line', 'bar', 'area', 'pie', 'table']).default('line') })).max(10).optional(), period: z.enum(['month', 'quarter', 'year']).optional(), count: z.number().int().min(2).max(36).optional(), forecast_id: z.string().uuid().nullable().optional(),
+    sections: z.object({ forecast: z.boolean().optional(), statements: z.boolean().optional() }).optional(), documents: z.array(z.string().uuid()).max(30).optional(),
     share: z.object({ enabled: z.boolean(), expires_days: z.number().int().min(0).max(365).default(0), reset: z.boolean().default(false) }).optional() }).safeParse(await readBody(event))
   if (!b.success) throw apiError('invalid', 'Check the board settings.')
   const d = b.data
@@ -16,6 +17,11 @@ export default defineEventHandler(async (event) => {
     const add = (col: string, v: unknown) => { args.push(v); sets.push(col + ' = $' + args.length) }
     if (d.name !== undefined) add('name', d.name); if (d.note !== undefined) add('note', d.note || null); if (d.kpis) add('kpis', d.kpis); if (d.charts) add('charts', JSON.stringify(d.charts)); if (d.period) add('period', d.period); if (d.count) add('count', d.count)
     if (d.forecast_id !== undefined) { if (d.forecast_id && !(await db().query('SELECT 1 FROM financials.forecasts WHERE id = $1', [d.forecast_id])).rowCount) throw apiError('invalid', 'Choose one of your forecasts.'); add('forecast_id', d.forecast_id) }
+    if (d.sections) add('sections', JSON.stringify({ forecast: !!d.sections.forecast, statements: !!d.sections.statements }))
+    if (d.documents) {
+      const ok = (await db().query<{ id: string }>("SELECT id FROM core.documents WHERE id = ANY($1::uuid[]) AND (mime_type = 'application/pdf' OR mime_type LIKE 'application/vnd.openxmlformats%')", [d.documents])).rows.map((r) => r.id)
+      add('documents', d.documents.filter((x) => ok.includes(x)))
+    }
     if (sets.length) { const r = await db().query('UPDATE financials.boards SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', args); if (!r.rowCount) throw apiError('not_found', 'Not found', 404) }
   }
   if (d.share) {
