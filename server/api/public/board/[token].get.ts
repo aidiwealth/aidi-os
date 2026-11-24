@@ -3,6 +3,8 @@
 // invited email.
 export default defineEventHandler(async (event) => {
   const b = await boardByToken(event)
+  // The page header only needs whose board it is and their logo (set in Settings); no view is counted.
+  if (getQuery(event).brand) return { workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
   const access = await boardAccess(event, b)
   if (!access.ok) return { gated: true, name: b.name, workspace: await publicWorkspace(), branding: await brandingOf(b.organization_id).catch(() => null) }
   // A switch of company or period is the same visit: only the first load counts as a view.
