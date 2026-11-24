@@ -26,7 +26,7 @@ const claim = (m: Mod) => Math.max(-1, ...[m.to, ...(m.pages ?? [])].filter((p) 
 const lockedHere = computed(() => { const ms = mods.value ?? []; const open = Math.max(-1, ...ms.filter((m) => m.usable).map(claim)); return ms.find((m) => m.locked && claim(m) > open) ?? null })
 const badges = ref<Record<string, number>>({})
 async function loadBadges() { try { badges.value = await $fetch<Record<string, number>>('/api/notifications') } catch { /* signed out */ } }
-const AREA: [string, string][] = [['/client', 'client'], ['/fundraising', 'fundraising']]
+const AREA: [string, string][] = [['/client', 'client'], ['/fundraising', 'fundraising'], ['/deals', 'pitches']]
 watch(nowPath, async (pth) => {
   const a = pth === '/services' ? 'jobs' : AREA.find(([pre]) => pth === pre || pth.startsWith(pre + '/'))?.[1]
   if (a) await $fetch('/api/notifications/seen', { method: 'POST', body: { area: a } }).catch(() => {})

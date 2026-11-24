@@ -21,6 +21,12 @@ export default defineEventHandler(async (event): Promise<Record<string, number>>
       const n = (await db().query<{ n: number }>('SELECT count(*)::int AS n FROM fundraise.nda_signatures WHERE signed_at > $1', [s2]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n
       if (n) out['/fundraising'] = n
     }
+    // Pitches: new ones received since you last opened Pitches (spam left out).
+    if (org.kind !== 'company' && user.roles.some((r) => ['admin', 'gp', 'team'].includes(r))) {
+      const since = await seen('pitches')
+      const pn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM deals.pitches WHERE received_at > $1 AND status <> 'spam'", [since]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n
+      if (pn) out['/deals'] = pn
+    }
     // Tasks: mine that are due today or late.
     if (org.kind !== 'company') { const tn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM core.tasks WHERE assignee_id = $1 AND status <> 'done' AND due_on <= current_date", [user.userId]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (tn) out['/tasks'] = tn }
     if (org.kind !== 'company') { const nn = (await db().query<{ n: number }>("SELECT count(*)::int AS n FROM inbox.notices WHERE status = 'new'").catch(() => ({ rows: [{ n: 0 }] }))).rows[0]!.n; if (nn) out['/notices'] = nn }
