@@ -5,7 +5,7 @@ const route = useRoute()
 const brand = useBrand()
 const token = route.params.handle ? (route.params.link ? '@' + String(route.params.handle) + '.' + String(route.params.link) : String(route.params.handle)) : String(route.params.token ?? route.params.slug ?? '')
 const kind = route.params.handle ? (route.params.link ? 'd' : 'c') : route.path.startsWith('/job/') ? 'job' : route.path.startsWith('/report/') ? 'report' : route.path.startsWith('/pay/') ? 'pay' : route.path.startsWith('/lp/') ? 'lp' : route.path.startsWith('/bill/') ? 'bill' : route.path.startsWith('/info/') ? 'info' : route.path.startsWith('/formation/') ? 'formation' : route.path.startsWith('/share/') ? 'share' : route.path.startsWith('/v/') ? 'v' : route.path.startsWith('/sign/') ? 'sign' : route.path.startsWith('/c/') ? 'c' : route.path.startsWith('/u/') ? 'u' : route.path.startsWith('/d/') ? 'd' : route.path.startsWith('/b/') ? 'board' : ''
-const { data } = await useFetch<{ workspace?: WS; branding?: { logo_url: string | null; bg: string | null; fg: string | null; hide_finvry: boolean } }>('/api/public/' + (kind || 'none') + '/' + token, { key: 'pub-' + kind + '-' + token, immediate: !!kind, query: kind === 'board' ? { brand: 1 } : undefined })
+const { data } = await useFetch<{ workspace?: WS; branding?: { logo_url: string | null; bg: string | null; fg: string | null; hide_finvry: boolean } }>('/api/public/' + (kind || 'none') + '/' + token, { key: 'pub-' + kind + '-' + token + (kind === 'board' ? '-head' : ''), immediate: !!kind, query: kind === 'board' ? { brand: 1 } : undefined })
 const ws = computed(() => data.value?.workspace ?? null)
 const br = computed(() => data.value?.branding ?? null)
 const dark = (hex: string) => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 140 }
@@ -41,7 +41,7 @@ const foot = computed(() => {
 .pub-mark { display: flex; width: 58px; height: 23px; } .pub-mark :deep(svg) { width: 100%; height: 100%; display: block; }
 .pub-div { width: 1px; height: 18px; background: var(--c-rule-strong); }
 .pub-arm { font-family: var(--font-serif); font-style: italic; font-size: 1.2rem; }
-.pub-logo { max-height: 36px; max-width: 200px; } .pub-top .pub-name { color: inherit; }
+.pub-logo { display: block; max-height: 26px; max-width: 150px; width: auto; object-fit: contain; } .pub-top .pub-name { color: inherit; }
 .pub-name { font-family: var(--font-serif); font-weight: 500; font-size: 1.5rem; letter-spacing: -0.01em; }
 .pub-main { flex: 1; padding: 48px 24px; }
 .pub-foot { padding: 20px 32px; border-top: 1px solid var(--c-rule); font-size: 12px; color: var(--c-muted); }
