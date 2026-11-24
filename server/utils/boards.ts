@@ -63,7 +63,7 @@ export async function boardData(kpis: string[], charts: BoardChart[], period: st
 // else that company's main forecast. Used for the board's forecast panel and for NTM revenue growth (NTM uses it even
 // when the board does not show a forecast). A forecast in another currency than the board's figures is not used for NTM.
 export interface ChosenForecast { id: string; name: string; entity_id: string | null; assumptions: unknown }
-export interface BoardForecast { name: string; group: boolean; id: string | null; assumptions: unknown | null; pack: { currency: string; months: number; base: unknown; best: unknown; worst: unknown } | null; revenue: Map<string, number> }
+export interface BoardForecast { name: string; group: boolean; id: string | null; assumptions: unknown | null; pack: { currency: string; months: number; base: unknown; best: unknown; worst: unknown; cats?: unknown[]; lines?: { key: string; label: string }[] } | null; revenue: Map<string, number> }
 export async function boardForecast(subject: string | null | undefined, chosen: ChosenForecast | null | undefined, currency?: string): Promise<BoardForecast | null> {
   const ent = subject?.startsWith('entity:') ? subject.slice(7) : null
   const rev = (months: { month: string; revenue: number }[], cur: string) => new Map(!currency || cur === currency ? months.map((x) => [x.month, x.revenue] as [string, number]) : [])
@@ -77,7 +77,7 @@ export async function boardForecast(subject: string | null | undefined, chosen: 
   const p = await forecastPack({ subject: subject ?? undefined, currency }).catch(() => null)
   if (!p) return null
   return { name: p.companies > 1 ? 'Group forecast' : p.name, group: p.companies > 1, id: null, assumptions: p.companies > 1 ? null : p.a,
-    pack: p.companies > 1 ? { currency: p.currency, months: p.months, base: p.base, best: p.best, worst: p.worst } : null, revenue: rev(p.base.months, p.currency) }
+    pack: p.companies > 1 ? { currency: p.currency, months: p.months, base: p.base, best: p.best, worst: p.worst, cats: p.cats, lines: p.lines } : null, revenue: rev(p.base.months, p.currency) }
 }
 
 // Reports attached to a board (newest first): title, type and size, for the board's Reports card.

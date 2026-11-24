@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // A read-only forecast: headline figures, the chart and (unless compact) the monthly table. Used on shared links and
 // on boards. A group forecast comes worked out already (pack: each company's forecast added up in one currency).
-import { run, defaults, forecastRows, type Assumptions, type Scenario, type Result } from '~/shared/forecast'
-const props = withDefaults(defineProps<{ assumptions?: Assumptions | null; pack?: { currency: string; months: number; base: Result; best: Result; worst: Result } | null; compact?: boolean; scenarios?: boolean }>(), { assumptions: null, pack: null, compact: false, scenarios: true })
+import { run, defaults, forecastRows, type Assumptions, type Scenario, type Result, type Part } from '~/shared/forecast'
+const props = withDefaults(defineProps<{ assumptions?: Assumptions | null; pack?: { currency: string; months: number; base: Result; best: Result; worst: Result; cats?: Part[]; lines?: { key: string; label: string }[] } | null; compact?: boolean; scenarios?: boolean }>(), { assumptions: null, pack: null, compact: false, scenarios: true })
 const sc = ref<Scenario>('base')
 const a = computed(() => (props.assumptions ? { ...defaults(props.assumptions.start), ...props.assumptions } : { ...defaults(props.pack?.base.months[0]?.month ?? new Date().toISOString().slice(0, 7)), currency: props.pack?.currency ?? 'USD', months: props.pack?.months ?? 0 }))
 const res = computed(() => (props.pack ? props.pack[sc.value] : run(a.value as Assumptions, sc.value)))
@@ -20,7 +20,13 @@ const PACK_ROWS: Row[] = [
   { label: 'Operating costs', kind: '', get: (x) => x.opex }, { label: 'EBITDA', kind: 'b', get: (x) => x.ebitda }, { label: 'Tax', kind: '', get: (x) => x.tax },
   { label: 'Net income', kind: 'b', get: (x) => x.net_income }, { label: 'Funding', kind: '', get: (x) => x.funding }, { label: 'Cash flow', kind: '', get: (x) => x.cash_flow },
   { label: 'Cash at the end', kind: 'h', get: (x) => x.cash }, { label: 'ARR', kind: '', get: (x) => x.arr }, { label: 'Headcount', kind: 'n', get: (x) => x.headcount }]
-const ROWS = computed<Row[]>(() => (props.pack ? PACK_ROWS : forecastRows(a.value as Assumptions, res.value.months).filter((r) => r.label !== 'Customers') as unknown as Row[]))
+// A group pack that carries its categories and cost lines gets the full breakdown, as on the group forecast: each
+// product, cost line and category under its line (rows that stay at zero left out).
+const ROWS = computed<Row[]>(() => {
+  if (props.pack && !props.pack.cats) return PACK_ROWS
+  const ga = (props.pack ? { costs: props.pack.lines ?? [], parts: props.pack.cats } : a.value) as unknown as Assumptions
+  return forecastRows(ga, res.value.months).filter((r) => r.label !== 'Customers' && (r.kind !== 's' || !props.pack || res.value.months.some((x) => Math.abs(r.get(x) ?? 0) > 0.5))) as unknown as Row[]
+})
 const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.keys(a.value.fixed ?? {}).sort(); return k.length ? mon(k[0]!) + ' to ' + mon(k[k.length - 1]!) : '' })
 </script>
 <template>
@@ -35,7 +41,7 @@ const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.
     <div class="card"><ForecastChart :actual="[]" :forecast="chart" :currency="cur" /></div>
     <p v-if="fixedRange" class="mut">{{ fixedRange }} uses figures from {{ a.source?.file || 'an imported forecast' }}; later months follow the forecast's assumptions.</p>
     <div v-if="!compact" class="card pad0"><table class="t" data-nosearch><thead><tr><th>{{ cur }}</th><th v-for="x in res.months" :key="x.month" class="r">{{ mon(x.month) }}</th></tr></thead>
-      <tbody><tr v-for="(r, i) in ROWS" :key="i" :class="r.kind"><td>{{ r.label }}</td><td v-for="x in res.months" :key="x.month" class="r">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr></tbody></table></div>
+      <tbody><tr v-for="(r, i) in ROWS" :key="i" :class="r.kind"><td>{{ r.label }}</td><td v-for="x in res.months" :key="x.month" class="r" :class="{ neg: r.kind !== 'p' && r.kind !== 'n' && (r.get(x) ?? 0) < -0.5 }">{{ r.kind === 'p' ? (r.get(x) === null ? '—' : r.get(x) + '%') : r.kind === 'n' ? (r.get(x) ?? '—') : full(r.get(x)) }}</td></tr></tbody></table></div>
   </div>
 </template>
 <style scoped>
@@ -43,5 +49,5 @@ const fixedRange = computed(() => { if (props.pack) return ''; const k = Object.
 .seg { display: flex; border: 1px solid var(--c-rule-strong); width: fit-content; } .seg button { background: #fff; border: 0; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; color: var(--c-ink-soft); } .seg button + button { border-left: 1px solid var(--c-rule-strong); } .seg button.on { background: var(--c-navy); color: #fff; }
 .pad0 { padding: 0; overflow-x: auto; } .t { border-collapse: collapse; font-size: 12.5px; width: 100%; } .t th { font-weight: 500; color: var(--c-muted); padding: 8px 10px; border-bottom: 1px solid var(--c-rule); background: #fbfaf7; white-space: nowrap; text-align: left; } .t td { padding: 6px 10px; border-bottom: 1px solid var(--c-rule); white-space: nowrap; font-variant-numeric: tabular-nums; } .t .r { text-align: right; }
 .t td:first-child { position: sticky; left: 0; background: #fff; min-width: 200px; } .t tr.b td { font-weight: 600; } .t tr.h td { background: var(--c-paper-3); font-weight: 600; }
-.t tr.s td { color: var(--c-muted); font-size: 12px; } .t tr.s td:first-child { padding-left: 24px; color: var(--c-ink-soft); }
+.t tr.s td { color: var(--c-muted); font-size: 12px; } .t tr td.neg { color: var(--c-danger); } .t tr.s td:first-child { padding-left: 24px; color: var(--c-ink-soft); }
 </style>

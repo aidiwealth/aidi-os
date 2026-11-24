@@ -16,7 +16,7 @@ const der = (r: St) => r.derived ?? deriveLines(r.lines, 1)
 <template>
   <div v-if="rows.length" class="bs">
     <div class="bsh"><h2>Financial statements</h2><NuxtLink v-if="!src" :to="{ path: '/financials', query: { s: subject } }" class="lk2">Open Financials</NuxtLink></div>
-    <ClientOnly><FinConsolidation v-if="rows.some((r) => r.parts?.length)" :rows="rows as any" :currency="currency" :name="data?.name ?? ''" :can-edit="false" :safe="data?.safe_treatment ?? null" /></ClientOnly>
+    <ClientOnly><FinConsolidation v-if="rows.some((r) => r.parts?.length)" :rows="rows as any" :currency="currency" :name="data?.name ?? ''" :can-edit="false" no-rates :safe="data?.safe_treatment ?? null" /></ClientOnly>
     <div class="card pad0"><table class="t"><thead><tr><th>Period</th><th class="n">Revenue</th><th class="n">Gross margin</th><th class="n">EBITDA</th><th class="n">Net income</th><th class="n">Cash</th></tr></thead>
       <tbody><tr v-for="r in last" :key="r.period_end"><td>{{ lbl(r.period_end) }}</td><td class="n"><Money :value="der(r).revenue" :currency="r.currency" /></td><td class="n">{{ pct(der(r).gross_margin) }}</td>
         <td class="n"><Money :value="der(r).ebitda" :currency="r.currency" /></td><td class="n"><Money :value="der(r).net_income" :currency="r.currency" /></td><td class="n"><Money :value="der(r).cash" :currency="r.currency" /></td></tr></tbody></table></div>

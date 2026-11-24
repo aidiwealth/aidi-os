@@ -7,7 +7,8 @@ import { classifiedRows, classifyBalance, safeNote, type SafeTreatment } from '~
 interface Use { quote: string; month: string; per_usd: number; source: 'book' | 'book_near' | 'history' | 'daily'; from_month?: string }
 interface Part { who: string; currency: string; rate: number; uses: Use[]; lines: Record<string, number>; detail?: Record<string, number> }
 interface Row { period_end: string; lines: Record<string, number>; detail?: Record<string, number>; parts?: Part[]; left_out?: string[]; eliminated?: { unreconciled: number } }
-const props = defineProps<{ rows: Row[]; currency: string; name: string; canEdit: boolean; safe?: SafeTreatment }>()
+// noRates: shown read-only on a board, where the exchange rates are not set (they are on Financials).
+const props = defineProps<{ rows: Row[]; currency: string; name: string; canEdit: boolean; safe?: SafeTreatment; noRates?: boolean }>()
 const emit = defineEmits<{ rates: [] }>()
 const withParts = computed(() => props.rows.filter((r) => r.parts?.length))
 const month = ref('')
@@ -45,7 +46,7 @@ const kpi = computed(() => { const g = grp.value; return [['Revenue', g.revenue]
     <div class="ch"><div><span class="eyebrow">Consolidated · {{ currency }}</span><h2>{{ name }}, {{ mon(row.period_end) }}</h2>
       <p class="mut">The {{ cols.length }} companies combined, less intercompany amounts.</p></div>
       <div class="tools"><select v-model="month" aria-label="Month"><option v-for="r in [...withParts].reverse()" :key="r.period_end" :value="r.period_end">{{ mon(r.period_end) }}</option></select>
-        <button type="button" class="btn secondary sm" @click="emit('rates')">Exchange rates</button></div></div>
+        <button v-if="!noRates" type="button" class="btn secondary sm" @click="emit('rates')">Exchange rates</button></div></div>
     <div class="kp"><div v-for="[l, v] in kpi" :key="l"><span>{{ l }}</span><b :class="{ neg: (v ?? 0) < 0 }">{{ m(v) }}</b></div></div>
     <div class="tw"><table class="t" data-nosearch>
       <thead><tr><th>{{ currency }}</th><th v-for="c in cols" :key="c.who" class="r">{{ c.who }}<em>{{ c.currency }}{{ c.currency !== currency ? ' → ' + currency : '' }}</em></th><th v-if="anyElim || bsAnyElim" class="r">Eliminations</th><th class="r g">Group</th></tr></thead>
