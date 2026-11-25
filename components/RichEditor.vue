@@ -6,8 +6,9 @@ import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
+import { videoEmbed } from '~/shared/video'
 import { RICH_TABLE_EXTENSIONS, TABLE_COLORS, cleanPastedHtml, paintTable } from '~/utils/richTable'
-const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; minimal?: boolean; maxLength?: number; media?: boolean }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000, media: undefined })
+const props = withDefaults(defineProps<{ imageUpload?: (f: File) => Promise<string>; modelValue: string | null | undefined; placeholder?: string; minHeight?: number; compact?: boolean; minimal?: boolean; maxLength?: number; media?: boolean; videos?: boolean }>(), { placeholder: 'Write here…', minHeight: 160, compact: false, maxLength: 60000, media: undefined, videos: false })
 // Images and charts in the text: every editor except message boxes (minimal) and those that turn them off.
 const withMedia = computed(() => props.media ?? !props.minimal)
 async function defaultUpload(file: File): Promise<string> { const fd = new FormData(); fd.append('file', file); try { return (await $fetch<{ url: string }>('/api/media', { method: 'POST', body: fd })).url } catch (e) { notify((e as { data?: { data?: { error?: { message?: string } } } }).data?.data?.error?.message ?? 'Could not upload the image.'); throw e } }
@@ -65,6 +66,15 @@ const block = computed({ get: () => { const e = editor.value; if (!e) return 'p'
   set: (v: string) => { const c = editor.value?.chain().focus(); if (!c) return; if (v === 'p') c.setParagraph().run(); else c.toggleHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run() } })
 async function link() { const e = editor.value; if (!e) return; const prev = e.getAttributes('link').href as string | undefined; const url = await askPrompt('Link address', prev ?? 'https://'); if (url === null) return; if (!url || url === 'https://') { e.chain().focus().unsetLink().run(); return } if (!/^(https?:\/\/|mailto:)/i.test(url)) return; e.chain().focus().extendMarkRange('link').setLink({ href: url }).run() }
 const on = (n: string, a?: Record<string, unknown>) => !!editor.value?.isActive(n, a)
+// Videos: a YouTube, Vimeo or Loom link on its own line; pages show it as a player.
+async function addVideo() {
+  const e = editor.value; if (!e) return
+  const url = await askPrompt('Paste a YouTube, Vimeo or Loom link. It shows as a video player where this text is shown.', 'https://', { title: 'Add a video', ok: 'Add video' })
+  if (url === null) return
+  if (!videoEmbed(url)) { notify('That link is not a YouTube, Vimeo or Loom video.'); return }
+  const safe = url.trim().replace(/"/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E')
+  e.chain().focus().insertContent('<p><a href="' + safe + '">' + safe + '</a></p><p></p>').run()
+}
 async function addImage(ev: Event) { const file = (ev.target as HTMLInputElement).files?.[0]; if (!file || !upload.value || !editor.value) return; try { const src = await upload.value(file); editor.value.chain().focus().setImage({ src, alt: file.name.replace(/\.[a-z]+$/i, '') }).run() } catch { /* the caller shows the error */ } finally { (ev.target as HTMLInputElement).value = '' } }
 const inTable = computed(() => !!editor.value?.isActive('table'))
 const tcolor = ref<string | null>(null); const tscope = ref<'cell' | 'row' | 'col' | 'header'>('row')
@@ -78,6 +88,7 @@ const tcmd = (fn: string) => { const c = editor.value?.chain().focus() as unknow
       <select v-if="!minimal" v-model="block" aria-label="Text style"><option value="p">Paragraph</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option></select>
       <span class="sep" />
       <label v-if="upload" class="imgbtn" title="Insert an image"><input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" @change="addImage">Image</label>
+      <button v-if="videos" type="button" class="imgbtn" title="Add a YouTube, Vimeo or Loom video" @click="addVideo">Video</button>
       <button v-if="withMedia" type="button" class="imgbtn" title="Insert a chart worked out from your figures" @click="picker.id = null; picker.open = true">Chart</button>
       <button type="button" :class="{ on: on('bold') }" title="Bold (Ctrl+B)" @click="editor.chain().focus().toggleBold().run()"><b>B</b></button>
       <button type="button" :class="{ on: on('italic') }" title="Italic (Ctrl+I)" @click="editor.chain().focus().toggleItalic().run()"><i>I</i></button>

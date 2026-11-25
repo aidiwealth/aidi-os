@@ -81,7 +81,7 @@ async function save() {
         <label class="label"><span class="lt">Company <i v-if="isAi('company')" class="ai">AI</i></span><input v-model="f.company" required maxlength="200" @input="touched('company')"></label>
         <label class="label"><span class="lt">Website <i v-if="isAi('website')" class="ai">AI</i></span><input v-model="f.website" maxlength="500" placeholder="https://" @input="touched('website')"></label>
         <label class="label full"><span class="lt">One-liner <i v-if="isAi('one_liner')" class="ai">AI</i></span><input v-model="f.one_liner" maxlength="300" placeholder="What they do, in one sentence" @input="touched('one_liner')"></label>
-        <label class="label full"><span class="lt">About <i v-if="isAi('description')" class="ai">AI</i></span><textarea v-model="f.description" rows="3" maxlength="3000" placeholder="Product, customers, how they make money" @input="touched('description')" /></label>
+        <div class="label full" :class="{ aied: isAi('description') }"><span class="lt">About <i v-if="isAi('description')" class="ai">AI</i></span><ClientOnly><RichEditor v-model="f.description" compact videos :min-height="110" :max-length="10000" placeholder="Product, customers, how they make money. Add a video with the Video button." @update:model-value="touched('description')" /></ClientOnly></div>
       </div>
       <div class="g4">
         <label class="label"><span class="lt">Sector <i v-if="isAi('sector')" class="ai">AI</i></span><input v-model="f.sector" maxlength="100" placeholder="Fintech" @input="touched('sector')"></label>
@@ -107,7 +107,7 @@ async function save() {
         <label class="label"><span class="lt">Lead investor <i v-if="isAi('lead_investor')" class="ai">AI</i></span><input v-model="f.lead_investor" maxlength="200" @input="touched('lead_investor')"></label>
         <label class="label sp2"><span class="lt">Backed by <i v-if="isAi('investors')" class="ai">AI</i></span><input v-model="f.investors" maxlength="1000" placeholder="Earlier investors" @input="touched('investors')"></label>
         <label class="label sp2">Deck link<input v-model="f.deck_url" maxlength="1000" placeholder="https://"></label>
-        <label class="label full4"><span class="lt">Traction <i v-if="isAi('traction')" class="ai">AI</i></span><textarea v-model="f.traction" rows="2" maxlength="2000" placeholder="Revenue, users, growth, key customers" @input="touched('traction')" /></label>
+        <div class="label full4" :class="{ aied: isAi('traction') }"><span class="lt">Traction <i v-if="isAi('traction')" class="ai">AI</i></span><ClientOnly><RichEditor v-model="f.traction" compact videos :min-height="80" :max-length="5000" placeholder="Revenue, users, growth, key customers" @update:model-value="touched('traction')" /></ClientOnly></div>
       </div>
 
       <template v-if="!editing"><h3>On our side</h3>
@@ -136,6 +136,7 @@ h3 { font-family: var(--font-body); font-size: 11.5px; font-weight: 600; letter-
 input, select, textarea { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; width: 100%; box-sizing: border-box; } textarea { resize: vertical; }
 .ai { font-style: normal; font-size: 9.5px; font-weight: 600; letter-spacing: .06em; color: var(--c-blue-deep); background: #e6eef6; padding: 1px 5px; vertical-align: 1px; text-transform: none; }
 .label:has(.ai) input, .label:has(.ai) select, .label:has(.ai) textarea { background: #f5f8fc; border-color: #b9cde3; }
+.aied :deep(.re) { border-color: #b9cde3; } .aied :deep(.ec) { background: #f5f8fc; }
 .note { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; background: #f2f6fb; border: 1px solid #d6e2ef; padding: 10px 12px; font-size: 13px; color: var(--c-ink-soft); }
 .src { margin: 0; padding: 8px 12px 8px 28px; border: 1px solid var(--c-rule); font-size: 13px; display: flex; flex-direction: column; gap: 3px; } .src a { color: var(--c-blue-deep); word-break: break-all; }
 .dupe { margin: 0; background: #fff7ed; border: 1px solid #f3d6b3; padding: 9px 12px; font-size: 13px; }

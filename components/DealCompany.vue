@@ -55,11 +55,11 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
     <p v-if="un.size" class="unc"><span><i class="ai">AI</i> {{ un.size }} detail{{ un.size === 1 ? '' : 's' }} came from AI and {{ un.size === 1 ? 'hasn\'t' : 'haven\'t' }} been checked.</span><button type="button" class="lnk" @click="editing = true">Review</button></p>
     <EmptyState v-if="empty" compact icon="pipeline" title="No company details yet" text="Add them yourself, or let AI look the company up."><button class="btn" :disabled="busy" @click="update">Fill in with AI</button></EmptyState>
     <template v-else>
-      <p v-if="d.description" class="about">{{ d.description }} <i v-if="un.has('description')" class="ai">AI</i></p>
+      <div v-if="d.description" class="about"><i v-if="un.has('description')" class="ai abt">AI</i><RichView :md="String(d.description)" /></div>
       <dl class="facts"><div v-for="x in facts" :key="x.k"><dt>{{ x.l }}</dt><dd>{{ x.v }} <i v-if="x.ai" class="ai">AI</i></dd></div></dl>
       <div v-if="(d.founders ?? []).length" class="blk"><p class="sh">Founders <i v-if="un.has('founders')" class="ai">AI</i></p>
         <ul class="fo"><li v-for="p in d.founders" :key="p.name"><b>{{ p.name }}</b><span v-if="p.role">{{ p.role }}</span><a v-if="p.linkedin" :href="p.linkedin" target="_blank" rel="noopener">LinkedIn</a></li></ul></div>
-      <div v-if="d.traction" class="blk"><p class="sh">Traction <i v-if="un.has('traction')" class="ai">AI</i></p><p class="tr">{{ d.traction }}</p></div>
+      <div v-if="d.traction" class="blk"><p class="sh">Traction <i v-if="un.has('traction')" class="ai">AI</i></p><RichView :md="String(d.traction)" class="tr" /></div>
       <p v-if="links.length || d.referred_by" class="lks"><a v-for="x in links" :key="x.k" :href="x.u" target="_blank" rel="noopener">{{ x.l }} ↗</a><span v-if="d.referred_by" class="muted">Referred by {{ d.referred_by }}</span></p>
       <p v-if="d.ai_sources?.length" class="muted sm2">AI looked it up {{ when(d.ai_looked_up_at) }} · <button type="button" class="lnk" @click="showSrc = !showSrc">{{ showSrc ? 'hide' : d.ai_sources.length + ' source' + (d.ai_sources.length === 1 ? '' : 's') }}</button></p>
       <ul v-if="showSrc" class="src"><li v-for="s in d.ai_sources" :key="s.url"><a :href="s.url" target="_blank" rel="noopener">{{ s.title || s.url }}</a></li></ul>
@@ -85,11 +85,11 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 .co { display: flex; flex-direction: column; gap: 12px; } .coh { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .coh h2 { margin: 0; } .act { display: flex; gap: 6px; } .sm { padding: 6px 12px; font-size: 13px; }
 .ai { font-style: normal; font-size: 9.5px; font-weight: 600; letter-spacing: .06em; color: var(--c-blue-deep); background: #e6eef6; padding: 1px 5px; vertical-align: 1px; }
 .unc { margin: 0; display: flex; justify-content: space-between; gap: 10px; background: #f2f6fb; border: 1px solid #d6e2ef; padding: 8px 12px; font-size: 13px; color: var(--c-ink-soft); }
-.about { margin: 0; line-height: 1.55; color: var(--c-ink); }
+.about { margin: 0; position: relative; } .about .abt { float: right; margin: 2px 0 6px 10px; }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; margin: 0; } .facts dt { font-size: 11.5px; color: var(--c-muted); } .facts dd { margin: 2px 0 0; color: var(--c-ink); }
 .blk { border-top: 1px solid var(--c-rule); padding-top: 10px; } .sh { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); display: flex; gap: 6px; align-items: center; }
 .fo { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 22px; } .fo li { display: flex; gap: 8px; align-items: baseline; } .fo b { font-weight: 500; color: var(--c-navy); } .fo span { color: var(--c-muted); font-size: 13px; } .fo a, .lks a { color: var(--c-blue-deep); font-size: 13px; text-decoration: none; }
-.tr { margin: 0; white-space: pre-wrap; } .lks { margin: 0; display: flex; gap: 16px; flex-wrap: wrap; align-items: baseline; border-top: 1px solid var(--c-rule); padding-top: 10px; }
+.tr { margin: 0; } .lks { margin: 0; display: flex; gap: 16px; flex-wrap: wrap; align-items: baseline; border-top: 1px solid var(--c-rule); padding-top: 10px; }
 .muted { color: var(--c-muted); } .sm2 { font-size: 12.5px; margin: 0; } .lnk { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; } .error { color: var(--c-danger); }
 .src { margin: 0; padding-left: 18px; font-size: 13px; } .src a { color: var(--c-blue-deep); word-break: break-all; }
 .df { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13.5px; } .df th { text-align: left; font-weight: 500; font-size: 11.5px; color: var(--c-muted); padding: 6px 8px; border-bottom: 1px solid var(--c-rule-strong); }

@@ -5,10 +5,10 @@ const t = (n: number) => z.string().trim().max(n).nullable().optional().transfor
 const url = (n: number) => t(n).transform((v) => (v && !/^https?:\/\//i.test(v) ? 'https://' + v : v))
 export const Founder = z.object({ name: z.string().trim().min(1).max(120), role: z.string().trim().max(80).default(''), linkedin: z.string().trim().max(500).default('') })
 export const ProfileFields = {
-  one_liner: t(300), website: url(500), description: t(3000), sector: t(100), country: t(100), city: t(100),
+  one_liner: t(300), website: url(500), description: t(10000), sector: t(100), country: t(100), city: t(100),
   founded: z.coerce.number().int().min(1900).max(2100).nullable().optional().or(z.literal('').transform(() => null)),
   business_model: t(60), team_size: t(40), linkedin: url(500), founders: z.array(Founder).max(12).optional(),
-  lead_investor: t(200), investors: t(1000), traction: t(2000), deck_url: url(1000), referred_by: t(200)
+  lead_investor: t(200), investors: t(1000), traction: t(5000), deck_url: url(1000), referred_by: t(200)
 }
 // What AI may fill (and mark as unchecked); money and round are numbers/choices handled alongside.
 export const AI_KEYS = ['company', 'website', 'one_liner', 'description', 'sector', 'country', 'city', 'founded', 'business_model', 'team_size', 'linkedin', 'founders', 'round', 'raise_usd', 'valuation_usd', 'lead_investor', 'investors', 'traction'] as const
