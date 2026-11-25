@@ -16,11 +16,17 @@ export function videoEmbed(url: string): VideoEmbed | null {
   if (host === 'loom.com') { const v = u.pathname.match(/^\/(?:share|embed)\/([0-9a-f]{32})/)?.[1]; return v ? { src: 'https://www.loom.com/embed/' + v, provider: 'Loom' } : null }
   return null
 }
-// Turn a paragraph that is only a video link into the link plus a player (pages only; emails keep the link).
+// Pages only (emails keep the link): every YouTube, Vimeo or Loom link in a paragraph or list item gets a player
+// under that block, whether the link sits on its own line or inside a sentence.
+const player = (v: VideoEmbed) => '<div class="vid"><iframe src="' + v.src + '" title="' + v.provider + ' video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
 export function embedVideos(html: string): string {
-  return html.replace(/<p[^>]*>\s*<a href="([^"]+)"[^>]*>[^<]*<\/a>\s*<\/p>/g, (whole, href: string) => {
-    const v = videoEmbed(href.replace(/&amp;/g, '&'))
-    if (!v) return whole
-    return '<p class="vlink">' + whole.replace(/^<p[^>]*>|<\/p>$/g, '') + '</p><div class="vid"><iframe src="' + v.src + '" title="' + v.provider + ' video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
+  const seen = new Set<string>()
+  return html.replace(/<(p|li)([^>]*)>([\s\S]*?)<\/\1>/g, (whole, tag: string, attrs: string, inner: string) => {
+    const vids: VideoEmbed[] = []
+    for (const m of inner.matchAll(/<a href="([^"]+)"/g)) { const v = videoEmbed(m[1]!.replace(/&amp;/g, '&')); if (v && !seen.has(v.src)) { seen.add(v.src); vids.push(v) } }
+    if (!vids.length) return whole
+    const alone = /^\s*<a [^>]*>[^<]*<\/a>\s*$/.test(inner)
+    const block = alone && tag === 'p' ? '<p class="vlink"' + attrs + '>' + inner + '</p>' : whole
+    return tag === 'li' ? '<li' + attrs + '>' + inner + vids.map(player).join('') + '</li>' : block + vids.map(player).join('')
   })
 }
