@@ -39,6 +39,7 @@ const adding = ref(false)
     <div class="board">
       <div v-for="c in COLS" :key="c.v" class="col">
         <h2>{{ c.label }} <span>{{ col(c.v).length }}</span></h2>
+        <div class="list">
         <NuxtLink v-for="d in col(c.v)" :key="d.id" :to="'/pipeline/' + d.id" class="cardlet">
           <b>{{ d.company }}</b>
           <span v-if="d.one_liner" class="one">{{ d.one_liner }}</span>
@@ -48,6 +49,7 @@ const adding = ref(false)
           <span v-if="d.vehicle" class="veh">{{ d.vehicle }}</span>
         </NuxtLink>
         <p v-if="!col(c.v).length" class="none">No deals</p>
+        </div>
       </div>
     </div>
 
@@ -67,9 +69,12 @@ const adding = ref(false)
 .add label { display: flex; flex-direction: column; gap: 6px; }
 input, select { font: inherit; font-size: 14px; letter-spacing: normal; text-transform: none; color: var(--c-ink); padding: 8px 10px; border: 1px solid var(--c-rule-strong); background: #fff; }
 .board { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 12px; overflow-x: auto; }
-.col { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 12px; min-height: 240px; display: flex; flex-direction: column; gap: 8px; }
-.col h2 { font-family: var(--font-body); font-size: 11px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 0 4px; display: flex; justify-content: space-between; }
-.cardlet { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); border-radius: var(--radius); background: var(--c-paper); text-decoration: none; color: var(--c-ink-soft); }
+.board { align-items: start; }
+/* Each column keeps to the screen's height and scrolls on its own, so a stage with 100 deals doesn't make the page long. */
+.col { background: #fff; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 12px 6px 12px 12px; min-height: 240px; max-height: max(420px, calc(100vh - 150px)); display: flex; flex-direction: column; }
+.list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 6px; min-height: 0; flex: 1; overscroll-behavior: contain; scrollbar-width: thin; }
+.col h2 { font-family: var(--font-body); font-size: 11px; letter-spacing: 0; color: var(--c-muted); font-weight: 500; margin: 0 6px 10px 0; display: flex; justify-content: space-between; flex: none; }
+.cardlet { flex: none; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--c-rule); border-radius: var(--radius); background: var(--c-paper); text-decoration: none; color: var(--c-ink-soft); }
 .cardlet:hover { border-color: var(--c-blue); }
 .cardlet b { color: var(--c-navy); font-weight: 500; }
 .one { font-size: 12.5px; color: var(--c-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
