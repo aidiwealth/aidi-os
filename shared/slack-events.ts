@@ -7,6 +7,7 @@ export const SLACK_CHANNELS: { key: SlackChannel; label: string; hint: string }[
   { key: 'critical', label: 'Critical', hint: 'Failed charges, broken payment or system jobs, security and access changes' }]
 export const SLACK_EVENTS: { key: string; channel: SlackChannel; label: string }[] = [
   { key: 'aidi.pitch', channel: 'aidi', label: 'New pitch submitted (with its AI score)' },
+  { key: 'aidi.deal_screened', channel: 'aidi', label: 'A pipeline deal is screened by AI (with its score)' },
   { key: 'aidi.compliance', channel: 'aidi', label: 'Filings due within 7 days or overdue (daily)' },
   { key: 'aidi.wealth_message', channel: 'aidi', label: 'An Aidi Wealth client sends a message' },
   { key: 'aidi.wealth_client', channel: 'aidi', label: 'New Aidi Wealth client or intake submitted' },

@@ -35,7 +35,7 @@ async function drop(ev: DragEvent, stage: string) {
   d.stage = stage as typeof d.stage; d.stage_since = new Date().toISOString()
   drag.busy = true
   try { await $fetch('/api/pipeline/' + id + '/stage', { method: 'POST', body: { stage } }) }
-  catch (e) { d.stage = was; d.stage_since = since; notify((e as { data?: { message?: string } })?.data?.message ?? 'Could not move this deal. Try again.', { title: 'Not moved' }) }
+  catch (e) { d.stage = was; d.stage_since = since; notify((e as { data?: { data?: { error?: { message?: string } } } })?.data?.data?.error?.message ?? 'Could not move this deal. Try again.', { title: 'Not moved' }) }
   finally { drag.busy = false }
 }
 </script>

@@ -5,7 +5,7 @@ interface Vote { vote: string; note: string | null; voted_at: string; voter: str
 interface Deal { founders: { name: string; role: string; linkedin: string }[]; ai_unchecked: string[]; ai_sources: { title: string; url: string }[]; ai_looked_up_at: string | null; [k: string]: unknown; vehicle_entity_id: string | null; vehicle_name: string | null; id: string; company: string; one_liner: string | null; website: string | null; stage: string; round: string | null; raise_usd: string | null; check_usd: string | null; valuation_usd: string | null; source: string; owner_id: string | null; owner_name: string | null; pitch_id: string | null; stage_since: string }
 // Fetched together, not one after another (each wait is a round trip to the server).
 const [__p782_0, __p782_1, __p782_2, __p782_3] = await Promise.all([
-  useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean }>('/api/pipeline/' + id),
+  useFetch<{ deal: Deal; events: Ev[]; votes: Vote[]; tally: { approvals: number; rejections: number }; required: number; canVote: boolean; screening: { score: number; recommendation: string; thesis_fit: number; team_score: number; market_score: number; traction_score: number; detail: { summary?: string[] } | null; created_at: string } | null }>('/api/pipeline/' + id),
   useFetch<{ id: string; name: string }[]>('/api/pipeline/people'),
   useFetch<{ id: string; title: string }[]>('/api/documents'),
   useFetch<{ id: string; name: string; kind: string }[]>('/api/entities')])
@@ -24,6 +24,10 @@ const stageLabel = (s: string | null) => STAGES.find((x) => x.v === s)?.label ??
 const busy = ref(false)
 const msg = ref('')
 function errText(e: unknown) { const d = (e as { data?: { data?: { error?: { message?: string } } } }).data; return d?.data?.error?.message ?? 'Something went wrong. Try again.' }
+// AI screening of the deal (as pitches are screened), shown here and on the Pitches page; the score goes to Slack.
+const REC: Record<string, string> = { prioritise: 'Prioritise', review: 'Review', likely_pass: 'Likely pass' }
+const screenBusy = ref(false)
+async function screen() { screenBusy.value = true; try { await run(() => $fetch('/api/pipeline/' + id + '/screen', { method: 'POST' })) } finally { screenBusy.value = false } }
 async function run(fn: () => Promise<unknown>) { busy.value = true; msg.value = ''; try { await fn(); await refresh() } catch (e) { msg.value = errText(e) } finally { busy.value = false } }
 
 const move = async (stage: string) => {
@@ -83,6 +87,16 @@ const when = (s: string) => new Date(s).toLocaleString('en-GB', { day: 'numeric'
     <div class="grid">
       <div class="col">
         <DealCompany :deal="data.deal" :vehicles="vehicles" @changed="refresh()" />
+        <div class="card scr">
+          <div class="scrh"><h2>AI screening</h2><button type="button" class="btn secondary sm" :disabled="screenBusy || busy" @click="screen">{{ screenBusy ? 'Screening…' : data.screening ? 'Screen again' : 'Screen with AI' }}</button></div>
+          <template v-if="data.screening">
+            <div class="scrs"><b class="sc">{{ data.screening.score }}<small>/100</small></b><span class="rec" :class="data.screening.recommendation">{{ REC[data.screening.recommendation] }}</span>
+              <span class="sub">Thesis {{ data.screening.thesis_fit }}/5 · Team {{ data.screening.team_score }}/5 · Market {{ data.screening.market_score }}/5 · Traction {{ data.screening.traction_score }}/5</span></div>
+            <ul class="sum"><li v-for="(l, i) in data.screening.detail?.summary ?? []" :key="i">{{ l }}</li></ul>
+            <p class="muted small">Screened {{ when(data.screening.created_at) }}. AI advises; partners decide. <NuxtLink :to="'/deals/' + data.deal.pitch_id">Strengths, concerns and questions →</NuxtLink></p>
+          </template>
+          <p v-else class="muted small">Score this deal against your thesis, as pitches are. It then shows on the Pitches page, and the score is posted to Slack.</p>
+        </div>
         <div v-if="data.deal.stage === 'ic' || data.votes.length" class="card ic">
           <h2>Investment committee</h2>
           <p class="tally"><b>{{ data.tally.approvals }}</b> of {{ data.required }} GP approvals<template v-if="data.tally.rejections"> · <span class="rej">{{ data.tally.rejections }} rejection</span></template></p>
@@ -175,4 +189,9 @@ textarea { resize: vertical; }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--c-blue-deep); cursor: pointer; }
 .muted { color: var(--c-muted); } .small { font-size: 12px; margin: 0; } .error { color: var(--c-danger); }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+.scr .scrh { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .scr .scrh h2 { margin: 0; }
+.scrs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; margin: 12px 0 8px; } .sc { font-family: var(--font-heading); font-size: 34px; font-weight: 400; color: var(--c-navy); line-height: 1; } .sc small { font-size: 14px; color: var(--c-muted); }
+.rec { font-size: 12px; padding: 2px 8px; background: #eef4f9; color: var(--c-blue-deep); } .rec.prioritise { background: #e6f0fa; color: #13467a; font-weight: 600; } .rec.likely_pass { background: #f4f3ef; color: var(--c-muted); }
+.scrs .sub { flex-basis: 100%; font-size: 12.5px; color: var(--c-muted); }
+.sum { margin: 0 0 8px; padding-left: 18px; font-size: 14px; line-height: 1.6; color: var(--c-ink); }
 </style>

@@ -21,5 +21,8 @@ export default defineEventHandler(async (event) => {
        FROM deals.ic_votes v JOIN core.users u ON u.id = v.voter_id JOIN core.people p ON p.id = u.person_id WHERE v.deal_id = $1 ORDER BY v.voted_at`,
     [id.data, user.userId])
   const tally = await icTally(id.data)
-  return { deal: d.rows[0], events: events.rows, votes: votes.rows, tally, required: IC_APPROVALS_REQUIRED, canVote: user.roles.includes('gp') }
+  // The latest AI screening, through the deal's pitch (a founder's pitch, or one made when the deal was screened).
+  const pid = (d.rows[0] as { pitch_id: string | null }).pitch_id
+  const screening = pid ? (await db().query('SELECT score, recommendation, thesis_fit, team_score, market_score, traction_score, detail, created_at FROM deals.screenings WHERE pitch_id = $1 ORDER BY created_at DESC LIMIT 1', [pid])).rows[0] ?? null : null
+  return { screening, deal: d.rows[0], events: events.rows, votes: votes.rows, tally, required: IC_APPROVALS_REQUIRED, canVote: user.roles.includes('gp') }
 })

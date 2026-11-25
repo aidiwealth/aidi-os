@@ -4,7 +4,7 @@ const id = route.params.id as string
 interface Detail { summary: string[]; strengths: string[]; concerns: string[]; questions_for_founder: string[]; flags: string[] }
 interface ScreeningRow { id: string; created_at: string; score: number; recommendation: string; thesis_fit: number; team_score: number; market_score: number; traction_score: number; detail: Detail; model: string; prompt_version: string; cost_usd: string | null }
 interface DecisionRow { id: string; decision: string; note: string; decided_at: string; decided_by: string }
-interface Pitch { id: string; received_at: string; founder_name: string; email: string; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string; sector: string | null; raising_usd: string | null; one_liner: string; description: string; traction: string | null; team: string | null; female_founder: boolean | null; status: string }
+interface Pitch { id: string; received_at: string; founder_name: string; email: string | null; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string; sector: string | null; raising_usd: string | null; one_liner: string; description: string; traction: string | null; team: string | null; female_founder: boolean | null; status: string }
 const { data, error, refresh } = await useFetch<{ pitch: Pitch; screenings: ScreeningRow[]; decisions: DecisionRow[]; failedRuns: number; dealId: string | null }>('/api/deals/' + id)
 useHead({ title: () => (data.value?.pitch.company ?? 'Pitch') })
 const REC: Record<string, string> = { prioritise: 'Prioritise', review: 'Review', likely_pass: 'Likely pass' }
@@ -48,7 +48,7 @@ const { data: loanApp } = await useFetch<{ id: string; status: string; amount: n
         <div class="card">
           <h2>The pitch</h2>
           <dl class="facts">
-            <dt>Founder</dt><dd>{{ data.pitch.founder_name }} · <a :href="'mailto:' + data.pitch.email">{{ data.pitch.email }}</a></dd>
+            <dt>Founder</dt><dd>{{ data.pitch.founder_name }}<template v-if="data.pitch.email"> · <a :href="'mailto:' + data.pitch.email">{{ data.pitch.email }}</a></template></dd>
             <dt>Raising</dt><dd>{{ money(data.pitch.raising_usd) }}</dd>
             <dt>Website</dt><dd><a v-if="safeUrl(data.pitch.website)" :href="safeUrl(data.pitch.website)!" target="_blank" rel="noopener noreferrer">{{ data.pitch.website }}</a><span v-else>{{ data.pitch.website ?? '—' }}</span></dd>
             <dt>Deck</dt><dd><a v-if="safeUrl(data.pitch.deck_url)" :href="safeUrl(data.pitch.deck_url)!" target="_blank" rel="noopener noreferrer">Open deck</a><span v-else>—</span></dd>

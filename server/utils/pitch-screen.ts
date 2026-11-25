@@ -55,7 +55,7 @@ const SCREENING_JSON_SCHEMA = {
 }
 
 interface PitchRow {
-  id: string; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string
+  id: string; company: string; website: string | null; deck_url: string | null; country: string | null; stage: string | null
   sector: string | null; raising_usd: string | null; one_liner: string; description: string; traction: string | null
   team: string | null; female_founder: boolean | null; status: string
 }
@@ -68,7 +68,7 @@ export async function screenPitch(pitchId: string): Promise<{ screeningId: strin
   const user = [
     'Company: ' + p.company,
     'One-liner: ' + p.one_liner,
-    'Stage: ' + p.stage.replace('_', '-'),
+    'Stage: ' + (p.stage ? p.stage.replace('_', '-') : 'not given'),
     'Sector: ' + (p.sector ?? 'not given'),
     'Country of operation: ' + (p.country ?? 'not given'),
     'Raising (USD): ' + (p.raising_usd ?? 'not given'),
